@@ -97,7 +97,7 @@ const OpenPackDialog = ({ show, currentPackPath, onClose, onOpenPack }: OpenPack
     );
 
   return (
-    <Modal onClose={onClose} show={show} size="2xl" position="center">
+    <Modal dismissible onClose={onClose} show={show} size="2xl" position="center">
       <Modal.Header>{localized.viewerOpenPack || "Open Pack"}</Modal.Header>
       <Modal.Body>
         <div className="space-y-4 text-gray-100">

@@ -1,0 +1,92 @@
+{
+  "version": "1.0.0",
+  "timestamp": 0,
+  "nodes": [
+    {
+      "id": "node_0",
+      "type": "customschema",
+      "position": { "x": 0, "y": 0 },
+      "data": {
+        "label": "Custom Schema",
+        "type": "customschema",
+        "schemaColumns": [
+          { "name": "flag", "type": "StringU8" },
+          { "name": "unit_set", "type": "StringU8" }
+        ],
+        "outputType": "CustomSchema"
+      }
+    },
+    {
+      "id": "node_1",
+      "type": "customrowsinput",
+      "position": { "x": 320, "y": 0 },
+      "data": {
+        "label": "Custom Rows Input",
+        "type": "customrowsinput",
+        "tableName": "example_mapping_rows",
+        "customRows": [
+          { "flag": "example_flag", "unit_set": "example_unit_set_a" },
+          { "flag": "example_flag", "unit_set": "example_unit_set_b" }
+        ],
+        "inputType": "CustomSchema",
+        "outputType": "TableSelection"
+      }
+    },
+    {
+      "id": "node_2",
+      "type": "nativepatch",
+      "position": { "x": 680, "y": 0 },
+      "data": {
+        "label": "Native Patch",
+        "type": "nativepatch",
+        "selectedPackName": "",
+        "templatePath": "whmm_patch_templates/data-only.wh3patchtemplate.json",
+        "scalarValues": {},
+        "scalarOptionBindings": {},
+        "tableBindings": ["mappings"],
+        "inputType": "TableSelection",
+        "outputType": "TableSelection"
+      }
+    },
+    {
+      "id": "node_3",
+      "type": "savechanges",
+      "position": { "x": 1040, "y": 0 },
+      "data": {
+        "label": "Save Changes",
+        "type": "savechanges",
+        "packName": "example_native_mapping",
+        "packedFileName": "",
+        "openInWindows": false,
+        "inputType": "TableSelection"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "edge-node_0-node_1",
+      "sourceId": "node_0",
+      "targetId": "node_1",
+      "sourceHandle": "output",
+      "targetHandle": "input"
+    },
+    {
+      "id": "edge-node_1-node_2",
+      "sourceId": "node_1",
+      "targetId": "node_2",
+      "sourceHandle": "output",
+      "targetHandle": "input-table:mappings"
+    },
+    {
+      "id": "edge-node_2-node_3",
+      "sourceId": "node_2",
+      "targetId": "node_3",
+      "sourceHandle": "output",
+      "targetHandle": "input"
+    }
+  ],
+  "options": [],
+  "metadata": { "nodeCount": 4, "connectionCount": 3 },
+  "isGraphEnabled": true,
+  "graphStartsEnabled": true
+}

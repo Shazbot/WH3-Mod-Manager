@@ -215,8 +215,7 @@ export const getPreferredTreeTab = (
 
   // The rules file sits under whmm\, so like a flow or any other packed file it belongs to the
   // Files side of the tree rather than DB Tables.
-  const isNonDBTab =
-    activeTab?.kind === "flow" || activeTab?.kind === "file" || activeTab?.kind === "loadOrderRules";
+  const isNonDBTab = activeTab?.kind === "flow" || activeTab?.kind === "file" || activeTab?.kind === "loadOrderRules";
 
   return isNonDBTab || (!inventory?.hasDBTables && inventory?.hasFiles) ? "files" : "db";
 };

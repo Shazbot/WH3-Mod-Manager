@@ -7,6 +7,18 @@ export function setupRendererLogging() {
     originalConsoleLog(...args);
   };
 
+  const originalConsoleInfo = console.info.bind(console);
+  console.info = (...args) => {
+    log.info(...args);
+    originalConsoleInfo(...args);
+  };
+
+  const originalConsoleDebug = console.debug.bind(console);
+  console.debug = (...args) => {
+    log.debug(...args);
+    originalConsoleDebug(...args);
+  };
+
   // Warnings and errors were reaching devtools only, so they never showed up in main.log alongside
   // the logs that led to them.
   const originalConsoleWarn = console.warn.bind(console);

@@ -99,6 +99,7 @@ const makeUnit = (overrides: Partial<UnitViewerUnitModel>): UnitViewerUnitModel 
   groundStatEffects: [],
   baseEntity: rider,
   mountEntity: { ...rider, key: "horse", runSpeed: 8.4, chargeSpeed: 10.8, mass: 1000 },
+  visualParts: [],
   meleeWeapon: {
     key: "weapon",
     baseDamage: 14,
@@ -598,6 +599,215 @@ describe("Unit Viewer catalog", () => {
     expect(built.constants.sizeScaling[0].singleEntityValue).toBe(0.5);
   });
 
+  it("resolves rider, mount and engine visual parts", () => {
+    const base = {
+      battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "100" }],
+      melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
+      unit_variants_tables: [{ unit: "land", variant: "v_man" }],
+      variants_tables: [
+        { variant_name: "v_man", variant_filename: "man" },
+        { variant_name: "v_horse", variant_filename: "horse", scale: "1.2" },
+      ],
+    };
+    const vmd = (name: string) => `variantmeshes\\variantmeshdefinitions\\${name}.variantmeshdefinition`;
+    const build = (extra: UnitViewerTableRows) =>
+      buildUnitViewerData(
+        {
+          ...base,
+          main_units_tables: [{ unit: "unit", land_unit: "land", num_men: "1" }],
+          ...extra,
+        },
+        () => undefined,
+      ).units.get("unit")?.visualParts;
+
+    expect(
+      build({
+        land_units_tables: [{ key: "land", man_entity: "entity", primary_melee_weapon: "weapon", mount: "m" }],
+        mounts_tables: [{ key: "m", variant: "v_horse" }],
+      }),
+    ).toEqual([
+      { role: "rider", label: "Rider", variantMeshPath: vmd("man"), count: 1 },
+      { role: "mount", label: "Mount", variantMeshPath: vmd("horse"), scale: 1.2, count: 1 },
+    ]);
+    expect(
+      build({
+        land_units_tables: [{ key: "land", man_entity: "entity", primary_melee_weapon: "weapon", engine: "e" }],
+        battlefield_engines_tables: [
+          {
+            key: "e",
+            variant: "",
+            model: "emp_mortar",
+            rider_attachment_point: "ap_crew",
+            draught_attachment_point: "",
+          },
+        ],
+      }),
+    ).toEqual([
+      { role: "crew", label: "Crew", variantMeshPath: vmd("man"), count: 1 },
+      { role: "engine", label: "Engine", variantMeshPath: vmd("emp_mortar"), riderAttachmentPoint: "ap_crew" },
+    ]);
+    const wagonParts = build({
+      land_units_tables: [{ key: "land", man_entity: "entity", primary_melee_weapon: "weapon", engine: "e" }],
+      land_units_to_battle_personalities_junctions_tables: [
+        { land_unit: "land", battle_personality: "p1", riders_attachment_point: "ap_crewposition_1" },
+        { land_unit: "land", battle_personality: "p2", riders_attachment_point: "ap_crewposition_2" },
+        { land_unit: "land", battle_personality: "missing", riders_attachment_point: "ap_crewposition_3" },
+      ],
+      battle_personalities_tables: [
+        { key: "p1", variant: "v_gunner", man_animations_table: "crew_tbl" },
+        { key: "p2", variant: "v_gunner" },
+      ],
+      variants_tables: [
+        { variant_name: "v_man", variant_filename: "man" },
+        { variant_name: "v_gunner", variant_filename: "gunner" },
+      ],
+      battlefield_engines_tables: [
+        { key: "e", variant: "", model: "emp_war_wagon", draught_attachment_point: "ap_draughtposition" },
+      ],
+      warscape_animated_lod_tables: [
+        {
+          filename: "warmachines/chariot/emp_war_wagon/emp_war_wagon_01_lod1.wsmodel",
+          range: "60",
+          animated: "emp_war_wagon",
+        },
+        {
+          filename: "warmachines/chariot/emp_war_wagon/emp_war_wagon_01.wsmodel",
+          range: "0",
+          animated: "emp_war_wagon",
+        },
+      ],
+    });
+    expect(wagonParts?.find((part) => part.role === "crew")).toMatchObject({
+      variantMeshPath: vmd("gunner"),
+      count: 2,
+      animationTable: "crew_tbl",
+    });
+    expect(wagonParts?.find((part) => part.role === "engine")).toMatchObject({
+      variantMeshPath: "warmachines\\chariot\\emp_war_wagon\\emp_war_wagon_01.wsmodel",
+      draughtAttachmentPoint: "ap_draughtposition",
+      techAnimPaths: ["warmachines\\chariot\\emp_war_wagon\\tech\\emp_war_wagon_01.anim"],
+      engineRiders: [
+        { attachmentPoint: "ap_crewposition_1", variantMeshPath: vmd("gunner"), animationTable: "crew_tbl" },
+        { attachmentPoint: "ap_crewposition_2", variantMeshPath: vmd("gunner") },
+      ],
+    });
+  });
+
+  it("skips placeholder seat props and prefers the engine's tech folder", () => {
+    const vmd = (name: string) => `variantmeshes\\variantmeshdefinitions\\${name}.variantmeshdefinition`;
+    const parts = buildUnitViewerData(
+      {
+        main_units_tables: [{ unit: "cannon", land_unit: "cannon", num_men: "3" }],
+        land_units_tables: [{ key: "cannon", man_entity: "entity", primary_melee_weapon: "weapon", engine: "e" }],
+        battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "100" }],
+        melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
+        unit_variants_tables: [{ unit: "cannon", variant: "v_crew" }],
+        land_units_to_battle_personalities_junctions_tables: [
+          { battle_personality: "smokestack", land_unit: "cannon", riders_attachment_point: "ap_funnel" },
+        ],
+        battle_personalities_tables: [{ key: "smokestack", variant: "dummy_variant" }],
+        variants_tables: [
+          { variant_name: "v_crew", variant_filename: "crew" },
+          { variant_name: "dummy_variant", variant_filename: "dummy_variant" },
+        ],
+        battlefield_engines_tables: [
+          {
+            key: "e",
+            model: "magma",
+            rider_attachment_point: "ap_crewposition",
+            tech_folder: "warmachines/engines/chd_deathshrieker/tech/",
+          },
+        ],
+        warscape_animated_lod_tables: [
+          {
+            filename: "warmachines/engines/chd_magma_cannon/chd_magma_cannon_01.wsmodel",
+            range: "0",
+            animated: "magma",
+          },
+        ],
+      },
+      () => undefined,
+    ).units.get("cannon")?.visualParts;
+    expect(parts?.find((part) => part.role === "crew")).toMatchObject({ variantMeshPath: vmd("crew"), count: 3 });
+    const engine = parts?.find((part) => part.role === "engine");
+    expect(engine?.engineRiders).toBeUndefined();
+    expect(engine?.techAnimPaths).toEqual([
+      "warmachines\\engines\\chd_deathshrieker\\tech\\chd_magma_cannon_01.anim",
+      "warmachines\\engines\\chd_deathshrieker\\tech\\chd_deathshrieker_01.anim",
+      "warmachines\\engines\\chd_deathshrieker\\tech\\chd_deathshrieker.anim",
+      "warmachines\\engines\\chd_magma_cannon\\tech\\chd_magma_cannon_01.anim",
+    ]);
+  });
+
+  it("uses the mount as the preview model when the unit's own VMD is a placeholder", () => {
+    const unit = buildUnitViewerData(
+      {
+        main_units_tables: [{ unit: "skullcannon", land_unit: "skullcannon", num_men: "2" }],
+        land_units_tables: [
+          { key: "skullcannon", man_entity: "entity", primary_melee_weapon: "weapon", mount: "m", num_mounts: "1" },
+        ],
+        battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "100" }],
+        melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
+        unit_variants_tables: [{ unit: "skullcannon", variant: "dummy_variant" }],
+        mounts_tables: [{ key: "m", variant: "v_cannon" }],
+        variants_tables: [
+          { variant_name: "dummy_variant", variant_filename: "dummy_variant" },
+          { variant_name: "v_cannon", variant_filename: "dae_skullcannon" },
+        ],
+      },
+      () => undefined,
+    ).units.get("skullcannon");
+    const cannon = "variantmeshes\\variantmeshdefinitions\\dae_skullcannon.variantmeshdefinition";
+    expect(unit?.variantMeshPath).toBe(cannon);
+    expect(unit?.visualParts?.map((part) => [part.role, part.variantMeshPath])).toEqual([["mount", cannon]]);
+    expect(unit?.painterVariantContext).toBeUndefined();
+  });
+
+  it("seats personality riders on a ridden monster mount without an engine", () => {
+    const vmd = (name: string) => `variantmeshes\\variantmeshdefinitions\\${name}.variantmeshdefinition`;
+    const parts = buildUnitViewerData(
+      {
+        main_units_tables: [{ unit: "tusk", land_unit: "tusk", num_men: "1" }],
+        land_units_tables: [{ key: "tusk", man_entity: "entity", primary_melee_weapon: "weapon", mount: "m" }],
+        battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "100" }],
+        melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
+        unit_variants_tables: [{ unit: "tusk", variant: "v_front" }],
+        mounts_tables: [{ key: "m", variant: "v_tusk", animation: "tusk_tbl" }],
+        land_units_to_battle_personalities_junctions_tables: [
+          { battle_personality: "front", land_unit: "tusk", riders_attachment_point: "ap_thundertusk_rider_01" },
+          { battle_personality: "back", land_unit: "tusk", riders_attachment_point: "ap_thundertusk_rider_02" },
+        ],
+        battle_personalities_tables: [
+          { key: "front", variant: "v_front", man_animations_table: "front_tbl" },
+          { key: "back", variant: "v_back", man_animations_table: "back_tbl" },
+        ],
+        variants_tables: [
+          { variant_name: "v_front", variant_filename: "rider_front" },
+          { variant_name: "v_back", variant_filename: "rider_back" },
+          {
+            variant_name: "v_tusk",
+            variant_filename: "ogr_thundertusk",
+            tech_folder: "VariantMeshes/wh_variantmodels/hq3b/ogr/ogr_thundertusk/tech/",
+          },
+        ],
+      },
+      () => undefined,
+    ).units.get("tusk")?.visualParts;
+    expect(parts?.find((part) => part.role === "crew")).toMatchObject({
+      variantMeshPath: vmd("rider_front"),
+      count: 2,
+      animationTable: "front_tbl",
+    });
+    const mount = parts?.find((part) => part.role === "mount");
+    expect(mount?.engineRiders?.map((rider) => rider.attachmentPoint)).toEqual([
+      "ap_thundertusk_rider_01",
+      "ap_thundertusk_rider_02",
+    ]);
+    expect(mount?.techAnimPaths).toContain(
+      "variantmeshes\\wh_variantmodels\\hq3b\\ogr\\ogr_thundertusk\\tech\\ogr_thundertusk_01.anim",
+    );
+  });
+
   it("labels custom battle mount variants from their composite localization key", () => {
     const tables: UnitViewerTableRows = {
       main_units_tables: [
@@ -642,13 +852,15 @@ describe("Unit Viewer catalog", () => {
         land_units_tables: [{ key: "land", man_entity: "entity", primary_melee_weapon: "weapon" }],
         battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "100" }],
         melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
-        unit_variants_tables: [{
-          unit: "land",
-          faction: "",
-          name: "unit_variant_name",
-          variant: "unit_variant",
-          unit_card: "unit_card",
-        }],
+        unit_variants_tables: [
+          {
+            unit: "land",
+            faction: "",
+            name: "unit_variant_name",
+            variant: "unit_variant",
+            unit_card: "unit_card",
+          },
+        ],
         factions_tables: [
           {
             key: "faction_a",
@@ -726,16 +938,18 @@ describe("Unit Viewer catalog", () => {
             tertiary_colour_b: "144",
           },
         ],
-        variants_tables: [{
-          variant_name: "unit_variant",
-          tech_folder: "tech",
-          variant_filename: "units\\human",
-          low_poly_filename: "low\\human",
-          mount_scale: "1.0000",
-          scale: "1.0500",
-          scale_variation: "0.0500",
-          super_low_poly_filename: "imposter\\human",
-        }],
+        variants_tables: [
+          {
+            variant_name: "unit_variant",
+            tech_folder: "tech",
+            variant_filename: "units\\human",
+            low_poly_filename: "low\\human",
+            mount_scale: "1.0000",
+            scale: "1.0500",
+            scale_variation: "0.0500",
+            super_low_poly_filename: "imposter\\human",
+          },
+        ],
         units_custom_battle_permissions_tables: [
           { unit: "unit", faction: "faction_b" },
           { unit: "unit", faction: "faction_a" },
@@ -767,22 +981,52 @@ describe("Unit Viewer catalog", () => {
       },
       availableFactions: ["faction_a", "faction_b"],
       factionColours: [
-        { faction: "faction_a", subculture: "subculture_a", primary: "#aabbcc", secondary: "#112233", tertiary: "#445566" },
-        { faction: "faction_a_minor", subculture: "subculture_a", primary: "#f3f3f3", secondary: "#833333", tertiary: "#ffffff" },
-        { faction: "faction_b", subculture: "subculture_b", primary: "#ddeeff", secondary: "#667788", tertiary: "#99aabb" },
+        {
+          faction: "faction_a",
+          subculture: "subculture_a",
+          primary: "#aabbcc",
+          secondary: "#112233",
+          tertiary: "#445566",
+        },
+        {
+          faction: "faction_a_minor",
+          subculture: "subculture_a",
+          primary: "#f3f3f3",
+          secondary: "#833333",
+          tertiary: "#ffffff",
+        },
+        {
+          faction: "faction_b",
+          subculture: "subculture_b",
+          primary: "#ddeeff",
+          secondary: "#667788",
+          tertiary: "#99aabb",
+        },
       ],
       unitVariantColours: [
         {
-          faction: "faction_a", subculture: "", soldierType: "soldier",
-          primary: "#101010", secondary: "#202020", tertiary: "#303030",
+          faction: "faction_a",
+          subculture: "",
+          soldierType: "soldier",
+          primary: "#101010",
+          secondary: "#202020",
+          tertiary: "#303030",
         },
         {
-          faction: "", subculture: "subculture_b", soldierType: "soldier",
-          primary: "#404040", secondary: "#505050", tertiary: "#606060",
+          faction: "",
+          subculture: "subculture_b",
+          soldierType: "soldier",
+          primary: "#404040",
+          secondary: "#505050",
+          tertiary: "#606060",
         },
         {
-          faction: "", subculture: "", soldierType: "mount",
-          primary: "#707070", secondary: "#808080", tertiary: "#909090",
+          faction: "",
+          subculture: "",
+          soldierType: "mount",
+          primary: "#707070",
+          secondary: "#808080",
+          tertiary: "#909090",
         },
       ],
     });

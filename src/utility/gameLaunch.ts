@@ -66,7 +66,7 @@ export const isLinuxLauncherAvailable = (launcher: LinuxLauncher, executable: st
  * The arguments the game itself takes. These stay separate argv values: the semicolons are game
  * arguments, and a shell would read them as command separators and drop everything after them.
  */
-const buildGameArgs = (modListFileName: string, saveName?: string) => [
+export const buildGameLaunchArguments = (modListFileName: string, saveName?: string) => [
   ...(saveName ? ["game_startup_mode", "campaign_load", saveName, ";"] : []),
   `${modListFileName};`,
 ];
@@ -85,7 +85,7 @@ export const resolveGameLaunchPlan = ({
   findExecutable = findExecutableOnPath,
   isLauncherAvailable = isLinuxLauncherAvailable,
 }: GameLaunchRequest): GameLaunchPlan => {
-  const gameArgs = buildGameArgs(modListFileName, saveName);
+  const gameArgs = buildGameLaunchArguments(modListFileName, saveName);
 
   if (platform !== "linux") {
     return {

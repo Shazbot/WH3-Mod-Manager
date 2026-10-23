@@ -141,6 +141,8 @@ const api = {
   techTreesAreReady: () => ipcRenderer.send("techTreesAreReady"),
   requestOpenModInViewer: (modPath: string) => ipcRenderer.send("requestOpenModInViewer", modPath),
   viewerClosedPack: (packPath: string) => ipcRenderer.send("viewerClosedPack", packPath),
+  reloadPackForViewer: (packPath: string): Promise<ReloadPackForViewerResult> =>
+    ipcRenderer.invoke("reloadPackForViewer", packPath),
   setViewerActivePack: (packPath: string) => ipcRenderer.send("setViewerActivePack", packPath),
   requestOpenSkillsWindow: (mods: Mod[]) => ipcRenderer.send("requestOpenSkillsWindow", mods),
   requestSkillsData: (mods: Mod[]) => ipcRenderer.send("requestSkillsData", mods),
@@ -149,6 +151,8 @@ const api = {
     ipcRenderer.send("setSkillsViewOptions", skillsViewOptions),
   openModInViewer: (callback: (event: Electron.IpcRendererEvent, modPath: string) => void) =>
     ipcRenderer.on("openModInViewer", callback),
+  viewerPackChangedOnDisk: (callback: (event: Electron.IpcRendererEvent, packPath: string) => void) =>
+    ipcRenderer.on("viewerPackChangedOnDisk", callback),
   onSkillsViewOptions: (callback: (event: Electron.IpcRendererEvent, skillsViewOptions: SkillsViewOptions) => void) =>
     ipcRenderer.on("setSkillsViewOptions", callback),
   readAppConfig: () => ipcRenderer.send("readAppConfig"),
@@ -208,6 +212,79 @@ const api = {
     ipcRenderer.invoke("compressPack", request),
   cancelCompressionAnalysis: () => ipcRenderer.send("cancelCompressionAnalysis"),
   cancelWorkshopModStaging: (runId?: string) => ipcRenderer.send("cancelWorkshopModStaging", runId),
+  skipWorkshopModOptimization: (runId?: string) => ipcRenderer.send("skipWorkshopModOptimization", runId),
+  getWorkshopOptimizerCacheInfo: (): Promise<{
+    success: boolean;
+    size?: number;
+    hasContents?: boolean;
+    /** The savings line of the latest launch that optimized mods. */
+    lastRun?: string;
+    error?: string;
+  }> => ipcRenderer.invoke("getWorkshopOptimizerCacheInfo"),
+  updateWorkshopOptimizerBackground: (
+    enabledMods: Pick<
+      Mod,
+      | "name"
+      | "path"
+      | "modDirectory"
+      | "isEnabled"
+      | "isInModding"
+      | "isInData"
+      | "loadOrder"
+      | "humanName"
+      | "sourceKind"
+      | "sourceId"
+    >[],
+    settings: { optimize: boolean; workshopModStagingMode: string },
+  ) => ipcRenderer.send("updateWorkshopOptimizerBackground", enabledMods, settings),
+  getWorkshopOptimizerBackgroundStatus: (): Promise<WorkshopOptimizerBackgroundStatus | undefined> =>
+    ipcRenderer.invoke("getWorkshopOptimizerBackgroundStatus"),
+  cancelWorkshopOptimizerBackground: () => ipcRenderer.send("cancelWorkshopOptimizerBackground"),
+  onWorkshopOptimizerBackgroundStatus: (
+    callback: (event: Electron.IpcRendererEvent, status: WorkshopOptimizerBackgroundStatus) => void,
+  ) => {
+    ipcRenderer.on("workshopOptimizerBackgroundStatus", callback);
+    return () => ipcRenderer.removeListener("workshopOptimizerBackgroundStatus", callback);
+  },
+  onWorkshopOptimizerLastRun: (callback: (event: Electron.IpcRendererEvent, text: string) => void) => {
+    ipcRenderer.on("workshopOptimizerLastRun", callback);
+    return () => ipcRenderer.removeListener("workshopOptimizerLastRun", callback);
+  },
+  clearWorkshopOptimizerCache: (): Promise<{
+    success: boolean;
+    code?: "STAGING_ACTIVE" | "CLEAR_FAILED";
+    error?: string;
+  }> => ipcRenderer.invoke("clearWorkshopOptimizerCache"),
+  openWorkshopOptimizerReport: (modName: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("openWorkshopOptimizerReport", modName),
+  startVisualAssetCheck: (
+    mod: { name: string; path: string; workshopId?: string; reqModIdToName?: [string, string][]; dependencyPacks?: string[] },
+    enabledMods: {
+      name: string;
+      path: string;
+      loadOrder?: number;
+      workshopId?: string;
+      reqModIdToName?: [string, string][];
+      dependencyPacks?: string[];
+    }[],
+  ): Promise<{ success: boolean; code?: "BUSY" | "NOT_A_PACK" | "NO_GAME" | "HOST_MISSING" }> =>
+    ipcRenderer.invoke("startVisualAssetCheck", mod, enabledMods),
+  cancelVisualAssetCheck: () => ipcRenderer.send("cancelVisualAssetCheck"),
+  getVisualAssetCheckState: (): Promise<VisualAssetCheckState> => ipcRenderer.invoke("getVisualAssetCheckState"),
+  onVisualAssetCheckState: (callback: (event: Electron.IpcRendererEvent, state: VisualAssetCheckState) => void) => {
+    ipcRenderer.on("visualAssetCheckState", callback);
+    return () => ipcRenderer.removeListener("visualAssetCheckState", callback);
+  },
+  openVisualAssetCheckReport: (): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("openVisualAssetCheckReport"),
+  showVisualAssetCheckReportInFolder: (): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("showVisualAssetCheckReportInFolder"),
+  saveVisualAssetCheckReport: (): Promise<{
+    success: boolean;
+    canceled?: boolean;
+    savedPath?: string;
+    error?: string;
+  }> => ipcRenderer.invoke("saveVisualAssetCheckReport"),
   onWorkshopModStagingProgress: (
     callback: (event: Electron.IpcRendererEvent, progress: WorkshopModStagingProgressEvent) => void,
   ) => {
@@ -564,12 +641,18 @@ const api = {
       sourceType?: string;
       targetType?: string;
     }>;
+    flowExecution?: {
+      flowFileName?: string;
+      flowSourcePackPath?: string;
+      flowSourcePackName?: string;
+    };
   }): Promise<{
     success: boolean;
     executionResults: Array<[string, { success: boolean; data?: any; error?: string; warnings?: string[] }]>;
     totalExecuted: number;
     successCount: number;
     failureCount: number;
+    skippedNodeIds?: string[];
     error?: string;
   }> => ipcRenderer.invoke("executeNodeGraph", graphExecutionRequest),
 
@@ -651,6 +734,32 @@ const api = {
   getUnitViewerDetails: (sessionId: string, unitKey: string): Promise<UnitViewerDetailsResponse> =>
     ipcRenderer.invoke("getUnitViewerDetails", sessionId, unitKey),
 
+  getUnitViewerAnimationBinClips: (
+    sessionId: string,
+    tableName: string,
+  ): Promise<{
+    success: boolean;
+    clips?: string[];
+    standingClip?: string;
+    standingClipMetadataPath?: string;
+    fragmentPath?: string;
+    error?: string;
+  }> => ipcRenderer.invoke("getUnitViewerAnimationBinClips", sessionId, tableName),
+
+  getUnitViewerSkeletonAnim: (
+    sessionId: string,
+    assetPath: string,
+  ): Promise<{
+    success: boolean;
+    bones?: Array<{
+      name: string;
+      parent: number;
+      translation: [number, number, number];
+      rotation: [number, number, number, number];
+    }>;
+    error?: string;
+  }> => ipcRenderer.invoke("getUnitViewerSkeletonAnim", sessionId, assetPath),
+
   getUnitViewerVariantMeshCatalog: (sessionId: string, assetPath: string): Promise<VariantMeshCatalogResponse> =>
     ipcRenderer.invoke("getUnitViewerVariantMeshCatalog", sessionId, assetPath),
 
@@ -728,6 +837,41 @@ const api = {
     mimeType?: string;
     error?: string;
   }> => ipcRenderer.invoke("readFileFromPack", packPath, fileName),
+
+  listNativePatchFlowTemplates: (
+    packPath: string,
+  ): Promise<{
+    success: boolean;
+    templates?: Array<{
+      path: string;
+      id: string;
+      version: string;
+      name: string;
+      fingerprint: string;
+      scalars: Array<{
+        id: string;
+        parameter: string;
+        type: "bool" | "u32" | "i32" | "f32" | "ascii_key_list";
+        default?: unknown;
+        min?: number;
+        max?: number;
+        capacity?: number;
+        max_key_bytes?: number;
+      }>;
+      tables: Array<{
+        id: string;
+        table_name: string;
+        parameter: string;
+        max_rows: number;
+        group_by: string;
+        value_column: string;
+        provider_merge: "identical_by_group";
+        columns: Array<{ name: string; type: "ascii" | "bool" | "u32" | "i32" | "f32"; max_bytes?: number }>;
+      }>;
+    }>;
+    errors?: Array<{ path: string; error: string }>;
+    error?: string;
+  }> => ipcRenderer.invoke("listNativePatchFlowTemplates", packPath),
 
   getFlowFilesFromPack: (
     packPath: string,

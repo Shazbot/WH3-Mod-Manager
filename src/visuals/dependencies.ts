@@ -2,11 +2,7 @@ import { XMLParser } from "fast-xml-parser";
 import { normalizePackFilePath, normalizePackFilePathKey } from "../utility/packFilePathUtils";
 
 export type SupportedVisualDependencyExtension =
-  | "variantmeshdefinition"
-  | "wsmodel"
-  | "rigid_model_v2"
-  | "xml.material"
-  | "dds";
+  "variantmeshdefinition" | "wsmodel" | "rigid_model_v2" | "xml.material" | "dds";
 
 export type ResolvedVisualDependency = {
   resolvedPath: string;

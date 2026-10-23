@@ -261,9 +261,11 @@ const setCurrentPresetToMods = (state: AppState, mods: Mod[]) => {
   }
 
   if (state.dataFromConfig) {
-    findAlwaysEnabledMods(state.currentPreset.mods, state.dataFromConfig.alwaysEnabledModNames).forEach(
-      (mod) => (mod.isEnabled = true),
-    );
+    if (!state.canDisableAlwaysEnabledMods) {
+      findAlwaysEnabledMods(state.currentPreset.mods, state.dataFromConfig.alwaysEnabledModNames).forEach(
+        (mod) => (mod.isEnabled = true),
+      );
+    }
 
     if (isInitialModPopulation) {
       applyModUserData(state.currentPreset.mods, state.dataFromConfig.modUserData);
@@ -402,7 +404,11 @@ const applyPresetModsUnaryInternal = (state: AppState, presetEntries: PresetModE
   state.currentPreset.mods = sortModsAsInEntries(state.currentPreset.mods, normalizedEntries);
   state.currentPreset.version = 2;
 
-  findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach((mod) => (mod.isEnabled = true));
+  if (!state.canDisableAlwaysEnabledMods) {
+    findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach(
+      (mod) => (mod.isEnabled = true),
+    );
+  }
 
   sanitizeEnabledModLoadOrders(state.currentPreset.mods);
 };
@@ -421,7 +427,11 @@ const selectPresetInternal = (state: AppState, presetSelection: SelectOperation,
     });
   }
 
-  findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach((mod) => (mod.isEnabled = true));
+  if (!state.canDisableAlwaysEnabledMods) {
+    findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach(
+      (mod) => (mod.isEnabled = true),
+    );
+  }
   sanitizeEnabledModLoadOrders(state.currentPreset.mods);
 };
 
@@ -708,7 +718,7 @@ const appSlice = createSlice({
       const inputMod = action.payload;
       const mod = state.currentPreset.mods.find((iterMod) => iterMod.path == inputMod.path);
       if (mod) {
-        if (isModAlwaysEnabled(mod, state.alwaysEnabledModNames)) {
+        if (isModAlwaysEnabled(mod, state.alwaysEnabledModNames) && !state.canDisableAlwaysEnabledMods) {
           mod.isEnabled = true;
           return;
         }
@@ -720,7 +730,7 @@ const appSlice = createSlice({
       const { mod, isEnabled } = action.payload;
       const presetMod = state.currentPreset.mods.find((iterMod) => iterMod.path == mod.path);
       if (presetMod) {
-        if (isModAlwaysEnabled(presetMod, state.alwaysEnabledModNames)) {
+        if (isModAlwaysEnabled(presetMod, state.alwaysEnabledModNames) && !state.canDisableAlwaysEnabledMods) {
           presetMod.isEnabled = true;
           return;
         }
@@ -733,7 +743,10 @@ const appSlice = createSlice({
       for (const { mod, isEnabled } of enablePayloads) {
         const presetMod = state.currentPreset.mods.find((iterMod) => iterMod.path == mod.path);
         if (!presetMod) continue;
-        presetMod.isEnabled = isModAlwaysEnabled(presetMod, state.alwaysEnabledModNames) ? true : isEnabled;
+        presetMod.isEnabled =
+          isModAlwaysEnabled(presetMod, state.alwaysEnabledModNames) && !state.canDisableAlwaysEnabledMods
+            ? true
+            : isEnabled;
       }
       if (enablePayloads.some(({ isEnabled }) => isEnabled)) {
         sanitizeEnabledModLoadOrders(state.currentPreset.mods);
@@ -756,9 +769,11 @@ const appSlice = createSlice({
         mod.loadOrder = importedMod?.loadOrder;
       });
 
-      findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach(
-        (mod) => (mod.isEnabled = true),
-      );
+      if (!state.canDisableAlwaysEnabledMods) {
+        findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach(
+          (mod) => (mod.isEnabled = true),
+        );
+      }
 
       sanitizeEnabledModLoadOrders(state.currentPreset.mods);
       state.importedMods = [];
@@ -806,9 +821,11 @@ const appSlice = createSlice({
     disableAllMods: (state: AppState) => {
       state.currentPreset.mods.forEach((mod) => (mod.isEnabled = false));
 
-      findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach(
-        (mod) => (mod.isEnabled = true),
-      );
+      if (!state.canDisableAlwaysEnabledMods) {
+        findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames).forEach(
+          (mod) => (mod.isEnabled = true),
+        );
+      }
       sanitizeEnabledModLoadOrders(state.currentPreset.mods);
     },
     setImportedMods: (state: AppState, action: PayloadAction<ModIdAndLoadOrder[]>) => {
@@ -891,7 +908,7 @@ const appSlice = createSlice({
       if (state.newMergedPacks.some((mergedPack) => mergedPack.path == mod.path)) {
         mod.isEnabled = true;
       }
-      if (state.alwaysEnabledModNames.includes(mod.name)) {
+      if (state.alwaysEnabledModNames.includes(mod.name) && !state.canDisableAlwaysEnabledMods) {
         mod.isEnabled = true;
       }
 
@@ -1118,12 +1135,19 @@ const appSlice = createSlice({
       delete state.packsData[packPath];
       delete state.unsavedPacksData[packPath];
       delete state.deletedPackFilePaths[packPath];
+      delete state.staleViewerPackPaths[packPath];
       if (state.currentDBTableSelection?.packPath === packPath) state.currentDBTableSelection = undefined;
       if (state.currentFlowFilePackPath === packPath) {
         state.currentFlowFileSelection = undefined;
         state.currentFlowFilePackPath = undefined;
       }
       if (state.packOpenRequest?.packPath === packPath) state.packOpenRequest = undefined;
+    },
+    markViewerPackStale: (state: AppState, action: PayloadAction<string>) => {
+      state.staleViewerPackPaths[action.payload] = true;
+    },
+    clearViewerPackStale: (state: AppState, action: PayloadAction<string>) => {
+      delete state.staleViewerPackPaths[action.payload];
     },
     setUnsavedPacksData: (state: AppState, action: PayloadAction<SetUnsavedPacksDataPayload>) => {
       const { packPath, unsavedFileData } = action.payload;
@@ -1202,13 +1226,19 @@ const appSlice = createSlice({
         : "disabled";
       state.compressWorkshopModsOnStart =
         state.workshopModStagingMode === "copy" && !!fromConfigAppState.compressWorkshopModsOnStart;
+      state.optimizeWorkshopModsOnStart =
+        state.workshopModStagingMode === "copy" && !!fromConfigAppState.optimizeWorkshopModsOnStart;
       state.cleanUpWorkshopModStagingAfterGameExit = !!fromConfigAppState.cleanUpWorkshopModStagingAfterGameExit;
       state.isUsingEnglishLocalizations = !!fromConfigAppState.isUsingEnglishLocalizations;
       state.isCompatCheckingVanillaPacks =
         !!fromConfigAppState.isFeaturesForModdersEnabled && !!fromConfigAppState.isCompatCheckingVanillaPacks;
       state.isAuthorEnabled = fromConfigAppState.isAuthorEnabled;
+      state.isSubbedTimeEnabled = !!fromConfigAppState.isSubbedTimeEnabled;
       state.isDualModListLayoutEnabled = !!fromConfigAppState.isDualModListLayoutEnabled;
       state.modListDensity = fromConfigAppState.modListDensity ?? state.modListDensity;
+      state.modListWidth = ["default", "wide", "full"].includes(fromConfigAppState.modListWidth)
+        ? fromConfigAppState.modListWidth
+        : "default";
       state.isShowingDisabledModsLoadOrder =
         fromConfigAppState.isShowingDisabledModsLoadOrder ?? state.isShowingDisabledModsLoadOrder;
       state.isModListCategoryViewEnabled = !!fromConfigAppState.isModListCategoryViewEnabled;
@@ -1217,6 +1247,7 @@ const appSlice = createSlice({
       state.isCategoryAuthorEnabled = !!fromConfigAppState.isCategoryAuthorEnabled;
       state.areCategoryThumbnailsEnabled = !!fromConfigAppState.areCategoryThumbnailsEnabled;
       state.hiddenModNames = fromConfigAppState.hiddenModNames;
+      state.ignoredMissingReqModNames = fromConfigAppState.ignoredMissingReqModNames;
       state.alwaysEnabledModNames = fromConfigAppState.alwaysEnabledModNames;
       state.isMakeUnitsGeneralsEnabled = fromConfigAppState.isMakeUnitsGeneralsEnabled;
       state.isSkipIntroMoviesEnabled = fromConfigAppState.isSkipIntroMoviesEnabled;
@@ -1224,6 +1255,7 @@ const appSlice = createSlice({
       state.isAutoStartCustomBattleEnabled = fromConfigAppState.isAutoStartCustomBattleEnabled;
       state.isChangingGameProcessPriority = fromConfigAppState.isChangingGameProcessPriority;
       state.isFeaturesForModdersEnabled = fromConfigAppState.isFeaturesForModdersEnabled;
+      state.canDisableAlwaysEnabledMods = fromConfigAppState.canDisableAlwaysEnabledMods ?? false;
       state.moddersPrefix = fromConfigAppState.moddersPrefix || "";
       state.isRigidModelV2CompressionEnabled =
         fromConfigAppState.isRigidModelV2CompressionEnabled ?? state.isRigidModelV2CompressionEnabled;
@@ -1278,9 +1310,11 @@ const appSlice = createSlice({
       state.disabledModLoadOrderRules = fromConfigAppState.disabledModLoadOrderRules ?? [];
       state.loadOrderRuleDisabledPacks = fromConfigAppState.loadOrderRuleDisabledPacks ?? [];
 
-      findAlwaysEnabledMods(state.currentPreset.mods, fromConfigAppState.alwaysEnabledModNames).forEach(
-        (mod) => (mod.isEnabled = true),
-      );
+      if (!state.canDisableAlwaysEnabledMods) {
+        findAlwaysEnabledMods(state.currentPreset.mods, fromConfigAppState.alwaysEnabledModNames).forEach(
+          (mod) => (mod.isEnabled = true),
+        );
+      }
       refreshLoadOrderRules(state);
       sanitizeEnabledModLoadOrders(state.currentPreset.mods);
 
@@ -1494,6 +1528,7 @@ const appSlice = createSlice({
     toggleAlwaysEnabledMods: (state: AppState, action: PayloadAction<string[]>) => {
       state.alwaysEnabledModNames = toggleModNames(state.alwaysEnabledModNames, action.payload);
 
+      if (state.canDisableAlwaysEnabledMods) return;
       const modsToEnable = findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames);
       modsToEnable.forEach((mod) => (mod.isEnabled = true));
       if (modsToEnable.length > 0) sanitizeEnabledModLoadOrders(state.currentPreset.mods);
@@ -1505,8 +1540,14 @@ const appSlice = createSlice({
       const alwaysEnabledNames = new Set(state.alwaysEnabledModNames);
       const hiddenNames = new Set(state.hiddenModNames);
       state.currentPreset.mods
-        .filter((mod) => hiddenNames.has(mod.name) && !alwaysEnabledNames.has(mod.name))
+        .filter(
+          (mod) =>
+            hiddenNames.has(mod.name) && (state.canDisableAlwaysEnabledMods || !alwaysEnabledNames.has(mod.name)),
+        )
         .forEach((mod) => (mod.isEnabled = false));
+    },
+    toggleIgnoredMissingReqMods: (state: AppState, action: PayloadAction<string[]>) => {
+      state.ignoredMissingReqModNames = toggleModNames(state.ignoredMissingReqModNames, action.payload);
     },
     setSaves: (state: AppState, action: PayloadAction<GameSave[]>) => {
       const saves = action.payload;
@@ -1593,16 +1634,26 @@ const appSlice = createSlice({
       if (!(["disabled", "copy", "symlink"] as WorkshopModStagingMode[]).includes(action.payload)) {
         state.workshopModStagingMode = "disabled";
         state.compressWorkshopModsOnStart = false;
+        state.optimizeWorkshopModsOnStart = false;
         state.cleanUpWorkshopModStagingAfterGameExit = false;
         return;
       }
       state.workshopModStagingMode = action.payload;
-      if (action.payload !== "copy") state.compressWorkshopModsOnStart = false;
+      if (action.payload !== "copy") {
+        state.compressWorkshopModsOnStart = false;
+        state.optimizeWorkshopModsOnStart = false;
+      }
       if (action.payload === "disabled") state.cleanUpWorkshopModStagingAfterGameExit = false;
     },
     toggleCompressWorkshopModsOnStart: (state: AppState) => {
       if (state.currentGame !== "wh3" || state.workshopModStagingMode !== "copy") return;
       state.compressWorkshopModsOnStart = !state.compressWorkshopModsOnStart;
+    },
+    // Optimizing implies compressing, but never rewrites the stored compress choice, so turning
+    // the optimizer off returns the user to what they had.
+    toggleOptimizeWorkshopModsOnStart: (state: AppState) => {
+      if (state.currentGame !== "wh3" || state.workshopModStagingMode !== "copy") return;
+      state.optimizeWorkshopModsOnStart = !state.optimizeWorkshopModsOnStart;
     },
     toggleCleanUpWorkshopModStagingAfterGameExit: (state: AppState) => {
       if (state.workshopModStagingMode === "disabled") {
@@ -1624,11 +1675,17 @@ const appSlice = createSlice({
     toggleIsAuthorEnabled: (state: AppState) => {
       state.isAuthorEnabled = !state.isAuthorEnabled;
     },
+    toggleIsSubbedTimeEnabled: (state: AppState) => {
+      state.isSubbedTimeEnabled = !state.isSubbedTimeEnabled;
+    },
     toggleIsDualModListLayoutEnabled: (state: AppState) => {
       state.isDualModListLayoutEnabled = !state.isDualModListLayoutEnabled;
     },
     setModListDensity: (state: AppState, action: PayloadAction<ModListDensity>) => {
       state.modListDensity = action.payload;
+    },
+    setModListWidth: (state: AppState, action: PayloadAction<ModListWidth>) => {
+      state.modListWidth = action.payload;
     },
     toggleIsShowingDisabledModsLoadOrder: (state: AppState) => {
       state.isShowingDisabledModsLoadOrder = !state.isShowingDisabledModsLoadOrder;
@@ -1690,6 +1747,14 @@ const appSlice = createSlice({
       state.isFeaturesForModdersEnabled = action.payload;
       if (!state.isFeaturesForModdersEnabled) state.isCompatCheckingVanillaPacks = false;
       reconcileCurrentPresetModSources(state);
+    },
+    setCanDisableAlwaysEnabledMods: (state: AppState, action: PayloadAction<boolean>) => {
+      state.canDisableAlwaysEnabledMods = action.payload;
+      if (!action.payload) {
+        const modsToEnable = findAlwaysEnabledMods(state.currentPreset.mods, state.alwaysEnabledModNames);
+        modsToEnable.forEach((mod) => (mod.isEnabled = true));
+        if (modsToEnable.length > 0) sanitizeEnabledModLoadOrders(state.currentPreset.mods);
+      }
     },
     /** Replaces the whole list, since both toggling and reordering rewrite the order. */
     setNodeEditorFavorites: (state: AppState, action: PayloadAction<FlowNodeType[]>) => {
@@ -2057,10 +2122,12 @@ export const {
   resetModLoadOrderAll,
   toggleAlwaysEnabledMods,
   toggleAlwaysHiddenMods,
+  toggleIgnoredMissingReqMods,
   setSaves,
   setIsOnboardingToRun,
   setWasOnboardingEverRun,
   toggleIsAuthorEnabled,
+  toggleIsSubbedTimeEnabled,
   toggleAreThumbnailsEnabled,
   toggleIsDualModListLayoutEnabled,
   toggleIsShowingDisabledModsLoadOrder,
@@ -2072,6 +2139,7 @@ export const {
   setUnitViewerUnsyncedAnimations,
   setUnitViewerShowUnitCard,
   setModListDensity,
+  setModListWidth,
   toggleIsPresetAuthorEnabled,
   toggleArePresetThumbnailsEnabled,
   toggleIsCategoryAuthorEnabled,
@@ -2079,6 +2147,7 @@ export const {
   toggleIsClosedOnPlay,
   setWorkshopModStagingMode,
   toggleCompressWorkshopModsOnStart,
+  toggleOptimizeWorkshopModsOnStart,
   toggleCleanUpWorkshopModStagingAfterGameExit,
   toggleIsUsingEnglishLocalizations,
   setIsDev,
@@ -2094,6 +2163,7 @@ export const {
   toggleIsChangingGameProcessPriority,
   toggleIsFeaturesForModdersEnabled,
   setIsFeaturesForModdersEnabled,
+  setCanDisableAlwaysEnabledMods,
   setModdersPrefix,
   setIsRigidModelV2CompressionEnabled,
   toggleCompressModsOnUpload,
@@ -2109,6 +2179,8 @@ export const {
   setPacksData,
   applySavedPackData,
   removePackData,
+  markViewerPackStale,
+  clearViewerPackStale,
   setUnsavedPacksData,
   setDeletedPackFilePaths,
   setRecentPackPaths,

@@ -290,12 +290,15 @@ export const getVisualsModelAnimationCatalog = async (
 export const releaseVisualsModelPreview = async (previewId: string): Promise<{ success: boolean }> =>
   (await getRendererIpc().invoke("releaseVisualsModelPreview", previewId)) as { success: boolean };
 
-
 export const getUnitPainterFactionMaskBindings = async (
   sessionId: string,
   assetPath: string,
 ): Promise<UnitPainterFactionMaskResult> =>
-  (await getRendererIpc().invoke("getUnitPainterFactionMaskBindings", sessionId, assetPath)) as UnitPainterFactionMaskResult;
+  (await getRendererIpc().invoke(
+    "getUnitPainterFactionMaskBindings",
+    sessionId,
+    assetPath,
+  )) as UnitPainterFactionMaskResult;
 
 export const reportVisualsModelPreviewTiming = async (report: VisualsModelPreviewTimingReport): Promise<void> => {
   await getRendererIpc().invoke("reportVisualsModelPreviewTiming", report);
@@ -384,7 +387,6 @@ export const exportUnitPainterTextures = async (
     },
     targetPackPath,
   )) as UnitPainterTextureExportResult;
-
 
 export const openUnitPainterProject = async (packPath?: string): Promise<UnitPainterProjectOpenResult> =>
   (await getRendererIpc().invoke("openUnitPainterProject", packPath)) as UnitPainterProjectOpenResult;

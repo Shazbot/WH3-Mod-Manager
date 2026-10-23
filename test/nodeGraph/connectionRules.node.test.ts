@@ -1,6 +1,142 @@
 import { describe, expect, it } from "vitest";
 
 import { applyConnection, rehydrateGraph } from "../../src/nodeGraph/connectionRules";
+import { applyNodeDataPatch } from "../../src/nodeGraph/editorState";
+import { nativePatchColumnsToSchema } from "../../src/nodeGraph/nativePatchSchema";
+import { serializeNodeGraphState } from "../../src/nodeGraph/graphSerialization";
+
+describe("Native Patch schema output", () => {
+  const schema = [
+    { name: "flag", type: "StringU8" },
+    { name: "unit_set", type: "StringU8" },
+  ];
+  const state = () => ({
+    nodes: [
+      {
+        id: "patch",
+        type: "nativepatch",
+        position: { x: 0, y: 0 },
+        data: {
+          type: "nativepatch",
+          outputType: "TableSelection",
+          tableBindings: ["mappings", "other"],
+          tableSchemas: {
+            mappings: schema,
+            other: [{ name: "another_column", type: "I32" }],
+          },
+        },
+      },
+      {
+        id: "rows",
+        type: "customrowsinput",
+        position: { x: 400, y: 0 },
+        data: {
+          type: "customrowsinput",
+          inputType: "CustomSchema",
+          outputType: "TableSelection",
+          schemaColumns: [],
+          customRows: [{ flag: "user_flag", unit_set: "user_set" }],
+        },
+      },
+      {
+        id: "save",
+        type: "savechanges",
+        position: { x: 400, y: 300 },
+        data: { type: "savechanges", inputType: "TableSelection" },
+      },
+    ] as any[],
+    edges: [] as any[],
+  });
+
+  it("connects the selected table schema and fills the row editor columns", () => {
+    const graph = applyConnection(
+      state(),
+      { source: "patch", sourceHandle: "output-schema:mappings", target: "rows", targetHandle: "input-schema" },
+      {},
+    );
+    expect(graph.accepted).toBe(true);
+    expect(graph.nodes.find((node) => node.id === "rows")?.data.schemaColumns).toEqual(schema);
+    const other = applyConnection(
+      state(),
+      { source: "patch", sourceHandle: "output-schema:other", target: "rows", targetHandle: "input-schema" },
+      {},
+    );
+    expect(other.nodes.find((node) => node.id === "rows")?.data.schemaColumns).toEqual([
+      { name: "another_column", type: "I32" },
+    ]);
+  });
+
+  it("keeps schema handles distinct from contribution output and rejects unknown schemas", () => {
+    expect(
+      applyConnection(
+        state(),
+        { source: "patch", sourceHandle: "output-schema:removed", target: "rows", targetHandle: "input-schema" },
+        {},
+      ).accepted,
+    ).toBe(false);
+    expect(
+      applyConnection(
+        state(),
+        { source: "patch", sourceHandle: "output", target: "rows", targetHandle: "input-schema" },
+        {},
+      ).accepted,
+    ).toBe(false);
+    expect(
+      applyConnection(
+        state(),
+        { source: "patch", sourceHandle: "output-schema:mappings", target: "save", targetHandle: "input" },
+        {},
+      ).accepted,
+    ).toBe(false);
+    expect(
+      applyConnection(state(), { source: "patch", sourceHandle: "output", target: "save", targetHandle: "input" }, {})
+        .accepted,
+    ).toBe(true);
+  });
+
+  it("refreshes connected columns on a template change and when loading saved graphs", () => {
+    const graph = applyConnection(
+      state(),
+      { source: "patch", sourceHandle: "output-schema:mappings", target: "rows", targetHandle: "input-schema" },
+      {},
+    );
+    const columns = [{ name: "updated_flag", type: "StringU8" as const }];
+    const updated = applyNodeDataPatch(graph, "patch", { tableSchemas: { mappings: columns } }, {});
+    const rows = updated.nodes.find((node) => node.id === "rows")!;
+    expect(rows.data.schemaColumns).toEqual(columns);
+    expect(rows.data.customRows).toEqual([{ flag: "user_flag", unit_set: "user_set" }]);
+    rows.data.schemaColumns = [];
+    expect(rehydrateGraph(updated, {}).nodes.find((node) => node.id === "rows")?.data.schemaColumns).toEqual(columns);
+  });
+
+  it("preserves table schemas and schema handle types in saved flows", () => {
+    const graph = applyConnection(
+      state(),
+      { source: "patch", sourceHandle: "output-schema:mappings", target: "rows", targetHandle: "input-schema" },
+      {},
+    );
+    const saved = serializeNodeGraphState({
+      ...graph,
+      flowOptions: [],
+      isGraphEnabled: true,
+      graphStartsEnabled: true,
+    });
+    expect(saved.nodes.find((node) => node.id === "patch")?.data.tableSchemas?.mappings).toEqual(schema);
+    expect(saved.connections[0]).toMatchObject({ sourceHandle: "output-schema:mappings", sourceType: "CustomSchema" });
+  });
+
+  it("maps native input types without truncating unsigned u32 values", () => {
+    expect(
+      nativePatchColumnsToSchema(["ascii", "bool", "i32", "u32", "f32"].map((type) => ({ name: type, type }))),
+    ).toEqual([
+      { name: "ascii", type: "StringU8" },
+      { name: "bool", type: "Boolean" },
+      { name: "i32", type: "I32" },
+      { name: "u32", type: "I64" },
+      { name: "f32", type: "F32" },
+    ]);
+  });
+});
 
 const createField = (name: string) => ({
   name,

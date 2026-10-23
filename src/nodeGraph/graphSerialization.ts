@@ -1,6 +1,14 @@
 import { Edge, Node } from "@xyflow/react";
+import { isNativePatchSchemaConnection } from "./nativePatchSchema";
 
-import { FlowOption, SerializedConnection, SerializedNode, SerializedNodeGraph, resolveRadioChoiceId } from "./types";
+import {
+  FlowOption,
+  SerializedConnection,
+  SerializedNode,
+  SerializedNodeGraph,
+  resolveRadioChoiceId,
+  splitMultilineOptionValue,
+} from "./types";
 import {
   substituteDeepCloneOptionValues,
   substituteEditXmlOptionValues,
@@ -115,11 +123,18 @@ export const serializeReactFlowNodes = (nodes: Node[]): SerializedNode[] => {
         newColumnName: maybeString(data.newColumnName),
         filename: maybeString(data.filename),
         tsvFileName: maybeString(data.tsvFileName),
+        selectedPackName: maybeString(data.selectedPackName),
+        templatePath: maybeString(data.templatePath),
+        scalarValues: (data.scalarValues || {}) as Record<string, unknown>,
+        scalarOptionBindings: (data.scalarOptionBindings || {}) as Record<string, string>,
+        tableBindings: data.tableBindings || [],
+        tableSchemas: data.tableSchemas || {},
         tableName: maybeString(data.tableName),
         sourceInputColumns: data.sourceInputColumns || null,
         indexedTableColumns: data.indexedTableColumns || null,
         openInWindows: data.openInWindows,
         openInViewer: data.openInViewer,
+        saveAsMoviePack: data.saveAsMoviePack as boolean | undefined,
         customSchemaColumns: data.customSchemaColumns || [],
         customSchemaData: data.customSchemaData || null,
         cloneTree: data.cloneTree as SerializedNode["data"]["cloneTree"],
@@ -164,7 +179,9 @@ export const serializeReactFlowEdges = (nodes: Node[], edges: Edge[]): Serialize
       id: edge.id || `${edge.source}-${edge.target}`,
       sourceId: edge.source || "",
       targetId: edge.target || "",
-      sourceType: toNodeEdgeType(sourceData?.outputType),
+      sourceType: toNodeEdgeType(
+        isNativePatchSchemaConnection(sourceNode, edge.sourceHandle) ? "CustomSchema" : sourceData?.outputType,
+      ),
       targetType: toNodeEdgeType(targetData?.inputType),
       sourceHandle: edge.sourceHandle,
       targetHandle: edge.targetHandle,
@@ -221,6 +238,21 @@ export const prepareGraphForExecution = ({
 
     if (node.type === "savechanges") {
       nodeData.flowExecutionId = flowExecutionId;
+      modified = true;
+    }
+
+    if (node.type === "nativepatch") {
+      const scalarValues = {
+        ...((currentData.scalarValues || {}) as Record<string, unknown>),
+      };
+      for (const [inputId, optionId] of Object.entries(
+        (currentData.scalarOptionBindings || {}) as Record<string, string>,
+      )) {
+        const option = flowOptions.find((item) => item.id === optionId);
+        if (!option) continue;
+        scalarValues[inputId] = option.type === "multiline" ? splitMultilineOptionValue(option.value) : option.value;
+      }
+      nodeData.scalarValues = scalarValues;
       modified = true;
     }
 
@@ -316,7 +348,9 @@ export const prepareGraphForExecution = ({
           }
 
           let transformationModified = false;
-          const nextTransformation = { ...(transformation as Record<string, unknown>) };
+          const nextTransformation = {
+            ...(transformation as Record<string, unknown>),
+          };
 
           for (const fieldName of transformationOptionFields) {
             const fieldValue = nextTransformation[fieldName];

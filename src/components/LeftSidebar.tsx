@@ -66,12 +66,15 @@ const LeftSidebar = memo(() => {
     showVisualsTab,
   ]);
 
-  const onTabSelected = useCallback((index: number) => {
-    const tabType = tabIndexToTabType[index];
-    if (!tabType) return;
-    console.log("setting tab", tabType);
-    dispatch(setCurrentTab(tabType));
-  }, [dispatch, tabIndexToTabType]);
+  const onTabSelected = useCallback(
+    (index: number) => {
+      const tabType = tabIndexToTabType[index];
+      if (!tabType) return;
+      console.log("setting tab", tabType);
+      dispatch(setCurrentTab(tabType));
+    },
+    [dispatch, tabIndexToTabType],
+  );
 
   const localized: Record<string, string> = useContext(localizationContext);
 

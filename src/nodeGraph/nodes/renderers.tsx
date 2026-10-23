@@ -23,7 +23,10 @@ import {
   stopWheelPropagation,
   useDefaultTableVersions,
   useFlowOptions,
+  useFlowSourcePack,
 } from "./shared";
+import { splitMultilineOptionValue } from "../types";
+import { nativePatchColumnsToSchema } from "../nativePatchSchema";
 import { getFilterRegexError, getLastFilterMatchMode, normalizeFilterMatchMode } from "../types";
 import type { FilterMatchMode, FilterRow } from "../types";
 import type {
@@ -67,6 +70,7 @@ import type {
   MathCeilNodeData,
   MathMaxNodeData,
   MultiFilterNodeData,
+  NativePatchFlowNodeData,
   MultiFilterSplitValue,
   MergeChangesNodeData,
   NumericAdjustmentNodeData,
@@ -131,6 +135,11 @@ export const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; 
 
   const [selectedPack, setSelectedPack] = useState(data.selectedPack || "");
   const [useCurrentPack, setUseCurrentPack] = useState(data.useCurrentPack || false);
+  const [includeBaseGame, setIncludeBaseGame] = useState(data.includeBaseGame ?? false);
+
+  useEffect(() => {
+    setIncludeBaseGame(data.includeBaseGame ?? false);
+  }, [data.includeBaseGame]);
 
   const handleDropdownChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const newValue = event.target.value;
@@ -177,6 +186,24 @@ export const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; 
           <input type="checkbox" checked={useCurrentPack} onChange={handleCheckboxChange} className="w-4 h-4" />
           <span className="text-xs text-gray-300">
             {localized.nodeEditorWhenInsidePackUseThatPack || "When inside pack use that pack"}
+          </span>
+        </label>
+      </div>
+
+      <div className="mt-2">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={includeBaseGame}
+            onChange={(event) => {
+              const newValue = event.target.checked;
+              setIncludeBaseGame(newValue);
+              dispatchNodeDataUpdate(data, { nodeId: id, includeBaseGame: newValue });
+            }}
+            className="w-4 h-4"
+          />
+          <span className="text-xs text-gray-300">
+            {localized.nodeEditorIncludeBaseGameData || "Include base game data"}
           </span>
         </label>
       </div>
@@ -1534,6 +1561,7 @@ export const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }
   const [packedFileName, setPackedFileName] = useState(data.packedFileName || "");
   const [openInWindows, setOpenInWindows] = useState(!!data.openInWindows);
   const [openInViewer, setOpenInViewer] = useState(!!data.openInViewer);
+  const [saveAsMoviePack, setSaveAsMoviePack] = useState(data.saveAsMoviePack ?? false);
 
   const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = event.target.value;
@@ -1654,6 +1682,26 @@ export const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }
             <span className="text-xs text-gray-300">
               {localized.nodeEditorOpenFileInViewer || "Open pack in the viewer"}
             </span>
+          </label>
+
+          <label
+            className="flex items-center gap-2 cursor-pointer"
+            title={
+              localized.nodeEditorSaveAsMoviePackTooltip ||
+              "When stored in the game's data folder, movie packs load automatically and do not need to be enabled in the mod list."
+            }
+          >
+            <input
+              type="checkbox"
+              checked={saveAsMoviePack}
+              onChange={(event) => {
+                const newValue = event.target.checked;
+                setSaveAsMoviePack(newValue);
+                dispatchNodeDataUpdate(data, { nodeId: id, saveAsMoviePack: newValue });
+              }}
+              className="w-4 h-4"
+            />
+            <span className="text-xs text-gray-300">{localized.nodeEditorSaveAsMoviePack || "Save as movie pack"}</span>
           </label>
         </div>
       </div>
@@ -5308,7 +5356,10 @@ export const CustomSchemaNode: React.FC<{ data: CustomSchemaNodeData; id: string
 };
 
 // Read TSV From Pack node component
-export const ReadTSVFromPackNode: React.FC<{ data: ReadTSVFromPackNodeData; id: string }> = ({ data, id }) => {
+export const ReadTSVFromPackNode: React.FC<{
+  data: ReadTSVFromPackNodeData;
+  id: string;
+}> = ({ data, id }) => {
   const localized = useLocalizations();
   const [tsvFileName, setTsvFileName] = useState(data.tsvFileName || "");
   const [schemaColumns, setSchemaColumns] = useState<Array<{ name: string; type: SCHEMA_FIELD_TYPE }>>(
@@ -5417,8 +5468,434 @@ export const ReadTSVFromPackNode: React.FC<{ data: ReadTSVFromPackNodeData; id: 
   );
 };
 
+type NativePatchTemplateDescriptor = {
+  path: string;
+  id: string;
+  version: string;
+  name: string;
+  fingerprint: string;
+  scalars: Array<{
+    id: string;
+    parameter: string;
+    type: "bool" | "u32" | "i32" | "f32" | "ascii_key_list";
+    default?: unknown;
+    min?: number;
+    max?: number;
+    capacity?: number;
+    max_key_bytes?: number;
+  }>;
+  tables: Array<{
+    id: string;
+    table_name: string;
+    parameter: string;
+    max_rows: number;
+    group_by: string;
+    value_column: string;
+    columns: Array<{ name: string; type: string; max_bytes?: number }>;
+  }>;
+};
+
+/** Selects a validated pack template and exposes its declared scalar and table inputs. */
+export const NativePatchFlowNode: React.FC<{
+  data: NativePatchFlowNodeData;
+  id: string;
+}> = ({ data, id }) => {
+  const mods = useAppSelector((state) => state.app.currentPreset.mods).filter((mod) => mod.isEnabled);
+  const flowSourcePack = useFlowSourcePack();
+  const flowOptions = useFlowOptions();
+  const updateNodeInternals = useUpdateNodeInternals();
+  const [selectedPackName, setSelectedPackName] = useState(data.selectedPackName || "");
+  const [templatePath, setTemplatePath] = useState(data.templatePath || "");
+  const [templates, setTemplates] = useState<NativePatchTemplateDescriptor[]>([]);
+  const [templateErrors, setTemplateErrors] = useState<Array<{ path: string; error: string }>>([]);
+  const [loadError, setLoadError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [scalarValues, setScalarValues] = useState<Record<string, unknown>>(data.scalarValues || {});
+  const [scalarTextDrafts, setScalarTextDrafts] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      Object.entries(data.scalarValues || {}).map(([key, value]) => [
+        key,
+        Array.isArray(value) ? value.join("\n") : "",
+      ]),
+    ),
+  );
+  const [scalarOptionBindings, setScalarOptionBindings] = useState<Record<string, string>>(
+    data.scalarOptionBindings || {},
+  );
+  const [tableBindings, setTableBindings] = useState<string[]>(data.tableBindings || []);
+
+  useEffect(() => {
+    setSelectedPackName(data.selectedPackName || "");
+    setTemplatePath(data.templatePath || "");
+    setScalarValues(data.scalarValues || {});
+    setScalarTextDrafts((currentDrafts) => {
+      const incomingValues = data.scalarValues || {};
+      const nextDrafts = Object.fromEntries(
+        Object.entries(incomingValues).map(([key, value]) => {
+          const current = currentDrafts[key];
+          const sameNormalizedList =
+            Array.isArray(value) &&
+            current !== undefined &&
+            JSON.stringify(splitMultilineOptionValue(current)) === JSON.stringify(value);
+          return [key, sameNormalizedList ? current : Array.isArray(value) ? value.join("\n") : ""];
+        }),
+      );
+      return nextDrafts;
+    });
+    setScalarOptionBindings(data.scalarOptionBindings || {});
+    setTableBindings(data.tableBindings || []);
+  }, [data.selectedPackName, data.templatePath, data.scalarValues, data.scalarOptionBindings, data.tableBindings]);
+
+  const selectedMod = mods.find((mod) => mod.name === selectedPackName);
+  const templatePackPath = selectedPackName ? selectedMod?.path : flowSourcePack.path;
+  useEffect(() => {
+    let cancelled = false;
+    setTemplates([]);
+    setTemplateErrors([]);
+    setLoadError("");
+    if (!templatePackPath) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const request = window.api?.listNativePatchFlowTemplates(templatePackPath);
+    if (!request) {
+      setLoadError("Template discovery is unavailable");
+      setLoading(false);
+      return;
+    }
+    request
+      .then((result) => {
+        if (cancelled) return;
+        if (!result?.success) {
+          setLoadError(result?.error || "Unable to read native patch templates");
+          return;
+        }
+        setTemplates((result.templates || []) as NativePatchTemplateDescriptor[]);
+        setTemplateErrors(result.errors || []);
+      })
+      .catch((error) => {
+        if (!cancelled) setLoadError(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [templatePackPath]);
+
+  const selectedTemplate = templates.find((template) => template.path === templatePath);
+  const declaredTableBindings = selectedTemplate?.tables.map((table) => table.id) ?? tableBindings;
+  useEffect(() => {
+    updateNodeInternals(id);
+  }, [id, updateNodeInternals, declaredTableBindings.join("\0"), selectedTemplate]);
+
+  const updateNode = (patch: Partial<NativePatchFlowNodeData>) =>
+    dispatchNodeDataUpdate(data, { nodeId: id, ...patch } as any);
+  useEffect(() => {
+    if (!selectedTemplate) return;
+    const nextBindings = selectedTemplate.tables.map((table) => table.id);
+    const tableSchemas = Object.fromEntries(
+      selectedTemplate.tables.map((table) => [table.id, nativePatchColumnsToSchema(table.columns)]),
+    );
+    if (
+      JSON.stringify(nextBindings) === JSON.stringify(data.tableBindings || []) &&
+      JSON.stringify(tableSchemas) === JSON.stringify(data.tableSchemas || {})
+    )
+      return;
+    setTableBindings(nextBindings);
+    updateNode({ tableBindings: nextBindings, tableSchemas });
+  }, [selectedTemplate, data.tableBindings, data.tableSchemas]);
+  const selectPack = (packName: string) => {
+    setSelectedPackName(packName);
+    setTemplatePath("");
+    setScalarValues({});
+    setScalarOptionBindings({});
+    setTableBindings([]);
+    updateNode({
+      selectedPackName: packName,
+      templatePath: "",
+      scalarValues: {},
+      scalarOptionBindings: {},
+      tableBindings: [],
+      tableSchemas: {},
+    });
+  };
+  const selectTemplate = (nextPath: string) => {
+    setTemplatePath(nextPath);
+    const nextTemplate = templates.find((template) => template.path === nextPath);
+    const defaults = Object.fromEntries((nextTemplate?.scalars || []).map((scalar) => [scalar.id, scalar.default]));
+    const textDrafts = Object.fromEntries(
+      (nextTemplate?.scalars || [])
+        .filter((scalar) => scalar.type === "ascii_key_list")
+        .map((scalar) => [scalar.id, Array.isArray(scalar.default) ? scalar.default.join("\n") : ""]),
+    );
+    const bindings = (nextTemplate?.tables || []).map((table) => table.id);
+    setScalarValues(defaults);
+    setScalarTextDrafts(textDrafts);
+    setScalarOptionBindings({});
+    setTableBindings(bindings);
+    updateNode({
+      templatePath: nextPath,
+      scalarValues: defaults,
+      scalarOptionBindings: {},
+      tableBindings: bindings,
+      tableSchemas: Object.fromEntries(
+        (nextTemplate?.tables || []).map((table) => [table.id, nativePatchColumnsToSchema(table.columns)]),
+      ),
+    });
+  };
+  const setScalarValue = (inputId: string, value: unknown) => {
+    const next = { ...scalarValues, [inputId]: value };
+    setScalarValues(next);
+    updateNode({ scalarValues: next });
+  };
+  const setOptionBinding = (inputId: string, optionId: string) => {
+    const next = { ...scalarOptionBindings };
+    if (optionId) next[inputId] = optionId;
+    else delete next[inputId];
+    setScalarOptionBindings(next);
+    updateNode({ scalarOptionBindings: next });
+  };
+  const compatibleOptions = (type: NativePatchTemplateDescriptor["scalars"][number]["type"]) =>
+    flowOptions.filter((option) =>
+      type === "bool"
+        ? option.type === "checkbox"
+        : type === "ascii_key_list"
+          ? option.type === "multiline"
+          : option.type === "range",
+    );
+
+  return (
+    <div className="bg-gray-700 border-2 border-violet-600 rounded-lg p-4 min-w-[300px] max-w-[440px]">
+      {/* Keep first so legacy connections without a source handle ID still use the patch output. */}
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="output"
+        className="w-3 h-3 bg-teal-500"
+        data-output-type="TableSelection"
+        title="Configured patch for Save Changes"
+      />
+      {declaredTableBindings.map((binding, index) => (
+        <React.Fragment key={binding}>
+          {!selectedTemplate && (
+            <Handle
+              type="target"
+              position={Position.Left}
+              id={`input-table:${binding}`}
+              className="w-3 h-3 bg-teal-500"
+              data-input-type="TableSelection"
+              style={{ top: 150 + index * 36, left: -6 }}
+            />
+          )}
+        </React.Fragment>
+      ))}
+      <div className="text-white font-medium text-sm mb-2">{data.label || "Native Patch"}</div>
+      <div className="text-xs text-gray-400 mb-3">
+        Choose a validated template. Empty pack selection uses the pack that owns this flow.
+      </div>
+      <label className="text-xs text-gray-300 block mb-1" htmlFor={`${id}-source-pack`}>
+        Template pack
+      </label>
+      <select
+        id={`${id}-source-pack`}
+        value={selectedPackName}
+        onChange={(event) => selectPack(event.target.value)}
+        className="w-full p-2 mb-3 text-xs bg-gray-800 text-white border border-gray-600 rounded"
+      >
+        <option value="">
+          Flow's owning pack
+          {flowSourcePack.name ? ` (${flowSourcePack.name})` : ""}
+        </option>
+        {mods.map((mod) => (
+          <option key={mod.path} value={mod.name}>
+            {mod.humanName || mod.name}
+          </option>
+        ))}
+      </select>
+      <label className="text-xs text-gray-300 block mb-1" htmlFor={`${id}-template`}>
+        Native Patch template
+      </label>
+      <select
+        id={`${id}-template`}
+        value={templatePath}
+        onChange={(event) => selectTemplate(event.target.value)}
+        disabled={!templatePackPath || loading || templates.length === 0}
+        className="w-full p-2 mb-2 text-xs bg-gray-800 text-white border border-gray-600 rounded disabled:opacity-60"
+      >
+        <option value="">{loading ? "Loading templates…" : "Select a template…"}</option>
+        {templates.map((template) => (
+          <option key={template.path} value={template.path}>
+            {template.name} · {template.id} v{template.version}
+          </option>
+        ))}
+      </select>
+      {loadError && <div className="text-xs text-red-300 mb-2">{loadError}</div>}
+      {!templatePackPath && (
+        <div className="text-xs text-amber-300 mb-2">Open a flow from a pack or select an enabled mod pack.</div>
+      )}
+      {templateErrors.length > 0 && (
+        <details className="text-xs text-amber-200 mb-2">
+          <summary>
+            {templateErrors.length} invalid template
+            {templateErrors.length === 1 ? "" : "s"} skipped
+          </summary>
+          {templateErrors.slice(0, 4).map((entry) => (
+            <div key={entry.path}>
+              {entry.path}: {entry.error}
+            </div>
+          ))}
+        </details>
+      )}
+      {selectedTemplate && (
+        <>
+          {selectedTemplate.scalars.length > 0 && (
+            <div className="text-xs font-medium text-gray-200 mt-3 mb-1">Scalar inputs</div>
+          )}
+          <div className="space-y-3">
+            {selectedTemplate.scalars.map((scalar) => {
+              const boundOption = scalarOptionBindings[scalar.id] || "";
+              const options = compatibleOptions(scalar.type);
+              const value = scalarValues[scalar.id] ?? scalar.default;
+              return (
+                <div key={scalar.id} className="rounded bg-gray-800 p-2">
+                  <label htmlFor={`${id}-scalar-${scalar.id}`} className="text-xs text-gray-200 mb-1 block">
+                    {scalar.id} <span className="text-gray-500">({scalar.type})</span>
+                  </label>
+                  {scalar.type === "bool" ? (
+                    <label className="flex items-center gap-2 text-xs text-gray-300">
+                      <input
+                        id={`${id}-scalar-${scalar.id}`}
+                        type="checkbox"
+                        checked={value === true}
+                        disabled={!!boundOption}
+                        onChange={(event) => setScalarValue(scalar.id, event.target.checked)}
+                      />
+                      Enabled
+                    </label>
+                  ) : scalar.type === "ascii_key_list" ? (
+                    <textarea
+                      id={`${id}-scalar-${scalar.id}`}
+                      rows={3}
+                      value={scalarTextDrafts[scalar.id] ?? (Array.isArray(value) ? value.join("\n") : "")}
+                      disabled={!!boundOption}
+                      onChange={(event) => {
+                        const draft = event.target.value;
+                        setScalarTextDrafts((current) => ({
+                          ...current,
+                          [scalar.id]: draft,
+                        }));
+                        setScalarValue(scalar.id, splitMultilineOptionValue(draft));
+                      }}
+                      className="w-full p-1.5 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                      placeholder={`Up to ${scalar.capacity ?? "?"} keys`}
+                    />
+                  ) : (
+                    <input
+                      id={`${id}-scalar-${scalar.id}`}
+                      type="number"
+                      value={typeof value === "number" ? value : ""}
+                      min={scalar.min}
+                      max={scalar.max}
+                      step={scalar.type === "f32" ? "any" : 1}
+                      disabled={!!boundOption}
+                      onChange={(event) =>
+                        setScalarValue(scalar.id, event.target.value === "" ? "" : Number(event.target.value))
+                      }
+                      className="w-full p-1.5 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                    />
+                  )}
+                  {(options.length > 0 || !!boundOption) && (
+                    <select
+                      value={boundOption}
+                      onChange={(event) => setOptionBinding(scalar.id, event.target.value)}
+                      className="w-full mt-2 p-1.5 text-xs bg-gray-700 text-white border border-gray-600 rounded"
+                    >
+                      <option value="">Use fixed value</option>
+                      {boundOption && !options.some((option) => option.id === boundOption) && (
+                        <option value={boundOption}>Unavailable flow option: {boundOption}</option>
+                      )}
+                      {options.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {selectedTemplate.tables.length > 0 && (
+            <div className="text-xs font-medium text-gray-200 mt-3 mb-1">Table inputs</div>
+          )}
+          <div className="space-y-2">
+            {selectedTemplate.tables.map((table, index) => (
+              <div key={table.id} className="relative rounded bg-gray-800 p-2 pl-3" style={{ minHeight: 36 }}>
+                <Handle
+                  type="target"
+                  position={Position.Left}
+                  id={`input-table:${table.id}`}
+                  className="w-3 h-3 bg-teal-500"
+                  data-input-type="TableSelection"
+                  style={{
+                    left: -6,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                  }}
+                />
+                <div className="text-xs text-gray-200">
+                  {table.id} <span className="text-gray-500">· {table.table_name}</span>
+                </div>
+                <div className="text-[11px] text-purple-300 text-right pr-2">Schema →</div>
+                <Handle
+                  type="source"
+                  position={Position.Right}
+                  id={`output-schema:${table.id}`}
+                  className="w-3 h-3 bg-purple-500"
+                  data-output-type="CustomSchema"
+                  title={`Custom Schema for ${table.id}`}
+                  style={{ right: -6, top: "50%", transform: "translateY(-50%)" }}
+                />
+                <div className="text-[11px] text-gray-400">
+                  Connect a TableSelection with{" "}
+                  {table.columns.map((column) => `${column.name} (${column.type})`).join(", ")} · max {table.max_rows}{" "}
+                  rows
+                </div>
+                <span className="sr-only">Table input {index + 1}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      <div className="mt-3 text-xs text-gray-400">
+        Connect Save Changes to save the configured patch into a pack. Leave patch output unconnected to apply at game
+        startup.
+        <span
+          tabIndex={0}
+          aria-label="How saving and startup application work"
+          className="ml-1 px-1 text-[10px] leading-none text-gray-300 border border-gray-500 rounded-full cursor-help select-none align-middle focus:outline-none focus:ring-1 focus:ring-blue-500"
+          title={
+            "Run manually with Save Changes: the current resolved scalar values and table rows, including flow option values, are saved with the patch template and payload in the output pack. WHMM applies those saved values when the pack is enabled for launch. Changing the source inputs does not update that pack until the flow is run and saved again.\n\n" +
+            "Run manually without Save Changes: the node validates its inputs and builds a preview only. It does not apply a patch or retain it for the next launch.\n\n" +
+            "At game startup: an unconnected patch output sends the inputs resolved for that launch directly to the startup loader, without saving a patch pack. With Save Changes connected, WHMM generates the output pack or reuses valid cached output, then loads its saved patch settings.\n\n" +
+            "Schema output connections do not prevent direct startup application."
+          }
+        >
+          ?
+        </span>
+      </div>
+    </div>
+  );
+};
+
 // Custom Rows Input node component
-export const CustomRowsInputNode: React.FC<{ data: CustomRowsInputNodeData; id: string }> = ({ data, id }) => {
+export const CustomRowsInputNode: React.FC<{
+  data: CustomRowsInputNodeData;
+  id: string;
+}> = ({ data, id }) => {
   const localized = useLocalizations();
   const [customRows, setCustomRows] = useState<Array<Record<string, string>>>(data.customRows || []);
   const [schemaColumns, setSchemaColumns] = useState<Array<{ name: string; type: SCHEMA_FIELD_TYPE }>>(

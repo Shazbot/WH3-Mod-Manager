@@ -1,23 +1,28 @@
-import Select, { ActionMeta, SingleValue, SingleValueProps, components } from "react-select";
+import Select, { ActionMeta, OptionProps, SingleValue, SingleValueProps, components } from "react-select";
 import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   toggleAlwaysHiddenMods,
+  toggleIgnoredMissingReqMods,
   toggleAreThumbnailsEnabled,
   toggleIsClosedOnPlay,
   setWorkshopModStagingMode,
   toggleCompressWorkshopModsOnStart,
+  toggleOptimizeWorkshopModsOnStart,
   toggleCleanUpWorkshopModStagingAfterGameExit,
   toggleIsUsingEnglishLocalizations,
   toggleIsAuthorEnabled,
+  toggleIsSubbedTimeEnabled,
   toggleIsDualModListLayoutEnabled,
   toggleIsShowingDisabledModsLoadOrder,
   setModListDensity,
+  setModListWidth,
   toggleIsAutoStartCustomBattleEnabled,
   toggleIsScriptLoggingEnabled,
   toggleIsSkipIntroMoviesEnabled,
   toggleMakeUnitsGenerals,
   toggleIsChangingGameProcessPriority,
   toggleIsFeaturesForModdersEnabled,
+  setCanDisableAlwaysEnabledMods,
   setIsRigidModelV2CompressionEnabled,
   setModdersPrefix,
   setIsCreateSteamCollectionOpen,
@@ -103,6 +108,17 @@ const gameToImageSrc = supportedGames.reduce(
   {} as Record<string, string>,
 );
 
+/**
+ * Builds select options for stored mod names, labelled with the installed mod's human name when we still have it.
+ * @param names Pack names to list.
+ * @param mods Mods to look up human names from.
+ * @returns One option per name.
+ */
+const toModNameOptions = (names: string[], mods: Mod[]): OptionType[] => {
+  const humanNamesByName = new Map(mods.map((mod) => [mod.name, mod.humanName]));
+  return names.map((name) => ({ value: name, label: humanNamesByName.get(name) || name }));
+};
+
 const OptionsDrawer = memo(() => {
   const [isShowingShareMods, setIsShowingShareMods] = useState<boolean>(false);
   const [isShowingSetFolderPaths, setIsShowingSetFolderPaths] = useState<boolean>(false);
@@ -117,6 +133,9 @@ const OptionsDrawer = memo(() => {
   });
   const [isLoadingWorkshopStagingFolderInfo, setIsLoadingWorkshopStagingFolderInfo] = useState(true);
   const [isClearingWorkshopStaging, setIsClearingWorkshopStaging] = useState(false);
+  const [workshopOptimizerCacheInfo, setWorkshopOptimizerCacheInfo] = useState({ size: 0, hasContents: false });
+  const [isClearingWorkshopOptimizerCache, setIsClearingWorkshopOptimizerCache] = useState(false);
+  const [lastOptimizerRun, setLastOptimizerRun] = useState<string>();
   const [workshopStagingFolderMessage, setWorkshopStagingFolderMessage] = useState<{
     message: string;
     isError: boolean;
@@ -132,26 +151,31 @@ const OptionsDrawer = memo(() => {
 
   const dispatch = useAppDispatch();
   const hiddenModNames = useAppSelector((state) => state.app.hiddenModNames);
+  const ignoredMissingReqModNames = useAppSelector((state) => state.app.ignoredMissingReqModNames);
   const areThumbnailsEnabled = useAppSelector((state) => state.app.areThumbnailsEnabled);
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
   const isWH3Running = useAppSelector((state) => state.app.isWH3Running);
   const workshopModStagingMode = useAppSelector((state) => state.app.workshopModStagingMode);
   const compressWorkshopModsOnStart = useAppSelector((state) => state.app.compressWorkshopModsOnStart);
+  const optimizeWorkshopModsOnStart = useAppSelector((state) => state.app.optimizeWorkshopModsOnStart);
   const cleanUpWorkshopModStagingAfterGameExit = useAppSelector(
     (state) => state.app.cleanUpWorkshopModStagingAfterGameExit,
   );
   const isUsingEnglishLocalizations = useAppSelector((state) => state.app.isUsingEnglishLocalizations);
   const isCompatCheckingVanillaPacks = useAppSelector((state) => state.app.isCompatCheckingVanillaPacks);
   const isAuthorEnabled = useAppSelector((state) => state.app.isAuthorEnabled);
+  const isSubbedTimeEnabled = useAppSelector((state) => state.app.isSubbedTimeEnabled);
   const isDualModListLayoutEnabled = useAppSelector((state) => state.app.isDualModListLayoutEnabled);
   const isShowingDisabledModsLoadOrder = useAppSelector((state) => state.app.isShowingDisabledModsLoadOrder);
   const modListDensity = useAppSelector((state) => state.app.modListDensity);
+  const modListWidth = useAppSelector((state) => state.app.modListWidth);
   const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
   const isChangingGameProcessPriority = useAppSelector((state) => state.app.isChangingGameProcessPriority);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
+  const canDisableAlwaysEnabledMods = useAppSelector((state) => state.app.canDisableAlwaysEnabledMods);
   const isRigidModelV2CompressionEnabled = useAppSelector((state) => state.app.isRigidModelV2CompressionEnabled);
   const compressModsOnUpload = useAppSelector((state) => state.app.compressModsOnUpload);
   const moddersPrefix = useAppSelector((state) => state.app.moddersPrefix);
@@ -241,6 +265,74 @@ const OptionsDrawer = memo(() => {
   useEffect(() => {
     void refreshWorkshopStagingFolderInfo();
   }, [currentGame, appFolderPaths.gamePath, isWH3Running, refreshWorkshopStagingFolderInfo, workshopModStagingMode]);
+
+  const refreshWorkshopOptimizerCacheInfo = useCallback(async () => {
+    const getInfo = window.api?.getWorkshopOptimizerCacheInfo;
+    if (!getInfo) return;
+    try {
+      const result = await getInfo();
+      if (result?.success) {
+        setLastOptimizerRun(result.lastRun);
+        setWorkshopOptimizerCacheInfo({
+          size: Math.max(0, result.size || 0),
+          hasContents: result.hasContents ?? (result.size || 0) > 0,
+        });
+      }
+    } catch {
+      // The cache size is informational; the clear button simply stays hidden.
+    }
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = window.api?.onWorkshopOptimizerLastRun?.((_event, text) => {
+      setLastOptimizerRun(text);
+      void refreshWorkshopOptimizerCacheInfo();
+    });
+    return () => {
+      unsubscribe?.();
+    };
+  }, [refreshWorkshopOptimizerCacheInfo]);
+
+  useEffect(() => {
+    void refreshWorkshopOptimizerCacheInfo();
+  }, [
+    currentGame,
+    isWH3Running,
+    refreshWorkshopOptimizerCacheInfo,
+    workshopModStagingMode,
+    optimizeWorkshopModsOnStart,
+  ]);
+
+  const clearWorkshopOptimizerCache = useCallback(async () => {
+    const clear = window.api?.clearWorkshopOptimizerCache;
+    if (!clear) return;
+    setIsClearingWorkshopOptimizerCache(true);
+    setWorkshopStagingFolderMessage(undefined);
+    try {
+      const result = await clear();
+      setWorkshopStagingFolderMessage(
+        result?.success
+          ? { message: localized.workshopOptimizerCacheCleared || "Cleared optimized mods cache.", isError: false }
+          : {
+              message:
+                result?.error || localized.workshopOptimizerCacheBusy || "Could not clear the optimized mods cache.",
+              isError: true,
+            },
+      );
+      await refreshWorkshopOptimizerCacheInfo();
+    } catch (error) {
+      setWorkshopStagingFolderMessage({
+        message: error instanceof Error ? error.message : String(error),
+        isError: true,
+      });
+    } finally {
+      setIsClearingWorkshopOptimizerCache(false);
+    }
+  }, [
+    localized.workshopOptimizerCacheBusy,
+    localized.workshopOptimizerCacheCleared,
+    refreshWorkshopOptimizerCacheInfo,
+  ]);
 
   const clearWorkshopStagingFolder = useCallback(async () => {
     const clearWorkshopModStaging = window.api?.clearWorkshopModStaging;
@@ -417,12 +509,13 @@ const OptionsDrawer = memo(() => {
   const hiddenModsToOptionViewDataSelector = createSelector(
     (state: { app: AppState }) => state.app.hiddenModNames,
     (state: { app: AppState }) => state.app.currentPreset.mods,
-    (names, mods) => {
-      const humanNamesByName = new Map(mods.map((mod) => [mod.name, mod.humanName]));
-      return names.map((name) => ({ value: name, label: humanNamesByName.get(name) || name }));
-    },
+    toModNameOptions,
   );
   const options: OptionType[] = useSelector(hiddenModsToOptionViewDataSelector);
+  const ignoredMissingReqModOptions = useMemo(
+    () => toModNameOptions(ignoredMissingReqModNames, currentMods),
+    [currentMods, ignoredMissingReqModNames],
+  );
 
   const availableLanguagesToOptionsSelector = createSelector(
     (state: { app: AppState }) => state.app.availableLanguages,
@@ -445,6 +538,11 @@ const OptionsDrawer = memo(() => {
     { value: "compact", label: localized.modListDensityCompact || "Compact" },
     { value: "comfortable", label: localized.modListDensityComfortable || "Comfortable" },
     { value: "roomy", label: localized.modListDensityRoomy || "Roomy" },
+  ];
+  const modListWidthOptions: { value: ModListWidth; label: string }[] = [
+    { value: "default", label: localized.modListWidthDefault || "Default (1600px)" },
+    { value: "wide", label: localized.modListWidthWide || "Wide (1920px)" },
+    { value: "full", label: localized.modListWidthFull || "Full width" },
   ];
 
   const treeDisplayModeOptions: { value: TreeDisplayMode; label: string }[] = [
@@ -523,6 +621,13 @@ const OptionsDrawer = memo(() => {
     [hiddenModNames, dispatch],
   );
 
+  const onUnignoreMissingReqModChange = useCallback(
+    (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
+      if (newValue && actionMeta.action === "select-option") dispatch(toggleIgnoredMissingReqMods([newValue.value]));
+    },
+    [dispatch],
+  );
+
   const onGameChange = useCallback(
     (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
       if (!newValue) return;
@@ -591,6 +696,15 @@ const OptionsDrawer = memo(() => {
     </components.SingleValue>
   );
 
+  const GameOption = ({ children, ...props }: OptionProps<OptionType, false>) => (
+    <components.Option {...props}>
+      <div className="flex items-center gap-2">
+        <img className="h-6 w-6 shrink-0 object-contain" src={gameToImageSrc[props.data.value]} alt="" />
+        <span>{children}</span>
+      </div>
+    </components.Option>
+  );
+
   return (
     <div>
       <GamePathsSetup isOpen={isShowingSetFolderPaths} setIsOpen={setIsShowingSetFolderPaths}></GamePathsSetup>
@@ -608,7 +722,13 @@ const OptionsDrawer = memo(() => {
       <CreateSteamCollection />
       <ImportSteamCollection />
       <PackSearcher />
-      <Modal show={isForceResubscribeConfirmOpen} onClose={closeForceResubscribeConfirm} size="lg" position="center">
+      <Modal
+        dismissible
+        show={isForceResubscribeConfirmOpen}
+        onClose={closeForceResubscribeConfirm}
+        size="lg"
+        position="center"
+      >
         <Modal.Header>{localized.forceResubscribe}</Modal.Header>
         <Modal.Body>
           <p className="text-base leading-relaxed text-gray-500 dark:text-gray-300">
@@ -637,6 +757,7 @@ const OptionsDrawer = memo(() => {
         </Modal.Footer>
       </Modal>
       <Modal
+        dismissible
         show={!!pendingCustomFolderCopy}
         onClose={() => setPendingCustomFolderCopy(null)}
         size="lg"
@@ -688,7 +809,7 @@ const OptionsDrawer = memo(() => {
         <Drawer isOpen={areOptionsOpen} setIsOpen={setAreOptionsOpen}>
           <div
             id="drawer-example"
-            className="overflow-y-scroll fixed z-40 p-4 w-full h-screen bg-white dark:bg-gray-800 transition-transform left-[-16px] top-0 transform-none scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700"
+            className="overflow-y-scroll fixed z-40 p-4 w-full h-screen bg-white dark:bg-gray-800 transition-transform left-0 top-0 transform-none scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700"
             tabIndex={-1}
             aria-labelledby="drawer-label"
             aria-modal="true"
@@ -721,11 +842,21 @@ const OptionsDrawer = memo(() => {
                   className="aspect-square m-2 mt-5 cursor-pointer"
                   id="gameSelect"
                   options={availableGames}
-                  styles={selectStyle}
+                  maxMenuHeight={window.innerHeight}
+                  menuPlacement="auto"
+                  styles={{
+                    ...selectStyle,
+                    menu: (base) => ({
+                      ...selectStyle.menu(base),
+                      width: "175%",
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                    }),
+                  }}
                   onChange={onGameChange}
                   isClearable={false}
                   isSearchable={false}
-                  components={{ SingleValue, DropdownIndicator: null }}
+                  components={{ SingleValue, Option: GameOption, DropdownIndicator: null }}
                   value={{ value: currentGame, label: currentGame } as OptionType}
                 ></Select>
               </div>
@@ -894,6 +1025,23 @@ const OptionsDrawer = memo(() => {
               </>
             )}
 
+            <div className="ml-6 mt-3">
+              <label className="block mb-1" htmlFor="modListWidth">
+                {localized.modListWidth || "Mod List Width"}
+              </label>
+              <FormSelect
+                id="modListWidth"
+                value={modListWidth}
+                onChange={(event) => dispatch(setModListWidth(event.target.value as ModListWidth))}
+              >
+                {modListWidthOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </FormSelect>
+            </div>
+
             <h6 className="mt-6">{localized.extraColumns}</h6>
             <div className="flex items-center ml-1">
               <input
@@ -918,6 +1066,19 @@ const OptionsDrawer = memo(() => {
               ></input>
               <label className="ml-2 mt-1" htmlFor="enable-mod-author">
                 {localized.modAuthorColumn}
+              </label>
+            </div>
+
+            <div className="flex items-center ml-1">
+              <input
+                className="mt-1"
+                type="checkbox"
+                id="enable-subbed-time"
+                checked={!!isSubbedTimeEnabled}
+                onChange={() => dispatch(toggleIsSubbedTimeEnabled())}
+              ></input>
+              <label className="ml-2 mt-1" htmlFor="enable-subbed-time">
+                {localized.lastSubscribedColumn}
               </label>
             </div>
 
@@ -1280,17 +1441,70 @@ const OptionsDrawer = memo(() => {
                       className="mt-1"
                       type="checkbox"
                       id="compress-workshop-mods-on-start"
-                      checked={!!compressWorkshopModsOnStart}
+                      checked={!!compressWorkshopModsOnStart || !!optimizeWorkshopModsOnStart}
+                      disabled={!!optimizeWorkshopModsOnStart}
                       onChange={() => dispatch(toggleCompressWorkshopModsOnStart())}
                     />
-                    <span className="ml-3">
+                    <span className={`ml-3 ${optimizeWorkshopModsOnStart ? "opacity-60" : ""}`}>
                       <span className="block">{localized.compressWorkshopModsOnStart || "Compress mods"}</span>
                       <span className="mt-1 block text-xs text-gray-400">
-                        {localized.compressWorkshopModsHelp ||
-                          "Copies the pack, then compresses eligible files in the staged copy."}
+                        {optimizeWorkshopModsOnStart
+                          ? localized.compressWorkshopModsOptimizeHelp ||
+                            "Compression is part of mod optimization and stays on while it is enabled."
+                          : localized.compressWorkshopModsHelp ||
+                            "Copies the pack, then compresses eligible files in the staged copy."}
                       </span>
                     </span>
                   </label>
+                  <label className="mt-3 flex cursor-pointer items-start px-2">
+                    <input
+                      className="mt-1"
+                      type="checkbox"
+                      id="optimize-workshop-mods-on-start"
+                      checked={!!optimizeWorkshopModsOnStart}
+                      onChange={() => dispatch(toggleOptimizeWorkshopModsOnStart())}
+                    />
+                    <span className="ml-3">
+                      <span className="block">
+                        {localized.optimizeWorkshopModsOnStart || "Optimize mods (experimental)"}
+                      </span>
+                      <span className="mt-1 block text-xs text-gray-400">
+                        {localized.optimizeWorkshopModsHelp ||
+                          "Merges and shrinks the unit models and textures of Workshop and custom-folder mods, never mods in the Data folder. Results are kept in whmm_optimized_mods and made in the background while you change the mod list."}
+                      </span>
+                    </span>
+                  </label>
+                  {optimizeWorkshopModsOnStart && lastOptimizerRun && (
+                    <p className="mt-2 px-2 text-xs text-gray-400">
+                      {(localized.optimizerLastRun || "Last run: {{summary}}").replace("{{summary}}", lastOptimizerRun)}
+                    </p>
+                  )}
+                  {(workshopOptimizerCacheInfo.hasContents || isClearingWorkshopOptimizerCache) && (
+                    <div className="mt-2 flex flex-wrap items-center gap-3 px-2">
+                      <button
+                        type="button"
+                        className="rounded border border-gray-600 bg-gray-800 px-3 py-1.5 text-xs font-medium uppercase text-gray-200 hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-500 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={isClearingWorkshopOptimizerCache}
+                        onClick={clearWorkshopOptimizerCache}
+                      >
+                        {isClearingWorkshopOptimizerCache
+                          ? localized.automaticWorkshopStagingClearing || "Clearing…"
+                          : localized.clearWorkshopOptimizerCache || "Clear optimized mods cache"}
+                      </button>
+                      <span className="text-xs text-gray-400">
+                        {(localized.workshopOptimizerCacheSize || "Cache size: {{size}}").replace(
+                          "{{size}}",
+                          formatWorkshopStagingBytes(workshopOptimizerCacheInfo.size),
+                        )}
+                      </span>
+                    </div>
+                  )}
+                  {(compressWorkshopModsOnStart || optimizeWorkshopModsOnStart) && (
+                    <p className="mt-2 px-2 text-xs text-amber-300">
+                      {localized.workshopMultiplayerWarning ||
+                        "Multiplayer needs identical packs for every player: turn off Compress and Optimize mods for multiplayer sessions."}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -1323,6 +1537,20 @@ const OptionsDrawer = memo(() => {
 
             <div>
               <Select options={options} styles={selectStyle} onChange={onDeleteChange} value={null}></Select>
+            </div>
+
+            <h6 className="mt-10">{localized.ignoredMissingRequiredModsOption || "Ignored Required Mods"}</h6>
+            <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
+              {localized.unignoreMissingRequiredMods || "Select a mod to warn about its missing required mods again:"}
+            </p>
+
+            <div>
+              <Select
+                options={ignoredMissingReqModOptions}
+                styles={selectStyle}
+                onChange={onUnignoreMissingReqModChange}
+                value={null}
+              ></Select>
             </div>
 
             <h6 className="mt-10">{localized.shareMods}</h6>
@@ -1511,6 +1739,24 @@ const OptionsDrawer = memo(() => {
                 </Tooltip>
               </label>
             </div>
+            <label className="ml-1 mt-3 flex items-start cursor-pointer" htmlFor="allow-disabling-always-enabled-mods">
+              <input
+                className="mt-1"
+                type="checkbox"
+                id="allow-disabling-always-enabled-mods"
+                checked={!!canDisableAlwaysEnabledMods}
+                onChange={(event) => dispatch(setCanDisableAlwaysEnabledMods(event.target.checked))}
+              />
+              <span className="ml-3">
+                <span className="block">
+                  {localized.allowDisablingAlwaysEnabledMods || "Allow disabling always-enabled mods"}
+                </span>
+                <span className="mt-1 block text-xs text-gray-400">
+                  {localized.allowDisablingAlwaysEnabledModsDescription ||
+                    "Lets you turn off mods marked as always enabled. They remain purple in the mod manager."}
+                </span>
+              </span>
+            </label>
             <label
               className={
                 "ml-1 mt-3 flex items-start " +

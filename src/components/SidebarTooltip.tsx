@@ -46,7 +46,8 @@ const SidebarTooltip = ({
     middleware: [
       offset(8),
       placement === "auto" ? autoPlacement() : flip(),
-      shift({ padding: 8 }),
+      // Keep clear of the title bar, which is layered above tooltips.
+      shift({ padding: { top: 36, right: 8, bottom: 8, left: 8 } }),
       ...(showArrow && arrowRef.current ? [arrow({ element: arrowRef.current })] : []),
     ],
     onOpenChange: setOpen,
@@ -91,6 +92,9 @@ const SidebarTooltip = ({
           position: strategy,
           top: y ?? " ",
           left: x ?? " ",
+          // A fixed element shrinks near the viewport edge, so after a window resize it would be measured at the
+          // squeezed width of its old spot and then overlap the trigger once moved.
+          width: "max-content",
         },
         ...props,
       })}
@@ -98,7 +102,7 @@ const SidebarTooltip = ({
       <div
         className={classNames(
           theme.content,
-          "max-h-[calc(100vh-1rem)] max-w-[calc(100vw-1rem)] overflow-auto break-words",
+          "max-h-[calc(100vh-60px)] max-w-[calc(100vw-1rem)] overflow-auto break-words",
         )}
       >
         {content}

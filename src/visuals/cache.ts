@@ -31,9 +31,7 @@ export type VisualsVariantDetails = {
 export interface VisualsTableContribution {
   variants: Array<[variantName: string, variantFilename: string]>;
   variantDetails?: Array<[variantName: string, details: VisualsVariantDetails]>;
-  unitVariants: Array<
-    [unitKey: string, faction: string, variantName: string, name?: string, unitCard?: string]
-  >;
+  unitVariants: Array<[unitKey: string, faction: string, variantName: string, name?: string, unitCard?: string]>;
   landUnits: string[];
   /** Land-unit caste metadata from main_units, kept optional for callers constructing old fixtures. */
   mainUnits?: Array<[landUnitKey: string, caste: string]>;
@@ -50,10 +48,7 @@ export interface VisualsTableContribution {
 export interface VisualsMergedTableData {
   variantsByName: Map<string, string>;
   variantDetailsByName: Map<string, VisualsVariantDetails>;
-  unitToVariantRows: Map<
-    string,
-    Array<{ faction: string; variantName: string; name: string; unitCard: string }>
-  >;
+  unitToVariantRows: Map<string, Array<{ faction: string; variantName: string; name: string; unitCard: string }>>;
   landUnitKeys: Set<string>;
   unitKeyToOriginPackPath: Map<string, string>;
   unitKeyToCaste: Map<string, string>;

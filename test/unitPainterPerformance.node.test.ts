@@ -26,25 +26,14 @@ const makePainter = () => {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute(
     "position",
-    new THREE.Float32BufferAttribute([
-      -0.5, -0.5, 0,
-       0.5, -0.5, 0,
-      -0.5,  0.5, 0,
-       0.5, -0.5, 0,
-       0.5,  0.5, 0,
-      -0.5,  0.5, 0,
-    ], 3),
+    new THREE.Float32BufferAttribute(
+      [-0.5, -0.5, 0, 0.5, -0.5, 0, -0.5, 0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0],
+      3,
+    ),
   );
   geometry.setAttribute(
     "uv",
-    new THREE.Float32BufferAttribute([
-      0.25, 0.25,
-      0.75, 0.25,
-      0.25, 0.75,
-      0.75, 0.25,
-      0.75, 0.75,
-      0.25, 0.75,
-    ], 2),
+    new THREE.Float32BufferAttribute([0.25, 0.25, 0.75, 0.25, 0.25, 0.75, 0.75, 0.25, 0.75, 0.75, 0.25, 0.75], 2),
   );
 
   const material = new THREE.MeshBasicMaterial({ map: texture });
@@ -98,25 +87,25 @@ const time = async (name: string, fn: () => void | Promise<void>) => {
   return { operation: name, ms: Number((performance.now() - start).toFixed(2)) };
 };
 
-runBenchmark(
-  "profiles representative 4K painter operations",
-  { timeout: 120_000 },
-  async () => {
-    const painter = makePainter();
-    const rows: Array<{ operation: string; ms: number }> = [];
-    let projectState: ReturnType<typeof painter.session.exportProjectState> | undefined;
+runBenchmark("profiles representative 4K painter operations", { timeout: 120_000 }, async () => {
+  const painter = makePainter();
+  const rows: Array<{ operation: string; ms: number }> = [];
+  let projectState: ReturnType<typeof painter.session.exportProjectState> | undefined;
 
-    try {
-      const center = painter.makeIntersection(0.5, 0.5);
+  try {
+    const center = painter.makeIntersection(0.5, 0.5);
 
-      rows.push(await time("first brush dab", () => {
+    rows.push(
+      await time("first brush dab", () => {
         painter.session.beginStroke();
         painter.session.paintIntersection(center, paintSettings, painter.camera, 1000, paintSettings.radiusPx);
         painter.session.endStroke();
-      }));
+      }),
+    );
 
-      painter.session.addLayer("Continuous drag");
-      rows.push(await time("continuous drag (24 pointer events)", () => {
+    painter.session.addLayer("Continuous drag");
+    rows.push(
+      await time("continuous drag (24 pointer events)", () => {
         painter.session.beginStroke();
         let previousScreenX = 100;
         let previousU = 0.3;
@@ -124,26 +113,13 @@ runBenchmark(
         const spacing = getUnitPainterBrushSpacing(paintSettings.radiusPx);
 
         const first = painter.makeIntersection(previousU, 0.5);
-        painter.session.paintIntersection(
-          first,
-          paintSettings,
-          painter.camera,
-          1000,
-          paintSettings.radiusPx,
-        );
+        painter.session.paintIntersection(first, paintSettings, painter.camera, 1000, paintSettings.radiusPx);
         let previousHit = first;
 
         for (let eventIndex = 1; eventIndex <= 24; eventIndex += 1) {
           const screenX = 100 + eventIndex * 8;
           const u = 0.3 + (eventIndex / 24) * 0.4;
-          const sampled = sampleUnitPainterStrokeSegment(
-            previousScreenX,
-            500,
-            screenX,
-            500,
-            spacing,
-            carried,
-          );
+          const sampled = sampleUnitPainterStrokeSegment(previousScreenX, 500, screenX, 500, spacing, carried);
           const hit = painter.makeIntersection(u, 0.5);
           if (sampled.samples.length > 0) {
             painter.session.paintIntersectionSamples(
@@ -162,10 +138,12 @@ runBenchmark(
           previousHit = hit;
         }
         painter.session.endStroke();
-      }));
+      }),
+    );
 
-      painter.session.addLayer("100 stamps");
-      rows.push(await time("100 brush stamps", () => {
+    painter.session.addLayer("100 stamps");
+    rows.push(
+      await time("100 brush stamps", () => {
         painter.session.beginStroke();
         for (let y = 0; y < 10; y += 1) {
           for (let x = 0; x < 10; x += 1) {
@@ -181,72 +159,90 @@ runBenchmark(
           }
         }
         painter.session.endStroke();
-      }));
+      }),
+    );
 
-      painter.session.selectIntersection(center);
-      painter.session.addLayer("Material fill");
-      rows.push(await time("fill material", () => {
+    painter.session.selectIntersection(center);
+    painter.session.addLayer("Material fill");
+    rows.push(
+      await time("fill material", () => {
         painter.session.fillSelection("material", {
           ...paintSettings,
           color: { r: 40, g: 120, b: 220 },
         });
-      }));
+      }),
+    );
 
-      const filledLayerId = painter.session.activeLayerId;
-      rows.push(await time("visibility toggle", () => {
+    const filledLayerId = painter.session.activeLayerId;
+    rows.push(
+      await time("visibility toggle", () => {
         painter.session.setLayerVisible(filledLayerId, false);
         painter.session.setLayerVisible(filledLayerId, true);
-      }));
+      }),
+    );
 
-      rows.push(await time("opacity change", () => {
+    rows.push(
+      await time("opacity change", () => {
         painter.session.setLayerOpacity(filledLayerId, 0.55);
-      }));
+      }),
+    );
 
-      let duplicateId = "";
-      rows.push(await time("duplicate layer", () => {
+    let duplicateId = "";
+    rows.push(
+      await time("duplicate layer", () => {
         duplicateId = painter.session.duplicateActiveLayer() ?? "";
-      }));
+      }),
+    );
 
-      rows.push(await time("clear duplicated layer", () => {
+    rows.push(
+      await time("clear duplicated layer", () => {
         if (duplicateId) painter.session.reset();
-      }));
+      }),
+    );
 
-      if (duplicateId) {
-        painter.session.setActiveLayer(duplicateId);
-        rows.push(await time("merge down", () => {
+    if (duplicateId) {
+      painter.session.setActiveLayer(duplicateId);
+      rows.push(
+        await time("merge down", () => {
           painter.session.mergeActiveLayerDown();
-        }));
-      }
+        }),
+      );
+    }
 
-      rows.push(await time("undo + redo", () => {
+    rows.push(
+      await time("undo + redo", () => {
         painter.session.undo();
         painter.session.redo();
-      }));
+      }),
+    );
 
-      rows.push(await time("project state export", () => {
+    rows.push(
+      await time("project state export", () => {
         projectState = painter.session.exportProjectState();
-      }));
+      }),
+    );
 
-      if (!projectState) throw new Error("Benchmark project state was not created.");
+    if (!projectState) throw new Error("Benchmark project state was not created.");
 
-      const reopened = makePainter();
-      try {
-        rows.push(await time("project state reopen", () => {
+    const reopened = makePainter();
+    try {
+      rows.push(
+        await time("project state reopen", () => {
           reopened.session.loadProjectLayers(projectState!);
-        }));
-      } finally {
-        reopened.dispose();
-      }
-
-      const memory = process.memoryUsage();
-      console.table(rows);
-      console.log("Painter benchmark memory", {
-        heapUsedMiB: Number((memory.heapUsed / 1024 / 1024).toFixed(1)),
-        arrayBuffersMiB: Number((memory.arrayBuffers / 1024 / 1024).toFixed(1)),
-        rssMiB: Number((memory.rss / 1024 / 1024).toFixed(1)),
-      });
+        }),
+      );
     } finally {
-      painter.dispose();
+      reopened.dispose();
     }
-  },
-);
+
+    const memory = process.memoryUsage();
+    console.table(rows);
+    console.log("Painter benchmark memory", {
+      heapUsedMiB: Number((memory.heapUsed / 1024 / 1024).toFixed(1)),
+      arrayBuffersMiB: Number((memory.arrayBuffers / 1024 / 1024).toFixed(1)),
+      rssMiB: Number((memory.rss / 1024 / 1024).toFixed(1)),
+    });
+  } finally {
+    painter.dispose();
+  }
+});

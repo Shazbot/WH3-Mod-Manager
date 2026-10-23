@@ -15,7 +15,11 @@ const row = (values: Record<string, string>): AmendedSchemaField[] =>
 
 const applyRows = (rows: Record<string, AmendedSchemaField[][]>) => {
   const core = createEmptySkillsDataCore();
-  const getTableRowData = (_packs: PackViewData[], tableName: string, callback: (fields: AmendedSchemaField[]) => void) => {
+  const getTableRowData = (
+    _packs: PackViewData[],
+    tableName: string,
+    callback: (fields: AmendedSchemaField[]) => void,
+  ) => {
     for (const fields of rows[tableName] || []) callback(fields);
   };
   applyModOverlayToSkillsDataCore(core, [], getTableRowData);
@@ -36,7 +40,11 @@ describe("skill data mod overlays", () => {
       ],
     };
 
-    const getTableRowData = (_packs: PackViewData[], tableName: string, callback: (fields: AmendedSchemaField[]) => void) => {
+    const getTableRowData = (
+      _packs: PackViewData[],
+      tableName: string,
+      callback: (fields: AmendedSchemaField[]) => void,
+    ) => {
       if (tableName === "character_skill_node_links_tables") {
         callback(
           row({
@@ -85,7 +93,11 @@ describe("skill data mod overlays", () => {
         priority: "1",
       } as Effect,
     ];
-    const getTableRowData = (_packs: PackViewData[], tableName: string, callback: (fields: AmendedSchemaField[]) => void) => {
+    const getTableRowData = (
+      _packs: PackViewData[],
+      tableName: string,
+      callback: (fields: AmendedSchemaField[]) => void,
+    ) => {
       if (tableName === "character_skill_level_to_effects_junctions_tables") {
         callback(
           row({
@@ -111,7 +123,11 @@ describe("skill data mod overlays", () => {
   it("honors the last set-item override, including re-enabling a node", () => {
     const core = createEmptySkillsDataCore();
     core.setToNodes = { set_key: ["node_key"] };
-    const getTableRowData = (_packs: PackViewData[], tableName: string, callback: (fields: AmendedSchemaField[]) => void) => {
+    const getTableRowData = (
+      _packs: PackViewData[],
+      tableName: string,
+      callback: (fields: AmendedSchemaField[]) => void,
+    ) => {
       if (tableName === "character_skill_node_set_items_tables") {
         callback(row({ set: "set_key", item: "node_key", mod_disabled: "true" }));
         callback(row({ set: "set_key", item: "node_key", mod_disabled: "false" }));
@@ -134,9 +150,7 @@ describe("skill data mod overlays", () => {
       ],
     });
 
-    expect(core.skills).toEqual([
-      expect.objectContaining({ key: "skill_key", iconPath: "icon.png" }),
-    ]);
+    expect(core.skills).toEqual([expect.objectContaining({ key: "skill_key", iconPath: "icon.png" })]);
   });
 
   it("keeps a hidden effect that has no icon, so its priority is known", () => {

@@ -15,6 +15,7 @@ import electronLog from "electron-log/main";
 import i18n, { getLocaleDirectory } from "./configs/i18next.config";
 import { globSync } from "glob";
 import { cleanupWorkshopStagingAfterGameExit, windows, registerIpcMainListeners } from "./ipcMainListeners";
+import { optimizerGameRunningChanged } from "./workshopModOptimizer/backgroundRuntime";
 import * as https from "https";
 import { Extract } from "unzipper";
 import { isSupportedLanguage } from "./utility/sharedHelpers";
@@ -698,6 +699,7 @@ exec ${quoteForShell(process.execPath)}
                 }
               }
               appData.isWH3Running = isGameRunning;
+              optimizerGameRunningChanged(isGameRunning);
               windows.mainWindow?.webContents.send("setIsWH3Running", appData.isWH3Running);
               if (didGameStop) void cleanupWorkshopStagingAfterGameExit();
             }
@@ -706,7 +708,8 @@ exec ${quoteForShell(process.execPath)}
           }
           if (checkWH3RunningInterval) checkWH3RunningInterval.refresh();
         };
-        checkWH3RunningInterval = setTimeout(isGameRuningCheck, 500);
+        // Each check spawns tasklist/ps, so don't run it more often than the UI needs.
+        checkWH3RunningInterval = setTimeout(isGameRuningCheck, 2000);
       }
     });
   };

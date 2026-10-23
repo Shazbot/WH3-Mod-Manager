@@ -265,7 +265,7 @@ const CompressionAnalysis = ({
   );
 
   return (
-    <Modal show={isOpen} onClose={close} size="4xl" position="center" explicitClasses={["max-h-[90vh]"]}>
+    <Modal dismissible show={isOpen} onClose={close} size="4xl" position="center" explicitClasses={["max-h-[90vh]"]}>
       <Modal.Header>{localized.compressionAnalysis || "Compression Analysis"}</Modal.Header>
       <Modal.Body>
         <div className="max-h-[72vh] overflow-y-auto pr-1">

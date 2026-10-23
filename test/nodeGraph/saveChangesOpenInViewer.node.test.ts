@@ -15,7 +15,7 @@ import { prepareNodeConfig } from "../../src/packFileSerializer";
  * A save node option has to survive four separate hops or it silently does nothing: the graph file,
  * and the two config marshallers - one for a manual run, one for the unattended run at game start.
  */
-const saveNode = (openInViewer: boolean) => ({
+const saveNode = (openInViewer: boolean, saveAsMoviePack = false) => ({
   id: "node_0",
   type: "savechanges" as const,
   position: { x: 0, y: 0 },
@@ -27,14 +27,15 @@ const saveNode = (openInViewer: boolean) => ({
     packedFileName: "",
     openInWindows: false,
     openInViewer,
+    saveAsMoviePack,
     inputType: "TableSelection",
   },
 });
 
-describe("save changes open in viewer", () => {
+describe("save changes execution options", () => {
   it("round-trips through the saved graph", () => {
     const serialized = serializeNodeGraphState({
-      nodes: [saveNode(true)] as never[],
+      nodes: [saveNode(true, true)] as never[],
       edges: [],
       flowOptions: [],
       isGraphEnabled: false,
@@ -42,26 +43,32 @@ describe("save changes open in viewer", () => {
     });
 
     expect(serialized.nodes[0].data.openInViewer).toBe(true);
+    expect(serialized.nodes[0].data.saveAsMoviePack).toBe(true);
   });
 
   it("reaches the executor on a manual run", () => {
-    const config = serializeNodeConfigForExecution(saveNode(true) as never);
+    const config = serializeNodeConfigForExecution(saveNode(true, true) as never);
 
     expect(JSON.parse(config as string).openInViewer).toBe(true);
+    expect(JSON.parse(config as string).saveAsMoviePack).toBe(true);
   });
 
   it("reaches the executor on the unattended run at game start", () => {
-    const config = prepareNodeConfig(saveNode(true) as never);
+    const config = prepareNodeConfig(saveNode(true, true) as never);
 
     expect((config as { openInViewer?: boolean }).openInViewer).toBe(true);
+    expect((config as { saveAsMoviePack?: boolean }).saveAsMoviePack).toBe(true);
   });
 
-  it("defaults to off, so an existing flow does not start opening windows", () => {
+  it("defaults new save options to off for existing flows", () => {
     const withoutTheField = saveNode(false);
     delete (withoutTheField.data as Record<string, unknown>).openInViewer;
+    delete (withoutTheField.data as Record<string, unknown>).saveAsMoviePack;
 
     expect(JSON.parse(serializeNodeConfigForExecution(withoutTheField as never) as string).openInViewer).toBe(false);
+    expect(JSON.parse(serializeNodeConfigForExecution(withoutTheField as never) as string).saveAsMoviePack).toBe(false);
     expect((prepareNodeConfig(withoutTheField as never) as { openInViewer?: boolean }).openInViewer).toBe(false);
+    expect((prepareNodeConfig(withoutTheField as never) as { saveAsMoviePack?: boolean }).saveAsMoviePack).toBe(false);
   });
 });
 

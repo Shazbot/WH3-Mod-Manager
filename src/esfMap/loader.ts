@@ -521,9 +521,7 @@ const convertDdsToMapImage = (
   preserveSourceResolution = false,
 ): EsfMapImage => {
   try {
-    const encoded = preserveSourceResolution
-      ? encodeDdsAsPngImage(buffer)
-      : encodeDdsAsPngImage(buffer, width, height);
+    const encoded = preserveSourceResolution ? encodeDdsAsPngImage(buffer) : encodeDdsAsPngImage(buffer, width, height);
     return {
       width: encoded.width,
       height: encoded.height,

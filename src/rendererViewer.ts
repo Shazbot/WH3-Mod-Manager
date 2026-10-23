@@ -20,13 +20,13 @@ import {
   setDeletedPackFilePaths,
   setUnsavedPacksData,
   applySavedPackData,
+  markViewerPackStale,
 } from "./appSlice";
 import { DBFieldName, DBFileName, DBVersion, Pack, PackedFile } from "./packFileTypes";
 import { dataFromBackend, doneRequests, packDataStore } from "./components/viewer/packDataStore";
 import { tableNameWithDBPrefix } from "./utility/packFileHelpers";
 
 setupRendererLogging();
-
 
 const stripUnsavedFileBuffers = (unsavedFileData: PackedFile[]): PackedFile[] =>
   unsavedFileData.map(({ buffer, ...unsavedFile }) => unsavedFile);
@@ -57,6 +57,10 @@ window.api?.setRecentPackPaths((event, packPaths) => {
 
 window.api?.openModInViewer((event, modPath: string) => {
   store.dispatch(requestOpenPackTab(modPath));
+});
+
+window.api?.viewerPackChangedOnDisk((event, packPath: string) => {
+  store.dispatch(markViewerPackStale(packPath));
 });
 
 window.api?.setPacksData((event, packsData: PackViewData[]) => {

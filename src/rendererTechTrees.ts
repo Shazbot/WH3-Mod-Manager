@@ -7,7 +7,6 @@ import { setCurrentLanguage, setIsFeaturesForModdersEnabled, setModdersPrefix, s
 
 setupRendererLogging();
 
-
 window.api?.techTreesAreReady();
 
 window.api?.setStartArgs((event, startArgs) => {

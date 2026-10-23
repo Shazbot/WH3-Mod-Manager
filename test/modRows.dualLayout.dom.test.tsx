@@ -140,10 +140,10 @@ describe("dual mod list layout", () => {
   });
 
   it("chooses the bulk-toggle direction from the whole preset, not the filter", async () => {
-    const { testStore } = renderDualLayout(
-      [createMod("target", false), createMod("other", true)],
-      { isDualModListLayoutEnabled: false, filter: "target" },
-    );
+    const { testStore } = renderDualLayout([createMod("target", false), createMod("other", true)], {
+      isDualModListLayoutEnabled: false,
+      filter: "target",
+    });
 
     await waitFor(() => expect(document.getElementById("enabledHeader")).toBeInTheDocument());
     fireEvent.contextMenu(document.getElementById("enabledHeader") as HTMLElement);
@@ -152,10 +152,10 @@ describe("dual mod list layout", () => {
   });
 
   it("switches bulk-toggle back to enabling after leaving only always-enabled mods on", async () => {
-    const { testStore } = renderDualLayout(
-      [createMod("always", true, 0), createMod("ordinary", true, 1)],
-      { isDualModListLayoutEnabled: false, alwaysEnabledModNames: ["always.pack"] },
-    );
+    const { testStore } = renderDualLayout([createMod("always", true, 0), createMod("ordinary", true, 1)], {
+      isDualModListLayoutEnabled: false,
+      alwaysEnabledModNames: ["always.pack"],
+    });
 
     await waitFor(() => expect(document.getElementById("enabledHeader")).toBeInTheDocument());
     const enabledHeader = document.getElementById("enabledHeader") as HTMLElement;

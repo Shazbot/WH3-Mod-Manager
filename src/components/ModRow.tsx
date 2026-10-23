@@ -10,6 +10,7 @@ import { Icons } from "./icons";
 import CustomModFolderIcon from "./CustomModFolderIcon";
 import { BsArrowDownUp } from "react-icons/bs";
 import { ModListLayout } from "../utility/frontend/modListLayout";
+import { getModLastChanged } from "../modSortingHelpers";
 
 const FontAwesomeIconMemo = memo(FontAwesomeIcon);
 
@@ -31,6 +32,8 @@ type ModRowProps = {
   isAlwaysEnabled: boolean;
   areThumbnailsEnabled: boolean;
   isAuthorEnabled: boolean;
+  /** Whether the row shows the Last Subscribed column, which then no longer takes over the Last Updated column. */
+  hasSubbedTimeColumn: boolean;
   ghostClass: string;
   thumbnailSrc: string;
   decodedHumanName: string;
@@ -213,6 +216,7 @@ const ModRow = forwardRef<HTMLDivElement, ModRowProps>(
       isEnabledInMergedMod,
       areThumbnailsEnabled,
       isAuthorEnabled,
+      hasSubbedTimeColumn,
       ghostClass,
       thumbnailSrc,
       decodedHumanName,
@@ -242,16 +246,20 @@ const ModRow = forwardRef<HTMLDivElement, ModRowProps>(
   ) => {
     const localization: Record<string, string> = useContext(localizationContext);
 
+    const isShowingSubbedTime = hasSubbedTimeColumn || isSubbedTimeSort(sortingType);
+    const subbedTimeValue = useMemo(
+      () =>
+        (isShowingSubbedTime && mod.subbedTime != null && mod.subbedTime != -1 && formatLastChanged(mod.subbedTime)) ||
+        "",
+      [isShowingSubbedTime, mod.subbedTime],
+    );
+    const modLastChanged = getModLastChanged(mod);
     const timeColumnValue = useMemo(
       () =>
-        (isSubbedTimeSort(sortingType) &&
-          mod.subbedTime != null &&
-          mod.subbedTime != -1 &&
-          formatLastChanged(mod.subbedTime)) ||
-        (mod.lastChanged && formatLastChanged(mod.lastChanged)) ||
-        (mod.lastChangedLocal && formatLastChanged(mod.lastChangedLocal)) ||
+        (!hasSubbedTimeColumn && isSubbedTimeSort(sortingType) && subbedTimeValue) ||
+        (modLastChanged && formatLastChanged(modLastChanged)) ||
         "",
-      [sortingType, mod.lastChanged, mod.lastChangedLocal, mod.subbedTime],
+      [hasSubbedTimeColumn, sortingType, subbedTimeValue, modLastChanged],
     );
 
     const isCompact = layout === "compact";
@@ -521,6 +529,14 @@ const ModRow = forwardRef<HTMLDivElement, ModRowProps>(
                 htmlFor={checkboxId}
               >
                 {timeColumnValue}
+              </label>
+            </div>
+            <div
+              onContextMenu={(e) => onModRightClick(e, mod)}
+              className={"flex place-items-center grid-area-autohide " + (hasSubbedTimeColumn ? "" : "hidden")}
+            >
+              <label className="cursor-pointer" htmlFor={checkboxId}>
+                {subbedTimeValue}
               </label>
             </div>
             <div className="flex place-items-center justify-center gap-2">

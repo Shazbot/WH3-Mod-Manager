@@ -31,7 +31,7 @@ import { groupPackedFilesIntoReadRuns } from "./utility/packedFileReadRuns";
 import { normalizePackFilePathKey } from "./utility/packFilePathUtils";
 import { hasPackedFileNameHash, readPackedFileIndexEntry } from "./utility/packFileIndex";
 import type { SerializedNodeGraph } from "./nodeGraph/types";
-import { resolveRadioChoiceId } from "./nodeGraph/types";
+import { resolveRadioChoiceId, splitMultilineOptionValue } from "./nodeGraph/types";
 import { isPackedFlowName } from "./nodeGraph/flowPackOperations";
 import {
   substituteDeepCloneOptionValues,
@@ -52,6 +52,8 @@ import bs from "binary-search";
 import { decompress } from "@mongodb-js/zstd";
 import { readModsByPath } from "./ipcMainListeners";
 import { executeNodeGraph } from "./nodeGraphExecutor";
+import type { NativePatchFlowRuntimeContribution } from "./nativePatches/flowTemplate";
+import { isNativePatchSchemaConnection } from "./nodeGraph/nativePatchSchema";
 import {
   PreparedFlow,
   buildAutomaticFlowExecutionId,
@@ -604,18 +606,26 @@ const createBattlePermissionsData = (packsData: Pack[], pack_files: PackedFile[]
   );
   if (!vanillaBattlePersmission) return;
   const vanillaBattlePersmissionVersion = vanillaBattlePersmission.version;
+  // Rows go in load order, and by table name within a pack, never in packsData order: that is the
+  // order packs happened to be read this session, and multiplayer needs every PC with the same mods
+  // and settings to write a byte-identical pack.
+  const packsDataByPath = new Map(packsData.map((packData) => [packData.path, packData]));
+  const seenPaths = new Set<string>();
   const battlePermissions = clone(
-    packsData
-      .filter((packData) => enabledMods.find((enabledMod) => enabledMod.path === packData.path))
-      .map((packData) => packData.packedFiles)
-      .map((packedFiles) =>
-        packedFiles.filter(
-          (packedFile) =>
-            packedFile.name.startsWith("db\\units_custom_battle_permissions_tables\\") &&
-            packedFile.version == vanillaBattlePersmissionVersion,
-        ),
+    enabledMods
+      .filter((enabledMod) => !seenPaths.has(enabledMod.path) && seenPaths.add(enabledMod.path))
+      .map((enabledMod) => packsDataByPath.get(enabledMod.path))
+      .filter((packData): packData is Pack => !!packData)
+      .map((packData) =>
+        packData.packedFiles
+          .filter(
+            (packedFile) =>
+              packedFile.name.startsWith("db\\units_custom_battle_permissions_tables\\") &&
+              packedFile.version == vanillaBattlePersmissionVersion,
+          )
+          .sort((first, second) => (first.name < second.name ? -1 : first.name > second.name ? 1 : 0)),
       )
-      .reduce((previous, packedFile) => previous.concat(packedFile), []),
+      .reduce((previous, packedFiles) => previous.concat(packedFiles), [] as PackedFile[]),
   );
   for (const packFile of battlePermissions) {
     const newFields: SchemaField[] = [];
@@ -1194,7 +1204,10 @@ const schemaAwareFlowNodeTypes = new Set([
 export const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown => {
   switch (node.type) {
     case "packfilesdropdown":
-      return { selectedPack: node.data.selectedPack || "" };
+      return {
+        selectedPack: node.data.selectedPack || "",
+        includeBaseGame: node.data.includeBaseGame ?? false,
+      };
     case "removepacksource":
       return { selectedPack: node.data.selectedPack || "" };
     case "tableselectiondropdown":
@@ -1241,6 +1254,7 @@ export const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): u
         flowExecutionId: (node.data as any).flowExecutionId || "",
         openInWindows: (node.data as any).openInWindows ?? false,
         openInViewer: (node.data as any).openInViewer ?? false,
+        saveAsMoviePack: (node.data as any).saveAsMoviePack ?? false,
       };
     case "textsurround":
       return {
@@ -1313,6 +1327,14 @@ export const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): u
       return { schemaColumns: (node.data as any).schemaColumns || [] };
     case "readtsvfrompack":
       return { tsvFileName: (node.data as any).tsvFileName || "" };
+    case "nativepatch":
+      return {
+        selectedPackName: (node.data as any).selectedPackName || "",
+        templatePath: (node.data as any).templatePath || "",
+        scalarValues: (node.data as any).scalarValues || {},
+        scalarOptionBindings: (node.data as any).scalarOptionBindings || {},
+        tableBindings: (node.data as any).tableBindings || [],
+      };
     case "customrowsinput":
       return {
         customRows: (node.data as any).customRows || [],
@@ -1475,6 +1497,19 @@ export const prepareFlow = (
     if (node.type === "savechanges") {
       (node.data as any).flowExecutionId = flowExecutionId;
     }
+    if (node.type === "nativepatch") {
+      const scalarValues = { ...(((node.data as any).scalarValues || {}) as Record<string, unknown>) };
+      for (const [inputId, optionId] of Object.entries((node.data as any).scalarOptionBindings || {}) as Array<
+        [string, string]
+      >) {
+        const option = flowData.options?.find((item) => item.id === optionId);
+        if (!option) continue;
+        const userValue = flowOptions?.optionValues?.[optionId];
+        const value = userValue !== undefined ? userValue : option.value;
+        scalarValues[inputId] = option.type === "multiline" ? splitMultilineOptionValue(String(value)) : value;
+      }
+      (node.data as any).scalarValues = scalarValues;
+    }
     if (node.type === "edittextfile") {
       // Runtime-only: lets the node omit the pack which owns this flow from PackFiles resolution.
       (node.data as any).flowSourcePack = packName;
@@ -1504,15 +1539,25 @@ export const executeFlowsForPack = async (
   /** Packs whose data overwrites were written to a copy, so flows read that copy instead. */
   packPathSubstitutes?: Map<string, string>,
   deletedFlowFileNames: Iterable<string> = [],
-): Promise<{ createdPackPaths: string[]; replacedPackPaths: string[]; hadErrors: boolean }> => {
+): Promise<{
+  createdPackPaths: string[];
+  replacedPackPaths: string[];
+  hadErrors: boolean;
+  nativePatchFlowError?: string;
+  nativePatchContributions: NativePatchFlowRuntimeContribution[];
+}> => {
   void pathTarget;
   const createdPackPaths = new Set<string>();
   /** Packs a flow wrote a full replacement for, which must not also be loaded. */
   const replacedPackPaths = new Set<string>();
   let hadErrors = false;
+  let nativePatchFlowError: string | undefined;
+  const nativePatchContributions: NativePatchFlowRuntimeContribution[] = [];
   const packStartTime = performance.now();
   const isDebug = isFlowExecutionDebugEnabled();
   const executionContext = createFlowExecutionContext(isDebug);
+  executionContext.flowSourcePackPath = pathSource;
+  executionContext.flowSourcePackName = packName;
   if (packPathSubstitutes) {
     for (const [originalPath, substitutePath] of packPathSubstitutes) {
       executionContext.packPathSubstitutes.set(originalPath, substitutePath);
@@ -1537,6 +1582,7 @@ export const executeFlowsForPack = async (
         createdPackPaths: Array.from(createdPackPaths),
         replacedPackPaths: Array.from(replacedPackPaths),
         hadErrors,
+        nativePatchContributions,
       };
     }
     console.log(`Found ${flowFiles.length} flow files in pack`);
@@ -1569,6 +1615,7 @@ export const executeFlowsForPack = async (
       `Prepared ${preparedFlows.length}/${flowFiles.length} flow(s) in ${(performance.now() - prepareStartTime).toFixed(2)}ms`,
     );
     for (const preparedFlow of preparedFlows) {
+      executionContext.flowFileName = preparedFlow.flowFileName;
       const flowStartTime = performance.now();
       try {
         const result = await executeNodeGraph({
@@ -1585,6 +1632,25 @@ export const executeFlowsForPack = async (
             )}ms`,
           );
           console.log(`Executed ${result.successCount}/${result.totalExecuted} nodes`);
+          for (const node of preparedFlow.nodes) {
+            if (
+              node.type !== "nativepatch" ||
+              preparedFlow.connections.some(
+                (edge) => edge.sourceId === node.id && !isNativePatchSchemaConnection(node, edge.sourceHandle),
+              )
+            )
+              continue;
+            const output = result.executionResults.get(node.id);
+            if (!output?.success) continue;
+            for (const file of output.data?.tables ?? []) {
+              nativePatchContributions.push({
+                sourcePackPath: pathSource,
+                sourceModName: packName,
+                fileName: file.outputFileName,
+                bytes: file.table.buffer,
+              });
+            }
+          }
           for (const [, nodeResult] of result.executionResults.entries()) {
             if (nodeResult.success && nodeResult.data?.type === "SaveResult") {
               const savedPath = nodeResult.data.savedTo;
@@ -1599,10 +1665,31 @@ export const executeFlowsForPack = async (
         } else {
           console.error(`Flow ${preparedFlow.flowFileName} execution failed:`, result.error);
           hadErrors = true;
+          const activeNativePatchNode = preparedFlow.nodes.find(
+            (node) =>
+              node.type === "nativepatch" && node.data.isDisabled !== true && !result.skippedNodeIds?.includes(node.id),
+          );
+          if (activeNativePatchNode) {
+            const failedNode = [...result.executionResults.entries()].find(([, nodeResult]) => !nodeResult.success);
+            const reason =
+              result.executionResults.get(activeNativePatchNode.id)?.error ||
+              failedNode?.[1].error ||
+              result.error ||
+              "flow graph execution failed";
+            nativePatchFlowError = `${packName} :: ${preparedFlow.flowFileName} :: node ${activeNativePatchNode.id}: ${reason}`;
+            break;
+          }
         }
       } catch (error) {
         console.error(`Error executing flow ${preparedFlow.flowFileName}:`, error);
         hadErrors = true;
+        const activeNativePatchNode = preparedFlow.nodes.find(
+          (node) => node.type === "nativepatch" && node.data.isDisabled !== true,
+        );
+        if (activeNativePatchNode) {
+          nativePatchFlowError = `${packName} :: ${preparedFlow.flowFileName} :: node ${activeNativePatchNode.id}: ${error instanceof Error ? error.message : String(error)}`;
+          break;
+        }
       }
     }
     console.log(
@@ -1617,6 +1704,8 @@ export const executeFlowsForPack = async (
     createdPackPaths: Array.from(createdPackPaths),
     replacedPackPaths: Array.from(replacedPackPaths),
     hadErrors,
+    nativePatchFlowError,
+    nativePatchContributions,
   };
 };
 export const writeCopyPack = async (
@@ -1849,6 +1938,10 @@ export const writePackStream = async (
     }
   }
 };
+export type PackType = "mod" | "movie";
+
+const getPackTypeByteMask = (packType: PackType) => (packType === "movie" ? 4 : 3);
+
 // Fast append-only implementation for existing packs - much faster than sorted insertion
 export const writePackAppendFast = async (
   packFiles: NewPackedFile[],
@@ -1857,6 +1950,7 @@ export const writePackAppendFast = async (
   replaceDuplicates?: boolean,
   dependencyPacks: string[] = [],
   removedFileNames: string[] = [],
+  packType?: PackType,
 ) => {
   let outFile: BinaryFile | undefined;
   let sourceFile: BinaryFile | undefined;
@@ -1908,7 +2002,7 @@ export const writePackAppendFast = async (
       // Write updated header with new counts
       const headerAccumulator = new BufferAccumulator(outFile);
       headerAccumulator.addString(gameToPackHeader[appData.currentGame]);
-      headerAccumulator.addInt32(existingPackToAppend.packHeader.byteMask);
+      headerAccumulator.addInt32(packType ? getPackTypeByteMask(packType) : existingPackToAppend.packHeader.byteMask);
       headerAccumulator.addInt32(existingPackToAppend.packHeader.refFileCount);
       headerAccumulator.addInt32(pack_file_index_size);
       headerAccumulator.addInt32(newFileCount); // Updated file count
@@ -2038,7 +2132,7 @@ export const writePackAppendFast = async (
     } else {
       // SLOW PATH: No existing pack, use regular sorted approach
       console.log("No existing pack, using regular sorted approach");
-      return await writePackSorted(packFiles, path, dependencyPacks);
+      return await writePackSorted(packFiles, path, dependencyPacks, packType ?? "mod");
     }
     // Move temp file to final location
     if (existingPackToAppend) {
@@ -2058,11 +2152,16 @@ export const writePackAppendFast = async (
   }
 };
 // Original sorted implementation for when no existing pack is provided
-const writePackSorted = async (packFiles: NewPackedFile[], path: string, dependencyPacks: string[] = []) => {
+const writePackSorted = async (
+  packFiles: NewPackedFile[],
+  path: string,
+  dependencyPacks: string[] = [],
+  packType: PackType = "mod",
+) => {
   let outFile: BinaryFile | undefined;
   try {
     const header = gameToPackHeader[appData.currentGame];
-    const byteMask = 3;
+    const byteMask = getPackTypeByteMask(packType);
     const refFileCount = 0;
     if (packFiles.length < 1) return;
     ensurePackFilesReadyForWrite(packFiles);
@@ -2146,6 +2245,7 @@ export const writePack = async (
   replaceDuplicates?: boolean,
   dependencyPacks: string[] = [],
   removedFileNames: string[] = [],
+  packType?: PackType,
 ) => {
   // Use fast append implementation when we have an existing pack
   if (existingPackToAppend) {
@@ -2156,10 +2256,11 @@ export const writePack = async (
       replaceDuplicates,
       dependencyPacks,
       removedFileNames,
+      packType,
     );
   }
   // Fallback to sorted implementation for new packs
-  return await writePackSorted(packFiles, path, dependencyPacks);
+  return await writePackSorted(packFiles, path, dependencyPacks, packType ?? "mod");
 };
 // Legacy implementation (kept for reference, but replaced by the optimized versions above)
 export const writePackLegacy = async (
@@ -2907,7 +3008,7 @@ const readDBPackedFiles = async (
     // console.log(`reading ${pack_file.name}`);
     let version: number | undefined;
     for (;;) {
-      const marker = await packBuffer.subarray(currentPos, currentPos + 4);
+      const marker = packBuffer.subarray(currentPos, currentPos + 4);
       currentPos += 4;
       if (marker.toString("hex") === "fdfefcff") {
         const readUTF = readUTFStringFromBuffer(packBuffer, currentPos);
@@ -2969,7 +3070,7 @@ const readDBPackedFiles = async (
           // const fields = await parseType(file, field_type);
           const lastPos = currentPos;
           try {
-            const fieldsRet = await parseTypeBuffer(packBuffer, currentPos, field_type);
+            const fieldsRet = parseTypeBuffer(packBuffer, currentPos, field_type);
             const fields = fieldsRet[0];
             currentPos = fieldsRet[1];
             if (!fields[1] && !fields[0]) {
@@ -3051,21 +3152,16 @@ export const readDBPackedFilesFromIndex = async (
   }
   return packedFiles;
 };
-const readLoc = async (
-  packReadingOptions: PackReadingOptions,
-  locPackFile: PackedFile,
-  buffer: Buffer,
-  modPath: string,
-) => {
+const readLoc = (packReadingOptions: PackReadingOptions, locPackFile: PackedFile, buffer: Buffer, modPath: string) => {
   let currentPos = 0;
   // console.log("READING LOC file", locPackFile.name);
-  const marker = await buffer.subarray(currentPos, currentPos + 2);
+  const marker = buffer.subarray(currentPos, currentPos + 2);
   currentPos += 2;
   if (marker.toString("hex") != "fffe") {
     console.log("FF FE marker is wrong!");
     return;
   }
-  const locMarker = await buffer.subarray(currentPos, currentPos + 3);
+  const locMarker = buffer.subarray(currentPos, currentPos + 3);
   currentPos += 3;
   if (locMarker.toString("hex") != "4c4f43") {
     console.log("LOC marker is wrong!");
@@ -3082,7 +3178,7 @@ const readLoc = async (
         // console.log("reading", name, field_type, currentPos);
         const lastPos = currentPos;
         try {
-          const fieldsRet = await parseTypeBuffer(buffer, currentPos, field_type);
+          const fieldsRet = parseTypeBuffer(buffer, currentPos, field_type);
           const fields = fieldsRet[0];
           currentPos = fieldsRet[1];
           // console.log("after read:", fieldsRet);
@@ -3197,24 +3293,24 @@ export const readPack = async (
       const packedFileHeader = Buffer.allocUnsafe(packedFileHeaderSize);
       fs.readSync(fileId, packedFileHeader, 0, packedFileHeader.length, 0);
       let packedFileHeaderPosition = 0;
-      const header = await packedFileHeader.subarray(packedFileHeaderPosition, packedFileHeaderPosition + 4);
+      const header = packedFileHeader.subarray(packedFileHeaderPosition, packedFileHeaderPosition + 4);
       packedFileHeaderPosition += 4;
       if (header === null) throw new Error("header missing");
       if (appData.currentGame == "attila" && header.toString("hex") == "50464835") {
         throw new Error("WRONG HEADER: WH3 HEADER FOR WHEN CURRENT GAME IS ATTILA");
       }
-      const byteMask = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+      const byteMask = packedFileHeader.readInt32LE(packedFileHeaderPosition);
       packedFileHeaderPosition += 4;
-      const refFileCount = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+      const refFileCount = packedFileHeader.readInt32LE(packedFileHeaderPosition);
       packedFileHeaderPosition += 4;
-      const pack_file_index_size = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+      const pack_file_index_size = packedFileHeader.readInt32LE(packedFileHeaderPosition);
       packedFileHeaderPosition += 4;
-      const pack_file_count = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+      const pack_file_count = packedFileHeader.readInt32LE(packedFileHeaderPosition);
       packedFileHeaderPosition += 4;
-      const packed_file_index_size = await packedFileHeader.readInt32LE(packedFileHeaderPosition);
+      const packed_file_index_size = packedFileHeader.readInt32LE(packedFileHeaderPosition);
       packedFileHeaderPosition += 4;
       const header_buffer_len = 4;
-      const header_buffer = await packedFileHeader.subarray(
+      const header_buffer = packedFileHeader.subarray(
         packedFileHeaderPosition,
         packedFileHeaderPosition + header_buffer_len,
       );
@@ -3355,7 +3451,7 @@ export const readPack = async (
           // console.log("buffer:", buffer);
           // fs.writeFileSync("locbuffer" + locPackFile.name.replaceAll("\\", "_"), buffer);
         }
-        await readLoc(packReadingOptions, locPackFile, buffer, modPath);
+        readLoc(packReadingOptions, locPackFile, buffer, modPath);
       }
     }
     if (packReadingOptions.filesToRead && packReadingOptions.filesToRead.length > 0) {

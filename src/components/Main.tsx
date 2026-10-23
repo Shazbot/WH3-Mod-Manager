@@ -22,6 +22,7 @@ type MainProps = {
 };
 const Main = (props: MainProps) => {
   const currentTab = useAppSelector((state) => state.app.currentTab);
+  const modListWidth = useAppSelector((state) => state.app.modListWidth);
   const currentFlowFileSelection = useAppSelector((state) => state.app.currentFlowFileSelection);
   const currentFlowFilePackPath = useAppSelector((state) => state.app.currentFlowFilePackPath);
   const currentDBTableSelection = useAppSelector((state) => state.app.currentDBTableSelection);
@@ -151,16 +152,24 @@ const Main = (props: MainProps) => {
         ((currentTab == "presets" && <PresetsTab />) ||
           (isLoadOrderRulesTab && <LoadOrderRulesTab />) ||
           (currentTab == "categories" && <Categories></Categories>) || (
-          <div className="grid grid-cols-12 text-white max-w-[100rem] mx-auto">
-            <div className="col-span-10">
-              <ModRows scrollElement={props.scrollElement} />
+            <div
+              className={
+                modListWidth === "wide"
+                  ? "grid grid-cols-12 text-white max-w-[120rem] mx-auto"
+                  : modListWidth === "default"
+                    ? "grid grid-cols-12 text-white max-w-[100rem] mx-auto"
+                    : "grid grid-cols-12 text-white"
+              }
+            >
+              <div className="col-span-10">
+                <ModRows scrollElement={props.scrollElement} />
+              </div>
+              <div className="ml-3 col-span-2 relative">
+                <Sidebar />
+              </div>
+              <ModTagPicker></ModTagPicker>
             </div>
-            <div className="ml-3 col-span-2 relative">
-              <Sidebar />
-            </div>
-            <ModTagPicker></ModTagPicker>
-          </div>
-        ))}
+          ))}
     </>
   );
 };

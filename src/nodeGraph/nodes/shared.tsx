@@ -18,6 +18,10 @@ export const useFlowOptions = () => {
   return React.useContext(FlowOptionsContext);
 };
 
+export const FlowSourcePackContext = React.createContext<{ path?: string; name?: string }>({});
+
+export const useFlowSourcePack = () => React.useContext(FlowSourcePackContext);
+
 export interface NodeEditorPanelContextValue {
   isActive: boolean;
   modalRoot: HTMLElement | null;

@@ -44,6 +44,7 @@ import {
 import {
   DefaultTableVersionsContext,
   FlowOptionsContext,
+  FlowSourcePackContext,
   NodeEditorPanelContext,
   nodeEditorDebugLog,
   stopWheelPropagation,
@@ -69,6 +70,8 @@ const executeGraphInBackend = async (
   currentPackName?: string,
   flowOptions?: FlowOption[],
   flowSourcePack?: string,
+  flowFileName?: string,
+  flowSourcePackName?: string,
 ): Promise<{
   success: boolean;
   executionResults: Map<string, NodeExecutionResult>;
@@ -89,6 +92,11 @@ const executeGraphInBackend = async (
     const response = await window.api?.executeNodeGraph({
       nodes: preparedGraph.nodes,
       connections: preparedGraph.connections,
+      flowExecution: {
+        flowFileName: flowFileName || "manual-flow",
+        flowSourcePackPath: flowSourcePack,
+        flowSourcePackName,
+      },
     });
 
     if (!response) {
@@ -323,6 +331,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack, isAct
   const localizedRef = useRef(localized);
   localizedRef.current = localized;
   const unsavedPacksData = useAppSelector((state) => state.app.unsavedPacksData);
+  const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
   const flowFileReloadNonce = useAppSelector((state) => state.app.currentFlowFileReloadNonce);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -344,6 +353,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack, isAct
   const nodesRef = useRef(nodes);
   const [DBNameToDBVersions, setDBNameToDBVersions] = useState<Record<string, DBVersion[]> | undefined>(undefined);
   const [defaultTableVersions, setDefaultTableVersions] = useState<Record<string, number> | undefined>(undefined);
+  const flowSourcePackPath = resolveManualFlowSourcePack(currentFile, currentPack);
+  const flowSourcePackName = currentPresetMods.find((mod) => mod.path === flowSourcePackPath)?.name;
   const [isSchemaContextReady, setIsSchemaContextReady] = useState(false);
   const flowLoadRequestIdRef = useRef(0);
 
@@ -1064,6 +1075,8 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack, isAct
         currentPack,
         flowOptions,
         resolveManualFlowSourcePack(currentFile, currentPack),
+        currentFile,
+        flowSourcePackName,
       );
 
       nodeEditorDebugLog(
@@ -1199,116 +1212,273 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack, isAct
         <div className="flex-1 relative" ref={reactFlowWrapper}>
           <DefaultTableVersionsContext.Provider value={defaultTableVersions}>
             <FlowOptionsContext.Provider value={flowOptions}>
-              {/* Keyed on the provider, not the flow: React Flow's node store lives in the provider, so
+              <FlowSourcePackContext.Provider value={{ path: flowSourcePackPath, name: flowSourcePackName }}>
+                {/* Keyed on the provider, not the flow: React Flow's node store lives in the provider, so
               remounting only the inner flow would leave the previous graph's state behind. */}
-              <ReactFlowProvider key={graphInstanceKey}>
-                <ReactFlow
-                  className="node-editor-flow"
-                  nodes={nodesWithEditorActions}
-                  edges={edgesWithDisabledState}
-                  onNodesChange={onNodesChange}
-                  onEdgesChange={onEdgesChange}
-                  onConnect={onConnect}
-                  onNodeClick={onNodeClick}
-                  onPaneClick={() => setQuickConnectSourceNodeId(null)}
-                  onEdgeClick={onEdgeClick}
-                  onInit={setReactFlowInstance}
-                  onDrop={onDrop}
-                  onDragOver={onDragOver}
-                  nodeTypes={reactFlowNodeTypes}
-                  noWheelClassName="scrollable-node-content"
-                  fitView
-                >
-                  <Background />
-                </ReactFlow>
-
-                {quickConnectSourceNodeId && (
-                  <div
-                    className="fixed bottom-4 right-4 z-[60] max-w-sm rounded-lg border border-blue-600 bg-slate-900 px-4 py-3 text-sm text-slate-100 shadow-xl"
-                    role="status"
-                    aria-live="polite"
+                <ReactFlowProvider key={graphInstanceKey}>
+                  <ReactFlow
+                    className="node-editor-flow"
+                    nodes={nodesWithEditorActions}
+                    edges={edgesWithDisabledState}
+                    onNodesChange={onNodesChange}
+                    onEdgesChange={onEdgesChange}
+                    onConnect={onConnect}
+                    onNodeClick={onNodeClick}
+                    onPaneClick={() => setQuickConnectSourceNodeId(null)}
+                    onEdgeClick={onEdgeClick}
+                    onInit={setReactFlowInstance}
+                    onDrop={onDrop}
+                    onDragOver={onDragOver}
+                    nodeTypes={reactFlowNodeTypes}
+                    noWheelClassName="scrollable-node-content"
+                    fitView
                   >
-                    <div className="font-semibold">
-                      {localized.nodeEditorQuickConnectionStarted || "Quick connection started."}
-                    </div>
-                    <div className="mt-1 text-xs text-slate-300">
-                      {localized.nodeEditorQuickConnectionSelectSecondNode ||
-                        "Shift-click a second node to create the connection."}
-                    </div>
-                  </div>
-                )}
+                    <Background />
+                  </ReactFlow>
 
-                {/* Control buttons positioned in top-right corner */}
-                <div className="absolute top-4 right-4 z-10 flex max-w-[calc(100%-2rem)] flex-wrap justify-end gap-2">
-                  {/* Hidden file input */}
-                <input type="file" accept=".json" onChange={handleFileInput} className="hidden" id="load-graph-input" />
-
-                  {/* Pack operations */}
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setIsPackMenuOpen((isOpen) => !isOpen)}
-                      aria-haspopup="menu"
-                      aria-expanded={isPackMenuOpen}
-                      className="flex items-center gap-2 rounded-lg bg-cyan-700 px-4 py-2 font-medium text-white shadow-lg transition-colors duration-200 hover:bg-cyan-600"
+                  {quickConnectSourceNodeId && (
+                    <div
+                      className="fixed bottom-4 right-4 z-[60] max-w-sm rounded-lg border border-blue-600 bg-slate-900 px-4 py-3 text-sm text-slate-100 shadow-xl"
+                      role="status"
+                      aria-live="polite"
                     >
-                      {localized.nodeEditorPackMenu || "Pack"}
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6" />
-                      </svg>
-                    </button>
-                    {isPackMenuOpen && (
-                      <div
-                        role="menu"
-                        className="absolute right-0 mt-2 w-48 overflow-hidden rounded-lg border border-gray-600 bg-gray-800 shadow-xl"
-                      >
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            setIsPackMenuOpen(false);
-                            setPackDialogMode("load");
-                          }}
-                          className="block w-full px-4 py-3 text-left text-sm text-white hover:bg-gray-700"
-                        >
-                          {localized.nodeEditorLoadFromPack || "Load From Pack…"}
-                        </button>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            setIsPackMenuOpen(false);
-                            setPackDialogMode("save");
-                          }}
-                          className="block w-full px-4 py-3 text-left text-sm text-white hover:bg-gray-700"
-                        >
-                          {localized.nodeEditorSaveToPack || "Save To Pack…"}
-                        </button>
+                      <div className="font-semibold">
+                        {localized.nodeEditorQuickConnectionStarted || "Quick connection started."}
                       </div>
-                    )}
-                  </div>
+                      <div className="mt-1 text-xs text-slate-300">
+                        {localized.nodeEditorQuickConnectionSelectSecondNode ||
+                          "Shift-click a second node to create the connection."}
+                      </div>
+                    </div>
+                  )}
 
-                  {/* Flow Options button */}
-                  <button
-                    onClick={() => setIsFlowOptionsModalOpen(true)}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"
-                      />
-                    </svg>
-                    {localized.nodeEditorFlowOptions || "Flow Options"}
-                  </button>
+                  {/* Control buttons positioned in top-right corner */}
+                  <div className="absolute top-4 right-4 z-10 flex max-w-[calc(100%-2rem)] flex-wrap justify-end gap-2">
+                    {/* Hidden file input */}
+                    <input
+                      type="file"
+                      accept=".json"
+                      onChange={handleFileInput}
+                      className="hidden"
+                      id="load-graph-input"
+                    />
 
-                  {/* Save button - only shown when currentFile exists */}
-                  {currentFile && (
+                    {/* Pack operations */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setIsPackMenuOpen((isOpen) => !isOpen)}
+                        aria-haspopup="menu"
+                        aria-expanded={isPackMenuOpen}
+                        className="flex items-center gap-2 rounded-lg bg-cyan-700 px-4 py-2 font-medium text-white shadow-lg transition-colors duration-200 hover:bg-cyan-600"
+                      >
+                        {localized.nodeEditorPackMenu || "Pack"}
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6" />
+                        </svg>
+                      </button>
+                      {isPackMenuOpen && (
+                        <div
+                          role="menu"
+                          className="absolute right-0 mt-2 w-48 overflow-hidden rounded-lg border border-gray-600 bg-gray-800 shadow-xl"
+                        >
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setIsPackMenuOpen(false);
+                              setPackDialogMode("load");
+                            }}
+                            className="block w-full px-4 py-3 text-left text-sm text-white hover:bg-gray-700"
+                          >
+                            {localized.nodeEditorLoadFromPack || "Load From Pack…"}
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setIsPackMenuOpen(false);
+                              setPackDialogMode("save");
+                            }}
+                            className="block w-full px-4 py-3 text-left text-sm text-white hover:bg-gray-700"
+                          >
+                            {localized.nodeEditorSaveToPack || "Save To Pack…"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Flow Options button */}
                     <button
-                      onClick={saveCurrentFile}
-                      className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
+                      onClick={() => setIsFlowOptionsModalOpen(true)}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"
+                        />
+                      </svg>
+                      {localized.nodeEditorFlowOptions || "Flow Options"}
+                    </button>
+
+                    {/* Save button - only shown when currentFile exists */}
+                    {currentFile && (
+                      <button
+                        onClick={saveCurrentFile}
+                        className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"
+                          />
+                        </svg>
+                        {localized.save || "Save"}
+                      </button>
+                    )}
+
+                    {/* Run button */}
+                    <button
+                      onClick={executeNodeGraph}
+                      disabled={nodes.length === 0 || isExecuting}
+                      className={`px-4 py-2 font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 ${
+                        nodes.length > 0 && !isExecuting
+                          ? "bg-purple-600 hover:bg-purple-700 text-white cursor-pointer"
+                          : "bg-gray-400 text-gray-600 cursor-not-allowed"
+                      }`}
+                    >
+                      {isExecuting ? (
+                        <>
+                          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                            ></circle>
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            ></path>
+                          </svg>
+                          {localized.nodeEditorRunning || "Running..."}
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1M9 16h1m4 0h1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                          </svg>
+                          {localized.nodeEditorRun || "Run"}
+                        </>
+                      )}
+                    </button>
+
+                    {/* Enable or disable selected nodes */}
+                    <button
+                      onClick={toggleSelectedNodes}
+                      disabled={!hasSelectedNodes}
+                      title={
+                        areAllSelectedNodesDisabled
+                          ? "Enable the selected nodes"
+                          : "Disable the selected nodes and stop their outgoing branches"
+                      }
+                      className={`px-4 py-2 font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 ${
+                        hasSelectedNodes
+                          ? areAllSelectedNodesDisabled
+                            ? "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                            : "bg-orange-600 hover:bg-orange-700 text-white cursor-pointer"
+                          : "bg-gray-400 text-gray-600 cursor-not-allowed"
+                      }`}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        {areAllSelectedNodesDisabled ? (
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14m-7-7v14" />
+                        ) : (
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                        )}
+                      </svg>
+                      {areAllSelectedNodesDisabled ? "Enable" : "Disable"}
+                    </button>
+
+                    {/* Delete selected nodes button */}
+                    <button
+                      onClick={deleteSelectedNodes}
+                      disabled={!nodes.some((node) => node.selected)}
+                      className={`px-4 py-2 font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 ${
+                        nodes.some((node) => node.selected)
+                          ? "bg-red-600 hover:bg-red-700 text-white cursor-pointer"
+                          : "bg-gray-400 text-gray-600 cursor-not-allowed"
+                      }`}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                        />
+                      </svg>
+                      {localized.delete || "Delete"}
+                    </button>
+
+                    {/* New button */}
+                    <button
+                      onClick={newNodeGraph}
+                      className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
+                      title={
+                        localized.nodeEditorNewGraphTooltip ||
+                        "Clears the editor and starts an empty flow. Save the current one first if you want to keep it."
+                      }
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                        />
+                      </svg>
+                      {localized.nodeEditorNewGraph || "New"}
+                    </button>
+
+                    {/* Load button */}
+                    <label
+                      htmlFor="load-graph-input"
+                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 cursor-pointer"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
+                        />
+                      </svg>
+                      {localized.nodeEditorLoadGraph || "Load Graph"}
+                    </label>
+
+                    {/* Save button */}
+                    <button
+                      onClick={saveNodeGraph}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path
@@ -1318,160 +1488,11 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack, isAct
                           d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"
                         />
                       </svg>
-                      {localized.save || "Save"}
+                      {localized.nodeEditorSaveGraph || "Save Graph"}
                     </button>
-                  )}
-
-                  {/* Run button */}
-                  <button
-                    onClick={executeNodeGraph}
-                    disabled={nodes.length === 0 || isExecuting}
-                    className={`px-4 py-2 font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 ${
-                      nodes.length > 0 && !isExecuting
-                        ? "bg-purple-600 hover:bg-purple-700 text-white cursor-pointer"
-                        : "bg-gray-400 text-gray-600 cursor-not-allowed"
-                    }`}
-                  >
-                    {isExecuting ? (
-                      <>
-                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                          <circle
-                            className="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                          ></circle>
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                          ></path>
-                        </svg>
-                        {localized.nodeEditorRunning || "Running..."}
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1M9 16h1m4 0h1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                          />
-                        </svg>
-                        {localized.nodeEditorRun || "Run"}
-                      </>
-                    )}
-                  </button>
-
-                  {/* Enable or disable selected nodes */}
-                  <button
-                    onClick={toggleSelectedNodes}
-                    disabled={!hasSelectedNodes}
-                    title={
-                      areAllSelectedNodesDisabled
-                        ? "Enable the selected nodes"
-                        : "Disable the selected nodes and stop their outgoing branches"
-                    }
-                    className={`px-4 py-2 font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 ${
-                      hasSelectedNodes
-                        ? areAllSelectedNodesDisabled
-                          ? "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
-                          : "bg-orange-600 hover:bg-orange-700 text-white cursor-pointer"
-                        : "bg-gray-400 text-gray-600 cursor-not-allowed"
-                    }`}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      {areAllSelectedNodesDisabled ? (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14m-7-7v14" />
-                      ) : (
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      )}
-                    </svg>
-                    {areAllSelectedNodesDisabled ? "Enable" : "Disable"}
-                  </button>
-
-                  {/* Delete selected nodes button */}
-                  <button
-                    onClick={deleteSelectedNodes}
-                    disabled={!nodes.some((node) => node.selected)}
-                    className={`px-4 py-2 font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 ${
-                      nodes.some((node) => node.selected)
-                        ? "bg-red-600 hover:bg-red-700 text-white cursor-pointer"
-                        : "bg-gray-400 text-gray-600 cursor-not-allowed"
-                    }`}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                      />
-                    </svg>
-                    {localized.delete || "Delete"}
-                  </button>
-
-                  {/* New button */}
-                  <button
-                    onClick={newNodeGraph}
-                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
-                    title={
-                      localized.nodeEditorNewGraphTooltip ||
-                      "Clears the editor and starts an empty flow. Save the current one first if you want to keep it."
-                    }
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                      />
-                    </svg>
-                    {localized.nodeEditorNewGraph || "New"}
-                  </button>
-
-                  {/* Load button */}
-                  <label
-                    htmlFor="load-graph-input"
-                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2 cursor-pointer"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
-                      />
-                    </svg>
-                    {localized.nodeEditorLoadGraph || "Load Graph"}
-                  </label>
-
-                  {/* Save button */}
-                  <button
-                    onClick={saveNodeGraph}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 flex items-center gap-2"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"
-                      />
-                    </svg>
-                    {localized.nodeEditorSaveGraph || "Save Graph"}
-                  </button>
-                </div>
-              </ReactFlowProvider>
+                  </div>
+                </ReactFlowProvider>
+              </FlowSourcePackContext.Provider>
             </FlowOptionsContext.Provider>
           </DefaultTableVersionsContext.Provider>
         </div>

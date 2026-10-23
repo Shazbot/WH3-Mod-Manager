@@ -48,6 +48,7 @@ const CreateSteamCollection = memo(() => {
     <>
       {isOpen && (
         <Modal
+          dismissible
           show={isOpen}
           // show={true}
           onClose={() => dispatch(setIsCreateSteamCollectionOpen(false))}

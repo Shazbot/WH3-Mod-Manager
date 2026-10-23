@@ -19,6 +19,7 @@ import { Modal } from "@/src/flowbite";
 import DBDuplication from "@/src/components/viewer/DBDuplication";
 import {
   removePackData,
+  clearViewerPackStale,
   requestFlowFileReload,
   selectDBTable,
   selectFlowFile,
@@ -201,6 +202,7 @@ const ModsViewer = memo(() => {
   const packsDataByPath = useAppSelector((state) => state.app.packsData);
   const unsavedPacksDataByPath = useAppSelector((state) => state.app.unsavedPacksData);
   const deletedPackFilePathsByPath = useAppSelector((state) => state.app.deletedPackFilePaths);
+  const staleViewerPackPaths = useAppSelector((state) => state.app.staleViewerPackPaths);
   const recentPackPaths = useAppSelector((state) => state.app.recentPackPaths);
   const dbPackName = gameToPackWithDBTablesName[currentGame] || "db.pack";
   const selectCurrentPackData = useMemo(makeSelectCurrentPackData, []);
@@ -221,6 +223,8 @@ const ModsViewer = memo(() => {
   const [isRecentPacksOpen, setIsRecentPacksOpen] = useState(false);
   const [visibleRecentPackCount, setVisibleRecentPackCount] = useState(MAX_RECENT_PACKS);
   const [packCloseConfirmPath, setPackCloseConfirmPath] = useState<string | null>(null);
+  const [packDiskConflictPath, setPackDiskConflictPath] = useState<string | null>(null);
+  const [isReloadingPackPath, setIsReloadingPackPath] = useState<string | null>(null);
   const [copyOverwriteRequest, setCopyOverwriteRequest] = useState<CopyOverwriteRequest | null>(null);
   const [importConflictRequest, setImportConflictRequest] = useState<PackImportConflictRequest | null>(null);
   const [isImportProcessing, setIsImportProcessing] = useState(false);
@@ -1410,6 +1414,12 @@ const ModsViewer = memo(() => {
   const hasUnsavedFiles =
     hasActivePackTab &&
     (unsavedFiles.length > 0 || (deletedPackFilePathsByPath[activeViewerPackPath]?.length ?? 0) > 0);
+  const isActivePackStale = !!staleViewerPackPaths[activeViewerPackPath];
+  const hasStagedChangesForPack = useCallback(
+    (packPath: string) =>
+      (unsavedPacksDataByPath[packPath]?.length ?? 0) > 0 || (deletedPackFilePathsByPath[packPath]?.length ?? 0) > 0,
+    [deletedPackFilePathsByPath, unsavedPacksDataByPath],
+  );
   // Save As works on any pack that exists on disk, changed or not - it saves a copy. A memory pack
   // has no file to copy, so it needs something unsaved in it before there is anything to write.
   const canSavePackAs = hasActivePackTab && (!activeViewerPackPath.startsWith("memory://") || hasUnsavedFiles);
@@ -1645,52 +1655,118 @@ const ModsViewer = memo(() => {
     handleOpenDBTable,
   ]);
 
-  const handleSavePack = useCallback(async () => {
-    if (!hasUnsavedFiles) return;
-
-    try {
-      const result = await window.api?.savePackWithUnsavedFiles(activeViewerPackPath);
-      if (result?.success) {
-        console.log("Pack saved successfully:", result.savedPath);
-        if (result.replacedOriginal !== false) {
-          // The main process invalidates its pack cache and sends the staged files as the new base
-          // data. Drop renderer-side parsed/prepared copies too, otherwise reference navigation or a
-          // later table switch can still read the pre-save snapshot.
-          clearPackDataStoreForPack(activeViewerPackPath);
-          clearPreparedTableForPack(activeViewerPackPath);
-        }
-        // A warning is something to read, so it keeps the dialog; a plain success does not.
-        if (result.warning) {
+  const reloadPackFromDisk = useCallback(
+    async (packPath: string) => {
+      setIsReloadingPackPath(packPath);
+      try {
+        const result = await window.api?.reloadPackForViewer(packPath);
+        if (!result?.success || !result.packData) {
           showDialog(
-            `${result.warning}\n\n${(localized.viewerSavedTo || "Saved to: {{path}}").replace("{{path}}", result.savedPath ?? "")}`,
-            { title: localized.viewerPackSaved || "Pack Saved" },
+            (localized.viewerReloadPackError || "Failed to reload pack: {{error}}").replace(
+              "{{error}}",
+              result?.error || localized.viewerUnknownError || "Unknown error",
+            ),
+            { title: localized.viewerReloadFailed || "Reload Failed" },
           );
+          return false;
+        }
+
+        clearPackDataStoreForPack(packPath);
+        clearPreparedTableForPack(packPath);
+        removeTableHistoryEntries((entry) => entry.tab.packPath === packPath);
+        dispatch(removePackData(packPath));
+        dispatch(setPacksData([result.packData]));
+        dispatch(clearViewerPackStale(packPath));
+        setPackTabs((previous) =>
+          previous.map((packTab) =>
+            packTab.packPath === packPath ? { ...packTab, openTabs: [], activeTabId: null } : packTab,
+          ),
+        );
+        return true;
+      } catch (error) {
+        showDialog(
+          (localized.viewerReloadPackError || "Failed to reload pack: {{error}}").replace(
+            "{{error}}",
+            error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
+          ),
+          { title: localized.viewerReloadFailed || "Reload Failed" },
+        );
+        return false;
+      } finally {
+        setIsReloadingPackPath(null);
+      }
+    },
+    [dispatch, localized, removeTableHistoryEntries, showDialog],
+  );
+
+  const requestReloadPack = useCallback(
+    (packPath: string) => {
+      if (hasStagedChangesForPack(packPath)) {
+        setPackDiskConflictPath(packPath);
+        return;
+      }
+      void reloadPackFromDisk(packPath);
+    },
+    [hasStagedChangesForPack, reloadPackFromDisk],
+  );
+
+  const savePackNow = useCallback(
+    async (packPath: string) => {
+      try {
+        const result = await window.api?.savePackWithUnsavedFiles(packPath);
+        if (result?.success) {
+          console.log("Pack saved successfully:", result.savedPath);
+          if (result.replacedOriginal !== false) {
+            // The main process invalidates its pack cache and sends the staged files as the new base
+            // data. Drop renderer-side parsed/prepared copies too, otherwise reference navigation or a
+            // later table switch can still read the pre-save snapshot.
+            clearPackDataStoreForPack(packPath);
+            clearPreparedTableForPack(packPath);
+            dispatch(clearViewerPackStale(packPath));
+          }
+          // A warning is something to read, so it keeps the dialog; a plain success does not.
+          if (result.warning) {
+            showDialog(
+              `${result.warning}\n\n${(localized.viewerSavedTo || "Saved to: {{path}}").replace("{{path}}", result.savedPath ?? "")}`,
+              { title: localized.viewerPackSaved || "Pack Saved" },
+            );
+          } else {
+            showToast(
+              (localized.viewerPackSavedTo || "Pack saved to: {{path}}").replace("{{path}}", result.savedPath ?? ""),
+            );
+          }
         } else {
-          showToast(
-            (localized.viewerPackSavedTo || "Pack saved to: {{path}}").replace("{{path}}", result.savedPath ?? ""),
+          console.error("Failed to save pack:", result?.error);
+          showDialog(
+            (localized.viewerSavePackError || "Failed to save pack: {{error}}").replace(
+              "{{error}}",
+              result?.error || localized.viewerUnknownError || "Unknown error",
+            ),
+            { title: localized.viewerSaveFailed || "Save Failed" },
           );
         }
-      } else {
-        console.error("Failed to save pack:", result?.error);
+      } catch (error) {
+        console.error("Error saving pack:", error);
         showDialog(
-          (localized.viewerSavePackError || "Failed to save pack: {{error}}").replace(
+          (localized.viewerSavePackException || "Error saving pack: {{error}}").replace(
             "{{error}}",
-            result?.error || localized.viewerUnknownError || "Unknown error",
+            error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
           ),
           { title: localized.viewerSaveFailed || "Save Failed" },
         );
       }
-    } catch (error) {
-      console.error("Error saving pack:", error);
-      showDialog(
-        (localized.viewerSavePackException || "Error saving pack: {{error}}").replace(
-          "{{error}}",
-          error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
-        ),
-        { title: localized.viewerSaveFailed || "Save Failed" },
-      );
+    },
+    [dispatch, localized, showDialog, showToast],
+  );
+
+  const handleSavePack = useCallback(() => {
+    if (!hasUnsavedFiles) return;
+    if (isActivePackStale) {
+      setPackDiskConflictPath(activeViewerPackPath);
+      return;
     }
-  }, [activeViewerPackPath, hasUnsavedFiles, localized, showDialog, showToast]);
+    void savePackNow(activeViewerPackPath);
+  }, [activeViewerPackPath, hasUnsavedFiles, isActivePackStale, savePackNow]);
 
   const handleSavePackAs = useCallback(async () => {
     // Deliberately not gated on unsaved changes: Save As on an untouched pack saves a copy of it.
@@ -2084,6 +2160,7 @@ const ModsViewer = memo(() => {
 
       {/* Destination-file overwrite confirmation */}
       <Modal
+        dismissible
         onClose={() => {
           if (!isCopyProcessing) setCopyOverwriteRequest(null);
         }}
@@ -2204,7 +2281,13 @@ const ModsViewer = memo(() => {
       </Modal>
 
       {/* Overwrite confirmation, shown over the Save As modal so Cancel goes back to it */}
-      <Modal onClose={() => setOverwriteConfirmPath(null)} show={!!overwriteConfirmPath} size="md" position="center">
+      <Modal
+        dismissible
+        onClose={() => setOverwriteConfirmPath(null)}
+        show={!!overwriteConfirmPath}
+        size="md"
+        position="center"
+      >
         <Modal.Header>{localized.viewerPackAlreadyExists || "Pack Already Exists"}</Modal.Header>
         <Modal.Body>
           <div className="text-sm text-gray-200">
@@ -2228,6 +2311,68 @@ const ModsViewer = memo(() => {
             className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSaveAsProcessing ? localized.viewerOverwriting || "Overwriting..." : localized.overwrite || "Overwrite"}
+          </button>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal
+        dismissible
+        onClose={() => setPackDiskConflictPath(null)}
+        show={!!packDiskConflictPath}
+        size="md"
+        position="center"
+      >
+        <Modal.Header>{localized.viewerPackChangedTitle || "Pack Changed on Disk"}</Modal.Header>
+        <Modal.Body>
+          <div className="text-sm text-gray-200">
+            {localized.viewerPackChangedPrompt ||
+              "This pack changed on disk while it was open. Keeping your staged edits and saving will replace any disk changes to those same files. Reloading discards staged edits and deletions and closes this pack’s open file tabs."}
+            <ul className="mt-2 max-h-40 overflow-auto list-disc list-inside text-gray-400 break-all">
+              {(packDiskConflictPath ? (unsavedPacksDataByPath[packDiskConflictPath] ?? []) : []).map((file) => (
+                <li key={`stale-unsaved-${file.name}`}>
+                  {localized.viewerUnsavedPrefix || "Unsaved:"} <span>{file.name}</span>
+                </li>
+              ))}
+              {(packDiskConflictPath ? (deletedPackFilePathsByPath[packDiskConflictPath] ?? []) : []).map((path) => (
+                <li key={`stale-deleted-${path}`}>
+                  {localized.viewerDeletedPrefix || "Deleted:"} <span>{path}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <button
+            type="button"
+            onClick={() => setPackDiskConflictPath(null)}
+            disabled={!!isReloadingPackPath}
+            className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+          >
+            {localized.cancel || "Cancel"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const packPath = packDiskConflictPath;
+              setPackDiskConflictPath(null);
+              if (packPath) void reloadPackFromDisk(packPath);
+            }}
+            disabled={!!isReloadingPackPath}
+            className="px-4 py-2 bg-red-700 hover:bg-red-800 text-white font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+          >
+            {localized.viewerDiscardAndReload || "Discard Staged Changes and Reload"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const packPath = packDiskConflictPath;
+              setPackDiskConflictPath(null);
+              if (packPath) void savePackNow(packPath);
+            }}
+            disabled={!!isReloadingPackPath}
+            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+          >
+            {localized.viewerKeepEditsAndSave || "Keep Staged Edits and Save"}
           </button>
         </Modal.Footer>
       </Modal>
@@ -2270,7 +2415,13 @@ const ModsViewer = memo(() => {
       </Modal>
 
       {/* Discard confirmation for a dirty pack tab */}
-      <Modal onClose={() => setPackCloseConfirmPath(null)} show={!!packCloseConfirmPath} size="md" position="center">
+      <Modal
+        dismissible
+        onClose={() => setPackCloseConfirmPath(null)}
+        show={!!packCloseConfirmPath}
+        size="md"
+        position="center"
+      >
         <Modal.Header>{localized.viewerClosePack || "Close Pack"}</Modal.Header>
         <Modal.Body>
           <div className="text-sm text-gray-200">
@@ -2319,7 +2470,7 @@ const ModsViewer = memo(() => {
         </div>
       )}
 
-      <Modal onClose={() => setMessageDialog(null)} show={!!messageDialog} size="md" position="center">
+      <Modal dismissible onClose={() => setMessageDialog(null)} show={!!messageDialog} size="md" position="center">
         <Modal.Header>{messageDialog?.title ?? localized.viewerMessage ?? "Message"}</Modal.Header>
         <Modal.Body>
           <div className="whitespace-pre-wrap text-sm text-gray-200">{messageDialog?.message}</div>
@@ -2488,6 +2639,7 @@ const ModsViewer = memo(() => {
                   const isDirty =
                     (unsavedPacksDataByPath[packTab.packPath]?.length ?? 0) > 0 ||
                     (deletedPackFilePathsByPath[packTab.packPath]?.length ?? 0) > 0;
+                  const isStale = !!staleViewerPackPaths[packTab.packPath];
                   return (
                     <div
                       key={packTab.packPath}
@@ -2507,6 +2659,34 @@ const ModsViewer = memo(() => {
                         {isDirty && <span aria-hidden="true">• </span>}
                         {packLabel}
                       </button>
+                      {isStale && (
+                        <>
+                          <span
+                            className="rounded border border-amber-700/70 bg-amber-900/40 px-1 py-0.5 text-[10px] text-amber-200"
+                            aria-label={localized.viewerPackChangedOnDisk || "Changed on disk"}
+                            title={localized.viewerPackChangedOnDisk || "This pack changed on disk while open."}
+                          >
+                            {localized.viewerChanged || "Changed"}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              requestReloadPack(packTab.packPath);
+                            }}
+                            disabled={isReloadingPackPath === packTab.packPath}
+                            title={
+                              localized.viewerReloadPackFromDisk ||
+                              "Reload from disk and close this pack’s open file tabs"
+                            }
+                            className="px-1.5 py-1 text-[10px] text-amber-100 hover:text-white disabled:opacity-50"
+                          >
+                            {isReloadingPackPath === packTab.packPath
+                              ? localized.viewerReloading || "Reloading…"
+                              : localized.viewerReload || "Reload"}
+                          </button>
+                        </>
+                      )}
                       <button
                         type="button"
                         onClick={(event) => {

@@ -4,6 +4,7 @@ import appReducer, {
   setFromConfig,
   setWorkshopModStagingMode,
   toggleCompressWorkshopModsOnStart,
+  toggleOptimizeWorkshopModsOnStart,
   toggleCleanUpWorkshopModStagingAfterGameExit,
 } from "../src/appSlice";
 import initialState from "../src/initialAppState";
@@ -41,6 +42,40 @@ describe("automatic Workshop mod staging settings", () => {
       toggleCompressWorkshopModsOnStart(),
     );
     expect(nonWh3State.compressWorkshopModsOnStart).toBe(false);
+  });
+
+  it("allows optimization only for WH3 copy staging, keeps the compress choice, and persists it", () => {
+    expect(initialState.optimizeWorkshopModsOnStart).toBe(false);
+    const copyState = appReducer(initialState, setWorkshopModStagingMode("copy"));
+    const compressed = appReducer(copyState, toggleCompressWorkshopModsOnStart());
+    const optimized = appReducer(compressed, toggleOptimizeWorkshopModsOnStart());
+    expect(optimized.optimizeWorkshopModsOnStart).toBe(true);
+    expect(optimized.compressWorkshopModsOnStart).toBe(true);
+    expect(selectConfigSavePayload(optimized).config.optimizeWorkshopModsOnStart).toBe(true);
+
+    // Turning it off returns to the stored compress choice, whichever it was.
+    const uncompressedThenOptimized = appReducer(
+      appReducer(copyState, toggleOptimizeWorkshopModsOnStart()),
+      toggleOptimizeWorkshopModsOnStart(),
+    );
+    expect(uncompressedThenOptimized.compressWorkshopModsOnStart).toBe(false);
+
+    const symlinkState = appReducer(optimized, setWorkshopModStagingMode("symlink"));
+    expect(symlinkState.optimizeWorkshopModsOnStart).toBe(false);
+    expect(appReducer(symlinkState, toggleOptimizeWorkshopModsOnStart()).optimizeWorkshopModsOnStart).toBe(false);
+    expect(
+      appReducer({ ...copyState, currentGame: "wh2" } as AppState, toggleOptimizeWorkshopModsOnStart())
+        .optimizeWorkshopModsOnStart,
+    ).toBe(false);
+  });
+
+  it("migrates the optimize setting only for copy mode and defaults it off", () => {
+    expect(migrateAppConfig({}).optimizeWorkshopModsOnStart).toBe(false);
+    expect(migrateAppConfig({ optimizeWorkshopModsOnStart: true }).optimizeWorkshopModsOnStart).toBe(false);
+    expect(
+      migrateAppConfig({ workshopModStagingMode: "copy", optimizeWorkshopModsOnStart: true })
+        .optimizeWorkshopModsOnStart,
+    ).toBe(true);
   });
 
   it("keeps copy and symlink modes mutually exclusive", () => {

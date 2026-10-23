@@ -394,6 +394,7 @@ const CompatScreen = memo(() => {
 
       {isCompatOpen && (
         <Modal
+          dismissible
           show={isCompatOpen}
           // show={true}
           onClose={() => {

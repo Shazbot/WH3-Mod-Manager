@@ -318,7 +318,7 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
   let size = -1;
   let isSymbolicLink = false;
   try {
-    const stats = await dumbfs.lstatSync(filePath);
+    const stats = await dumbfs.promises.lstat(filePath);
     lastChangedLocal = stats.mtimeMs;
     size = stats.size;
     isSymbolicLink = stats.isSymbolicLink();
@@ -329,12 +329,12 @@ export async function getDataMod(filePath: string, log: (msg: string) => void): 
   let doesThumbnailExist = false;
   let thumbnailPath = nodePath.join(dataPath, fileName.replace(/\.pack$/, ".png"));
   try {
-    await dumbfs.accessSync(thumbnailPath, dumbfs.constants.R_OK);
+    await dumbfs.promises.access(thumbnailPath, dumbfs.constants.R_OK);
     doesThumbnailExist = true;
   } catch {
     try {
       thumbnailPath = nodePath.join(dataPath, fileName.replace(/\.pack$/, ".jpg"));
-      await dumbfs.accessSync(thumbnailPath, dumbfs.constants.R_OK);
+      await dumbfs.promises.access(thumbnailPath, dumbfs.constants.R_OK);
       doesThumbnailExist = true;
     } catch {
       // Ignore missing JPG thumbnails; the PNG fallback is handled above.
@@ -410,7 +410,7 @@ const getDataMods = async (gameDir: string, log: (msg: string) => void, subFolde
 
   appData.allVanillaPackNames = new Set(vanillaPacks.filter((pack) => pack.endsWith(".pack")));
 
-  const files = await dumbfs.readdirSync(dataPath, { withFileTypes: true });
+  const files = await dumbfs.promises.readdir(dataPath, { withFileTypes: true });
 
   const dataModsPromises = files
     .filter(
@@ -611,7 +611,7 @@ export async function getContentModInFolder(
     subscriptionTimes?.get(contentSubFolderName) ??
     (await getWorkshopSubscriptionTimes(appData.currentGame, log)).get(contentSubFolderName);
 
-  const files = await dumbfs.readdirSync(contentSubfolder, {
+  const files = await dumbfs.promises.readdir(contentSubfolder, {
     withFileTypes: true,
   });
 
@@ -624,7 +624,7 @@ export async function getContentModInFolder(
   let size = -1;
   let isSymbolicLink = false;
   try {
-    const stats = await dumbfs.lstatSync(nodePath.join(contentSubfolder, pack.name));
+    const stats = await dumbfs.promises.lstat(nodePath.join(contentSubfolder, pack.name));
     lastChangedLocal = stats.mtimeMs;
     size = stats.size;
     isSymbolicLink = stats.isSymbolicLink();
@@ -677,7 +677,15 @@ export async function getCustomMod(filePath: string, sourceId: string, log: (msg
 
   const thumbnailBasePath = nodePath.join(modDirectory, fileName.replace(/\.pack$/i, ""));
   const thumbnailCandidates = [`${thumbnailBasePath}.png`, `${thumbnailBasePath}.jpg`];
-  let imgPath = thumbnailCandidates.find((candidate) => fsExtra.existsSync(candidate)) || "";
+  const thumbnailExists = await Promise.all(
+    thumbnailCandidates.map((candidate) =>
+      dumbfs.promises.access(candidate).then(
+        () => true,
+        () => false,
+      ),
+    ),
+  );
+  let imgPath = thumbnailCandidates.find((_, index) => thumbnailExists[index]) || "";
   if (!imgPath) {
     try {
       const siblingFiles = await dumbfs.promises.readdir(modDirectory);
@@ -784,24 +792,22 @@ export async function getMods(log: (msg: string) => void): Promise<Mod[]> {
     dataMods.filter((mod) => mod.isSymbolicLink),
   );
 
-  if (appData.currentGame != "shogun2") {
-    const files = await dumbfs.readdirSync(contentFolder, { withFileTypes: true });
-    const newMods = files
-      .filter((file) => file.isDirectory())
-      .map(async (contentSubFolder) => {
-        // log(`Reading folder ${contentFolder}\\${file.name}`);
-        return getContentModInFolder(contentSubFolder.name, log, workshopSubscriptionTimes);
-      });
-
-    const settledMods = await Promise.allSettled(newMods);
-    (settledMods.filter((r) => r.status === "fulfilled") as PromiseFulfilledResult<Mod>[]).map((r) => {
-      const mod = r.value;
-      // if a content folder is empty it'll be undefined
-      if (mod != null) {
-        mods.push(mod);
-      }
+  const files = await dumbfs.promises.readdir(contentFolder, { withFileTypes: true });
+  const newMods = files
+    .filter((file) => file.isDirectory())
+    .map(async (contentSubFolder) => {
+      // log(`Reading folder ${contentFolder}\\${file.name}`);
+      return getContentModInFolder(contentSubFolder.name, log, workshopSubscriptionTimes);
     });
-  }
+
+  const settledMods = await Promise.allSettled(newMods);
+  (settledMods.filter((r) => r.status === "fulfilled") as PromiseFulfilledResult<Mod>[]).map((r) => {
+    const mod = r.value;
+    // if a content folder is empty it'll be undefined
+    if (mod != null) {
+      mods.push(mod);
+    }
+  });
 
   for (const customFolder of appData.gamesToGameFolderPaths[appData.currentGame].customModFolders || []) {
     mods.push(...(await getCustomMods(customFolder, log)));

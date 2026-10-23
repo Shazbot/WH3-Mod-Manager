@@ -14,16 +14,14 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryDirectory = path.resolve(scriptDirectory, "..");
 
 const usage = () => {
-  console.error(
-    "Usage: node scripts/list-pack-files-by-extension.mjs <game-data-folder> <extension> [output.csv]",
-  );
+  console.error("Usage: node scripts/list-pack-files-by-extension.mjs <game-data-folder> <extension> [output.csv]");
   console.error("");
   console.error("Examples:");
   console.error(
-    "  node scripts/list-pack-files-by-extension.mjs \"C:\\\\Program Files (x86)\\\\Steam\\\\steamapps\\\\common\\\\Total War WARHAMMER III\\\\data\" .rigid_model_v2",
+    '  node scripts/list-pack-files-by-extension.mjs "C:\\\\Program Files (x86)\\\\Steam\\\\steamapps\\\\common\\\\Total War WARHAMMER III\\\\data" .rigid_model_v2',
   );
   console.error(
-    "  node scripts/list-pack-files-by-extension.mjs \"K:\\\\Steam\\\\steamapps\\\\common\\\\Total War WARHAMMER III\\\\data\" wsmodel output.csv",
+    '  node scripts/list-pack-files-by-extension.mjs "K:\\\\Steam\\\\steamapps\\\\common\\\\Total War WARHAMMER III\\\\data" wsmodel output.csv',
   );
   console.error("");
   console.error("The data folder must contain manifest.txt. Only .pack files listed in that manifest are scanned.");
@@ -286,12 +284,7 @@ export const main = (argumentsList = process.argv.slice(2)) => {
   const dataFolder = path.resolve(dataFolderArgument);
   const wantedExtension = normalizeExtension(extensionArgument);
   const safeExtensionName = wantedExtension.slice(1).replaceAll(/[^a-z0-9._-]+/g, "-") || "files";
-  const defaultOutputPath = path.join(
-    repositoryDirectory,
-    "scripts",
-    "out",
-    `vanilla-${safeExtensionName}-files.csv`,
-  );
+  const defaultOutputPath = path.join(repositoryDirectory, "scripts", "out", `vanilla-${safeExtensionName}-files.csv`);
   const outputPath = path.resolve(outputArgument ?? defaultOutputPath);
 
   const { manifestPath, packNames } = readManifestPackNames(dataFolder);
@@ -337,7 +330,9 @@ export const main = (argumentsList = process.argv.slice(2)) => {
   console.log(
     `Analyzed ${analyzedPackCount}/${packNames.length} vanilla packs and ${analyzedFileCount.toLocaleString()} total files.`,
   );
-  console.log(`Matched ${records.length.toLocaleString()} ${wantedExtension} files (${storedBytes.toLocaleString()} stored bytes).`);
+  console.log(
+    `Matched ${records.length.toLocaleString()} ${wantedExtension} files (${storedBytes.toLocaleString()} stored bytes).`,
+  );
   console.log(
     `Compression: NONE ${compressionCounts.NONE.toLocaleString()}, LZ4 ${compressionCounts.LZ4.toLocaleString()}, ` +
       `ZSTD ${compressionCounts.ZSTD.toLocaleString()}, UNKNOWN ${compressionCounts.UNKNOWN.toLocaleString()}.`,

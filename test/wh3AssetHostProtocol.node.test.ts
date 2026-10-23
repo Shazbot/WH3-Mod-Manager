@@ -74,9 +74,7 @@ describe("WH3AssetHost frame protocol", () => {
     const second = encodeWh3AssetHostFrame({ requestId: "2" });
     const secondPrefixLength = 7;
 
-    expect(decoder.push(Buffer.concat([first, second.subarray(0, secondPrefixLength)]))).toEqual([
-      { requestId: "1" },
-    ]);
+    expect(decoder.push(Buffer.concat([first, second.subarray(0, secondPrefixLength)]))).toEqual([{ requestId: "1" }]);
     expect(decoder.bufferedByteLength).toBe(secondPrefixLength);
     expect(decoder.push(second.subarray(secondPrefixLength))).toEqual([{ requestId: "2" }]);
   });

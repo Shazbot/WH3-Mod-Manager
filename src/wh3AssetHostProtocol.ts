@@ -7,12 +7,7 @@ export const WH3_ASSET_HOST_MAX_FRAME_BYTES = 8 * 1024 * 1024;
 const FRAME_HEADER_BYTES = 4;
 
 export type Wh3AssetHostProtocolErrorCode =
-  | "EmptyFrame"
-  | "FrameTooLarge"
-  | "TruncatedFrame"
-  | "InvalidUtf8"
-  | "MalformedJson"
-  | "InvalidJsonValue";
+  "EmptyFrame" | "FrameTooLarge" | "TruncatedFrame" | "InvalidUtf8" | "MalformedJson" | "InvalidJsonValue";
 
 export class Wh3AssetHostProtocolError extends Error {
   readonly code: Wh3AssetHostProtocolErrorCode;
@@ -54,10 +49,7 @@ export const encodeWh3AssetHostFrame = (value: unknown): Buffer => {
     throw protocolError("EmptyFrame", "A frame payload must contain at least one byte.");
   }
   if (payload.length > WH3_ASSET_HOST_MAX_FRAME_BYTES) {
-    throw protocolError(
-      "FrameTooLarge",
-      `The frame payload exceeds the ${WH3_ASSET_HOST_MAX_FRAME_BYTES}-byte limit.`,
-    );
+    throw protocolError("FrameTooLarge", `The frame payload exceeds the ${WH3_ASSET_HOST_MAX_FRAME_BYTES}-byte limit.`);
   }
 
   const frame = Buffer.allocUnsafe(FRAME_HEADER_BYTES + payload.length);
@@ -80,9 +72,7 @@ export class Wh3AssetHostFrameDecoder {
   push(chunk: Buffer | Uint8Array): unknown[] {
     if (chunk.byteLength === 0) return [];
 
-    const incoming = Buffer.isBuffer(chunk)
-      ? chunk
-      : Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+    const incoming = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
     this.buffered =
       this.buffered.length === 0
         ? Buffer.from(incoming)

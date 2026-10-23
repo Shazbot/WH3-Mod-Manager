@@ -159,6 +159,7 @@ const BuildingIconSelect = ({
 
       {isBrowserOpen && (
         <Modal
+          dismissible
           show
           onClose={() => setIsBrowserOpen(false)}
           size="5xl"

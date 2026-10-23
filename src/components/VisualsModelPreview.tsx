@@ -1,5 +1,6 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { Wh3Ktx2Loader } from "../visuals/Wh3Ktx2Loader";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -25,6 +26,7 @@ import type { VisualsModelPreviewAnimationReference } from "../visuals/modelPrev
 import { filterVisualsModelPreviewWarnings } from "../visuals/modelPreviewWarnings";
 import UnitPainterTextureEditor from "./UnitPainterTextureEditor";
 import { selectDefaultAnimation, type AnimationSelectionProfile } from "../visuals/animationSelection";
+import { pickStandingClip } from "../visuals/twAnimBin";
 import { getActiveVariantMeshSlots, type VariantMeshCatalog, type VariantMeshSelection } from "../visuals/variantMesh";
 import {
   createUnitPainterSession,
@@ -62,6 +64,272 @@ type PainterStrokeRuntimeProfile = {
   maxBvhRefitMs: number;
 };
 
+export type VisualsCompanionModel = {
+  assetPath: string;
+  role: string;
+  offset?: [number, number, number];
+  scale?: number;
+  animationProfile?: AnimationSelectionProfile;
+  /** How many copies to place when the model is attached to engine attachment points. */
+  count?: number;
+  /** Engine only: skeleton node names crew and draught models attach to. */
+  riderAttachmentPoint?: string;
+  draughtAttachmentPoint?: string;
+  /** Engine only: per-seat crew models and the attachment point each one stands on. */
+  engineRiders?: Array<{ attachmentPoint: string; assetPath: string; animationTable?: string }>;
+  /** Animation bin table whose standing idle this part should play. */
+  animationTable?: string;
+  /** Engine only: candidate pack paths of the tech animation that defines the `ap_*` attachment bones, tried in order. */
+  techAnimPaths?: string[];
+  /** The part whose attachment points seat the crew (an engine, or a ridden monster mount). */
+  seatHost?: boolean;
+};
+
+type TechSkeletonBone = {
+  name: string;
+  parent: number;
+  translation: [number, number, number];
+  rotation: [number, number, number, number];
+};
+
+type PreviewPlaceable = {
+  assetPath: string;
+  animationTable?: string;
+  scene: THREE.Object3D;
+  clip?: THREE.AnimationClip;
+  kind: "crew" | "mount" | "engine";
+  count: number;
+};
+
+/** Finds skeleton nodes by name: exact, then `<name>_<n>` / `<name><n>` sorted by index; optional prefix fallback. */
+const findAttachmentNodes = (root: THREE.Object3D, name: string | undefined, fallbackPrefix?: string) => {
+  const base = name?.trim().toLowerCase() ?? "";
+  const found: Array<{ node: THREE.Object3D; index: number }> = [];
+  root.traverse((node) => {
+    const nodeName = node.name.toLowerCase();
+    if (!nodeName) return;
+    if (base) {
+      if (nodeName === base) found.push({ node, index: -1 });
+      else if (nodeName.startsWith(base)) {
+        const match = /^_?(\d+)$/.exec(nodeName.slice(base.length));
+        if (match) found.push({ node, index: Number(match[1]) });
+      }
+    } else if (fallbackPrefix && nodeName.startsWith(fallbackPrefix)) {
+      const match = /(\d+)$/.exec(nodeName);
+      found.push({ node, index: match ? Number(match[1]) : -1 });
+    }
+  });
+  return found.sort((first, second) => first.index - second.index).map((entry) => entry.node);
+};
+
+/**
+ * Standing idle of an animation bin as an export reference, or undefined when the bin is missing or has
+ * none. Uses the bin's own STAND_IDLE/STAND slots and keeps that entry's fragment + metadata, which the
+ * host needs to dock weapons (a shared clip alone gets metadata from whichever bin the host guesses).
+ * The clip-name heuristic is only a fallback for unparsable bins.
+ */
+const resolveBinStandingReference = async (
+  sessionId: string,
+  table: string,
+): Promise<VisualsModelPreviewAnimationReference | undefined> => {
+  try {
+    const result = await window.api?.getUnitViewerAnimationBinClips(sessionId, table);
+    if (!result?.success) return undefined;
+    if (result.standingClip) {
+      return {
+        path: result.standingClip,
+        fragmentPath: result.fragmentPath,
+        metadataPath: result.standingClipMetadataPath,
+      };
+    }
+    const fallback = result.clips ? pickStandingClip(result.clips) : undefined;
+    return fallback ? { path: fallback } : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const findNodeByName = (root: THREE.Object3D, name: string) => {
+  const wanted = name.trim().toLowerCase();
+  let found: THREE.Object3D | undefined;
+  root.traverse((node) => {
+    if (!found && node.name.toLowerCase() === wanted) found = node;
+  });
+  return found;
+};
+
+/**
+ * The engine's own skeleton lacks `ap_*` bones; they live in its tech animation. Creates an Object3D per
+ * `ap_*` bone under the nearest ancestor bone that exists in the engine GLB, so it follows engine animation.
+ * The exporter may mirror X (translation x -> -x, rotation y/z -> -y/-z); that is detected by comparing
+ * bones both skeletons share.
+ */
+const addTechAttachmentNodes = (engine: THREE.Object3D, bones: readonly TechSkeletonBone[]) => {
+  const nodesByName = new Map<string, THREE.Object3D>();
+  engine.traverse((node) => {
+    const name = node.name.toLowerCase();
+    if (name && !nodesByName.has(name)) nodesByName.set(name, node);
+  });
+  const isAp = (bone: TechSkeletonBone) => bone.name.toLowerCase().startsWith("ap_");
+  const convert = (bone: TechSkeletonBone, mirror: boolean) => {
+    const [x, y, z] = bone.translation;
+    const [qx, qy, qz, qw] = bone.rotation;
+    return {
+      position: new THREE.Vector3(mirror ? -x : x, y, z),
+      quaternion: new THREE.Quaternion(qx, mirror ? -qy : qy, mirror ? -qz : qz, qw),
+    };
+  };
+  const mismatch = (mirror: boolean) => {
+    let total = 0;
+    for (const bone of bones) {
+      const node = isAp(bone) ? undefined : nodesByName.get(bone.name.toLowerCase());
+      if (!node) continue;
+      const local = convert(bone, mirror);
+      total += local.position.distanceTo(node.position) + (1 - Math.abs(local.quaternion.dot(node.quaternion)));
+    }
+    return total;
+  };
+  const mirror = mismatch(true) < mismatch(false);
+  const created: string[] = [];
+  const missing: string[] = [];
+  for (const bone of bones) {
+    if (!isAp(bone) || nodesByName.has(bone.name.toLowerCase())) continue;
+    const local = convert(bone, mirror);
+    const matrix = new THREE.Matrix4().compose(local.position, local.quaternion, new THREE.Vector3(1, 1, 1));
+    let parentIndex = bone.parent;
+    let anchor: THREE.Object3D | undefined;
+    while (parentIndex >= 0 && !anchor) {
+      const parentBone = bones[parentIndex];
+      anchor = nodesByName.get(parentBone.name.toLowerCase());
+      if (!anchor) {
+        const parentLocal = convert(parentBone, mirror);
+        matrix.premultiply(
+          new THREE.Matrix4().compose(parentLocal.position, parentLocal.quaternion, new THREE.Vector3(1, 1, 1)),
+        );
+        parentIndex = parentBone.parent;
+      }
+    }
+    if (!anchor) {
+      missing.push(bone.name);
+      continue;
+    }
+    const node = new THREE.Object3D();
+    node.name = bone.name;
+    matrix.decompose(node.position, node.quaternion, node.scale);
+    anchor.add(node);
+    nodesByName.set(bone.name.toLowerCase(), node);
+    created.push(bone.name);
+  }
+  console.log("[unit viewer] engine tech-anim attachment nodes", { mirrorX: mirror, created, noAnchor: missing });
+};
+
+/** Parents crew/mount models to the engine's attachment nodes; returns true when anything was attached. */
+/** Gap kept between the engine and its crew when there are no attachment points to seat them. */
+const ENGINE_CREW_GAP = 0.3;
+
+/**
+ * Fallback for engines without attachment points: moves the engine along -X so its posed mesh bounds
+ * clear the crew's (plus a gap) instead of using a fixed offset that can clip larger engines.
+ */
+const placeEngineBesideCrew = (
+  engine: THREE.Object3D,
+  crewScenes: readonly THREE.Object3D[],
+  mixers: readonly THREE.AnimationMixer[],
+) => {
+  if (crewScenes.length === 0) return;
+  // Apply the first animation frame so skinned bounds reflect the posed crew, not the bind pose.
+  for (const mixer of mixers) mixer.update(0);
+  engine.position.set(0, 0, 0);
+  engine.parent?.updateMatrixWorld(true);
+  const engineBox = new THREE.Box3().setFromObject(engine, true);
+  const crewBox = new THREE.Box3();
+  for (const scene of crewScenes) {
+    scene.updateMatrixWorld(true);
+    crewBox.union(new THREE.Box3().setFromObject(scene, true));
+  }
+  if (engineBox.isEmpty() || crewBox.isEmpty()) return;
+  engine.position.x = crewBox.min.x - ENGINE_CREW_GAP - engineBox.max.x;
+  engine.position.z = (crewBox.min.z + crewBox.max.z) / 2 - (engineBox.min.z + engineBox.max.z) / 2;
+  engine.updateMatrixWorld(true);
+};
+
+const attachToEngine = (
+  engine: THREE.Object3D,
+  engineLabel: Pick<VisualsCompanionModel, "riderAttachmentPoint" | "draughtAttachmentPoint" | "engineRiders">,
+  placeables: readonly PreviewPlaceable[],
+  addAction: (scene: THREE.Object3D, clip: THREE.AnimationClip) => void,
+) => {
+  engine.updateWorldMatrix(true, true);
+  let attached = false;
+  const mountOn = (node: THREE.Object3D, scene: THREE.Object3D) => {
+    node.add(scene);
+    scene.position.set(0, 0, 0);
+    scene.quaternion.identity();
+    node.updateWorldMatrix(true, false);
+    const worldScale = node.getWorldScale(new THREE.Vector3());
+    scene.scale.set(1 / (worldScale.x || 1), 1 / (worldScale.y || 1), 1 / (worldScale.z || 1));
+  };
+  /** Draught animals take only the node's position and stand upright like the engine root. */
+  const mountUpright = (node: THREE.Object3D, scene: THREE.Object3D) => {
+    mountOn(node, scene);
+    const nodeRotation = node.getWorldQuaternion(new THREE.Quaternion());
+    const engineRotation = engine.getWorldQuaternion(new THREE.Quaternion());
+    scene.quaternion.copy(nodeRotation.invert().multiply(engineRotation));
+  };
+  const cloneOf = (source: PreviewPlaceable) => {
+    const scene = cloneSkinned(source.scene);
+    if (source.clip) addAction(scene, source.clip);
+    return scene;
+  };
+  const placeRiders = () => {
+    const riders = engineLabel.engineRiders ?? [];
+    const crew = placeables.filter((placeable) => placeable.kind === "crew");
+    if (riders.length === 0 || crew.length === 0) return false;
+    const used = new Set<THREE.Object3D>();
+    const found: string[] = [];
+    const missing: string[] = [];
+    for (const rider of riders) {
+      const node = findNodeByName(engine, rider.attachmentPoint);
+      if (!node) {
+        missing.push(rider.attachmentPoint);
+        continue;
+      }
+      const source =
+        crew.find(
+          (placeable) => placeable.assetPath === rider.assetPath && placeable.animationTable === rider.animationTable,
+        ) ??
+        crew.find((placeable) => placeable.assetPath === rider.assetPath) ??
+        crew[0];
+      mountOn(node, used.has(source.scene) ? cloneOf(source) : source.scene);
+      used.add(source.scene);
+      found.push(rider.attachmentPoint);
+    }
+    console.log("[unit viewer] engine rider attachment nodes", { found, missing });
+    return found.length > 0;
+  };
+  const place = (kind: "crew" | "mount", nodes: THREE.Object3D[]) => {
+    const attach = kind === "mount" ? mountUpright : mountOn;
+    const models = placeables.filter((placeable) => placeable.kind === kind);
+    console.log(
+      `[unit viewer] engine ${kind} attachment nodes`,
+      nodes.length ? nodes.map((node) => node.name) : "none found (fixed-offset fallback)",
+    );
+    if (models.length === 0 || nodes.length === 0) return;
+    const source = models[0];
+    const total = Math.max(1, Math.min(source.count, nodes.length));
+    for (let index = 0; index < total; index++) {
+      attach(nodes[index], index > 0 ? cloneOf(source) : source.scene);
+    }
+    attached = true;
+  };
+  if (placeRiders()) attached = true;
+  else place("crew", findAttachmentNodes(engine, engineLabel.riderAttachmentPoint, "ap_crew"));
+  if (placeables.some((placeable) => placeable.kind === "mount")) {
+    place("mount", findAttachmentNodes(engine, engineLabel.draughtAttachmentPoint));
+  }
+  return attached;
+};
+
 type VisualsModelPreviewProps = {
   assetPath: string;
   /** Semantic animation family used to resolve the metadata-selected standing idle. */
@@ -75,6 +343,13 @@ type VisualsModelPreviewProps = {
   /** Session used to inspect VMD slots and select appearances. */
   variantMeshSessionId?: string;
   variantMeshSessionType?: "unitViewer" | "visuals";
+  /** Extra models shown beside the primary one (single-variant view only); painting stays on the primary. */
+  companionModels?: VisualsCompanionModel[];
+  /** Role and copy count of the primary model, used for engine attachment placement. */
+  primaryModelRole?: string;
+  /** Seat-crew animation table: its standing idle becomes the primary default (war machine crews only). */
+  primaryAnimationTable?: string;
+  primaryModelCount?: number;
   /** DB row context used to optionally save the painted VMD for one faction instead of overriding the source VMD. */
   unitVariantContext?: UnitPainterUnitVariantContext;
   /** Enables the experimental direct-on-model base-colour painter. */
@@ -127,19 +402,14 @@ const hashPainterGeneratedName = (value: string) => {
   return (hash >>> 0).toString(36).padStart(7, "0").slice(-7);
 };
 
-const fitPainterGeneratedName = (
-  value: string,
-  maxLength: number,
-  sanitize: (value: string) => string,
-) => {
+const fitPainterGeneratedName = (value: string, maxLength: number, sanitize: (value: string) => string) => {
   const sanitized = sanitize(value) || "whmm_painted";
   if (sanitized.length <= maxLength) return sanitized;
   const suffix = `_${hashPainterGeneratedName(sanitized)}`;
   return `${sanitized.slice(0, Math.max(1, maxLength - suffix.length))}${suffix}`;
 };
 
-const sanitizePainterVariantKey = (value: string) =>
-  value.replace(/[^a-zA-Z0-9_.-]+/g, "_").replace(/^_+|_+$/g, "");
+const sanitizePainterVariantKey = (value: string) => value.replace(/[^a-zA-Z0-9_.-]+/g, "_").replace(/^_+|_+$/g, "");
 
 const sanitizePainterVmdStem = (value: string) =>
   value
@@ -162,9 +432,7 @@ const getPainterFactionScopeDefaults = (
   };
 };
 
-const unitVariantContextFromFactionScope = (
-  scope: UnitPainterFactionScopeTransfer,
-): UnitPainterUnitVariantContext => ({
+const unitVariantContextFromFactionScope = (scope: UnitPainterFactionScopeTransfer): UnitPainterUnitVariantContext => ({
   unitKey: scope.unitKey,
   faction: scope.faction,
   variantName: scope.sourceVariantName,
@@ -174,10 +442,7 @@ const unitVariantContextFromFactionScope = (
   availableFactions: [scope.faction],
 });
 
-const adjustRangeFromWheel = (
-  event: React.WheelEvent<HTMLInputElement>,
-  setValue: (value: number) => void,
-) => {
+const adjustRangeFromWheel = (event: React.WheelEvent<HTMLInputElement>, setValue: (value: number) => void) => {
   if (event.currentTarget.disabled || event.deltaY === 0) return;
   // React/Chromium may attach wheel listeners as passive, so preventDefault()
   // emits a console warning. Stopping propagation is enough to keep the wheel
@@ -217,14 +482,14 @@ const decodeUnitPainterDecalFile = async (file: File): Promise<UnitPainterDecalS
     const height = image.naturalHeight;
     const byteLength = width * height * 4;
     if (
-      !Number.isInteger(width)
-      || !Number.isInteger(height)
-      || width <= 0
-      || height <= 0
-      || width > 8192
-      || height > 8192
-      || !Number.isSafeInteger(byteLength)
-      || byteLength > 64 * 1024 * 1024
+      !Number.isInteger(width) ||
+      !Number.isInteger(height) ||
+      width <= 0 ||
+      height <= 0 ||
+      width > 8192 ||
+      height > 8192 ||
+      !Number.isSafeInteger(byteLength) ||
+      byteLength > 64 * 1024 * 1024
     ) {
       throw new Error("Decal images must be at most 8192×8192 and 64 MiB decoded.");
     }
@@ -371,10 +636,7 @@ const createPainterSurfaceMesh = (
   return overlay;
 };
 
-const createPainterSurfaceOverlay = (
-  surface: UnitPainterSurfaceHighlight,
-  opacity: number,
-) => {
+const createPainterSurfaceOverlay = (surface: UnitPainterSurfaceHighlight, opacity: number) => {
   const material = new THREE.MeshBasicMaterial({
     color: surface.scope === "island" ? 0xa78bfa : 0x22d3ee,
     transparent: true,
@@ -387,18 +649,11 @@ const createPainterSurfaceOverlay = (
     polygonOffsetUnits: -2,
   });
   material.toneMapped = false;
-  return createPainterSurfaceMesh(
-    surface,
-    material,
-    "__whmm_unit_painter_surface_highlight",
-    2000,
-  );
+  return createPainterSurfaceMesh(surface, material, "__whmm_unit_painter_surface_highlight", 2000);
 };
 
 const createPainterIsolationSurface = (surface: UnitPainterSurfaceHighlight) => {
-  const sourceMaterials = Array.isArray(surface.object.material)
-    ? surface.object.material
-    : [surface.object.material];
+  const sourceMaterials = Array.isArray(surface.object.material) ? surface.object.material : [surface.object.material];
   const sourceMaterial = sourceMaterials[surface.materialIndex] ?? sourceMaterials[0];
   if (!sourceMaterial) return undefined;
 
@@ -411,12 +666,7 @@ const createPainterIsolationSurface = (surface: UnitPainterSurfaceHighlight) => 
   material.polygonOffsetFactor = -1;
   material.polygonOffsetUnits = -1;
   material.needsUpdate = true;
-  return createPainterSurfaceMesh(
-    surface,
-    material,
-    "__whmm_unit_painter_isolation_surface",
-    2001,
-  );
+  return createPainterSurfaceMesh(surface, material, "__whmm_unit_painter_isolation_surface", 2001);
 };
 
 const hashGeometry = (geometry: THREE.BufferGeometry) => {
@@ -530,9 +780,7 @@ const getComparisonActiveVariantMeshSlots = (
     if (cached !== undefined) return cached;
     const parent = slot.parent;
     const parentSlot = parent ? slotsByPath.get(parent.slotPath) : undefined;
-    const parentSelection = parentSlot
-      ? selections[parentSlot.slotPath] ?? parentSlot.defaultChoiceIndex
-      : undefined;
+    const parentSelection = parentSlot ? (selections[parentSlot.slotPath] ?? parentSlot.defaultChoiceIndex) : undefined;
     const active =
       !parent ||
       (!!parentSlot &&
@@ -583,11 +831,7 @@ const disposeGrid = (grid: THREE.GridHelper) => {
   else disposeMaterial(grid.material);
 };
 
-const preloadObjectTextures = (
-  context: ThreePreviewContext,
-  object: THREE.Object3D,
-  pool: PreviewResourcePool,
-) => {
+const preloadObjectTextures = (context: ThreePreviewContext, object: THREE.Object3D, pool: PreviewResourcePool) => {
   const textures = new Set<THREE.Texture>();
 
   object.traverse((child) => {
@@ -651,7 +895,9 @@ const getAnimationLabel = (path: string) => {
 };
 
 const getAnimationSelectionKey = (reference: VisualsModelPreviewAnimationReference, index: number) =>
-  [reference.path, reference.packIndex ?? "", reference.fragmentPath ?? "", reference.metadataPath ?? "", index].join("\0");
+  [reference.path, reference.packIndex ?? "", reference.fragmentPath ?? "", reference.metadataPath ?? "", index].join(
+    "\0",
+  );
 
 const formatAnimationTime = (seconds: number) => {
   const wholeSeconds = Math.max(0, Math.floor(seconds));
@@ -674,10 +920,16 @@ const getFactionPreviewTextureFileName = (texture: THREE.Texture) => {
 const findFactionMaskBinding = (texture: THREE.Texture, bindings: readonly UnitPainterFactionMaskBinding[]) => {
   const previewFileName = getFactionPreviewTextureFileName(texture);
   if (!previewFileName) return undefined;
-  const exact = bindings.find((binding) => binding.baseColourPreviewFileNames.some((name) => name.toLowerCase() === previewFileName));
+  const exact = bindings.find((binding) =>
+    binding.baseColourPreviewFileNames.some((name) => name.toLowerCase() === previewFileName),
+  );
   if (exact) return exact;
   return bindings.find((binding) => {
-    const stem = binding.baseColourSourcePath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "").toLowerCase();
+    const stem = binding.baseColourSourcePath
+      .split(/[\\/]/)
+      .pop()
+      ?.replace(/\.[^.]+$/, "")
+      .toLowerCase();
     return !!stem && (previewFileName === `${stem}.ktx2` || previewFileName.startsWith(`${stem}_`));
   });
 };
@@ -707,9 +959,7 @@ const resolveFactionColourSet = (
   const preferSoldier = (sets: typeof overrides) =>
     sets.find((set) => set.soldierType.trim().toLowerCase() === "soldier") ?? sets[0];
 
-  const exactFaction = overrides.filter(
-    (set) => set.faction.trim().toLowerCase() === targetFaction,
-  );
+  const exactFaction = overrides.filter((set) => set.faction.trim().toLowerCase() === targetFaction);
   const exactFactionColour = preferSoldier(exactFaction);
   if (exactFactionColour) {
     return { colours: exactFactionColour, source: "unit_variants_colours:faction" };
@@ -717,9 +967,7 @@ const resolveFactionColourSet = (
 
   if (targetSubculture) {
     const exactSubculture = overrides.filter(
-      (set) =>
-        !set.faction.trim()
-        && set.subculture.trim().toLowerCase() === targetSubculture,
+      (set) => !set.faction.trim() && set.subculture.trim().toLowerCase() === targetSubculture,
     );
     const exactSubcultureColour = preferSoldier(exactSubculture);
     if (exactSubcultureColour) {
@@ -727,17 +975,13 @@ const resolveFactionColourSet = (
     }
   }
 
-  const generic = overrides.filter(
-    (set) => !set.faction.trim() && !set.subculture.trim(),
-  );
+  const generic = overrides.filter((set) => !set.faction.trim() && !set.subculture.trim());
   const genericColour = preferSoldier(generic);
   if (genericColour) {
     return { colours: genericColour, source: "unit_variants_colours:generic" };
   }
 
-  return factionDefault
-    ? { colours: factionDefault, source: "factions_tables" }
-    : { source: "none" };
+  return factionDefault ? { colours: factionDefault, source: "factions_tables" } : { source: "none" };
 };
 
 const applyFactionColourPreview = async (
@@ -747,20 +991,22 @@ const applyFactionColourPreview = async (
 ) => {
   const loadedMasks = new Map<string, THREE.Texture>();
   const textureLoader = new THREE.TextureLoader();
-  await Promise.all(Array.from(new Set(bindings.map((binding) => binding.maskUrl))).map(async (url) => {
-    try {
-      const texture = await textureLoader.loadAsync(url);
-      texture.colorSpace = THREE.NoColorSpace;
-      texture.flipY = false;
-      texture.generateMipmaps = false;
-      texture.minFilter = THREE.LinearFilter;
-      texture.magFilter = THREE.LinearFilter;
-      texture.needsUpdate = true;
-      loadedMasks.set(url, texture);
-    } catch {
-      // Missing masks are ignored so other materials can still preview.
-    }
-  }));
+  await Promise.all(
+    Array.from(new Set(bindings.map((binding) => binding.maskUrl))).map(async (url) => {
+      try {
+        const texture = await textureLoader.loadAsync(url);
+        texture.colorSpace = THREE.NoColorSpace;
+        texture.flipY = false;
+        texture.generateMipmaps = false;
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        texture.needsUpdate = true;
+        loadedMasks.set(url, texture);
+      } catch {
+        // Missing masks are ignored so other materials can still preview.
+      }
+    }),
+  );
   const primary = new THREE.Color(colours.primary);
   const secondary = new THREE.Color(colours.secondary);
   const tertiary = new THREE.Color(colours.tertiary);
@@ -815,7 +1061,12 @@ const applyFactionColourPreview = async (
       material.customProgramCacheKey = () =>
         `${previousProgramCacheKey.call(material)}|wh3-faction-colours|${binding.maskUrl}|${factionColourProgramKey}`;
       material.needsUpdate = true;
-      restores.push({ material, onBeforeCompile: previousOnBeforeCompile, customProgramCacheKey: previousProgramCacheKey, mask });
+      restores.push({
+        material,
+        onBeforeCompile: previousOnBeforeCompile,
+        customProgramCacheKey: previousProgramCacheKey,
+        mask,
+      });
     }
   });
   return () => {
@@ -830,21 +1081,28 @@ const applyFactionColourPreview = async (
 };
 
 const getPainterFactionOptions = (...contexts: Array<UnitPainterUnitVariantContext | undefined>) =>
-  Array.from(new Set(
-    contexts.flatMap((context) => [
-      ...(context?.availableFactions || []),
-      ...(context?.factionColours || []).map((set) => set.faction),
-      ...(context?.unitVariantColours || []).map((set) => set.faction),
-    ]).map((faction) => faction.trim()).filter(Boolean),
-  )).sort((first, second) => first.localeCompare(second));
+  Array.from(
+    new Set(
+      contexts
+        .flatMap((context) => [
+          ...(context?.availableFactions || []),
+          ...(context?.factionColours || []).map((set) => set.faction),
+          ...(context?.unitVariantColours || []).map((set) => set.faction),
+        ])
+        .map((faction) => faction.trim())
+        .filter(Boolean),
+    ),
+  ).sort((first, second) => first.localeCompare(second));
 
 const getDefaultFactionPreviewFaction = (context?: UnitPainterUnitVariantContext) => {
   if (!context) return "";
   if (context.faction.trim()) return context.faction;
-  return context.availableFactions?.find((faction) => !!faction.trim())
-    ?? context.factionColours?.find((set) => !!set.faction.trim())?.faction
-    ?? context.unitVariantColours?.find((set) => !!set.faction.trim())?.faction
-    ?? "";
+  return (
+    context.availableFactions?.find((faction) => !!faction.trim()) ??
+    context.factionColours?.find((set) => !!set.faction.trim())?.faction ??
+    context.unitVariantColours?.find((set) => !!set.faction.trim())?.faction ??
+    ""
+  );
 };
 
 const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
@@ -856,6 +1114,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     unsyncedAnimations = true,
     variantMeshSessionId,
     variantMeshSessionType = "unitViewer",
+    companionModels,
+    primaryModelRole,
+    primaryModelCount,
+    primaryAnimationTable,
     unitVariantContext,
     enablePainting = false,
   } = props;
@@ -878,10 +1140,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const paintSelectionHelperRef = useRef<THREE.Mesh[]>([]);
   const paintHoverHelperRef = useRef<THREE.Mesh | null>(null);
   const paintHoverKeyRef = useRef("");
-  const textureLinkedHoverSinkRef = useRef<((hover?: UnitPainterTextureHover) => void)>();
-  const textureToModelHoverRef = useRef<
-    (hover?: { textureId: string; x: number; y: number }) => void
-  >();
+  const textureLinkedHoverSinkRef = useRef<(hover?: UnitPainterTextureHover) => void>();
+  const textureToModelHoverRef = useRef<(hover?: { textureId: string; x: number; y: number }) => void>();
   const painterEnabledRef = useRef(false);
   const paintViewModeRef = useRef<"model" | "split" | "texture">("model");
   const paintIsolationModeRef = useRef<UnitPainterIsolationMode>("off");
@@ -953,7 +1213,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const [isPaintFactionAdvancedOpen, setIsPaintFactionAdvancedOpen] = useState(false);
   const [paintFactionScopeDirty, setPaintFactionScopeDirty] = useState(false);
   const [isPaintFactionColourPreviewEnabled, setIsPaintFactionColourPreviewEnabled] = useState(false);
-  const [paintFactionPreviewFaction, setPaintFactionPreviewFaction] = useState(getDefaultFactionPreviewFaction(unitVariantContext));
+  const [paintFactionPreviewFaction, setPaintFactionPreviewFaction] = useState(
+    getDefaultFactionPreviewFaction(unitVariantContext),
+  );
   const [paintFactionMaskBindings, setPaintFactionMaskBindings] = useState<UnitPainterFactionMaskBinding[]>([]);
   const [paintFactionPreviewError, setPaintFactionPreviewError] = useState("");
   const [paintExcludedPackPaths, setPaintExcludedPackPaths] = useState<string[]>([]);
@@ -975,25 +1237,21 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const loadedAnimationCatalogKeyRef = useRef<string>();
   const loadedVariantCatalogKeyRef = useRef<string>();
   const animationCatalogKey = useMemo(
-    () => JSON.stringify([assetPath, animationProfile, effectiveEnabledMods]),
-    [animationProfile, assetPath, effectiveEnabledMods],
+    () => JSON.stringify([assetPath, animationProfile, effectiveEnabledMods, primaryAnimationTable ?? ""]),
+    [animationProfile, assetPath, effectiveEnabledMods, primaryAnimationTable],
   );
   const variantCatalogKey = `${variantMeshSessionType}\0${variantMeshSessionId ?? ""}\0${assetPath}`;
   const selectedAnimation = animationOptions.find((animation) => animation.key === selectedAnimationPath);
   const selectedAnimationReference = selectedAnimation?.reference;
   const visibleWarnings = filterVisualsModelPreviewWarnings(warnings, isFeaturesForModdersEnabled);
   const paintColorValue = Number.parseInt(paintColor.slice(1), 16);
-  const paintHasUnsavedChanges =
-    (paintSessionRef.current?.hasUnsavedChanges ?? false) || paintFactionScopeDirty;
+  const paintHasUnsavedChanges = (paintSessionRef.current?.hasUnsavedChanges ?? false) || paintFactionScopeDirty;
   const paintLayers: UnitPainterLayerInfo[] = paintSessionRef.current?.layers ?? [];
   const paintActiveLayerId = paintSessionRef.current?.activeLayerId ?? "";
   const paintActiveLayer = paintLayers.find((layer) => layer.id === paintActiveLayerId);
   const paintActiveLayerIndex = paintLayers.findIndex((layer) => layer.id === paintActiveLayerId);
   const paintActiveDecal = paintSessionRef.current?.activeDecalInfo;
-  const paintFactionPreviewOptions = useMemo(
-    () => getPainterFactionOptions(unitVariantContext),
-    [unitVariantContext],
-  );
+  const paintFactionPreviewOptions = useMemo(() => getPainterFactionOptions(unitVariantContext), [unitVariantContext]);
   const paintFactionSaveOptions = useMemo(
     () => getPainterFactionOptions(paintFactionScopeSource, unitVariantContext),
     [paintFactionScopeSource, unitVariantContext],
@@ -1004,9 +1262,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   );
   const paintFactionPreviewColours = paintFactionPreviewResolution.colours;
   const canPreviewFactionColours =
-    variantMeshSessionType === "unitViewer"
-    && !!variantMeshSessionId
-    && paintFactionPreviewOptions.length > 0;
+    variantMeshSessionType === "unitViewer" && !!variantMeshSessionId && paintFactionPreviewOptions.length > 0;
   const paintRecentColors = paintColorHistory.slice(0, 8);
   const paintActiveDecalTint = paintActiveDecal
     ? `#${[paintActiveDecal.tint.r, paintActiveDecal.tint.g, paintActiveDecal.tint.b]
@@ -1018,10 +1274,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
   const rememberUsedPaintColor = (color: string) => {
     const normalized = color.toLowerCase();
-    setPaintColorHistory((current) => [
-      normalized,
-      ...current.filter((value) => value !== normalized),
-    ].slice(0, PAINT_COLOR_HISTORY_LIMIT));
+    setPaintColorHistory((current) =>
+      [normalized, ...current.filter((value) => value !== normalized)].slice(0, PAINT_COLOR_HISTORY_LIMIT),
+    );
   };
 
   const choosePaintColor = (color: string) => {
@@ -1049,9 +1304,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       } catch (decalError) {
         pendingDecalRef.current = undefined;
         setPendingDecal(undefined);
-        setPaintExportStatus(
-          decalError instanceof Error ? decalError.message : "Failed to load decal image.",
-        );
+        setPaintExportStatus(decalError instanceof Error ? decalError.message : "Failed to load decal image.");
       } finally {
         if (decalFileInputRef.current) decalFileInputRef.current.value = "";
       }
@@ -1068,9 +1321,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           setPaintHistoryVersion((value) => value + 1);
         }
       } catch (decalError) {
-        setPaintExportStatus(
-          decalError instanceof Error ? decalError.message : "Failed to replace decal image.",
-        );
+        setPaintExportStatus(decalError instanceof Error ? decalError.message : "Failed to replace decal image.");
       } finally {
         if (decalReplaceFileInputRef.current) decalReplaceFileInputRef.current.value = "";
       }
@@ -1084,10 +1335,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     setPaintHistoryVersion((value) => value + 1);
   };
 
-  const updateDecalAndRefresh = (
-    patch: UnitPainterDecalPatch,
-    recordHistory = true,
-  ) => {
+  const updateDecalAndRefresh = (patch: UnitPainterDecalPatch, recordHistory = true) => {
     if (paintSessionRef.current?.updateActiveDecal(patch, recordHistory)) {
       setPaintExportStatus("");
       setPaintHistoryVersion((value) => value + 1);
@@ -1100,10 +1348,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     const decal = paintSessionRef.current?.activeDecalInfo;
     if (!decal) return false;
     const aspect = decal.heightV / Math.max(decal.widthU, 0.001);
-    return updateDecalAndRefresh(
-      { widthU, heightV: Math.max(0.001, widthU * aspect) },
-      recordHistory,
-    );
+    return updateDecalAndRefresh({ widthU, heightV: Math.max(0.001, widthU * aspect) }, recordHistory);
   };
 
   const finishActiveDecalControlGesture = () => {
@@ -1172,9 +1417,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       clearPaintHoverVisual();
       return;
     }
-    showPaintHoverSurface(
-      paintSessionRef.current?.getIntersectionSurfaceHighlight(intersection, selectMode),
-    );
+    showPaintHoverSurface(paintSessionRef.current?.getIntersectionSurfaceHighlight(intersection, selectMode));
   };
 
   textureToModelHoverRef.current = (hover) => {
@@ -1188,20 +1431,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       return;
     }
     const hoverScope =
-      selectToolModeRef.current
-      ?? (paintScopeRef.current === "all" ? "island" : paintScopeRef.current);
+      selectToolModeRef.current ?? (paintScopeRef.current === "all" ? "island" : paintScopeRef.current);
     if (hoverScope === "similar") {
       clearPaintHoverVisual();
       return;
     }
-    showPaintHoverSurface(
-      session.getTexturePointSurfaceHighlight(
-        hover.textureId,
-        hover.x,
-        hover.y,
-        hoverScope,
-      ),
-    );
+    showPaintHoverSurface(session.getTexturePointSurfaceHighlight(hover.textureId, hover.x, hover.y, hoverScope));
   };
 
   const clearPaintSelection = () => {
@@ -1226,11 +1461,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
     let clicked = false;
     if (selectMode === "similar") {
-      clicked = session.selectSimilarIntersection(
-        intersection,
-        similarToleranceRef.current,
-        operation,
-      );
+      clicked = session.selectSimilarIntersection(intersection, similarToleranceRef.current, operation);
     } else {
       // Never fall back from Select Island to the whole material. If the hit has no
       // resolvable UV island, leave the current selection untouched.
@@ -1371,12 +1602,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         : decalToolActive
           ? "#facc15"
           : selectMode === "island"
-          ? "#a78bfa"
-          : selectMode === "material"
-            ? "#22d3ee"
-            : brushSettingsRef.current.mode === "restore"
-              ? "#f59e0b"
-              : "rgba(255,255,255,0.9)";
+            ? "#a78bfa"
+            : selectMode === "material"
+              ? "#22d3ee"
+              : brushSettingsRef.current.mode === "restore"
+                ? "#f59e0b"
+                : "rgba(255,255,255,0.9)";
 
       cursor.style.display = "block";
       cursor.style.width = `${radius * 2}px`;
@@ -1420,16 +1651,13 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       if (localX < 0 || localY < 0 || localX > rect.width || localY > rect.height) return undefined;
 
       const viewportHeight = Math.max(rect.height, 1);
-      pointer.set(
-        (localX / Math.max(rect.width, 1)) * 2 - 1,
-        -(localY / viewportHeight) * 2 + 1,
-      );
+      pointer.set((localX / Math.max(rect.width, 1)) * 2 - 1, -(localY / viewportHeight) * 2 + 1);
       raycaster.setFromCamera(pointer, camera);
       const isolationScope = paintScopeRef.current;
       const shouldPierceUnselected =
-        paintIsolationModeRef.current !== "off"
-        && (isolationScope === "material" || isolationScope === "island")
-        && !!paintSessionRef.current;
+        paintIsolationModeRef.current !== "off" &&
+        (isolationScope === "material" || isolationScope === "island") &&
+        !!paintSessionRef.current;
       raycaster.firstHitOnly = !shouldPierceUnselected;
       const hits = raycaster.intersectObject(root, true);
       raycaster.firstHitOnly = true;
@@ -1445,12 +1673,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     ) => {
       const session = paintSessionRef.current;
       const root = paintRootRef.current;
-      if (
-        !session
-        || !root
-        || !symmetryEnabledRef.current
-        || !session.matchesSelectionScope(projected.hit, scope)
-      ) {
+      if (!session || !root || !symmetryEnabledRef.current || !session.matchesSelectionScope(projected.hit, scope)) {
         return undefined;
       }
 
@@ -1466,9 +1689,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       }
       if (!mirroredHit) return undefined;
       if (
-        mirroredHit.object === projected.hit.object
-        && mirroredHit.faceIndex === projected.hit.faceIndex
-        && mirroredHit.point.distanceToSquared(projected.hit.point) < 1e-8
+        mirroredHit.object === projected.hit.object &&
+        mirroredHit.faceIndex === projected.hit.faceIndex &&
+        mirroredHit.point.distanceToSquared(projected.hit.point) < 1e-8
       ) {
         return undefined;
       }
@@ -1552,9 +1775,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         distanceSinceLastPaintStamp = sampled.distanceSinceLastStamp;
       }
 
-      const mirroredHit = projected
-        ? getMirroredPaintIntersection(projected, scope)
-        : undefined;
+      const mirroredHit = projected ? getMirroredPaintIntersection(projected, scope) : undefined;
 
       if (projected && session && sampleAmounts.length > 0) {
         if (lastPaintIntersection) {
@@ -1693,16 +1914,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           paintCpuMs: round(profile.paintCpuMs),
           renderFrames: profile.renderFrames,
           renderCpuMs: round(profile.renderCpuMs),
-          avgRenderCpuMs: round(
-            profile.renderFrames > 0 ? profile.renderCpuMs / profile.renderFrames : 0,
-          ),
+          avgRenderCpuMs: round(profile.renderFrames > 0 ? profile.renderCpuMs / profile.renderFrames : 0),
           maxRenderCpuMs: round(profile.maxRenderCpuMs),
           bvhRefitPasses: profile.bvhRefitPasses,
           bvhRefits: profile.bvhRefits,
           bvhRefitMs: round(profile.bvhRefitMs),
-          avgBvhRefitMs: round(
-            profile.bvhRefitPasses > 0 ? profile.bvhRefitMs / profile.bvhRefitPasses : 0,
-          ),
+          avgBvhRefitMs: round(profile.bvhRefitPasses > 0 ? profile.bvhRefitMs / profile.bvhRefitPasses : 0),
           maxBvhRefitMs: round(profile.maxBvhRefitMs),
           gpuUpdateRanges: gpu.updateRanges,
           gpuUpdateMiB: round(gpu.updateBytes / 1024 / 1024),
@@ -1716,11 +1933,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       }
       activeStrokeColor = "";
       activeStrokeMode = undefined;
-      if (
-        event &&
-        activePointerId != null &&
-        renderer.domElement.hasPointerCapture(activePointerId)
-      ) {
+      if (event && activePointerId != null && renderer.domElement.hasPointerCapture(activePointerId)) {
         renderer.domElement.releasePointerCapture(activePointerId);
       }
       activePointerId = undefined;
@@ -1728,9 +1941,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
     const finishDecalTransform = (event?: PointerEvent) => {
       if (activeDecalPointerId == null) return;
-      if (
-        renderer.domElement.hasPointerCapture(activeDecalPointerId)
-      ) {
+      if (renderer.domElement.hasPointerCapture(activeDecalPointerId)) {
         renderer.domElement.releasePointerCapture(activeDecalPointerId);
       }
       activeDecalPointerId = undefined;
@@ -1785,9 +1996,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         event.preventDefault();
         event.stopImmediatePropagation();
         const projected = getPaintIntersection(event.clientX, event.clientY);
-        const layerId = projected
-          ? session.addDecalLayerAtIntersection(projected.hit, pendingDecal)
-          : undefined;
+        const layerId = projected ? session.addDecalLayerAtIntersection(projected.hit, pendingDecal) : undefined;
         if (layerId) {
           pendingDecalRef.current = undefined;
           setPendingDecal(undefined);
@@ -1855,10 +2064,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         event.preventDefault();
         event.stopImmediatePropagation();
         if (!isAltOrbiting) {
-          const totalDistance = Math.hypot(
-            event.clientX - altOrbitStart.x,
-            event.clientY - altOrbitStart.y,
-          );
+          const totalDistance = Math.hypot(event.clientX - altOrbitStart.x, event.clientY - altOrbitStart.y);
           if (totalDistance >= ALT_ORBIT_DRAG_THRESHOLD_PX) isAltOrbiting = true;
         }
         if (isAltOrbiting) {
@@ -1886,12 +2092,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         const projected = paintToPointer(event);
         if (needsLinkedHover) {
           const session = paintSessionRef.current;
-          const hoverScope =
-            paintScopeRef.current === "all" ? "island" : paintScopeRef.current;
+          const hoverScope = paintScopeRef.current === "all" ? "island" : paintScopeRef.current;
           textureLinkedHoverSinkRef.current?.(
-            projected?.hit && session
-              ? session.getIntersectionTextureHover(projected.hit, hoverScope)
-              : undefined,
+            projected?.hit && session ? session.getIntersectionTextureHover(projected.hit, hoverScope) : undefined,
           );
         }
         return;
@@ -1904,12 +2107,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         if (needsLinkedHover) {
           const session = paintSessionRef.current;
           const hoverScope =
-            selectToolModeRef.current
-            ?? (paintScopeRef.current === "all" ? "island" : paintScopeRef.current);
+            selectToolModeRef.current ?? (paintScopeRef.current === "all" ? "island" : paintScopeRef.current);
           textureLinkedHoverSinkRef.current?.(
-            projected?.hit && session
-              ? session.getIntersectionTextureHover(projected.hit, hoverScope)
-              : undefined,
+            projected?.hit && session ? session.getIntersectionTextureHover(projected.hit, hoverScope) : undefined,
           );
         }
       }
@@ -1994,10 +2194,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         const renderCpuMs = completedAt - renderStartedAt;
         activeStrokeProfile.renderFrames += 1;
         activeStrokeProfile.renderCpuMs += renderCpuMs;
-        activeStrokeProfile.maxRenderCpuMs = Math.max(
-          activeStrokeProfile.maxRenderCpuMs,
-          renderCpuMs,
-        );
+        activeStrokeProfile.maxRenderCpuMs = Math.max(activeStrokeProfile.maxRenderCpuMs, renderCpuMs);
       }
 
       if (context.isPlaying && paintSessionRef.current) {
@@ -2008,10 +2205,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           activeStrokeProfile.bvhRefitPasses += 1;
           activeStrokeProfile.bvhRefits += bvhRefits;
           activeStrokeProfile.bvhRefitMs += bvhRefitMs;
-          activeStrokeProfile.maxBvhRefitMs = Math.max(
-            activeStrokeProfile.maxBvhRefitMs,
-            bvhRefitMs,
-          );
+          activeStrokeProfile.maxBvhRefitMs = Math.max(activeStrokeProfile.maxBvhRefitMs, bvhRefitMs);
         }
       }
       const afterNextRender = context.afterNextRender;
@@ -2101,16 +2295,45 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           }))
           .sort(
             (first, second) =>
-              first.label.localeCompare(second.label)
-              || first.path.localeCompare(second.path)
-              || (first.reference.fragmentPath ?? "").localeCompare(second.reference.fragmentPath ?? "")
-              || (first.reference.metadataPath ?? "").localeCompare(second.reference.metadataPath ?? "")
-              || first.key.localeCompare(second.key),
+              first.label.localeCompare(second.label) ||
+              first.path.localeCompare(second.path) ||
+              (first.reference.fragmentPath ?? "").localeCompare(second.reference.fragmentPath ?? "") ||
+              (first.reference.metadataPath ?? "").localeCompare(second.reference.metadataPath ?? "") ||
+              first.key.localeCompare(second.key),
           );
+        let binDefaultAnimation: (typeof animations)[number] | undefined;
+        const preferredAnimationPath =
+          result.animationDefaults?.[animationProfile]?.path ?? result.animationDefaults?.ground?.path;
+        if (primaryAnimationTable && variantMeshSessionId) {
+          const binReference = await resolveBinStandingReference(variantMeshSessionId, primaryAnimationTable);
+          if (isCancelled) return;
+          console.log("[unit viewer] part animation", {
+            role: "primary",
+            table: primaryAnimationTable,
+            ...binReference,
+          });
+          if (binReference) {
+            const normalize = (value?: string | null) => (value ?? "").replaceAll("\\", "/").toLowerCase();
+            // Match path AND fragment so the option carries this bin's metadata, not another bin's.
+            const existing = animations.find(
+              (animation) =>
+                normalize(animation.path) === normalize(binReference.path) &&
+                normalize(animation.reference.fragmentPath) === normalize(binReference.fragmentPath),
+            );
+            if (existing) binDefaultAnimation = existing;
+            else {
+              binDefaultAnimation = {
+                key: getAnimationSelectionKey(binReference, animations.length),
+                path: binReference.path,
+                label: getAnimationLabel(binReference.path),
+                reference: binReference,
+              };
+              animations.push(binDefaultAnimation);
+            }
+          }
+        }
         const options = [NONE_ANIMATION, ...animations];
-        const preferredAnimationPath = result.animationDefaults?.[animationProfile]?.path
-          ?? result.animationDefaults?.ground?.path;
-        const defaultAnimation = selectDefaultAnimation(animations, preferredAnimationPath);
+        const defaultAnimation = binDefaultAnimation ?? selectDefaultAnimation(animations, preferredAnimationPath);
         setAnimationOptions(options);
         setSelectedAnimationPath(defaultAnimation?.key || "");
         setCatalogDiagnostics(result.diagnostics || (result.error ? [result.error] : []));
@@ -2135,7 +2358,15 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     return () => {
       isCancelled = true;
     };
-  }, [animationCatalogKey, animationProfile, assetPath, effectiveEnabledMods, isActive]);
+  }, [
+    animationCatalogKey,
+    animationProfile,
+    assetPath,
+    effectiveEnabledMods,
+    isActive,
+    primaryAnimationTable,
+    variantMeshSessionId,
+  ]);
 
   useEffect(() => {
     if (!isActive || loadedVariantCatalogKeyRef.current === variantCatalogKey) return;
@@ -2188,7 +2419,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const activeVariantSlots = useMemo(
     () =>
       variantCatalog
-        ? getComparisonActiveVariantMeshSlots(variantCatalog, variantSelections).filter((slot) => slot.choices.length > 1)
+        ? getComparisonActiveVariantMeshSlots(variantCatalog, variantSelections).filter(
+            (slot) => slot.choices.length > 1,
+          )
         : [],
     [variantCatalog, variantSelections],
   );
@@ -2196,10 +2429,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     () => activeVariantSlots.filter((slot) => variantSelections[slot.slotPath] === ALL_VARIANTS),
     [activeVariantSlots, variantSelections],
   );
-  const allVariantSlotPaths = useMemo(
-    () => new Set(allVariantSlots.map((slot) => slot.slotPath)),
-    [allVariantSlots],
-  );
+  const allVariantSlotPaths = useMemo(() => new Set(allVariantSlots.map((slot) => slot.slotPath)), [allVariantSlots]);
   const comparisonColumnSlot = allVariantSlots[0];
   const comparisonRowSlot = allVariantSlots[1];
   const comparisonLayerSlot = allVariantSlots[2];
@@ -2220,7 +2450,10 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           const concreteSelections = Object.fromEntries(
             variantCatalog.slots.map((slot) => {
               const selected = variantSelections[slot.slotPath];
-              return [slot.slotPath, selected == null || selected === ALL_VARIANTS ? slot.defaultChoiceIndex : selected];
+              return [
+                slot.slotPath,
+                selected == null || selected === ALL_VARIANTS ? slot.defaultChoiceIndex : selected,
+              ];
             }),
           ) as Record<string, number>;
           if (comparisonColumnSlot && columnChoice) {
@@ -2340,10 +2573,25 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         let singleExportRoundTripMs = 0;
         let singleGltfLoadMs = 0;
         let maxClipDuration = 0;
+        const companionScenes: THREE.Object3D[] = [];
+        const placeables: PreviewPlaceable[] = [];
+        let engineScene: THREE.Object3D | undefined;
+        let engineCompanion: VisualsCompanionModel | undefined;
+        const addCloneAction = (scene: THREE.Object3D, clip: THREE.AnimationClip) => {
+          const mixer = new THREE.AnimationMixer(scene);
+          const action = mixer.clipAction(clip);
+          action.setLoop(THREE.LoopRepeat, Infinity);
+          action.timeScale = animationSpeedRef.current;
+          action.play();
+          action.paused = !isPlayingRef.current;
+          ownedMixers.push(mixer);
+          ownedActions.push(action);
+        };
         let exportsToLoad: Array<{
           previewId: string;
           url: string;
           warnings?: string[];
+          companion?: VisualsCompanionModel;
         }>;
 
         if (comparisonVariants.length === 1) {
@@ -2359,11 +2607,66 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             throw new Error(exportResult.error || "Failed to export this model.");
           }
           singleExportResult = exportResult;
-          exportsToLoad = [{
-            previewId: exportResult.previewId,
-            url: exportResult.url,
-            warnings: exportResult.warnings,
-          }];
+          exportsToLoad = [
+            {
+              previewId: exportResult.previewId,
+              url: exportResult.url,
+              warnings: exportResult.warnings,
+            },
+          ];
+          ownedPreviewIds.add(exportResult.previewId);
+          for (const companion of companionModels ?? []) {
+            if (isCancelled) break;
+            let companionReference: VisualsModelPreviewAnimationReference | undefined;
+            let binReference: VisualsModelPreviewAnimationReference | undefined;
+            if (companion.animationTable && variantMeshSessionId) {
+              binReference = await resolveBinStandingReference(variantMeshSessionId, companion.animationTable);
+            }
+            try {
+              const companionCatalog = await getVisualsModelAnimationCatalog(companion.assetPath, effectiveEnabledMods);
+              const companionAnimations = (companionCatalog.animations || []).filter((animation) =>
+                animation.path?.trim(),
+              );
+              const companionProfile = companion.animationProfile ?? "ground";
+              const preferredPath =
+                companionCatalog.animationDefaults?.[companionProfile]?.path ??
+                companionCatalog.animationDefaults?.ground?.path;
+              const companionAnimation = selectDefaultAnimation(
+                companionAnimations.map((reference) => ({
+                  path: reference.path,
+                  label: getAnimationLabel(reference.path),
+                  reference,
+                })),
+                preferredPath,
+              );
+              companionReference = binReference ?? companionAnimation?.reference;
+            } catch {
+              // Companions without a resolvable animation catalog render in their bind pose.
+            }
+            if (binReference && !companionReference) companionReference = binReference;
+            console.log("[unit viewer] part animation", {
+              role: companion.role,
+              table: companion.animationTable,
+              clip: companionReference?.path,
+            });
+            const companionExport = await exportVisualsModel(
+              companion.assetPath,
+              effectiveEnabledMods,
+              companionReference ? [companionReference] : [],
+              [],
+            );
+            if (!companionExport.success || !companionExport.previewId || !companionExport.url) {
+              warningSet.add(companionExport.error || `Failed to export ${companion.role} model.`);
+              continue;
+            }
+            ownedPreviewIds.add(companionExport.previewId);
+            exportsToLoad.push({
+              previewId: companionExport.previewId,
+              url: companionExport.url,
+              warnings: companionExport.warnings,
+              companion,
+            });
+          }
         } else {
           const batchResult = await exportVisualsModelBatch(
             assetPath,
@@ -2426,10 +2729,56 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
 
           internObjectResources(gltf.scene, resourcePool);
           preloadObjectTextures(context, gltf.scene, resourcePool);
-          ownedModels.push(gltf.scene);
+          const companion = exportItem.companion;
+          if (companion?.seatHost && companion.techAnimPaths?.length && variantMeshSessionId) {
+            try {
+              let techBones: TechSkeletonBone[] | undefined;
+              for (const techAnimPath of companion.techAnimPaths) {
+                const tech = await window.api?.getUnitViewerSkeletonAnim(variantMeshSessionId, techAnimPath);
+                if (tech?.success && tech.bones) {
+                  techBones = tech.bones;
+                  console.log("[unit viewer] engine tech anim", techAnimPath);
+                  break;
+                }
+              }
+              if (techBones) addTechAttachmentNodes(gltf.scene, techBones);
+              else console.log("[unit viewer] engine tech anim unavailable", companion.techAnimPaths);
+            } catch (techError) {
+              console.log("[unit viewer] engine tech anim failed", techError);
+            }
+            if (isCancelled) {
+              disposeObject(gltf.scene);
+              return;
+            }
+          }
+          if (companion) {
+            companionScenes.push(gltf.scene);
+            if (companion.offset) gltf.scene.position.set(...companion.offset);
+            if (companion.scale && companion.scale > 0) gltf.scene.scale.multiplyScalar(companion.scale);
+          } else {
+            ownedModels.push(gltf.scene);
+          }
           ownedGroup.add(gltf.scene);
+          const placeableRole = companion ? companion.role : primaryModelRole;
+          const placeable: PreviewPlaceable = {
+            assetPath: companion ? companion.assetPath : assetPath,
+            animationTable: companion ? companion.animationTable : primaryAnimationTable,
+            scene: gltf.scene,
+            kind:
+              placeableRole === "engine" || companion?.seatHost
+                ? "engine"
+                : placeableRole === "mount"
+                  ? "mount"
+                  : "crew",
+            count: Math.max(1, (companion ? companion.count : primaryModelCount) ?? 1),
+          };
+          if (placeable.kind === "engine" && companion) {
+            engineScene = gltf.scene;
+            engineCompanion = companion;
+          }
+          placeables.push(placeable);
 
-          if (selectedAnimationPath && gltf.animations.length > 0) {
+          if ((companion ? true : selectedAnimationPath) && gltf.animations.length > 0) {
             const mixer = new THREE.AnimationMixer(gltf.scene);
             const animation = gltf.animations[0];
             const action = mixer.clipAction(animation);
@@ -2442,6 +2791,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             action.paused = !isPlayingRef.current;
             ownedMixers.push(mixer);
             ownedActions.push(action);
+            placeable.clip = animation;
             maxClipDuration = Math.max(maxClipDuration, gltf.animations[0].duration);
           }
         }
@@ -2449,13 +2799,23 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         if (isCancelled) return;
 
         const sceneSetupStartedAt = performance.now();
-        layoutComparisonModels(
-          ownedModels,
-          comparisonColumnCount,
-          comparisonRowCount,
-          comparisonLayerCount,
-        );
-        paintRootRef.current = comparisonVariants.length === 1 ? ownedModels[0] ?? null : null;
+        if (engineScene && engineCompanion) {
+          const crewAndMounts = placeables.filter((placeable) => placeable.kind !== "engine");
+          if (attachToEngine(engineScene, engineCompanion, crewAndMounts, addCloneAction)) {
+            engineScene.position.set(0, 0, 0);
+          } else {
+            placeEngineBesideCrew(
+              engineScene,
+              crewAndMounts.map((placeable) => placeable.scene),
+              ownedMixers,
+            );
+          }
+        }
+        // Companion parts share the primary's origin (rider animations are authored in mount space), so skip recentering.
+        if (companionScenes.length === 0) {
+          layoutComparisonModels(ownedModels, comparisonColumnCount, comparisonRowCount, comparisonLayerCount);
+        }
+        paintRootRef.current = comparisonVariants.length === 1 ? (ownedModels[0] ?? null) : null;
         context.scene.add(ownedGroup);
         context.mixers = ownedMixers;
         context.actions = ownedActions;
@@ -2474,11 +2834,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         const sceneReadyAt = performance.now();
         setWarnings([...warningSet]);
 
-        if (
-          comparisonVariants.length === 1 &&
-          singleExportResult?.previewId &&
-          singleExportResult.timings
-        ) {
+        if (comparisonVariants.length === 1 && singleExportResult?.previewId && singleExportResult.timings) {
           const timingPreviewId = singleExportResult.previewId;
           context.afterNextRender = ({ renderMs, completedAt }) => {
             if (isCancelled || !ownedPreviewIds.has(timingPreviewId)) return;
@@ -2524,6 +2880,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     comparisonRowCount,
     comparisonTooLarge,
     comparisonVariants,
+    companionModels,
+    primaryModelCount,
+    primaryModelRole,
     effectiveEnabledMods,
     isActive,
     paintProjectReloadVersion,
@@ -2572,12 +2931,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         getDefaultFactionPreviewFaction(unitVariantContext) || paintFactionPreviewOptions[0],
       );
     }
-  }, [
-    isPaintFactionColourPreviewEnabled,
-    paintFactionPreviewFaction,
-    paintFactionPreviewOptions,
-    unitVariantContext,
-  ]);
+  }, [isPaintFactionColourPreviewEnabled, paintFactionPreviewFaction, paintFactionPreviewOptions, unitVariantContext]);
 
   useEffect(() => {
     if (!enablePainting || !unitVariantContext) return;
@@ -2652,14 +3006,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           activeLayerId: pendingProject.project.activeLayerId,
           layers: pendingProject.project.layers,
         });
-        const restoredColorHistory =
-          pendingProject.project.usedColorHistory?.slice(0, PAINT_COLOR_HISTORY_LIMIT) ?? [];
+        const restoredColorHistory = pendingProject.project.usedColorHistory?.slice(0, PAINT_COLOR_HISTORY_LIMIT) ?? [];
         setPaintColorHistory(restoredColorHistory);
-        setPaintColor(
-          pendingProject.project.selectedColor
-          ?? restoredColorHistory[0]
-          ?? DEFAULT_PAINT_COLOR,
-        );
+        setPaintColor(pendingProject.project.selectedColor ?? restoredColorHistory[0] ?? DEFAULT_PAINT_COLOR);
         setPaintPackPath(pendingProject.packPath);
         setPaintExportStatus(`Opened painted mod: ${pendingProject.packPath}`);
       } catch (projectError) {
@@ -2671,9 +3020,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     }
     setPaintTextureCount(session.textureCount);
     setPaintTextureViewId((current) =>
-      session.textureViews.some((view) => view.id === current)
-        ? current
-        : session.textureViews[0]?.id,
+      session.textureViews.some((view) => view.id === current) ? current : session.textureViews[0]?.id,
     );
     setPaintHistoryVersion((value) => value + 1);
   }, [comparisonModelCount, enablePainting, isPainterEnabled, status]);
@@ -2682,45 +3029,69 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     if (!isPaintFactionColourPreviewEnabled || variantMeshSessionType !== "unitViewer" || !variantMeshSessionId) return;
     let canceled = false;
     setPaintFactionPreviewError("");
-    void getUnitPainterFactionMaskBindings(variantMeshSessionId, assetPath).then((result) => {
-      if (canceled) return;
-      if (!result.success) {
-        setPaintFactionMaskBindings([]);
-        setPaintFactionPreviewError(result.error || "Failed to resolve faction-colour masks.");
-        return;
-      }
-      setPaintFactionMaskBindings(result.bindings || []);
-      if ((result.bindings || []).length === 0) setPaintFactionPreviewError("No faction-colour masks were found for this model.");
-    }).catch((error) => {
-      if (!canceled) setPaintFactionPreviewError(error instanceof Error ? error.message : "Failed to resolve faction-colour masks.");
-    });
-    return () => { canceled = true; };
+    void getUnitPainterFactionMaskBindings(variantMeshSessionId, assetPath)
+      .then((result) => {
+        if (canceled) return;
+        if (!result.success) {
+          setPaintFactionMaskBindings([]);
+          setPaintFactionPreviewError(result.error || "Failed to resolve faction-colour masks.");
+          return;
+        }
+        setPaintFactionMaskBindings(result.bindings || []);
+        if ((result.bindings || []).length === 0)
+          setPaintFactionPreviewError("No faction-colour masks were found for this model.");
+      })
+      .catch((error) => {
+        if (!canceled)
+          setPaintFactionPreviewError(
+            error instanceof Error ? error.message : "Failed to resolve faction-colour masks.",
+          );
+      });
+    return () => {
+      canceled = true;
+    };
   }, [assetPath, isPaintFactionColourPreviewEnabled, variantMeshSessionId, variantMeshSessionType]);
 
   useEffect(() => {
-    if (!isPaintFactionColourPreviewEnabled || !isPainterEnabled || status !== "ready" || !paintRootRef.current || !paintFactionPreviewColours || paintFactionMaskBindings.length === 0) return;
+    if (
+      !isPaintFactionColourPreviewEnabled ||
+      !isPainterEnabled ||
+      status !== "ready" ||
+      !paintRootRef.current ||
+      !paintFactionPreviewColours ||
+      paintFactionMaskBindings.length === 0
+    )
+      return;
     let canceled = false;
     let disposePreview: (() => void) | undefined;
-    void applyFactionColourPreview(paintRootRef.current, paintFactionMaskBindings, paintFactionPreviewColours).then((dispose) => {
-      if (canceled) dispose();
-      else disposePreview = dispose;
-    });
+    void applyFactionColourPreview(paintRootRef.current, paintFactionMaskBindings, paintFactionPreviewColours).then(
+      (dispose) => {
+        if (canceled) dispose();
+        else disposePreview = dispose;
+      },
+    );
     return () => {
       canceled = true;
       disposePreview?.();
     };
-  }, [isPaintFactionColourPreviewEnabled, isPainterEnabled, paintFactionMaskBindings, paintFactionPreviewColours, status]);
+  }, [
+    isPaintFactionColourPreviewEnabled,
+    isPainterEnabled,
+    paintFactionMaskBindings,
+    paintFactionPreviewColours,
+    status,
+  ]);
 
   useEffect(() => {
     if (
-      paintIsolationMode === "off"
-      || !isPainterEnabled
-      || status !== "ready"
-      || paintViewMode === "texture"
-      || !paintRootRef.current
-      || !paintSessionRef.current
-      || (paintScope !== "material" && paintScope !== "island")
-      || paintSessionRef.current.selectionPartitionInfo
+      paintIsolationMode === "off" ||
+      !isPainterEnabled ||
+      status !== "ready" ||
+      paintViewMode === "texture" ||
+      !paintRootRef.current ||
+      !paintSessionRef.current ||
+      (paintScope !== "material" && paintScope !== "island") ||
+      paintSessionRef.current.selectionPartitionInfo
     ) {
       return;
     }
@@ -2733,14 +3104,17 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       .filter((surface): surface is THREE.Mesh => !!surface);
     if (isolatedSurfaces.length === 0) return;
 
-    const restoredMaterials = new Map<THREE.Material, {
-      transparent: boolean;
-      opacity: number;
-      depthWrite: boolean;
-      polygonOffset: boolean;
-      polygonOffsetFactor: number;
-      polygonOffsetUnits: number;
-    }>();
+    const restoredMaterials = new Map<
+      THREE.Material,
+      {
+        transparent: boolean;
+        opacity: number;
+        depthWrite: boolean;
+        polygonOffset: boolean;
+        polygonOffsetFactor: number;
+        polygonOffsetUnits: number;
+      }
+    >();
     paintRootRef.current.traverse((child) => {
       if (!(child instanceof THREE.Mesh) || child.name.startsWith("__whmm_unit_painter_")) return;
       const materials = Array.isArray(child.material) ? child.material : [child.material];
@@ -2786,21 +3160,14 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       }
       for (const surface of isolatedSurfaces) disposePainterSurfaceOverlay(surface);
     };
-  }, [
-    isPainterEnabled,
-    paintIsolationMode,
-    paintScope,
-    paintSelectionVisualVersion,
-    paintViewMode,
-    status,
-  ]);
+  }, [isPainterEnabled, paintIsolationMode, paintScope, paintSelectionVisualVersion, paintViewMode, status]);
 
   useEffect(() => {
     const isEditingControl = (target: EventTarget | null) =>
-      target instanceof HTMLInputElement
-      || target instanceof HTMLTextAreaElement
-      || target instanceof HTMLSelectElement
-      || (target instanceof HTMLElement && target.isContentEditable);
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement ||
+      (target instanceof HTMLElement && target.isContentEditable);
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (!painterEnabledRef.current || isEditingControl(event.target)) return;
@@ -2828,9 +3195,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       if (event.code === "BracketLeft" || event.code === "BracketRight") {
         const direction = event.code === "BracketRight" ? 1 : -1;
         if (event.shiftKey) {
-          setPaintBrushHardness((value) =>
-            Math.max(0, Math.min(1, Math.round((value + direction * 0.05) * 20) / 20)),
-          );
+          setPaintBrushHardness((value) => Math.max(0, Math.min(1, Math.round((value + direction * 0.05) * 20) / 20)));
         } else {
           setPaintBrushRadius((value) => Math.max(4, Math.min(64, value + direction * 2)));
         }
@@ -2933,8 +3298,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           setPaintFactionVariantName(openedFactionScope.newVariantName);
           setPaintFactionVmdFilename(openedFactionScope.newVariantFilename);
           setPaintFactionNamesCustomized(
-            openedFactionScope.newVariantName !== defaults.variantName
-              || openedFactionScope.newVariantFilename !== defaults.vmdFilename,
+            openedFactionScope.newVariantName !== defaults.variantName ||
+              openedFactionScope.newVariantFilename !== defaults.vmdFilename,
           );
         } else {
           const defaultFaction = unitVariantContext?.faction || "";
@@ -2955,15 +3320,15 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           return current.some((path) => normalize(path) === key) ? current : [...current, result.packPath!];
         });
         setVariantSelections(
-          Object.fromEntries(result.project.variantSelections.map((selection) => [selection.slotPath, selection.choiceIndex])),
+          Object.fromEntries(
+            result.project.variantSelections.map((selection) => [selection.slotPath, selection.choiceIndex]),
+          ),
         );
         setIsPainterEnabled(true);
         setIsPlaying(false);
         setPaintProjectReloadVersion((value) => value + 1);
       } catch (projectError) {
-        setPaintExportStatus(
-          projectError instanceof Error ? projectError.message : "Failed to open painted mod.",
-        );
+        setPaintExportStatus(projectError instanceof Error ? projectError.message : "Failed to open painted mod.");
       } finally {
         setIsPaintProjectOpening(false);
       }
@@ -2999,7 +3364,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             throw new Error("The new VMD filename may contain only letters, numbers, '_', and '-'.");
           }
           if (newVariantName.toLowerCase() === source.variantName.toLowerCase()) {
-            throw new Error("Faction-scoped saving requires a new variant key instead of replacing the source variant.");
+            throw new Error(
+              "Faction-scoped saving requires a new variant key instead of replacing the source variant.",
+            );
           }
           if (newVariantFilename.toLowerCase() === source.variantDetails.variantFilename.toLowerCase()) {
             throw new Error("Faction-scoped saving requires a new VMD filename instead of replacing the source VMD.");
@@ -3023,12 +3390,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           selectedColor: paintColor,
           ...(factionScope ? { factionScope } : {}),
         };
-        if (
-          textures.length === 0
-          && !targetPackPath
-          && !paintPackPath
-          && !session.hasUnsavedChanges
-        ) {
+        if (textures.length === 0 && !targetPackPath && !paintPackPath && !session.hasUnsavedChanges) {
           setPaintExportStatus("Nothing has been painted yet.");
           return;
         }
@@ -3063,21 +3425,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         const warningSuffix = result.warnings?.length
           ? ` · ${result.warnings.length} warning${result.warnings.length === 1 ? "" : "s"}`
           : "";
-        const successLabel =
-          mode === "save"
-            ? "Saved mod"
-            : mode === "saveAs"
-              ? "Saved as"
-              : "Created mod";
+        const successLabel = mode === "save" ? "Saved mod" : mode === "saveAs" ? "Saved as" : "Created mod";
         setPaintExportStatus(
-          result.packPath
-            ? `${successLabel}: ${result.packPath}${warningSuffix}`
-            : `${successLabel}${warningSuffix}`,
+          result.packPath ? `${successLabel}: ${result.packPath}${warningSuffix}` : `${successLabel}${warningSuffix}`,
         );
       } catch (exportError) {
-        setPaintExportStatus(
-          exportError instanceof Error ? exportError.message : "Painted mod save failed.",
-        );
+        setPaintExportStatus(exportError instanceof Error ? exportError.message : "Painted mod save failed.");
       } finally {
         setIsPaintExporting(false);
       }
@@ -3101,11 +3454,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   : "absolute inset-0"
           }
         />
-        {isPainterEnabled
-          && paintViewMode !== "model"
-          && status === "ready"
-          && comparisonModelCount === 1
-          && paintSessionRef.current && (
+        {isPainterEnabled &&
+          paintViewMode !== "model" &&
+          status === "ready" &&
+          comparisonModelCount === 1 &&
+          paintSessionRef.current && (
             <div
               className={
                 paintViewMode === "split"
@@ -3113,59 +3466,58 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   : "absolute inset-0"
               }
             >
-            <UnitPainterTextureEditor
-              session={paintSessionRef.current}
-              historyVersion={paintHistoryVersion}
-              selectionKey={`${paintScope}:${paintSessionRef.current?.selectionCount ?? 0}:${paintHistoryVersion}`}
-              selectedTextureId={paintTextureViewId}
-              onSelectedTextureIdChange={setPaintTextureViewId}
-              brushSettings={brushSettingsRef.current}
-              scope={paintScope}
-              paddingPx={paintTexturePadding}
-              onPaddingPxChange={setPaintTexturePadding}
-              selectMode={paintSelectMode}
-              similarTolerance={paintSimilarTolerance}
-              pendingDecal={pendingDecal}
-              onDecalPlaced={finishDecalPlacement}
-              onDecalChanged={(committed) => {
-                setPaintExportStatus("");
-                if (committed) setPaintHistoryVersion((value) => value + 1);
-              }}
-              eyedropperActive={isPaintEyedropperActive}
-              onEyedropperComplete={(sampled) => {
-                const toHex = (value: number) =>
-                  Math.max(0, Math.min(255, value)).toString(16).padStart(2, "0");
-                choosePaintColor(`#${toHex(sampled.r)}${toHex(sampled.g)}${toHex(sampled.b)}`);
-                if (isPaintEyedropperActive) setIsPaintEyedropperActive(false);
-              }}
-              onSelectionComplete={(selection, mode, operation) => {
-                setPaintSelection(selection);
-                if (selection) {
-                  setPaintTextureViewId(selection.textureId);
-                  setPaintScope(mode);
-                  paintScopeRef.current = mode;
-                } else {
-                  setPaintScope("all");
-                  paintScopeRef.current = "all";
-                }
-                refreshPaintSelectionVisual(selection ? mode : "all");
-                if (operation === "replace") choosePaintSelectMode(undefined);
-                setPaintHistoryVersion((value) => value + 1);
-              }}
-              linkedHoverSinkRef={textureLinkedHoverSinkRef}
-              onTextureHover={(textureId, x, y) => {
-                textureToModelHoverRef.current?.({ textureId, x, y });
-              }}
-              onTextureHoverEnd={() => {
-                textureToModelHoverRef.current?.(undefined);
-              }}
-              onStrokeComplete={(changed) => {
-                if (!changed) return;
-                setPaintExportStatus("");
-                setPaintHistoryVersion((value) => value + 1);
-                if (brushSettingsRef.current.mode !== "restore") rememberUsedPaintColor(paintColor);
-              }}
-            />
+              <UnitPainterTextureEditor
+                session={paintSessionRef.current}
+                historyVersion={paintHistoryVersion}
+                selectionKey={`${paintScope}:${paintSessionRef.current?.selectionCount ?? 0}:${paintHistoryVersion}`}
+                selectedTextureId={paintTextureViewId}
+                onSelectedTextureIdChange={setPaintTextureViewId}
+                brushSettings={brushSettingsRef.current}
+                scope={paintScope}
+                paddingPx={paintTexturePadding}
+                onPaddingPxChange={setPaintTexturePadding}
+                selectMode={paintSelectMode}
+                similarTolerance={paintSimilarTolerance}
+                pendingDecal={pendingDecal}
+                onDecalPlaced={finishDecalPlacement}
+                onDecalChanged={(committed) => {
+                  setPaintExportStatus("");
+                  if (committed) setPaintHistoryVersion((value) => value + 1);
+                }}
+                eyedropperActive={isPaintEyedropperActive}
+                onEyedropperComplete={(sampled) => {
+                  const toHex = (value: number) => Math.max(0, Math.min(255, value)).toString(16).padStart(2, "0");
+                  choosePaintColor(`#${toHex(sampled.r)}${toHex(sampled.g)}${toHex(sampled.b)}`);
+                  if (isPaintEyedropperActive) setIsPaintEyedropperActive(false);
+                }}
+                onSelectionComplete={(selection, mode, operation) => {
+                  setPaintSelection(selection);
+                  if (selection) {
+                    setPaintTextureViewId(selection.textureId);
+                    setPaintScope(mode);
+                    paintScopeRef.current = mode;
+                  } else {
+                    setPaintScope("all");
+                    paintScopeRef.current = "all";
+                  }
+                  refreshPaintSelectionVisual(selection ? mode : "all");
+                  if (operation === "replace") choosePaintSelectMode(undefined);
+                  setPaintHistoryVersion((value) => value + 1);
+                }}
+                linkedHoverSinkRef={textureLinkedHoverSinkRef}
+                onTextureHover={(textureId, x, y) => {
+                  textureToModelHoverRef.current?.({ textureId, x, y });
+                }}
+                onTextureHoverEnd={() => {
+                  textureToModelHoverRef.current?.(undefined);
+                }}
+                onStrokeComplete={(changed) => {
+                  if (!changed) return;
+                  setPaintExportStatus("");
+                  setPaintHistoryVersion((value) => value + 1);
+                  if (brushSettingsRef.current.mode !== "restore") rememberUsedPaintColor(paintColor);
+                }}
+              />
             </div>
           )}
         {status !== "ready" && (
@@ -3194,1426 +3546,1386 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         {enablePainting && (
           <div className="absolute left-2 top-2 z-20 flex max-w-[calc(100%-1rem)] flex-col items-stretch gap-1 rounded border border-gray-600 bg-gray-900/95 px-2 py-1 text-xs text-gray-200 shadow-lg">
             <div className="flex w-full flex-wrap items-center gap-1.5">
-            <button
-              type="button"
-              disabled={status !== "ready" || comparisonModelCount !== 1}
-              onClick={() => {
-                setIsPainterEnabled((enabled) => {
-                  if (!enabled) setIsPlaying(false);
-                  else {
-                    setIsPaintEyedropperActive(false);
-                    clearPaintSelection();
-                  }
-                  return !enabled;
-                });
-              }}
-              className={`rounded border px-2 py-1 ${
-                isPainterEnabled
-                  ? "border-blue-400 bg-blue-700/50 text-white"
-                  : "border-gray-600 bg-gray-800 hover:border-blue-400"
-              } disabled:cursor-not-allowed disabled:opacity-40`}
-              title={comparisonModelCount !== 1 ? "Painting is available for one model at a time." : "Paint directly on the unit"}
-            >
-              Paint
-            </button>
-            {isPainterEnabled && status === "ready" && comparisonModelCount === 1 && (
-              <div className="flex overflow-hidden rounded border border-gray-600">
-                <button
-                  type="button"
-                  onClick={() => setPaintViewMode("model")}
-                  className={`px-2 py-1 ${
-                    paintViewMode === "model"
-                      ? "bg-blue-700/60 text-white"
-                      : "bg-gray-800 text-gray-300 hover:bg-gray-700"
-                  }`}
-                  title="Paint directly on the 3D model"
-                >
-                  3D
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaintViewMode("split")}
-                  className={`border-l border-gray-600 px-2 py-1 ${
-                    paintViewMode === "split"
-                      ? "bg-blue-700/60 text-white"
-                      : "bg-gray-800 text-gray-300 hover:bg-gray-700"
-                  }`}
-                  title="Show the 3D model and BaseColour texture together"
-                >
-                  Split
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPaintViewMode("texture");
-                    setIsPaintSymmetryEnabled(false);
-                  }}
-                  className={`border-l border-gray-600 px-2 py-1 ${
-                    paintViewMode === "texture"
-                      ? "bg-blue-700/60 text-white"
-                      : "bg-gray-800 text-gray-300 hover:bg-gray-700"
-                  }`}
-                  title="Paint directly on the BaseColour texture"
-                >
-                  Texture
-                </button>
-              </div>
-            )}
-            {isPainterEnabled && status === "ready" && comparisonModelCount === 1 && paintFactionPreviewOptions.length > 0 && (
-              <label className="flex items-center gap-1 text-gray-400" title="Preview the unit with a faction's uniform colours. This never changes exported BaseColour textures.">
-                Faction preview
-                <select
-                  value={isPaintFactionColourPreviewEnabled ? paintFactionPreviewFaction : ""}
-                  onChange={(event) => {
-                    const faction = event.target.value;
-                    if (!faction) {
-                      setIsPaintFactionColourPreviewEnabled(false);
-                      return;
+              <button
+                type="button"
+                disabled={status !== "ready" || comparisonModelCount !== 1}
+                onClick={() => {
+                  setIsPainterEnabled((enabled) => {
+                    if (!enabled) setIsPlaying(false);
+                    else {
+                      setIsPaintEyedropperActive(false);
+                      clearPaintSelection();
                     }
-                    setPaintFactionPreviewFaction(faction);
-                    setIsPaintFactionColourPreviewEnabled(true);
-                  }}
-                  disabled={!canPreviewFactionColours}
-                  className={`max-w-52 rounded border px-1.5 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-50 ${
-                    isPaintFactionColourPreviewEnabled
-                      ? "border-emerald-500 bg-emerald-950/40 text-emerald-100"
-                      : "border-gray-600 bg-gray-800 text-gray-100"
-                  }`}
-                  aria-label="Faction colour preview"
-                >
-                  <option value="">Off</option>
-                  {paintFactionPreviewOptions.map((faction) => (
-                    <option key={faction} value={faction}>{faction}</option>
-                  ))}
-                </select>
-                {isPaintFactionColourPreviewEnabled && paintFactionPreviewColours && (
-                  <span className="flex items-center gap-0.5" title="Primary / secondary / tertiary faction colours">
-                    {[paintFactionPreviewColours.primary, paintFactionPreviewColours.secondary, paintFactionPreviewColours.tertiary].map((colour, index) => (
-                      <span key={`${colour}-${index}`} className="h-4 w-4 rounded-sm border border-gray-500" style={{ backgroundColor: colour }} />
-                    ))}
-                  </span>
-                )}
-                {isPaintFactionColourPreviewEnabled && paintFactionPreviewError && (
-                  <span className="max-w-48 truncate text-amber-300" title={paintFactionPreviewError}>{paintFactionPreviewError}</span>
-                )}
-              </label>
-            )}
-            <button
-              type="button"
-              disabled={status !== "ready" || comparisonModelCount !== 1 || isPaintProjectOpening || isPaintExporting}
-              onClick={openPaintedMod}
-              className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
-              title="Open a WHMM painted mod for continued editing"
-            >
-              {isPaintProjectOpening ? "Opening…" : "Open painted mod…"}
-            </button>
-            {!isPainterEnabled && paintExportStatus && (
-              <span className="max-w-80 truncate text-gray-300" title={paintExportStatus}>
-                {paintExportStatus}
-              </span>
-            )}
-            </div>
-            <div className="flex w-full flex-wrap items-center gap-1.5 border-t border-gray-700/70 pt-1">
-            {isPainterEnabled && status === "ready" && comparisonModelCount === 1 && (
-              <>
-                <div className="relative">
+                    return !enabled;
+                  });
+                }}
+                className={`rounded border px-2 py-1 ${
+                  isPainterEnabled
+                    ? "border-blue-400 bg-blue-700/50 text-white"
+                    : "border-gray-600 bg-gray-800 hover:border-blue-400"
+                } disabled:cursor-not-allowed disabled:opacity-40`}
+                title={
+                  comparisonModelCount !== 1
+                    ? "Painting is available for one model at a time."
+                    : "Paint directly on the unit"
+                }
+              >
+                Paint
+              </button>
+              {isPainterEnabled && status === "ready" && comparisonModelCount === 1 && (
+                <div className="flex overflow-hidden rounded border border-gray-600">
                   <button
                     type="button"
-                    onClick={() => setIsPaintLayersOpen((open) => !open)}
-                    className={`rounded border px-2 py-1 ${
-                      isPaintLayersOpen
-                        ? "border-violet-400 bg-violet-900/50 text-violet-100"
-                        : "border-gray-600 bg-gray-800 hover:border-violet-400"
+                    onClick={() => setPaintViewMode("model")}
+                    className={`px-2 py-1 ${
+                      paintViewMode === "model"
+                        ? "bg-blue-700/60 text-white"
+                        : "bg-gray-800 text-gray-300 hover:bg-gray-700"
                     }`}
-                    title="Open paint layers"
+                    title="Paint directly on the 3D model"
                   >
-                    Layers {paintLayers.length} · {paintActiveLayer?.name ?? "None"}
+                    3D
                   </button>
-                  {isPaintLayersOpen && (
-                    <div className="absolute left-0 top-full z-40 mt-1 w-80 rounded border border-gray-600 bg-gray-950/95 p-2 shadow-xl">
-                      <div className="mb-1 flex items-center justify-between text-[11px]">
-                        <span className="font-semibold text-gray-200">Painter layers</span>
-                        <span className="text-gray-500">top → bottom</span>
-                      </div>
-                      <div className="max-h-64 space-y-1 overflow-y-auto pr-1">
-                        {[...paintLayers].reverse().map((layer) => {
-                          const index = paintLayers.findIndex((candidate) => candidate.id === layer.id);
-                          const isActive = layer.id === paintActiveLayerId;
-                          return (
-                            <div
-                              key={layer.id}
-                              className={`flex items-center gap-1 rounded border px-1 py-1 ${
-                                isActive
-                                  ? "border-violet-400 bg-violet-950/60"
-                                  : "border-gray-700 bg-gray-900/80 hover:border-gray-500"
-                              }`}
-                              onClick={() => {
-                                const session = paintSessionRef.current;
-                                if (session?.setActiveLayer(layer.id)) {
-                                  const decal = session.activeDecalInfo;
-                                  if (decal) setPaintTextureViewId(decal.targetTextureId);
-                                  setPaintHistoryVersion((value) => value + 1);
-                                }
-                              }}
-                            >
-                              <span
-                                className={`w-4 shrink-0 text-center text-[10px] font-semibold ${
-                                  layer.kind === "decal" ? "text-yellow-300" : "text-blue-300"
-                                }`}
-                                title={layer.kind === "decal" ? "Decal layer" : "Paint layer"}
-                              >
-                                {layer.kind === "decal" ? "D" : "P"}
-                              </span>
-                              <input
-                                type="checkbox"
-                                checked={layer.visible}
-                                onClick={(event) => event.stopPropagation()}
-                                onChange={(event) => {
-                                  if (paintSessionRef.current?.setLayerVisible(layer.id, event.target.checked)) {
-                                    setPaintExportStatus("");
-                                    setPaintHistoryVersion((value) => value + 1);
-                                  }
-                                }}
-                                title="Layer visibility"
-                                aria-label={`Visibility: ${layer.name}`}
-                              />
-                              <input
-                                key={`${layer.id}:${layer.name}`}
-                                defaultValue={layer.name}
-                                onClick={(event) => event.stopPropagation()}
-                                onFocus={() => {
-                                  if (paintSessionRef.current?.setActiveLayer(layer.id)) {
-                                    setPaintHistoryVersion((value) => value + 1);
-                                  }
-                                }}
-                                onBlur={(event) => {
-                                  if (paintSessionRef.current?.renameLayer(layer.id, event.currentTarget.value)) {
-                                    setPaintExportStatus("");
-                                    setPaintHistoryVersion((value) => value + 1);
-                                  } else {
-                                    event.currentTarget.value = layer.name;
-                                  }
-                                }}
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter") event.currentTarget.blur();
-                                }}
-                                aria-label={`Layer name: ${layer.name}`}
-                                className="min-w-0 flex-1 rounded border border-gray-700 bg-gray-800 px-1 py-0.5 text-[11px] text-gray-100"
-                              />
-                              <input
-                                key={`${layer.id}:${layer.opacity}`}
-                                type="number"
-                                min={0}
-                                max={100}
-                                step={5}
-                                defaultValue={Math.round(layer.opacity * 100)}
-                                onClick={(event) => event.stopPropagation()}
-                                onFocus={() => {
-                                  if (paintSessionRef.current?.setActiveLayer(layer.id)) {
-                                    setPaintHistoryVersion((value) => value + 1);
-                                  }
-                                }}
-                                onBlur={(event) => {
-                                  const next = Number(event.currentTarget.value);
-                                  if (
-                                    Number.isFinite(next)
-                                    && paintSessionRef.current?.setLayerOpacity(layer.id, next / 100)
-                                  ) {
-                                    setPaintExportStatus("");
-                                    setPaintHistoryVersion((value) => value + 1);
-                                  } else {
-                                    event.currentTarget.value = String(Math.round(layer.opacity * 100));
-                                  }
-                                }}
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter") event.currentTarget.blur();
-                                }}
-                                aria-label={`Layer opacity: ${layer.name}`}
-                                className="w-12 rounded border border-gray-700 bg-gray-800 px-1 py-0.5 text-right text-[11px] text-gray-100"
-                              />
-                              <span className="text-[10px] text-gray-500">%</span>
-                              <button
-                                type="button"
-                                disabled={index >= paintLayers.length - 1}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  if (paintSessionRef.current?.moveLayer(layer.id, 1)) {
-                                    setPaintExportStatus("");
-                                    setPaintHistoryVersion((value) => value + 1);
-                                  }
-                                }}
-                                className="rounded px-1 text-gray-400 hover:bg-gray-700 hover:text-white disabled:opacity-25"
-                                title="Move layer up"
-                              >
-                                ↑
-                              </button>
-                              <button
-                                type="button"
-                                disabled={index <= 0}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  if (paintSessionRef.current?.moveLayer(layer.id, -1)) {
-                                    setPaintExportStatus("");
-                                    setPaintHistoryVersion((value) => value + 1);
-                                  }
-                                }}
-                                className="rounded px-1 text-gray-400 hover:bg-gray-700 hover:text-white disabled:opacity-25"
-                                title="Move layer down"
-                              >
-                                ↓
-                              </button>
-                            </div>
-                          );
-                        })}
-                        <div className="flex items-center gap-2 rounded border border-gray-800 bg-gray-900/50 px-2 py-1 text-[11px] text-gray-500">
-                          <span title="Immutable source BaseColour">🔒 Base</span>
-                          <span className="ml-auto">100%</span>
-                        </div>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-1 border-t border-gray-800 pt-2">
-                        <button
-                          type="button"
-                          disabled={paintLayers.length >= 32}
-                          onClick={() => {
-                            if (paintSessionRef.current?.addLayer()) {
-                              setPaintExportStatus("");
-                              setPaintHistoryVersion((value) => value + 1);
-                            }
-                          }}
-                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-blue-400 disabled:opacity-40"
-                          title={paintLayers.length >= 32 ? "Maximum 32 paint layers" : "Add paint layer"}
-                        >
-                          + Layer
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!paintActiveLayer || paintLayers.length >= 32}
-                          onClick={() => {
-                            if (paintSessionRef.current?.duplicateActiveLayer()) {
-                              setPaintExportStatus("");
-                              setPaintHistoryVersion((value) => value + 1);
-                            }
-                          }}
-                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-blue-400 disabled:opacity-40"
-                        >
-                          Duplicate
-                        </button>
-                        <button
-                          type="button"
-                          disabled={paintLayers.length <= 1}
-                          onClick={() => {
-                            if (paintSessionRef.current?.deleteActiveLayer()) {
-                              setPaintExportStatus("");
-                              setPaintHistoryVersion((value) => value + 1);
-                            }
-                          }}
-                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-red-400 disabled:opacity-40"
-                        >
-                          Delete
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!paintSessionRef.current}
-                          onClick={() => {
-                            if (paintSessionRef.current?.reset()) {
-                              setPaintExportStatus("");
-                              setPaintHistoryVersion((value) => value + 1);
-                            }
-                          }}
-                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-amber-400 disabled:opacity-40"
-                          title="Clear all paint from the active layer"
-                        >
-                          Clear
-                        </button>
-                        <button
-                          type="button"
-                          disabled={
-                            paintActiveLayerIndex <= 0
-                            || paintActiveLayer?.kind !== "paint"
-                            || paintLayers[paintActiveLayerIndex - 1]?.kind !== "paint"
-                          }
-                          onClick={() => {
-                            if (paintSessionRef.current?.mergeActiveLayerDown()) {
-                              setPaintExportStatus("");
-                              setPaintHistoryVersion((value) => value + 1);
-                            }
-                          }}
-                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-violet-400 disabled:opacity-40"
-                          title="Merge active layer down, baking visibility and opacity"
-                        >
-                          Merge Down
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <input
-                  ref={decalFileInputRef}
-                  type="file"
-                  accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
-                  className="hidden"
-                  onChange={(event) => loadDecalFile(event.target.files?.[0])}
-                />
-                <input
-                  ref={decalReplaceFileInputRef}
-                  type="file"
-                  accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
-                  className="hidden"
-                  onChange={(event) => replaceActiveDecalFile(event.target.files?.[0])}
-                />
-                <button
-                  type="button"
-                  disabled={paintLayers.length >= 32}
-                  onClick={() => decalFileInputRef.current?.click()}
-                  className={`rounded border px-2 py-1 ${
-                    pendingDecal
-                      ? "border-yellow-400 bg-yellow-900/50 text-yellow-100"
-                      : "border-gray-600 bg-gray-800 hover:border-yellow-400"
-                  } disabled:cursor-not-allowed disabled:opacity-40`}
-                  title="Choose a PNG, JPEG, or WebP image, then click the model or texture to place it"
-                >
-                  {pendingDecal ? "Place Decal…" : "+ Decal"}
-                </button>
-                {pendingDecal && (
+                  <button
+                    type="button"
+                    onClick={() => setPaintViewMode("split")}
+                    className={`border-l border-gray-600 px-2 py-1 ${
+                      paintViewMode === "split"
+                        ? "bg-blue-700/60 text-white"
+                        : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+                    }`}
+                    title="Show the 3D model and BaseColour texture together"
+                  >
+                    Split
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
-                      pendingDecalRef.current = undefined;
-                      setPendingDecal(undefined);
-                      setPaintExportStatus("");
+                      setPaintViewMode("texture");
+                      setIsPaintSymmetryEnabled(false);
                     }}
-                    className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-gray-400"
-                    title="Cancel decal placement"
+                    className={`border-l border-gray-600 px-2 py-1 ${
+                      paintViewMode === "texture"
+                        ? "bg-blue-700/60 text-white"
+                        : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+                    }`}
+                    title="Paint directly on the BaseColour texture"
                   >
-                    Cancel
+                    Texture
                   </button>
+                </div>
+              )}
+              {isPainterEnabled &&
+                status === "ready" &&
+                comparisonModelCount === 1 &&
+                paintFactionPreviewOptions.length > 0 && (
+                  <label
+                    className="flex items-center gap-1 text-gray-400"
+                    title="Preview the unit with a faction's uniform colours. This never changes exported BaseColour textures."
+                  >
+                    Faction preview
+                    <select
+                      value={isPaintFactionColourPreviewEnabled ? paintFactionPreviewFaction : ""}
+                      onChange={(event) => {
+                        const faction = event.target.value;
+                        if (!faction) {
+                          setIsPaintFactionColourPreviewEnabled(false);
+                          return;
+                        }
+                        setPaintFactionPreviewFaction(faction);
+                        setIsPaintFactionColourPreviewEnabled(true);
+                      }}
+                      disabled={!canPreviewFactionColours}
+                      className={`max-w-52 rounded border px-1.5 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-50 ${
+                        isPaintFactionColourPreviewEnabled
+                          ? "border-emerald-500 bg-emerald-950/40 text-emerald-100"
+                          : "border-gray-600 bg-gray-800 text-gray-100"
+                      }`}
+                      aria-label="Faction colour preview"
+                    >
+                      <option value="">Off</option>
+                      {paintFactionPreviewOptions.map((faction) => (
+                        <option key={faction} value={faction}>
+                          {faction}
+                        </option>
+                      ))}
+                    </select>
+                    {isPaintFactionColourPreviewEnabled && paintFactionPreviewColours && (
+                      <span
+                        className="flex items-center gap-0.5"
+                        title="Primary / secondary / tertiary faction colours"
+                      >
+                        {[
+                          paintFactionPreviewColours.primary,
+                          paintFactionPreviewColours.secondary,
+                          paintFactionPreviewColours.tertiary,
+                        ].map((colour, index) => (
+                          <span
+                            key={`${colour}-${index}`}
+                            className="h-4 w-4 rounded-sm border border-gray-500"
+                            style={{ backgroundColor: colour }}
+                          />
+                        ))}
+                      </span>
+                    )}
+                    {isPaintFactionColourPreviewEnabled && paintFactionPreviewError && (
+                      <span className="max-w-48 truncate text-amber-300" title={paintFactionPreviewError}>
+                        {paintFactionPreviewError}
+                      </span>
+                    )}
+                  </label>
                 )}
-                {paintActiveDecal && paintActiveLayer && (
-                  <div className="flex flex-wrap items-center gap-2 rounded border border-yellow-700/70 bg-yellow-950/30 px-2 py-1">
-                    <span className="max-w-32 truncate text-yellow-200" title={paintActiveDecal.sourceName}>
-                      Decal · {paintActiveDecal.sourceName}
-                    </span>
+              <button
+                type="button"
+                disabled={status !== "ready" || comparisonModelCount !== 1 || isPaintProjectOpening || isPaintExporting}
+                onClick={openPaintedMod}
+                className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
+                title="Open a WHMM painted mod for continued editing"
+              >
+                {isPaintProjectOpening ? "Opening…" : "Open painted mod…"}
+              </button>
+              {!isPainterEnabled && paintExportStatus && (
+                <span className="max-w-80 truncate text-gray-300" title={paintExportStatus}>
+                  {paintExportStatus}
+                </span>
+              )}
+            </div>
+            <div className="flex w-full flex-wrap items-center gap-1.5 border-t border-gray-700/70 pt-1">
+              {isPainterEnabled && status === "ready" && comparisonModelCount === 1 && (
+                <>
+                  <div className="relative">
                     <button
                       type="button"
-                      onClick={() => decalReplaceFileInputRef.current?.click()}
-                      className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-gray-300 hover:border-yellow-500"
-                      title="Replace the source image while preserving this decal's placement and settings"
+                      onClick={() => setIsPaintLayersOpen((open) => !open)}
+                      className={`rounded border px-2 py-1 ${
+                        isPaintLayersOpen
+                          ? "border-violet-400 bg-violet-900/50 text-violet-100"
+                          : "border-gray-600 bg-gray-800 hover:border-violet-400"
+                      }`}
+                      title="Open paint layers"
                     >
-                      Replace Image
+                      Layers {paintLayers.length} · {paintActiveLayer?.name ?? "None"}
                     </button>
+                    {isPaintLayersOpen && (
+                      <div className="absolute left-0 top-full z-40 mt-1 w-80 rounded border border-gray-600 bg-gray-950/95 p-2 shadow-xl">
+                        <div className="mb-1 flex items-center justify-between text-[11px]">
+                          <span className="font-semibold text-gray-200">Painter layers</span>
+                          <span className="text-gray-500">top → bottom</span>
+                        </div>
+                        <div className="max-h-64 space-y-1 overflow-y-auto pr-1">
+                          {[...paintLayers].reverse().map((layer) => {
+                            const index = paintLayers.findIndex((candidate) => candidate.id === layer.id);
+                            const isActive = layer.id === paintActiveLayerId;
+                            return (
+                              <div
+                                key={layer.id}
+                                className={`flex items-center gap-1 rounded border px-1 py-1 ${
+                                  isActive
+                                    ? "border-violet-400 bg-violet-950/60"
+                                    : "border-gray-700 bg-gray-900/80 hover:border-gray-500"
+                                }`}
+                                onClick={() => {
+                                  const session = paintSessionRef.current;
+                                  if (session?.setActiveLayer(layer.id)) {
+                                    const decal = session.activeDecalInfo;
+                                    if (decal) setPaintTextureViewId(decal.targetTextureId);
+                                    setPaintHistoryVersion((value) => value + 1);
+                                  }
+                                }}
+                              >
+                                <span
+                                  className={`w-4 shrink-0 text-center text-[10px] font-semibold ${
+                                    layer.kind === "decal" ? "text-yellow-300" : "text-blue-300"
+                                  }`}
+                                  title={layer.kind === "decal" ? "Decal layer" : "Paint layer"}
+                                >
+                                  {layer.kind === "decal" ? "D" : "P"}
+                                </span>
+                                <input
+                                  type="checkbox"
+                                  checked={layer.visible}
+                                  onClick={(event) => event.stopPropagation()}
+                                  onChange={(event) => {
+                                    if (paintSessionRef.current?.setLayerVisible(layer.id, event.target.checked)) {
+                                      setPaintExportStatus("");
+                                      setPaintHistoryVersion((value) => value + 1);
+                                    }
+                                  }}
+                                  title="Layer visibility"
+                                  aria-label={`Visibility: ${layer.name}`}
+                                />
+                                <input
+                                  key={`${layer.id}:${layer.name}`}
+                                  defaultValue={layer.name}
+                                  onClick={(event) => event.stopPropagation()}
+                                  onFocus={() => {
+                                    if (paintSessionRef.current?.setActiveLayer(layer.id)) {
+                                      setPaintHistoryVersion((value) => value + 1);
+                                    }
+                                  }}
+                                  onBlur={(event) => {
+                                    if (paintSessionRef.current?.renameLayer(layer.id, event.currentTarget.value)) {
+                                      setPaintExportStatus("");
+                                      setPaintHistoryVersion((value) => value + 1);
+                                    } else {
+                                      event.currentTarget.value = layer.name;
+                                    }
+                                  }}
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter") event.currentTarget.blur();
+                                  }}
+                                  aria-label={`Layer name: ${layer.name}`}
+                                  className="min-w-0 flex-1 rounded border border-gray-700 bg-gray-800 px-1 py-0.5 text-[11px] text-gray-100"
+                                />
+                                <input
+                                  key={`${layer.id}:${layer.opacity}`}
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  step={5}
+                                  defaultValue={Math.round(layer.opacity * 100)}
+                                  onClick={(event) => event.stopPropagation()}
+                                  onFocus={() => {
+                                    if (paintSessionRef.current?.setActiveLayer(layer.id)) {
+                                      setPaintHistoryVersion((value) => value + 1);
+                                    }
+                                  }}
+                                  onBlur={(event) => {
+                                    const next = Number(event.currentTarget.value);
+                                    if (
+                                      Number.isFinite(next) &&
+                                      paintSessionRef.current?.setLayerOpacity(layer.id, next / 100)
+                                    ) {
+                                      setPaintExportStatus("");
+                                      setPaintHistoryVersion((value) => value + 1);
+                                    } else {
+                                      event.currentTarget.value = String(Math.round(layer.opacity * 100));
+                                    }
+                                  }}
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter") event.currentTarget.blur();
+                                  }}
+                                  aria-label={`Layer opacity: ${layer.name}`}
+                                  className="w-12 rounded border border-gray-700 bg-gray-800 px-1 py-0.5 text-right text-[11px] text-gray-100"
+                                />
+                                <span className="text-[10px] text-gray-500">%</span>
+                                <button
+                                  type="button"
+                                  disabled={index >= paintLayers.length - 1}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    if (paintSessionRef.current?.moveLayer(layer.id, 1)) {
+                                      setPaintExportStatus("");
+                                      setPaintHistoryVersion((value) => value + 1);
+                                    }
+                                  }}
+                                  className="rounded px-1 text-gray-400 hover:bg-gray-700 hover:text-white disabled:opacity-25"
+                                  title="Move layer up"
+                                >
+                                  ↑
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={index <= 0}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    if (paintSessionRef.current?.moveLayer(layer.id, -1)) {
+                                      setPaintExportStatus("");
+                                      setPaintHistoryVersion((value) => value + 1);
+                                    }
+                                  }}
+                                  className="rounded px-1 text-gray-400 hover:bg-gray-700 hover:text-white disabled:opacity-25"
+                                  title="Move layer down"
+                                >
+                                  ↓
+                                </button>
+                              </div>
+                            );
+                          })}
+                          <div className="flex items-center gap-2 rounded border border-gray-800 bg-gray-900/50 px-2 py-1 text-[11px] text-gray-500">
+                            <span title="Immutable source BaseColour">🔒 Base</span>
+                            <span className="ml-auto">100%</span>
+                          </div>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1 border-t border-gray-800 pt-2">
+                          <button
+                            type="button"
+                            disabled={paintLayers.length >= 32}
+                            onClick={() => {
+                              if (paintSessionRef.current?.addLayer()) {
+                                setPaintExportStatus("");
+                                setPaintHistoryVersion((value) => value + 1);
+                              }
+                            }}
+                            className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-blue-400 disabled:opacity-40"
+                            title={paintLayers.length >= 32 ? "Maximum 32 paint layers" : "Add paint layer"}
+                          >
+                            + Layer
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!paintActiveLayer || paintLayers.length >= 32}
+                            onClick={() => {
+                              if (paintSessionRef.current?.duplicateActiveLayer()) {
+                                setPaintExportStatus("");
+                                setPaintHistoryVersion((value) => value + 1);
+                              }
+                            }}
+                            className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-blue-400 disabled:opacity-40"
+                          >
+                            Duplicate
+                          </button>
+                          <button
+                            type="button"
+                            disabled={paintLayers.length <= 1}
+                            onClick={() => {
+                              if (paintSessionRef.current?.deleteActiveLayer()) {
+                                setPaintExportStatus("");
+                                setPaintHistoryVersion((value) => value + 1);
+                              }
+                            }}
+                            className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-red-400 disabled:opacity-40"
+                          >
+                            Delete
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!paintSessionRef.current}
+                            onClick={() => {
+                              if (paintSessionRef.current?.reset()) {
+                                setPaintExportStatus("");
+                                setPaintHistoryVersion((value) => value + 1);
+                              }
+                            }}
+                            className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-amber-400 disabled:opacity-40"
+                            title="Clear all paint from the active layer"
+                          >
+                            Clear
+                          </button>
+                          <button
+                            type="button"
+                            disabled={
+                              paintActiveLayerIndex <= 0 ||
+                              paintActiveLayer?.kind !== "paint" ||
+                              paintLayers[paintActiveLayerIndex - 1]?.kind !== "paint"
+                            }
+                            onClick={() => {
+                              if (paintSessionRef.current?.mergeActiveLayerDown()) {
+                                setPaintExportStatus("");
+                                setPaintHistoryVersion((value) => value + 1);
+                              }
+                            }}
+                            className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-violet-400 disabled:opacity-40"
+                            title="Merge active layer down, baking visibility and opacity"
+                          >
+                            Merge Down
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <input
+                    ref={decalFileInputRef}
+                    type="file"
+                    accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={(event) => loadDecalFile(event.target.files?.[0])}
+                  />
+                  <input
+                    ref={decalReplaceFileInputRef}
+                    type="file"
+                    accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={(event) => replaceActiveDecalFile(event.target.files?.[0])}
+                  />
+                  <button
+                    type="button"
+                    disabled={paintLayers.length >= 32}
+                    onClick={() => decalFileInputRef.current?.click()}
+                    className={`rounded border px-2 py-1 ${
+                      pendingDecal
+                        ? "border-yellow-400 bg-yellow-900/50 text-yellow-100"
+                        : "border-gray-600 bg-gray-800 hover:border-yellow-400"
+                    } disabled:cursor-not-allowed disabled:opacity-40`}
+                    title="Choose a PNG, JPEG, or WebP image, then click the model or texture to place it"
+                  >
+                    {pendingDecal ? "Place Decal…" : "+ Decal"}
+                  </button>
+                  {pendingDecal && (
                     <button
                       type="button"
                       onClick={() => {
-                        if (paintSessionRef.current?.resetActiveDecalTransform()) {
-                          setPaintExportStatus("");
-                          setPaintHistoryVersion((value) => value + 1);
-                        }
+                        pendingDecalRef.current = undefined;
+                        setPendingDecal(undefined);
+                        setPaintExportStatus("");
                       }}
-                      className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-gray-300 hover:border-yellow-500"
-                      title="Reset size to 20%, restore natural image aspect, clear rotation and flips"
+                      className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-gray-400"
+                      title="Cancel decal placement"
                     >
-                      Reset Transform
+                      Cancel
                     </button>
-                    <label className="flex items-center gap-1 text-gray-300" title="Tint the decal by its source luminance">
-                      <input
-                        type="checkbox"
-                        checked={paintActiveDecal.tintEnabled}
-                        onChange={(event) => updateDecalAndRefresh({ tintEnabled: event.target.checked })}
-                      />
-                      Tint
-                    </label>
-                    <input
-                      type="color"
-                      value={paintActiveDecalTint}
-                      disabled={!paintActiveDecal.tintEnabled}
-                      onChange={(event) => {
-                        const value = Number.parseInt(event.target.value.slice(1), 16);
-                        updateDecalAndRefresh({
-                          tint: {
-                            r: (value >> 16) & 0xff,
-                            g: (value >> 8) & 0xff,
-                            b: value & 0xff,
-                          },
-                        });
-                      }}
-                      className="h-6 w-8 cursor-pointer rounded border border-gray-600 bg-gray-800 p-0 disabled:cursor-not-allowed disabled:opacity-40"
-                      aria-label="Decal tint color"
-                    />
-                    <label className="flex items-center gap-1 text-gray-400" title="Decal layer opacity">
-                      Opacity
-                      <input
-                        type="range"
-                        min={0}
-                        max={1}
-                        step={0.05}
-                        value={paintActiveLayer.opacity}
-                        onPointerDown={() => paintSessionRef.current?.beginActiveDecalTransform()}
-                        onChange={(event) => {
-                          if (
-                            paintSessionRef.current?.setLayerOpacity(
-                              paintActiveLayer.id,
-                              Number(event.target.value),
-                              false,
-                            )
-                          ) {
+                  )}
+                  {paintActiveDecal && paintActiveLayer && (
+                    <div className="flex flex-wrap items-center gap-2 rounded border border-yellow-700/70 bg-yellow-950/30 px-2 py-1">
+                      <span className="max-w-32 truncate text-yellow-200" title={paintActiveDecal.sourceName}>
+                        Decal · {paintActiveDecal.sourceName}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => decalReplaceFileInputRef.current?.click()}
+                        className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-gray-300 hover:border-yellow-500"
+                        title="Replace the source image while preserving this decal's placement and settings"
+                      >
+                        Replace Image
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (paintSessionRef.current?.resetActiveDecalTransform()) {
                             setPaintExportStatus("");
                             setPaintHistoryVersion((value) => value + 1);
                           }
                         }}
-                        onPointerUp={finishActiveDecalControlGesture}
-                        onPointerCancel={finishActiveDecalControlGesture}
-                        onWheel={(event) =>
-                          adjustRangeFromWheel(event, (value) => {
-                            if (paintSessionRef.current?.setLayerOpacity(paintActiveLayer.id, value)) {
+                        className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-gray-300 hover:border-yellow-500"
+                        title="Reset size to 20%, restore natural image aspect, clear rotation and flips"
+                      >
+                        Reset Transform
+                      </button>
+                      <label
+                        className="flex items-center gap-1 text-gray-300"
+                        title="Tint the decal by its source luminance"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={paintActiveDecal.tintEnabled}
+                          onChange={(event) => updateDecalAndRefresh({ tintEnabled: event.target.checked })}
+                        />
+                        Tint
+                      </label>
+                      <input
+                        type="color"
+                        value={paintActiveDecalTint}
+                        disabled={!paintActiveDecal.tintEnabled}
+                        onChange={(event) => {
+                          const value = Number.parseInt(event.target.value.slice(1), 16);
+                          updateDecalAndRefresh({
+                            tint: {
+                              r: (value >> 16) & 0xff,
+                              g: (value >> 8) & 0xff,
+                              b: value & 0xff,
+                            },
+                          });
+                        }}
+                        className="h-6 w-8 cursor-pointer rounded border border-gray-600 bg-gray-800 p-0 disabled:cursor-not-allowed disabled:opacity-40"
+                        aria-label="Decal tint color"
+                      />
+                      <label className="flex items-center gap-1 text-gray-400" title="Decal layer opacity">
+                        Opacity
+                        <input
+                          type="range"
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          value={paintActiveLayer.opacity}
+                          onPointerDown={() => paintSessionRef.current?.beginActiveDecalTransform()}
+                          onChange={(event) => {
+                            if (
+                              paintSessionRef.current?.setLayerOpacity(
+                                paintActiveLayer.id,
+                                Number(event.target.value),
+                                false,
+                              )
+                            ) {
                               setPaintExportStatus("");
-                              setPaintHistoryVersion((current) => current + 1);
+                              setPaintHistoryVersion((value) => value + 1);
                             }
-                          })
+                          }}
+                          onPointerUp={finishActiveDecalControlGesture}
+                          onPointerCancel={finishActiveDecalControlGesture}
+                          onWheel={(event) =>
+                            adjustRangeFromWheel(event, (value) => {
+                              if (paintSessionRef.current?.setLayerOpacity(paintActiveLayer.id, value)) {
+                                setPaintExportStatus("");
+                                setPaintHistoryVersion((current) => current + 1);
+                              }
+                            })
+                          }
+                          className="w-16 accent-yellow-500"
+                          aria-label="Decal opacity"
+                        />
+                      </label>
+                      <label
+                        className="flex items-center gap-1 text-gray-400"
+                        title="Decal width as a fraction of the texture; aspect ratio is preserved"
+                      >
+                        Size
+                        <input
+                          type="range"
+                          min={0.01}
+                          max={1}
+                          step={0.01}
+                          value={paintActiveDecal.widthU}
+                          onPointerDown={() => paintSessionRef.current?.beginActiveDecalTransform()}
+                          onChange={(event) => resizeActiveDecal(Number(event.target.value), false)}
+                          onPointerUp={finishActiveDecalControlGesture}
+                          onPointerCancel={finishActiveDecalControlGesture}
+                          onWheel={(event) =>
+                            adjustRangeFromWheel(event, (value) => {
+                              resizeActiveDecal(value);
+                            })
+                          }
+                          className="w-20 accent-yellow-500"
+                          aria-label="Decal size"
+                        />
+                      </label>
+                      <label className="flex items-center gap-1 text-gray-400">
+                        Rotate
+                        <input
+                          type="range"
+                          min={-180}
+                          max={180}
+                          step={1}
+                          value={paintActiveDecal.rotationDeg}
+                          onPointerDown={() => paintSessionRef.current?.beginActiveDecalTransform()}
+                          onChange={(event) =>
+                            updateDecalAndRefresh({ rotationDeg: Number(event.target.value) }, false)
+                          }
+                          onPointerUp={finishActiveDecalControlGesture}
+                          onPointerCancel={finishActiveDecalControlGesture}
+                          onWheel={(event) =>
+                            adjustRangeFromWheel(event, (value) => {
+                              updateDecalAndRefresh({ rotationDeg: value });
+                            })
+                          }
+                          className="w-20 accent-yellow-500"
+                          aria-label="Decal rotation"
+                        />
+                        <span className="min-w-8 text-right tabular-nums text-yellow-200">
+                          {Math.round(paintActiveDecal.rotationDeg)}°
+                        </span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => updateDecalAndRefresh({ flipX: !paintActiveDecal.flipX })}
+                        className={`rounded border px-1.5 py-1 ${
+                          paintActiveDecal.flipX
+                            ? "border-yellow-500 bg-yellow-900/50 text-yellow-100"
+                            : "border-gray-600 bg-gray-800 text-gray-300 hover:border-yellow-500"
+                        }`}
+                        title="Flip the decal image horizontally"
+                      >
+                        Flip X
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateDecalAndRefresh({ flipY: !paintActiveDecal.flipY })}
+                        className={`rounded border px-1.5 py-1 ${
+                          paintActiveDecal.flipY
+                            ? "border-yellow-500 bg-yellow-900/50 text-yellow-100"
+                            : "border-gray-600 bg-gray-800 text-gray-300 hover:border-yellow-500"
+                        }`}
+                        title="Flip the decal image vertically"
+                      >
+                        Flip Y
+                      </button>
+                      <label
+                        className={`flex items-center gap-1 ${
+                          paintActiveDecal.hasNormalMap ? "text-gray-300" : "text-gray-600"
+                        }`}
+                        title={
+                          paintActiveDecal.hasNormalMap
+                            ? "Generate a tangent-space normal contribution from the decal"
+                            : "This material has no decoded normal map"
                         }
-                        className="w-16 accent-yellow-500"
-                        aria-label="Decal opacity"
-                      />
-                    </label>
-                    <label className="flex items-center gap-1 text-gray-400" title="Decal width as a fraction of the texture; aspect ratio is preserved">
-                      Size
-                      <input
-                        type="range"
-                        min={0.01}
-                        max={1}
-                        step={0.01}
-                        value={paintActiveDecal.widthU}
-                        onPointerDown={() => paintSessionRef.current?.beginActiveDecalTransform()}
-                        onChange={(event) => resizeActiveDecal(Number(event.target.value), false)}
-                        onPointerUp={finishActiveDecalControlGesture}
-                        onPointerCancel={finishActiveDecalControlGesture}
-                        onWheel={(event) =>
-                          adjustRangeFromWheel(event, (value) => {
-                            resizeActiveDecal(value);
-                          })
-                        }
-                        className="w-20 accent-yellow-500"
-                        aria-label="Decal size"
-                      />
-                    </label>
-                    <label className="flex items-center gap-1 text-gray-400">
-                      Rotate
-                      <input
-                        type="range"
-                        min={-180}
-                        max={180}
-                        step={1}
-                        value={paintActiveDecal.rotationDeg}
-                        onPointerDown={() => paintSessionRef.current?.beginActiveDecalTransform()}
-                        onChange={(event) => updateDecalAndRefresh(
-                          { rotationDeg: Number(event.target.value) },
-                          false,
-                        )}
-                        onPointerUp={finishActiveDecalControlGesture}
-                        onPointerCancel={finishActiveDecalControlGesture}
-                        onWheel={(event) =>
-                          adjustRangeFromWheel(event, (value) => {
-                            updateDecalAndRefresh({ rotationDeg: value });
-                          })
-                        }
-                        className="w-20 accent-yellow-500"
-                        aria-label="Decal rotation"
-                      />
-                      <span className="min-w-8 text-right tabular-nums text-yellow-200">
-                        {Math.round(paintActiveDecal.rotationDeg)}°
-                      </span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => updateDecalAndRefresh({ flipX: !paintActiveDecal.flipX })}
-                      className={`rounded border px-1.5 py-1 ${
-                        paintActiveDecal.flipX
-                          ? "border-yellow-500 bg-yellow-900/50 text-yellow-100"
-                          : "border-gray-600 bg-gray-800 text-gray-300 hover:border-yellow-500"
-                      }`}
-                      title="Flip the decal image horizontally"
-                    >
-                      Flip X
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => updateDecalAndRefresh({ flipY: !paintActiveDecal.flipY })}
-                      className={`rounded border px-1.5 py-1 ${
-                        paintActiveDecal.flipY
-                          ? "border-yellow-500 bg-yellow-900/50 text-yellow-100"
-                          : "border-gray-600 bg-gray-800 text-gray-300 hover:border-yellow-500"
-                      }`}
-                      title="Flip the decal image vertically"
-                    >
-                      Flip Y
-                    </button>
-                    <label
-                      className={`flex items-center gap-1 ${
-                        paintActiveDecal.hasNormalMap ? "text-gray-300" : "text-gray-600"
-                      }`}
-                      title={
-                        paintActiveDecal.hasNormalMap
-                          ? "Generate a tangent-space normal contribution from the decal"
-                          : "This material has no decoded normal map"
-                      }
-                    >
-                      <input
-                        type="checkbox"
-                        checked={paintActiveDecal.affectNormal && paintActiveDecal.hasNormalMap}
-                        disabled={!paintActiveDecal.hasNormalMap}
-                        onChange={(event) => updateDecalAndRefresh({ affectNormal: event.target.checked })}
-                      />
-                      Normal
-                    </label>
-                    {paintActiveDecal.hasNormalMap && paintActiveDecal.affectNormal && (
-                      <>
-                        <label className="flex items-center gap-1 text-gray-400">
-                          Strength
-                          <input
-                            type="range"
-                            min={-4}
-                            max={4}
-                            step={0.1}
-                            value={paintActiveDecal.normalStrength}
-                            onPointerDown={() => paintSessionRef.current?.beginActiveDecalTransform()}
-                            onChange={(event) => updateDecalAndRefresh(
-                              { normalStrength: Number(event.target.value) },
-                              false,
-                            )}
-                            onPointerUp={finishActiveDecalControlGesture}
-                            onPointerCancel={finishActiveDecalControlGesture}
-                            onWheel={(event) =>
-                              adjustRangeFromWheel(event, (value) => {
-                                updateDecalAndRefresh({ normalStrength: value });
+                      >
+                        <input
+                          type="checkbox"
+                          checked={paintActiveDecal.affectNormal && paintActiveDecal.hasNormalMap}
+                          disabled={!paintActiveDecal.hasNormalMap}
+                          onChange={(event) => updateDecalAndRefresh({ affectNormal: event.target.checked })}
+                        />
+                        Normal
+                      </label>
+                      {paintActiveDecal.hasNormalMap && paintActiveDecal.affectNormal && (
+                        <>
+                          <label className="flex items-center gap-1 text-gray-400">
+                            Strength
+                            <input
+                              type="range"
+                              min={-4}
+                              max={4}
+                              step={0.1}
+                              value={paintActiveDecal.normalStrength}
+                              onPointerDown={() => paintSessionRef.current?.beginActiveDecalTransform()}
+                              onChange={(event) =>
+                                updateDecalAndRefresh({ normalStrength: Number(event.target.value) }, false)
+                              }
+                              onPointerUp={finishActiveDecalControlGesture}
+                              onPointerCancel={finishActiveDecalControlGesture}
+                              onWheel={(event) =>
+                                adjustRangeFromWheel(event, (value) => {
+                                  updateDecalAndRefresh({ normalStrength: value });
+                                })
+                              }
+                              className="w-20 accent-yellow-500"
+                              aria-label="Decal normal strength"
+                              title="Negative values engrave the decal; positive values raise it"
+                            />
+                            <span className="min-w-7 text-right tabular-nums text-yellow-200">
+                              {paintActiveDecal.normalStrength.toFixed(1)}
+                            </span>
+                          </label>
+                          <select
+                            value={paintActiveDecal.normalHeightSource}
+                            onChange={(event) =>
+                              updateDecalAndRefresh({
+                                normalHeightSource: event.target.value as "alpha" | "luminance" | "emboss",
                               })
                             }
-                            className="w-20 accent-yellow-500"
-                            aria-label="Decal normal strength"
-                            title="Negative values engrave the decal; positive values raise it"
-                          />
-                          <span className="min-w-7 text-right tabular-nums text-yellow-200">
-                            {paintActiveDecal.normalStrength.toFixed(1)}
-                          </span>
-                        </label>
-                        <select
-                          value={paintActiveDecal.normalHeightSource}
-                          onChange={(event) => updateDecalAndRefresh({
-                            normalHeightSource: event.target.value as "alpha" | "luminance" | "emboss",
-                          })}
-                          className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100"
-                          title="Height source used to generate the decal normal"
-                        >
-                          <option value="emboss">Relief: Emboss</option>
-                          <option value="alpha">Height: Alpha</option>
-                          <option value="luminance">Height: Luminance</option>
-                        </select>
-                        {paintActiveDecal.normalHeightSource === "emboss" && (
-                          <>
-                            <label className="flex items-center gap-1 text-gray-400" title="Width of the rounded emboss edge in source-image pixels">
-                              Bevel
-                              <input
-                                type="range"
-                                min={1}
-                                max={32}
-                                step={1}
-                                value={paintActiveDecal.normalBevelPx}
-                                onPointerDown={() => paintSessionRef.current?.beginActiveDecalTransform()}
-                                onChange={(event) => updateDecalAndRefresh(
-                                  { normalBevelPx: Number(event.target.value) },
-                                  false,
-                                )}
-                                onPointerUp={finishActiveDecalControlGesture}
-                                onPointerCancel={finishActiveDecalControlGesture}
-                                onWheel={(event) =>
-                                  adjustRangeFromWheel(event, (value) => {
-                                    updateDecalAndRefresh({ normalBevelPx: value });
-                                  })
-                                }
-                                className="w-16 accent-yellow-500"
-                                aria-label="Decal emboss bevel"
-                              />
-                              <span className="min-w-5 text-right tabular-nums text-yellow-200">
-                                {Math.round(paintActiveDecal.normalBevelPx)}
-                              </span>
-                            </label>
-                            <label className="flex items-center gap-1 text-gray-400" title="Smooth the generated emboss height field before converting it to normals">
-                              Soft
-                              <input
-                                type="range"
-                                min={0}
-                                max={8}
-                                step={1}
-                                value={paintActiveDecal.normalSoftnessPx}
-                                onPointerDown={() => paintSessionRef.current?.beginActiveDecalTransform()}
-                                onChange={(event) => updateDecalAndRefresh(
-                                  { normalSoftnessPx: Number(event.target.value) },
-                                  false,
-                                )}
-                                onPointerUp={finishActiveDecalControlGesture}
-                                onPointerCancel={finishActiveDecalControlGesture}
-                                onWheel={(event) =>
-                                  adjustRangeFromWheel(event, (value) => {
-                                    updateDecalAndRefresh({ normalSoftnessPx: value });
-                                  })
-                                }
-                                className="w-14 accent-yellow-500"
-                                aria-label="Decal emboss softness"
-                              />
-                              <span className="min-w-4 text-right tabular-nums text-yellow-200">
-                                {Math.round(paintActiveDecal.normalSoftnessPx)}
-                              </span>
-                            </label>
-                          </>
-                        )}
-                      </>
-                    )}
-                    <span className="text-[10px] text-gray-500">
-                      Drag to move · texture corner scales · round handle rotates
-                    </span>
-                  </div>
-                )}
-                <label className="flex items-center gap-1 text-gray-400">
-                  Color
-                  <input
-                    type="color"
-                    value={paintColor}
-                    disabled={paintBrushMode === "restore"}
-                    onChange={(event) => choosePaintColor(event.target.value)}
-                    className="h-6 w-8 cursor-pointer rounded border border-gray-600 bg-gray-800 p-0 disabled:cursor-not-allowed disabled:opacity-40"
-                    aria-label="Paint color"
-                  />
-                </label>
-                <div className="relative">
-                  <div
-                    className="flex min-h-5 items-center gap-1"
-                    aria-label="Recently used paint colors"
-                    title={
-                      paintColorHistory.length > 0
-                        ? "Recently used colors. Right-click to show full color history."
-                        : "Colors appear here after they actually change painted pixels."
-                    }
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      if (paintColorHistory.length > 0) setIsPaintColorHistoryOpen(true);
-                    }}
-                  >
-                    {paintRecentColors.map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        disabled={paintBrushMode === "restore"}
-                        onClick={() => choosePaintColor(color)}
-                        onContextMenu={(event) => {
-                          event.preventDefault();
-                          setIsPaintColorHistoryOpen(true);
-                        }}
-                        className={`h-5 w-5 rounded-sm border disabled:cursor-not-allowed disabled:opacity-40 ${
-                          paintColor === color ? "border-white" : "border-gray-600"
-                        }`}
-                        style={{ backgroundColor: color }}
-                        title={`Use recent color ${color}; right-click for full history`}
-                        aria-label={`Use recent color ${color}`}
-                      />
-                    ))}
-                  </div>
-                  {isPaintColorHistoryOpen && paintColorHistory.length > 0 && (
-                    <div
-                      className="absolute left-0 top-full z-50 mt-1 w-56 rounded border border-gray-600 bg-gray-950/95 p-2 shadow-xl"
-                      onContextMenu={(event) => event.preventDefault()}
-                    >
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className="text-[11px] font-semibold text-gray-200">Used color history</span>
-                        <button
-                          type="button"
-                          onClick={() => setIsPaintColorHistoryOpen(false)}
-                          className="rounded px-1 text-xs text-gray-400 hover:bg-gray-800 hover:text-white"
-                          aria-label="Close color history"
-                        >
-                          ×
-                        </button>
-                      </div>
-                      <div className="grid max-h-48 grid-cols-8 gap-1 overflow-y-auto">
-                        {paintColorHistory.map((color) => (
-                          <button
-                            key={color}
-                            type="button"
-                            disabled={paintBrushMode === "restore"}
-                            onClick={() => {
-                              choosePaintColor(color);
-                              setIsPaintColorHistoryOpen(false);
-                            }}
-                            className={`h-5 w-5 rounded-sm border disabled:cursor-not-allowed disabled:opacity-40 ${
-                              paintColor === color ? "border-white" : "border-gray-600"
-                            }`}
-                            style={{ backgroundColor: color }}
-                            title={`Use color ${color}`}
-                            aria-label={`Use color ${color} from paint history`}
-                          />
-                        ))}
-                      </div>
+                            className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100"
+                            title="Height source used to generate the decal normal"
+                          >
+                            <option value="emboss">Relief: Emboss</option>
+                            <option value="alpha">Height: Alpha</option>
+                            <option value="luminance">Height: Luminance</option>
+                          </select>
+                          {paintActiveDecal.normalHeightSource === "emboss" && (
+                            <>
+                              <label
+                                className="flex items-center gap-1 text-gray-400"
+                                title="Width of the rounded emboss edge in source-image pixels"
+                              >
+                                Bevel
+                                <input
+                                  type="range"
+                                  min={1}
+                                  max={32}
+                                  step={1}
+                                  value={paintActiveDecal.normalBevelPx}
+                                  onPointerDown={() => paintSessionRef.current?.beginActiveDecalTransform()}
+                                  onChange={(event) =>
+                                    updateDecalAndRefresh({ normalBevelPx: Number(event.target.value) }, false)
+                                  }
+                                  onPointerUp={finishActiveDecalControlGesture}
+                                  onPointerCancel={finishActiveDecalControlGesture}
+                                  onWheel={(event) =>
+                                    adjustRangeFromWheel(event, (value) => {
+                                      updateDecalAndRefresh({ normalBevelPx: value });
+                                    })
+                                  }
+                                  className="w-16 accent-yellow-500"
+                                  aria-label="Decal emboss bevel"
+                                />
+                                <span className="min-w-5 text-right tabular-nums text-yellow-200">
+                                  {Math.round(paintActiveDecal.normalBevelPx)}
+                                </span>
+                              </label>
+                              <label
+                                className="flex items-center gap-1 text-gray-400"
+                                title="Smooth the generated emboss height field before converting it to normals"
+                              >
+                                Soft
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={8}
+                                  step={1}
+                                  value={paintActiveDecal.normalSoftnessPx}
+                                  onPointerDown={() => paintSessionRef.current?.beginActiveDecalTransform()}
+                                  onChange={(event) =>
+                                    updateDecalAndRefresh({ normalSoftnessPx: Number(event.target.value) }, false)
+                                  }
+                                  onPointerUp={finishActiveDecalControlGesture}
+                                  onPointerCancel={finishActiveDecalControlGesture}
+                                  onWheel={(event) =>
+                                    adjustRangeFromWheel(event, (value) => {
+                                      updateDecalAndRefresh({ normalSoftnessPx: value });
+                                    })
+                                  }
+                                  className="w-14 accent-yellow-500"
+                                  aria-label="Decal emboss softness"
+                                />
+                                <span className="min-w-4 text-right tabular-nums text-yellow-200">
+                                  {Math.round(paintActiveDecal.normalSoftnessPx)}
+                                </span>
+                              </label>
+                            </>
+                          )}
+                        </>
+                      )}
+                      <span className="text-[10px] text-gray-500">
+                        Drag to move · texture corner scales · round handle rotates
+                      </span>
                     </div>
                   )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setIsPaintEyedropperActive((active) => {
-                      const next = !active;
-                      if (next) {
-                        setPaintSelectMode(undefined);
-                        clearPaintHoverVisual();
+                  <label className="flex items-center gap-1 text-gray-400">
+                    Color
+                    <input
+                      type="color"
+                      value={paintColor}
+                      disabled={paintBrushMode === "restore"}
+                      onChange={(event) => choosePaintColor(event.target.value)}
+                      className="h-6 w-8 cursor-pointer rounded border border-gray-600 bg-gray-800 p-0 disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label="Paint color"
+                    />
+                  </label>
+                  <div className="relative">
+                    <div
+                      className="flex min-h-5 items-center gap-1"
+                      aria-label="Recently used paint colors"
+                      title={
+                        paintColorHistory.length > 0
+                          ? "Recently used colors. Right-click to show full color history."
+                          : "Colors appear here after they actually change painted pixels."
                       }
-                      return next;
-                    })
-                  }
-                  className={`rounded border px-2 py-1 ${
-                    isPaintEyedropperActive
-                      ? "border-cyan-400 bg-cyan-900/60 text-cyan-100"
-                      : "border-gray-600 bg-gray-800 hover:border-cyan-400"
-                  }`}
-                  title="Pick a BaseColour from the model, or hold Alt while clicking the model"
-                >
-                  Pick
-                </button>
-                <label className="flex items-center gap-1 text-gray-400">
-                  Select
-                  <select
-                    value={paintSelectMode || ""}
-                    onChange={(event) => {
-                      const value = event.target.value as UnitPainterSelectMode | "";
-                      choosePaintSelectMode(value || undefined);
-                    }}
-                    className={`rounded border px-1.5 py-1 text-xs ${
-                      paintSelectMode
-                        ? "border-cyan-400 bg-cyan-950/50 text-cyan-100"
-                        : "border-gray-600 bg-gray-800 text-gray-100"
-                    }`}
-                    aria-label="Selection tool"
-                    title="Plain click selects once, then returns LMB to painting. Hold Shift to add or Ctrl to toggle while keeping selection mode active."
-                  >
-                    <option value="">Off</option>
-                    <option value="material">Material</option>
-                    <option value="island">UV island</option>
-                    <option value="similar">Similar colors</option>
-                  </select>
-                </label>
-                {paintSelectMode === "similar" && (
-                  <label className="flex items-center gap-1 text-gray-400" title="Perceptual OKLab color tolerance">
-                    Tol
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={paintSimilarTolerance}
-                      onChange={(event) => setPaintSimilarTolerance(Number(event.target.value))}
-                      onWheel={(event) => adjustRangeFromWheel(event, setPaintSimilarTolerance)}
-                      className="w-20 accent-yellow-500"
-                      aria-label="Select Similar tolerance"
-                    />
-                    <span className="min-w-6 text-right tabular-nums text-yellow-200">{paintSimilarTolerance}</span>
-                  </label>
-                )}
-                {!paintSelectMode && !pendingDecal && !paintActiveDecal && (
-                  <>
-                  <label className="flex items-center gap-1 text-gray-400">
-                    Size
-                    <input
-                      type="range"
-                      min={4}
-                      max={64}
-                      step={1}
-                      value={paintBrushRadius}
-                      onChange={(event) => setPaintBrushRadius(Number(event.target.value))}
-                      onWheel={(event) => adjustRangeFromWheel(event, setPaintBrushRadius)}
-                      className="w-20 accent-blue-500"
-                      aria-label="Brush size"
-                    />
-                  </label>
-                  <label className="flex items-center gap-1 text-gray-400">
-                    Opacity
-                    <input
-                      type="range"
-                      min={0.05}
-                      max={1}
-                      step={0.05}
-                      value={paintBrushOpacity}
-                      onChange={(event) => setPaintBrushOpacity(Number(event.target.value))}
-                      onWheel={(event) => adjustRangeFromWheel(event, setPaintBrushOpacity)}
-                      className="w-16 accent-blue-500"
-                      aria-label="Brush opacity"
-                    />
-                  </label>
-                  <label className="flex items-center gap-1 text-gray-400">
-                    Hardness
-                    <input
-                      type="range"
-                      min={0}
-                      max={1}
-                      step={0.05}
-                      value={paintBrushHardness}
-                      onChange={(event) => setPaintBrushHardness(Number(event.target.value))}
-                      onWheel={(event) => adjustRangeFromWheel(event, setPaintBrushHardness)}
-                      className="w-16 accent-blue-500"
-                      aria-label="Brush hardness"
-                    />
-                  </label>
-                  <select
-                    value={paintBrushMode}
-                    onChange={(event) => setPaintBrushMode(event.target.value as UnitPainterBrushMode)}
-                    aria-label="Brush mode"
-                    title={paintBrushMode === "restore" ? "Erase the active layer to reveal layers/Base below" : "Brush mode"}
-                    className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100"
-                  >
-                    <option value="recolor">Recolor</option>
-                    <option value="paint">Paint</option>
-                    <option value="restore">Restore</option>
-                  </select>
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        if (paintColorHistory.length > 0) setIsPaintColorHistoryOpen(true);
+                      }}
+                    >
+                      {paintRecentColors.map((color) => (
+                        <button
+                          key={color}
+                          type="button"
+                          disabled={paintBrushMode === "restore"}
+                          onClick={() => choosePaintColor(color)}
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            setIsPaintColorHistoryOpen(true);
+                          }}
+                          className={`h-5 w-5 rounded-sm border disabled:cursor-not-allowed disabled:opacity-40 ${
+                            paintColor === color ? "border-white" : "border-gray-600"
+                          }`}
+                          style={{ backgroundColor: color }}
+                          title={`Use recent color ${color}; right-click for full history`}
+                          aria-label={`Use recent color ${color}`}
+                        />
+                      ))}
+                    </div>
+                    {isPaintColorHistoryOpen && paintColorHistory.length > 0 && (
+                      <div
+                        className="absolute left-0 top-full z-50 mt-1 w-56 rounded border border-gray-600 bg-gray-950/95 p-2 shadow-xl"
+                        onContextMenu={(event) => event.preventDefault()}
+                      >
+                        <div className="mb-2 flex items-center justify-between">
+                          <span className="text-[11px] font-semibold text-gray-200">Used color history</span>
+                          <button
+                            type="button"
+                            onClick={() => setIsPaintColorHistoryOpen(false)}
+                            className="rounded px-1 text-xs text-gray-400 hover:bg-gray-800 hover:text-white"
+                            aria-label="Close color history"
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <div className="grid max-h-48 grid-cols-8 gap-1 overflow-y-auto">
+                          {paintColorHistory.map((color) => (
+                            <button
+                              key={color}
+                              type="button"
+                              disabled={paintBrushMode === "restore"}
+                              onClick={() => {
+                                choosePaintColor(color);
+                                setIsPaintColorHistoryOpen(false);
+                              }}
+                              className={`h-5 w-5 rounded-sm border disabled:cursor-not-allowed disabled:opacity-40 ${
+                                paintColor === color ? "border-white" : "border-gray-600"
+                              }`}
+                              style={{ backgroundColor: color }}
+                              title={`Use color ${color}`}
+                              aria-label={`Use color ${color} from paint history`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   <button
                     type="button"
-                    disabled={paintViewMode === "texture"}
-                    onClick={() => setIsPaintSymmetryEnabled((enabled) => !enabled)}
-                    className={`rounded border px-2 py-1 ${
-                      isPaintSymmetryEnabled && paintViewMode !== "texture"
-                        ? "border-fuchsia-400 bg-fuchsia-900/50 text-fuchsia-100"
-                        : "border-gray-600 bg-gray-800 hover:border-fuchsia-400"
-                    } disabled:cursor-not-allowed disabled:opacity-40`}
-                    title={
-                      paintViewMode === "texture"
-                        ? "Model-space symmetry is available in the 3D or Split view."
-                        : "Mirror brush strokes left/right across the model's local X=0 plane"
+                    onClick={() =>
+                      setIsPaintEyedropperActive((active) => {
+                        const next = !active;
+                        if (next) {
+                          setPaintSelectMode(undefined);
+                          clearPaintHoverVisual();
+                        }
+                        return next;
+                      })
                     }
+                    className={`rounded border px-2 py-1 ${
+                      isPaintEyedropperActive
+                        ? "border-cyan-400 bg-cyan-900/60 text-cyan-100"
+                        : "border-gray-600 bg-gray-800 hover:border-cyan-400"
+                    }`}
+                    title="Pick a BaseColour from the model, or hold Alt while clicking the model"
                   >
-                    Symmetry X
+                    Pick
                   </button>
-  
-                  </>
-                )}
-                {paintSelection && (
-                  <>
                   <label className="flex items-center gap-1 text-gray-400">
-                    Apply to
+                    Select
                     <select
-                      value={paintScope}
+                      value={paintSelectMode || ""}
                       onChange={(event) => {
-                        const nextScope = event.target.value as UnitPainterSelectionScope;
-                        if (paintSelectionPartition?.sourceScope !== nextScope) {
-                          paintSessionRef.current?.clearSelectionPartitions();
-                        }
-                        setPaintScope(nextScope);
-                        paintScopeRef.current = nextScope;
-                        if (nextScope !== "material" && nextScope !== "island") {
-                          setPaintIsolationMode("off");
-                        }
-                        refreshPaintSelectionVisual(nextScope);
-                        clearPaintHoverVisual();
+                        const value = event.target.value as UnitPainterSelectMode | "";
+                        choosePaintSelectMode(value || undefined);
                       }}
-                      disabled={!!paintSelectionPartition}
-                      title={
-                        paintSelectionPartition
-                          ? "Remove the split before changing selection scope"
-                          : "Paint scope"
-                      }
-                      aria-label="Apply paint to"
-                      className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      className={`rounded border px-1.5 py-1 text-xs ${
+                        paintSelectMode
+                          ? "border-cyan-400 bg-cyan-950/50 text-cyan-100"
+                          : "border-gray-600 bg-gray-800 text-gray-100"
+                      }`}
+                      aria-label="Selection tool"
+                      title="Plain click selects once, then returns LMB to painting. Hold Shift to add or Ctrl to toggle while keeping selection mode active."
                     >
-                      <option value="all">Whole model</option>
-                      <option value="material" disabled={!paintSelection || paintScope === "similar"}>Selected material</option>
-                      <option value="island" disabled={!paintSessionRef.current?.selectionHasUvIsland}>Selected UV island</option>
-                      <option value="similar" disabled={!paintSessionRef.current?.hasSimilarSelection}>Selected similar colors</option>
+                      <option value="">Off</option>
+                      <option value="material">Material</option>
+                      <option value="island">UV island</option>
+                      <option value="similar">Similar colors</option>
                     </select>
                   </label>
-                  <button
-                    type="button"
-                    disabled={
-                      !paintSelection
-                      || (paintScope !== "material" && paintScope !== "island")
-                      || !!paintSelectionPartition
-                      || paintViewMode === "texture"
-                    }
-                    onClick={() =>
-                      setPaintIsolationMode((mode) => mode === "ghost" ? "off" : "ghost")
-                    }
-                    className={`rounded border px-2 py-1 ${
-                      paintIsolationMode === "ghost"
-                        ? "border-emerald-400 bg-emerald-900/50 text-emerald-100"
-                        : "border-gray-600 bg-gray-800 hover:border-emerald-400"
-                    } disabled:cursor-not-allowed disabled:opacity-40`}
-                    title={
-                      paintViewMode === "texture"
-                        ? "Isolation is visible in the 3D or Split view."
-                        : paintSelectionPartition
-                          ? "Remove the split before isolating the selection."
-                          : "Keep the selected material or UV island fully shaded and ghost the rest of the model."
-                    }
-                  >
-                    Isolate
-                  </button>
-                  <button
-                    type="button"
-                    disabled={
-                      !paintSelection
-                      || (paintScope !== "material" && paintScope !== "island")
-                      || !!paintSelectionPartition
-                      || paintViewMode === "texture"
-                    }
-                    onClick={() =>
-                      setPaintIsolationMode((mode) => mode === "hide" ? "off" : "hide")
-                    }
-                    className={`rounded border px-2 py-1 ${
-                      paintIsolationMode === "hide"
-                        ? "border-emerald-400 bg-emerald-900/50 text-emerald-100"
-                        : "border-gray-600 bg-gray-800 hover:border-emerald-400"
-                    } disabled:cursor-not-allowed disabled:opacity-40`}
-                    title="Show only the selected material or UV island while keeping the hidden geometry paintable and selectable."
-                  >
-                    Hide others
-                  </button>
-                  {paintSelection && paintScope !== "similar" && !paintSelectionPartition && (
-                    <label
-                      className="flex items-center gap-1 text-gray-400"
-                      title="Expand the selected material/UV-island mask outward by this many texture pixels. This gives fills and scoped Texture-view painting a small border beyond the exact UV footprint, which helps prevent visible seams from texture filtering and mipmaps. Pixels already occupied by other UVs are protected, so padding should not paint into unrelated mapped areas. This does not increase the normal 3D brush size."
-                    >
-                      Pad
-                      <select
-                        value={paintTexturePadding}
-                        onChange={(event) => setPaintTexturePadding(Number(event.target.value))}
-                        aria-label="UV padding"
-                        className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100"
-                      >
-                        {[0, 2, 4, 8].map((padding) => (
-                          <option key={padding} value={padding}>{padding}px</option>
-                        ))}
-                      </select>
+                  {paintSelectMode === "similar" && (
+                    <label className="flex items-center gap-1 text-gray-400" title="Perceptual OKLab color tolerance">
+                      Tol
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={paintSimilarTolerance}
+                        onChange={(event) => setPaintSimilarTolerance(Number(event.target.value))}
+                        onWheel={(event) => adjustRangeFromWheel(event, setPaintSimilarTolerance)}
+                        className="w-20 accent-yellow-500"
+                        aria-label="Select Similar tolerance"
+                      />
+                      <span className="min-w-6 text-right tabular-nums text-yellow-200">{paintSimilarTolerance}</span>
                     </label>
                   )}
-  
-                  </>
-                )}
-                {paintSelection && (
-                  <>
-                    <span
-                      className={`max-w-40 truncate ${
-                        paintScope === "island"
-                          ? "text-violet-300"
-                          : paintScope === "similar"
-                            ? "text-yellow-300"
-                            : "text-cyan-300"
-                      }`}
-                      title={
-                        (paintSessionRef.current?.selectionCount ?? 0) > 1
-                          ? `${paintSessionRef.current?.selectionCount} selections`
-                          : `${paintSelection.objectName} · ${paintSelection.materialName}`
-                      }
-                    >
-                      {paintScope === "similar"
-                        ? "Similar colors selected"
-                        : (paintSessionRef.current?.selectionCount ?? 0) > 1
-                          ? `${paintSessionRef.current?.selectionCount} ${
-                              paintScope === "island" ? "UV islands" : "materials"
-                            } selected`
-                          : `${paintSelection.objectName} · ${paintSelection.materialName}`}
-                    </span>
-                    {paintScope !== "all" && (
-                      <>
-                        <span className="text-gray-500">Split</span>
-                        {([
-                          ["vertical", "V", "Vertical split"],
-                          ["horizontal", "H", "Horizontal split"],
-                          ["slash", "/", "Diagonal / split"],
-                          ["backslash", "\\", "Diagonal \\ split"],
-                          ["x", "X", "Both diagonals"],
-                        ] as Array<[UnitPainterSelectionSplitKind, string, string]>).map(([kind, label, title]) => (
+                  {!paintSelectMode && !pendingDecal && !paintActiveDecal && (
+                    <>
+                      <label className="flex items-center gap-1 text-gray-400">
+                        Size
+                        <input
+                          type="range"
+                          min={4}
+                          max={64}
+                          step={1}
+                          value={paintBrushRadius}
+                          onChange={(event) => setPaintBrushRadius(Number(event.target.value))}
+                          onWheel={(event) => adjustRangeFromWheel(event, setPaintBrushRadius)}
+                          className="w-20 accent-blue-500"
+                          aria-label="Brush size"
+                        />
+                      </label>
+                      <label className="flex items-center gap-1 text-gray-400">
+                        Opacity
+                        <input
+                          type="range"
+                          min={0.05}
+                          max={1}
+                          step={0.05}
+                          value={paintBrushOpacity}
+                          onChange={(event) => setPaintBrushOpacity(Number(event.target.value))}
+                          onWheel={(event) => adjustRangeFromWheel(event, setPaintBrushOpacity)}
+                          className="w-16 accent-blue-500"
+                          aria-label="Brush opacity"
+                        />
+                      </label>
+                      <label className="flex items-center gap-1 text-gray-400">
+                        Hardness
+                        <input
+                          type="range"
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          value={paintBrushHardness}
+                          onChange={(event) => setPaintBrushHardness(Number(event.target.value))}
+                          onWheel={(event) => adjustRangeFromWheel(event, setPaintBrushHardness)}
+                          className="w-16 accent-blue-500"
+                          aria-label="Brush hardness"
+                        />
+                      </label>
+                      <select
+                        value={paintBrushMode}
+                        onChange={(event) => setPaintBrushMode(event.target.value as UnitPainterBrushMode)}
+                        aria-label="Brush mode"
+                        title={
+                          paintBrushMode === "restore"
+                            ? "Erase the active layer to reveal layers/Base below"
+                            : "Brush mode"
+                        }
+                        className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100"
+                      >
+                        <option value="recolor">Recolor</option>
+                        <option value="paint">Paint</option>
+                        <option value="restore">Restore</option>
+                      </select>
+                      <button
+                        type="button"
+                        disabled={paintViewMode === "texture"}
+                        onClick={() => setIsPaintSymmetryEnabled((enabled) => !enabled)}
+                        className={`rounded border px-2 py-1 ${
+                          isPaintSymmetryEnabled && paintViewMode !== "texture"
+                            ? "border-fuchsia-400 bg-fuchsia-900/50 text-fuchsia-100"
+                            : "border-gray-600 bg-gray-800 hover:border-fuchsia-400"
+                        } disabled:cursor-not-allowed disabled:opacity-40`}
+                        title={
+                          paintViewMode === "texture"
+                            ? "Model-space symmetry is available in the 3D or Split view."
+                            : "Mirror brush strokes left/right across the model's local X=0 plane"
+                        }
+                      >
+                        Symmetry X
+                      </button>
+                    </>
+                  )}
+                  {paintSelection && (
+                    <>
+                      <label className="flex items-center gap-1 text-gray-400">
+                        Apply to
+                        <select
+                          value={paintScope}
+                          onChange={(event) => {
+                            const nextScope = event.target.value as UnitPainterSelectionScope;
+                            if (paintSelectionPartition?.sourceScope !== nextScope) {
+                              paintSessionRef.current?.clearSelectionPartitions();
+                            }
+                            setPaintScope(nextScope);
+                            paintScopeRef.current = nextScope;
+                            if (nextScope !== "material" && nextScope !== "island") {
+                              setPaintIsolationMode("off");
+                            }
+                            refreshPaintSelectionVisual(nextScope);
+                            clearPaintHoverVisual();
+                          }}
+                          disabled={!!paintSelectionPartition}
+                          title={
+                            paintSelectionPartition ? "Remove the split before changing selection scope" : "Paint scope"
+                          }
+                          aria-label="Apply paint to"
+                          className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <option value="all">Whole model</option>
+                          <option value="material" disabled={!paintSelection || paintScope === "similar"}>
+                            Selected material
+                          </option>
+                          <option value="island" disabled={!paintSessionRef.current?.selectionHasUvIsland}>
+                            Selected UV island
+                          </option>
+                          <option value="similar" disabled={!paintSessionRef.current?.hasSimilarSelection}>
+                            Selected similar colors
+                          </option>
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        disabled={
+                          !paintSelection ||
+                          (paintScope !== "material" && paintScope !== "island") ||
+                          !!paintSelectionPartition ||
+                          paintViewMode === "texture"
+                        }
+                        onClick={() => setPaintIsolationMode((mode) => (mode === "ghost" ? "off" : "ghost"))}
+                        className={`rounded border px-2 py-1 ${
+                          paintIsolationMode === "ghost"
+                            ? "border-emerald-400 bg-emerald-900/50 text-emerald-100"
+                            : "border-gray-600 bg-gray-800 hover:border-emerald-400"
+                        } disabled:cursor-not-allowed disabled:opacity-40`}
+                        title={
+                          paintViewMode === "texture"
+                            ? "Isolation is visible in the 3D or Split view."
+                            : paintSelectionPartition
+                              ? "Remove the split before isolating the selection."
+                              : "Keep the selected material or UV island fully shaded and ghost the rest of the model."
+                        }
+                      >
+                        Isolate
+                      </button>
+                      <button
+                        type="button"
+                        disabled={
+                          !paintSelection ||
+                          (paintScope !== "material" && paintScope !== "island") ||
+                          !!paintSelectionPartition ||
+                          paintViewMode === "texture"
+                        }
+                        onClick={() => setPaintIsolationMode((mode) => (mode === "hide" ? "off" : "hide"))}
+                        className={`rounded border px-2 py-1 ${
+                          paintIsolationMode === "hide"
+                            ? "border-emerald-400 bg-emerald-900/50 text-emerald-100"
+                            : "border-gray-600 bg-gray-800 hover:border-emerald-400"
+                        } disabled:cursor-not-allowed disabled:opacity-40`}
+                        title="Show only the selected material or UV island while keeping the hidden geometry paintable and selectable."
+                      >
+                        Hide others
+                      </button>
+                      {paintSelection && paintScope !== "similar" && !paintSelectionPartition && (
+                        <label
+                          className="flex items-center gap-1 text-gray-400"
+                          title="Expand the selected material/UV-island mask outward by this many texture pixels. This gives fills and scoped Texture-view painting a small border beyond the exact UV footprint, which helps prevent visible seams from texture filtering and mipmaps. Pixels already occupied by other UVs are protected, so padding should not paint into unrelated mapped areas. This does not increase the normal 3D brush size."
+                        >
+                          Pad
+                          <select
+                            value={paintTexturePadding}
+                            onChange={(event) => setPaintTexturePadding(Number(event.target.value))}
+                            aria-label="UV padding"
+                            className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100"
+                          >
+                            {[0, 2, 4, 8].map((padding) => (
+                              <option key={padding} value={padding}>
+                                {padding}px
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                    </>
+                  )}
+                  {paintSelection && (
+                    <>
+                      <span
+                        className={`max-w-40 truncate ${
+                          paintScope === "island"
+                            ? "text-violet-300"
+                            : paintScope === "similar"
+                              ? "text-yellow-300"
+                              : "text-cyan-300"
+                        }`}
+                        title={
+                          (paintSessionRef.current?.selectionCount ?? 0) > 1
+                            ? `${paintSessionRef.current?.selectionCount} selections`
+                            : `${paintSelection.objectName} · ${paintSelection.materialName}`
+                        }
+                      >
+                        {paintScope === "similar"
+                          ? "Similar colors selected"
+                          : (paintSessionRef.current?.selectionCount ?? 0) > 1
+                            ? `${paintSessionRef.current?.selectionCount} ${
+                                paintScope === "island" ? "UV islands" : "materials"
+                              } selected`
+                            : `${paintSelection.objectName} · ${paintSelection.materialName}`}
+                      </span>
+                      {paintScope !== "all" && (
+                        <>
+                          <span className="text-gray-500">Split</span>
+                          {(
+                            [
+                              ["vertical", "V", "Vertical split"],
+                              ["horizontal", "H", "Horizontal split"],
+                              ["slash", "/", "Diagonal / split"],
+                              ["backslash", "\\", "Diagonal \\ split"],
+                              ["x", "X", "Both diagonals"],
+                            ] as Array<[UnitPainterSelectionSplitKind, string, string]>
+                          ).map(([kind, label, title]) => (
+                            <button
+                              key={kind}
+                              type="button"
+                              onClick={() => {
+                                const session = paintSessionRef.current;
+                                if (!session) return;
+                                if (session.splitSelection(paintScope, kind)) {
+                                  setPaintIsolationMode("off");
+                                  clearPaintSelectionVisual();
+                                  setPaintHistoryVersion((value) => value + 1);
+                                }
+                              }}
+                              className={`rounded border px-1.5 py-1 ${
+                                paintSelectionPartition?.kind === kind
+                                  ? "border-yellow-400 bg-yellow-900/50 text-yellow-100"
+                                  : "border-gray-600 bg-gray-800 hover:border-yellow-400"
+                              }`}
+                              title={paintSelectionPartition ? `${title} inside the active region` : title}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </>
+                      )}
+                      {paintSelectionPartition && (
+                        <>
+                          <span
+                            className="max-w-48 truncate text-yellow-200"
+                            title={paintSelectionPartition.pathLabels.join(" › ")}
+                          >
+                            {paintSelectionPartition.pathLabels.join(" › ")}
+                          </span>
+                          <span className="text-gray-500">Region</span>
+                          {paintSelectionPartition.regions.map((region) => (
+                            <button
+                              key={region.id}
+                              type="button"
+                              onClick={(event) => {
+                                const operation = event.ctrlKey ? "toggle" : event.shiftKey ? "add" : "replace";
+                                if (paintSessionRef.current?.setSelectionPartitionRegion(region.id, operation)) {
+                                  setPaintHistoryVersion((value) => value + 1);
+                                }
+                              }}
+                              className={`rounded border px-1.5 py-1 ${
+                                region.active
+                                  ? "border-yellow-400 bg-yellow-900/50 text-yellow-100"
+                                  : "border-gray-600 bg-gray-800 hover:border-yellow-400"
+                              }`}
+                              title="Click selects this region. Shift adds; Ctrl toggles."
+                            >
+                              {region.label}
+                            </button>
+                          ))}
                           <button
-                            key={kind}
+                            type="button"
+                            onClick={() => {
+                              if (paintSessionRef.current?.selectAllSelectionPartitionRegions()) {
+                                setPaintHistoryVersion((value) => value + 1);
+                              }
+                            }}
+                            className={`rounded border px-1.5 py-1 ${
+                              paintSelectionPartition.allActive
+                                ? "border-yellow-400 bg-yellow-900/50 text-yellow-100"
+                                : "border-gray-600 bg-gray-800 hover:border-yellow-400"
+                            }`}
+                            title="Activate the complete parent selection while keeping the split"
+                          >
+                            {paintSelectionPartition.regions.length === 2 ? "Both" : "All"}
+                          </button>
+                          <button
                             type="button"
                             onClick={() => {
                               const session = paintSessionRef.current;
-                              if (!session) return;
-                              if (session.splitSelection(paintScope, kind)) {
-                                setPaintIsolationMode("off");
-                                clearPaintSelectionVisual();
-                                setPaintHistoryVersion((value) => value + 1);
-                              }
-                            }}
-                            className={`rounded border px-1.5 py-1 ${
-                              paintSelectionPartition?.kind === kind
-                                ? "border-yellow-400 bg-yellow-900/50 text-yellow-100"
-                                : "border-gray-600 bg-gray-800 hover:border-yellow-400"
-                            }`}
-                            title={paintSelectionPartition ? `${title} inside the active region` : title}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </>
-                    )}
-                    {paintSelectionPartition && (
-                      <>
-                        <span
-                          className="max-w-48 truncate text-yellow-200"
-                          title={paintSelectionPartition.pathLabels.join(" › ")}
-                        >
-                          {paintSelectionPartition.pathLabels.join(" › ")}
-                        </span>
-                        <span className="text-gray-500">Region</span>
-                        {paintSelectionPartition.regions.map((region) => (
-                          <button
-                            key={region.id}
-                            type="button"
-                            onClick={(event) => {
-                              const operation =
-                                event.ctrlKey ? "toggle" : event.shiftKey ? "add" : "replace";
-                              if (paintSessionRef.current?.setSelectionPartitionRegion(region.id, operation)) {
-                                setPaintHistoryVersion((value) => value + 1);
-                              }
-                            }}
-                            className={`rounded border px-1.5 py-1 ${
-                              region.active
-                                ? "border-yellow-400 bg-yellow-900/50 text-yellow-100"
-                                : "border-gray-600 bg-gray-800 hover:border-yellow-400"
-                            }`}
-                            title="Click selects this region. Shift adds; Ctrl toggles."
-                          >
-                            {region.label}
-                          </button>
-                        ))}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (paintSessionRef.current?.selectAllSelectionPartitionRegions()) {
-                              setPaintHistoryVersion((value) => value + 1);
-                            }
-                          }}
-                          className={`rounded border px-1.5 py-1 ${
-                            paintSelectionPartition.allActive
-                              ? "border-yellow-400 bg-yellow-900/50 text-yellow-100"
-                              : "border-gray-600 bg-gray-800 hover:border-yellow-400"
-                          }`}
-                          title="Activate the complete parent selection while keeping the split"
-                        >
-                          {paintSelectionPartition.regions.length === 2 ? "Both" : "All"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const session = paintSessionRef.current;
-                            if (session?.removeSelectionPartition()) {
-                              if (session.selectionPartitionInfo) clearPaintSelectionVisual();
-                              else refreshPaintSelectionVisual(paintScope);
-                              setPaintHistoryVersion((value) => value + 1);
-                            }
-                          }}
-                          className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 hover:border-gray-400"
-                          title="Remove the current split and return one split level"
-                        >
-                          Unsplit
-                        </button>
-                        {paintSelectionPartition.depth > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (paintSessionRef.current?.clearSelectionPartitions()) {
-                                refreshPaintSelectionVisual(paintScope);
+                              if (session?.removeSelectionPartition()) {
+                                if (session.selectionPartitionInfo) clearPaintSelectionVisual();
+                                else refreshPaintSelectionVisual(paintScope);
                                 setPaintHistoryVersion((value) => value + 1);
                               }
                             }}
                             className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 hover:border-gray-400"
-                            title="Remove every nested split and return to the original selection"
+                            title="Remove the current split and return one split level"
                           >
-                            Clear splits
+                            Unsplit
                           </button>
-                        )}
-                      </>
-                    )}
-                    {paintSelectionPartition ? (
-                      <>
-                        <button
-                          type="button"
-                          disabled={paintBrushMode === "restore"}
-                          onClick={() => {
-                            const scope = paintSelectionPartition?.sourceScope;
-                            if (
-                              scope
-                              && paintSessionRef.current?.fillSelection(scope, brushSettingsRef.current)
-                            ) {
-                              rememberUsedPaintColor(paintColor);
-                              setPaintExportStatus("");
-                              setPaintHistoryVersion((value) => value + 1);
-                            }
-                          }}
-                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-yellow-400 disabled:cursor-not-allowed disabled:opacity-40"
-                          title="Fill the currently active split region"
-                        >
-                          Fill region
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const scope = paintSelectionPartition?.sourceScope;
-                            if (scope && paintSessionRef.current?.resetSelection(scope)) {
-                              setPaintExportStatus("");
-                              setPaintHistoryVersion((value) => value + 1);
-                            }
-                          }}
-                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-amber-400"
-                          title="Clear the active paint layer inside the current split region"
-                        >
-                          Clear region
-                        </button>
-                      </>
-                    ) : paintScope === "similar" ? (
-                      <>
-                        <button
-                          type="button"
-                          disabled={paintBrushMode === "restore"}
-                          onClick={() => {
-                            if (paintSessionRef.current?.fillSelection("similar", brushSettingsRef.current)) {
-                              rememberUsedPaintColor(paintColor);
-                              setPaintExportStatus("");
-                              setPaintHistoryVersion((value) => value + 1);
-                            }
-                          }}
-                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-yellow-400 disabled:cursor-not-allowed disabled:opacity-40"
-                          title={
-                            paintBrushMode === "restore"
-                              ? "Use Clear similar to erase this area from the active layer"
-                              : "Fill the frozen similar-color selection"
-                          }
-                        >
-                          Fill similar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (paintSessionRef.current?.resetSelection("similar")) {
-                              setPaintExportStatus("");
-                              setPaintHistoryVersion((value) => value + 1);
-                            }
-                          }}
-                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-amber-400"
-                          title="Clear the active paint layer inside the similar-color selection"
-                        >
-                          Clear similar
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          disabled={paintBrushMode === "restore"}
-                          onClick={() => {
-                            if (paintSessionRef.current?.fillSelection("material", brushSettingsRef.current, paintTexturePadding)) {
-                              rememberUsedPaintColor(paintColor);
-                              setPaintExportStatus("");
-                              setPaintHistoryVersion((value) => value + 1);
-                            }
-                          }}
-                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-40"
-                          title={
-                            paintBrushMode === "restore"
-                              ? "Use Clear material to erase this area from the active layer"
-                              : "Fill the selected material UV footprint with the current color"
-                          }
-                        >
-                          Fill material
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!paintSessionRef.current?.selectionHasUvIsland || paintBrushMode === "restore"}
-                          onClick={() => {
-                            if (paintSessionRef.current?.fillSelection("island", brushSettingsRef.current, paintTexturePadding)) {
-                              rememberUsedPaintColor(paintColor);
-                              setPaintExportStatus("");
-                              setPaintHistoryVersion((value) => value + 1);
-                            }
-                          }}
-                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-40"
-                          title={
-                            paintBrushMode === "restore"
-                              ? "Use Clear island to erase this area from the active layer"
-                              : "Fill only the selected UV island with the current color"
-                          }
-                        >
-                          Fill island
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (paintSessionRef.current?.resetSelection("material")) {
-                              setPaintExportStatus("");
-                              setPaintHistoryVersion((value) => value + 1);
-                            }
-                          }}
-                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-amber-400"
-                          title="Clear the active paint layer inside the selected material"
-                        >
-                          Clear material
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!paintSessionRef.current?.selectionHasUvIsland}
-                          onClick={() => {
-                            if (paintSessionRef.current?.resetSelection("island")) {
-                              setPaintExportStatus("");
-                              setPaintHistoryVersion((value) => value + 1);
-                            }
-                          }}
-                          className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
-                          title="Clear the active paint layer inside the selected UV island"
-                        >
-                          Clear island
-                        </button>
-                      </>
-                    )}
-                    <button
-                      type="button"
-                      onClick={clearPaintSelection}
-                      className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-gray-400"
-                      title="Clear the current painter selection"
-                    >
-                      Clear selection
-                    </button>
-                  </>
-                )}
-                <button
-                  type="button"
-                  disabled={!paintSessionRef.current?.canUndo}
-                  onClick={() => {
-                    if (paintSessionRef.current?.undo()) setPaintHistoryVersion((value) => value + 1);
-                  }}
-                  title="Undo (Ctrl+Z)"
-                  className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Undo
-                </button>
-                <button
-                  type="button"
-                  disabled={!paintSessionRef.current?.canRedo}
-                  onClick={() => {
-                    if (paintSessionRef.current?.redo()) setPaintHistoryVersion((value) => value + 1);
-                  }}
-                  title="Redo (Ctrl+Y or Ctrl+Shift+Z)"
-                  className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Redo
-                </button>
-                <details className="group relative">
-                  <summary
-                    className="cursor-pointer list-none rounded border border-gray-600 bg-gray-800 px-2 py-1 text-gray-300 hover:border-violet-400 [&::-webkit-details-marker]:hidden"
-                    title="Faction-specific save and generated-name options"
-                  >
-                    Save options{isPaintFactionScoped ? " · faction only" : ""}
-                  </summary>
-                  <div className="absolute left-0 top-full z-40 mt-1 flex w-[min(36rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] flex-wrap items-center gap-2 rounded border border-gray-600 bg-gray-950/95 p-2 shadow-xl">
-                  <label
-                    className={`flex items-center gap-1 rounded border px-2 py-1 ${
-                      isPaintFactionScoped
-                        ? "border-violet-400 bg-violet-900/40 text-violet-100"
-                        : "border-gray-600 bg-gray-800 text-gray-300"
-                    }`}
-                    title={
-                      paintFactionScopeSource
-                        ? "Save a new VMD and assign it only to one faction"
-                        : "Faction-scoped saving needs unit DB context; open the unit from Unit Viewer"
-                    }
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isPaintFactionScoped}
-                      disabled={!paintFactionScopeSource || isPaintExporting}
-                      onChange={(event) => {
-                        const enabled = event.target.checked;
-                        setIsPaintFactionScoped(enabled);
-                        if (enabled && paintFactionScopeSource && !paintFactionNamesCustomized) {
-                          const defaults = getPainterFactionScopeDefaults(
-                            paintFactionScopeSource,
-                            assetPath,
-                            paintFaction,
-                          );
-                          setPaintFactionVariantName(defaults.variantName);
-                          setPaintFactionVmdFilename(defaults.vmdFilename);
-                        }
-                        setPaintFactionScopeDirty(true);
-                      }}
-                      className="accent-violet-500"
-                    />
-                    Save for faction only
-                  </label>
-                  {isPaintFactionScoped && paintFactionScopeSource && (
-                    <>
-                      <input
-                        list="unit-painter-faction-keys"
-                        value={paintFaction}
-                        onChange={(event) => {
-                          const faction = event.target.value;
-                          setPaintFaction(faction);
-                          if (!paintFactionNamesCustomized) {
-                            const defaults = getPainterFactionScopeDefaults(
-                              paintFactionScopeSource,
-                              assetPath,
-                              faction,
-                            );
-                            setPaintFactionVariantName(defaults.variantName);
-                            setPaintFactionVmdFilename(defaults.vmdFilename);
-                          }
-                          setPaintFactionScopeDirty(true);
-                        }}
-                        placeholder="Choose faction"
-                        aria-label="Faction key for painted unit variant"
-                        className="w-52 rounded border border-violet-500/70 bg-gray-800 px-2 py-1 text-xs text-gray-100"
-                        title="Only this faction will use the painted unit variant"
-                      />
-                      <datalist id="unit-painter-faction-keys">
-                        {paintFactionSaveOptions.map((faction) => (
-                          <option key={faction} value={faction} />
-                        ))}
-                      </datalist>
-                      <details
-                        open={isPaintFactionAdvancedOpen}
-                        onToggle={(event) => setIsPaintFactionAdvancedOpen(event.currentTarget.open)}
-                        className="group relative"
-                      >
-                        <summary
-                          className="cursor-pointer list-none rounded border border-gray-600 bg-gray-800 px-2 py-1 text-gray-400 hover:border-violet-400 hover:text-gray-200 [&::-webkit-details-marker]:hidden"
-                          title="Override the automatically generated variant key and VMD filename"
-                        >
-                          Advanced names{paintFactionNamesCustomized ? " · custom" : ""}
-                        </summary>
-                        <div className="absolute left-0 top-full z-30 mt-1 flex w-[min(34rem,calc(100vw-3rem))] max-w-[calc(100vw-3rem)] flex-wrap items-end gap-2 rounded border border-gray-600 bg-gray-900 p-2 shadow-xl">
-                          <label className="min-w-0 flex-1 text-[10px] text-gray-400">
-                            Variant key
-                            <input
-                              value={paintFactionVariantName}
-                              onChange={(event) => {
-                                setPaintFactionVariantName(event.target.value);
-                                setPaintFactionNamesCustomized(true);
-                                setPaintFactionScopeDirty(true);
+                          {paintSelectionPartition.depth > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (paintSessionRef.current?.clearSelectionPartitions()) {
+                                  refreshPaintSelectionVisual(paintScope);
+                                  setPaintHistoryVersion((value) => value + 1);
+                                }
                               }}
-                              placeholder="new variant key"
-                              aria-label="New variants_tables variant key"
-                              className="mt-0.5 w-full rounded border border-violet-500/70 bg-gray-800 px-2 py-1 text-xs text-gray-100"
-                              title="New variants_tables.variant_name"
-                            />
-                          </label>
-                          <label className="min-w-0 flex-1 text-[10px] text-gray-400">
-                            VMD filename
-                            <input
-                              value={paintFactionVmdFilename}
-                              onChange={(event) => {
-                                setPaintFactionVmdFilename(event.target.value);
-                                setPaintFactionNamesCustomized(true);
-                                setPaintFactionScopeDirty(true);
-                              }}
-                              placeholder="new VMD filename"
-                              aria-label="New VMD filename"
-                              className="mt-0.5 w-full rounded border border-violet-500/70 bg-gray-800 px-2 py-1 text-xs text-gray-100"
-                              title="New variants_tables.variant_filename (without .variantmeshdefinition)"
-                            />
-                          </label>
+                              className="rounded border border-gray-600 bg-gray-800 px-1.5 py-1 hover:border-gray-400"
+                              title="Remove every nested split and return to the original selection"
+                            >
+                              Clear splits
+                            </button>
+                          )}
+                        </>
+                      )}
+                      {paintSelectionPartition ? (
+                        <>
                           <button
                             type="button"
-                            disabled={!paintFactionNamesCustomized}
+                            disabled={paintBrushMode === "restore"}
                             onClick={() => {
+                              const scope = paintSelectionPartition?.sourceScope;
+                              if (scope && paintSessionRef.current?.fillSelection(scope, brushSettingsRef.current)) {
+                                rememberUsedPaintColor(paintColor);
+                                setPaintExportStatus("");
+                                setPaintHistoryVersion((value) => value + 1);
+                              }
+                            }}
+                            className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-yellow-400 disabled:cursor-not-allowed disabled:opacity-40"
+                            title="Fill the currently active split region"
+                          >
+                            Fill region
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const scope = paintSelectionPartition?.sourceScope;
+                              if (scope && paintSessionRef.current?.resetSelection(scope)) {
+                                setPaintExportStatus("");
+                                setPaintHistoryVersion((value) => value + 1);
+                              }
+                            }}
+                            className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-amber-400"
+                            title="Clear the active paint layer inside the current split region"
+                          >
+                            Clear region
+                          </button>
+                        </>
+                      ) : paintScope === "similar" ? (
+                        <>
+                          <button
+                            type="button"
+                            disabled={paintBrushMode === "restore"}
+                            onClick={() => {
+                              if (paintSessionRef.current?.fillSelection("similar", brushSettingsRef.current)) {
+                                rememberUsedPaintColor(paintColor);
+                                setPaintExportStatus("");
+                                setPaintHistoryVersion((value) => value + 1);
+                              }
+                            }}
+                            className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-yellow-400 disabled:cursor-not-allowed disabled:opacity-40"
+                            title={
+                              paintBrushMode === "restore"
+                                ? "Use Clear similar to erase this area from the active layer"
+                                : "Fill the frozen similar-color selection"
+                            }
+                          >
+                            Fill similar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (paintSessionRef.current?.resetSelection("similar")) {
+                                setPaintExportStatus("");
+                                setPaintHistoryVersion((value) => value + 1);
+                              }
+                            }}
+                            className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-amber-400"
+                            title="Clear the active paint layer inside the similar-color selection"
+                          >
+                            Clear similar
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            disabled={paintBrushMode === "restore"}
+                            onClick={() => {
+                              if (
+                                paintSessionRef.current?.fillSelection(
+                                  "material",
+                                  brushSettingsRef.current,
+                                  paintTexturePadding,
+                                )
+                              ) {
+                                rememberUsedPaintColor(paintColor);
+                                setPaintExportStatus("");
+                                setPaintHistoryVersion((value) => value + 1);
+                              }
+                            }}
+                            className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-40"
+                            title={
+                              paintBrushMode === "restore"
+                                ? "Use Clear material to erase this area from the active layer"
+                                : "Fill the selected material UV footprint with the current color"
+                            }
+                          >
+                            Fill material
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!paintSessionRef.current?.selectionHasUvIsland || paintBrushMode === "restore"}
+                            onClick={() => {
+                              if (
+                                paintSessionRef.current?.fillSelection(
+                                  "island",
+                                  brushSettingsRef.current,
+                                  paintTexturePadding,
+                                )
+                              ) {
+                                rememberUsedPaintColor(paintColor);
+                                setPaintExportStatus("");
+                                setPaintHistoryVersion((value) => value + 1);
+                              }
+                            }}
+                            className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-40"
+                            title={
+                              paintBrushMode === "restore"
+                                ? "Use Clear island to erase this area from the active layer"
+                                : "Fill only the selected UV island with the current color"
+                            }
+                          >
+                            Fill island
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (paintSessionRef.current?.resetSelection("material")) {
+                                setPaintExportStatus("");
+                                setPaintHistoryVersion((value) => value + 1);
+                              }
+                            }}
+                            className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-amber-400"
+                            title="Clear the active paint layer inside the selected material"
+                          >
+                            Clear material
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!paintSessionRef.current?.selectionHasUvIsland}
+                            onClick={() => {
+                              if (paintSessionRef.current?.resetSelection("island")) {
+                                setPaintExportStatus("");
+                                setPaintHistoryVersion((value) => value + 1);
+                              }
+                            }}
+                            className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
+                            title="Clear the active paint layer inside the selected UV island"
+                          >
+                            Clear island
+                          </button>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={clearPaintSelection}
+                        className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-gray-400"
+                        title="Clear the current painter selection"
+                      >
+                        Clear selection
+                      </button>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    disabled={!paintSessionRef.current?.canUndo}
+                    onClick={() => {
+                      if (paintSessionRef.current?.undo()) setPaintHistoryVersion((value) => value + 1);
+                    }}
+                    title="Undo (Ctrl+Z)"
+                    className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Undo
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!paintSessionRef.current?.canRedo}
+                    onClick={() => {
+                      if (paintSessionRef.current?.redo()) setPaintHistoryVersion((value) => value + 1);
+                    }}
+                    title="Redo (Ctrl+Y or Ctrl+Shift+Z)"
+                    className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Redo
+                  </button>
+                  <details className="group relative">
+                    <summary
+                      className="cursor-pointer list-none rounded border border-gray-600 bg-gray-800 px-2 py-1 text-gray-300 hover:border-violet-400 [&::-webkit-details-marker]:hidden"
+                      title="Faction-specific save and generated-name options"
+                    >
+                      Save options{isPaintFactionScoped ? " · faction only" : ""}
+                    </summary>
+                    <div className="absolute left-0 top-full z-40 mt-1 flex w-[min(36rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] flex-wrap items-center gap-2 rounded border border-gray-600 bg-gray-950/95 p-2 shadow-xl">
+                      <label
+                        className={`flex items-center gap-1 rounded border px-2 py-1 ${
+                          isPaintFactionScoped
+                            ? "border-violet-400 bg-violet-900/40 text-violet-100"
+                            : "border-gray-600 bg-gray-800 text-gray-300"
+                        }`}
+                        title={
+                          paintFactionScopeSource
+                            ? "Save a new VMD and assign it only to one faction"
+                            : "Faction-scoped saving needs unit DB context; open the unit from Unit Viewer"
+                        }
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isPaintFactionScoped}
+                          disabled={!paintFactionScopeSource || isPaintExporting}
+                          onChange={(event) => {
+                            const enabled = event.target.checked;
+                            setIsPaintFactionScoped(enabled);
+                            if (enabled && paintFactionScopeSource && !paintFactionNamesCustomized) {
                               const defaults = getPainterFactionScopeDefaults(
                                 paintFactionScopeSource,
                                 assetPath,
@@ -4621,63 +4933,159 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                               );
                               setPaintFactionVariantName(defaults.variantName);
                               setPaintFactionVmdFilename(defaults.vmdFilename);
-                              setPaintFactionNamesCustomized(false);
+                            }
+                            setPaintFactionScopeDirty(true);
+                          }}
+                          className="accent-violet-500"
+                        />
+                        Save for faction only
+                      </label>
+                      {isPaintFactionScoped && paintFactionScopeSource && (
+                        <>
+                          <input
+                            list="unit-painter-faction-keys"
+                            value={paintFaction}
+                            onChange={(event) => {
+                              const faction = event.target.value;
+                              setPaintFaction(faction);
+                              if (!paintFactionNamesCustomized) {
+                                const defaults = getPainterFactionScopeDefaults(
+                                  paintFactionScopeSource,
+                                  assetPath,
+                                  faction,
+                                );
+                                setPaintFactionVariantName(defaults.variantName);
+                                setPaintFactionVmdFilename(defaults.vmdFilename);
+                              }
                               setPaintFactionScopeDirty(true);
                             }}
-                            className="rounded border border-gray-600 bg-gray-800 px-2 py-1 text-xs text-gray-300 hover:border-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
-                            title="Use automatically generated names based on the unit and faction"
+                            placeholder="Choose faction"
+                            aria-label="Faction key for painted unit variant"
+                            className="w-52 rounded border border-violet-500/70 bg-gray-800 px-2 py-1 text-xs text-gray-100"
+                            title="Only this faction will use the painted unit variant"
+                          />
+                          <datalist id="unit-painter-faction-keys">
+                            {paintFactionSaveOptions.map((faction) => (
+                              <option key={faction} value={faction} />
+                            ))}
+                          </datalist>
+                          <details
+                            open={isPaintFactionAdvancedOpen}
+                            onToggle={(event) => setIsPaintFactionAdvancedOpen(event.currentTarget.open)}
+                            className="group relative"
                           >
-                            Reset
-                          </button>
-                        </div>
-                      </details>
-                    </>
-                  )}
-  
-                  </div>
-                </details>
-                <button
-                  type="button"
-                  disabled={!paintSessionRef.current || isPaintExporting}
-                  onClick={() => savePaintedMod(paintPackPath ? "save" : "create")}
-                  className="rounded border border-blue-500 bg-blue-700/40 px-2 py-1 text-blue-100 hover:bg-blue-700/60 disabled:cursor-not-allowed disabled:opacity-40"
-                  title={paintPackPath ? `Save to ${paintPackPath}` : "Create a painted mod pack"}
-                >
-                  {isPaintExporting
-                    ? paintPackPath
-                      ? "Saving…"
-                      : "Creating…"
-                    : paintPackPath
-                      ? "Save painted mod"
-                      : "Create painted mod"}
-                </button>
-                {paintPackPath && (
+                            <summary
+                              className="cursor-pointer list-none rounded border border-gray-600 bg-gray-800 px-2 py-1 text-gray-400 hover:border-violet-400 hover:text-gray-200 [&::-webkit-details-marker]:hidden"
+                              title="Override the automatically generated variant key and VMD filename"
+                            >
+                              Advanced names{paintFactionNamesCustomized ? " · custom" : ""}
+                            </summary>
+                            <div className="absolute left-0 top-full z-30 mt-1 flex w-[min(34rem,calc(100vw-3rem))] max-w-[calc(100vw-3rem)] flex-wrap items-end gap-2 rounded border border-gray-600 bg-gray-900 p-2 shadow-xl">
+                              <label className="min-w-0 flex-1 text-[10px] text-gray-400">
+                                Variant key
+                                <input
+                                  value={paintFactionVariantName}
+                                  onChange={(event) => {
+                                    setPaintFactionVariantName(event.target.value);
+                                    setPaintFactionNamesCustomized(true);
+                                    setPaintFactionScopeDirty(true);
+                                  }}
+                                  placeholder="new variant key"
+                                  aria-label="New variants_tables variant key"
+                                  className="mt-0.5 w-full rounded border border-violet-500/70 bg-gray-800 px-2 py-1 text-xs text-gray-100"
+                                  title="New variants_tables.variant_name"
+                                />
+                              </label>
+                              <label className="min-w-0 flex-1 text-[10px] text-gray-400">
+                                VMD filename
+                                <input
+                                  value={paintFactionVmdFilename}
+                                  onChange={(event) => {
+                                    setPaintFactionVmdFilename(event.target.value);
+                                    setPaintFactionNamesCustomized(true);
+                                    setPaintFactionScopeDirty(true);
+                                  }}
+                                  placeholder="new VMD filename"
+                                  aria-label="New VMD filename"
+                                  className="mt-0.5 w-full rounded border border-violet-500/70 bg-gray-800 px-2 py-1 text-xs text-gray-100"
+                                  title="New variants_tables.variant_filename (without .variantmeshdefinition)"
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                disabled={!paintFactionNamesCustomized}
+                                onClick={() => {
+                                  const defaults = getPainterFactionScopeDefaults(
+                                    paintFactionScopeSource,
+                                    assetPath,
+                                    paintFaction,
+                                  );
+                                  setPaintFactionVariantName(defaults.variantName);
+                                  setPaintFactionVmdFilename(defaults.vmdFilename);
+                                  setPaintFactionNamesCustomized(false);
+                                  setPaintFactionScopeDirty(true);
+                                }}
+                                className="rounded border border-gray-600 bg-gray-800 px-2 py-1 text-xs text-gray-300 hover:border-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
+                                title="Use automatically generated names based on the unit and faction"
+                              >
+                                Reset
+                              </button>
+                            </div>
+                          </details>
+                        </>
+                      )}
+                    </div>
+                  </details>
                   <button
                     type="button"
                     disabled={!paintSessionRef.current || isPaintExporting}
-                    onClick={() => savePaintedMod("saveAs")}
-                    className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
-                    title="Save the painted mod to a different pack"
+                    onClick={() => savePaintedMod(paintPackPath ? "save" : "create")}
+                    className="rounded border border-blue-500 bg-blue-700/40 px-2 py-1 text-blue-100 hover:bg-blue-700/60 disabled:cursor-not-allowed disabled:opacity-40"
+                    title={paintPackPath ? `Save to ${paintPackPath}` : "Create a painted mod pack"}
                   >
-                    Save As…
+                    {isPaintExporting
+                      ? paintPackPath
+                        ? "Saving…"
+                        : "Creating…"
+                      : paintPackPath
+                        ? "Save painted mod"
+                        : "Create painted mod"}
                   </button>
-                )}
-                {paintPackPath ? (
-                  <span
-                    className={paintHasUnsavedChanges ? "font-medium text-amber-300" : "font-medium text-emerald-300"}
-                    title={paintHasUnsavedChanges ? "The painted mod has unsaved changes" : "The painted mod matches the last successful save"}
-                  >
-                    {paintHasUnsavedChanges ? "Modified" : "Saved"}
-                  </span>
-                ) : paintHasUnsavedChanges ? (
-                  <span className="font-medium text-amber-300" title="Paint changes have not been saved to a mod yet">
-                    Modified
-                  </span>
-                ) : null}
-                {paintTextureCount === 0 && <span className="text-amber-300">No editable base-colour texture</span>}
-                {paintExportStatus && <span className="max-w-56 truncate text-gray-300" title={paintExportStatus}>{paintExportStatus}</span>}
-              </>
-            )}
+                  {paintPackPath && (
+                    <button
+                      type="button"
+                      disabled={!paintSessionRef.current || isPaintExporting}
+                      onClick={() => savePaintedMod("saveAs")}
+                      className="rounded border border-gray-600 bg-gray-800 px-2 py-1 hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
+                      title="Save the painted mod to a different pack"
+                    >
+                      Save As…
+                    </button>
+                  )}
+                  {paintPackPath ? (
+                    <span
+                      className={paintHasUnsavedChanges ? "font-medium text-amber-300" : "font-medium text-emerald-300"}
+                      title={
+                        paintHasUnsavedChanges
+                          ? "The painted mod has unsaved changes"
+                          : "The painted mod matches the last successful save"
+                      }
+                    >
+                      {paintHasUnsavedChanges ? "Modified" : "Saved"}
+                    </span>
+                  ) : paintHasUnsavedChanges ? (
+                    <span className="font-medium text-amber-300" title="Paint changes have not been saved to a mod yet">
+                      Modified
+                    </span>
+                  ) : null}
+                  {paintTextureCount === 0 && <span className="text-amber-300">No editable base-colour texture</span>}
+                  {paintExportStatus && (
+                    <span className="max-w-56 truncate text-gray-300" title={paintExportStatus}>
+                      {paintExportStatus}
+                    </span>
+                  )}
+                </>
+              )}
             </div>
           </div>
         )}
@@ -4724,12 +5132,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                     const nextValue = Number(event.target.value);
                     const previousValue = variantSelections[slot.slotPath] ?? slot.defaultChoiceIndex;
                     const context = contextRef.current;
-                    if (
-                      status === "ready" &&
-                      context &&
-                      previousValue !== ALL_VARIANTS &&
-                      nextValue !== ALL_VARIANTS
-                    ) {
+                    if (status === "ready" && context && previousValue !== ALL_VARIANTS && nextValue !== ALL_VARIANTS) {
                       pendingCameraViewRef.current = { assetPath, view: captureCameraView(context) };
                     } else if (previousValue === ALL_VARIANTS || nextValue === ALL_VARIANTS) {
                       pendingCameraViewRef.current = null;
@@ -4761,7 +5164,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
               className="mt-1 truncate text-[10px] text-gray-500"
               title={comparisonColumnSlot.choices.map((choice) => `${choice.index + 1}: ${choice.label}`).join(" · ")}
             >
-              Columns: {comparisonColumnSlot.choices.map((choice) => `${choice.index + 1}: ${choice.label}`).join(" · ")}
+              Columns:{" "}
+              {comparisonColumnSlot.choices.map((choice) => `${choice.index + 1}: ${choice.label}`).join(" · ")}
             </div>
           )}
           {comparisonRowSlot && (

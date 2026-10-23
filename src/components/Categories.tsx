@@ -102,8 +102,8 @@ const getNextEnabledSortMode = (mode: EnabledSortMode): EnabledSortMode => {
   return "none";
 };
 
-const isModEffectivelyEnabled = (mod: Mod, alwaysEnabledModNames: Set<string>) =>
-  mod.isEnabled || alwaysEnabledModNames.has(mod.name);
+const isModEffectivelyEnabled = (mod: Mod, alwaysEnabledModNames: Set<string>, canDisableAlwaysEnabledMods: boolean) =>
+  mod.isEnabled || (!canDisableAlwaysEnabledMods && alwaysEnabledModNames.has(mod.name));
 
 const cancelDebounced = (callback: unknown) => {
   (callback as { cancel?: () => void }).cancel?.();
@@ -249,6 +249,7 @@ const Categories = memo(() => {
   const categories = useAppSelector((state) => state.app.categories);
   const categoryColors = useAppSelector((state) => state.app.categoryColors || {});
   const alwaysEnabledModNames = useAppSelector((state) => state.app.alwaysEnabledModNames);
+  const canDisableAlwaysEnabledMods = useAppSelector((state) => state.app.canDisableAlwaysEnabledMods);
   const isDev = useAppSelector((state) => state.app.isDev);
   const isAuthorShown = useAppSelector((state) => state.app.isCategoryAuthorEnabled);
   const isThumbnailShown = useAppSelector((state) => state.app.areCategoryThumbnailsEnabled);
@@ -344,7 +345,9 @@ const Categories = memo(() => {
         if (selectedMods.length === 0) return;
 
         const alwaysEnabledSet = new Set(alwaysEnabledModNames);
-        const toEnable = selectedMods.some((mod) => !isModEffectivelyEnabled(mod, alwaysEnabledSet));
+        const toEnable = selectedMods.some(
+          (mod) => !isModEffectivelyEnabled(mod, alwaysEnabledSet, canDisableAlwaysEnabledMods),
+        );
         dispatch(setAreModsEnabled(selectedMods.map((mod) => ({ mod, isEnabled: toEnable }))));
         event.preventDefault();
       }
@@ -369,7 +372,7 @@ const Categories = memo(() => {
       document.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", onWindowBlur);
     };
-  }, [alwaysEnabledModNames, dispatch, getSelectedMods, isContextMenuOpen]);
+  }, [alwaysEnabledModNames, canDisableAlwaysEnabledMods, dispatch, getSelectedMods, isContextMenuOpen]);
 
   const groupedCategories = useMemo<CategoryGroup[]>(() => {
     const rowsByCategory = new Map<string, { category: string; mods: Mod[]; total: number; enabled: number }>();
@@ -387,7 +390,7 @@ const Categories = memo(() => {
 
         categoryInfo.mods.push(mod);
         categoryInfo.total += 1;
-        if (isModEffectivelyEnabled(mod, alwaysEnabledSet)) categoryInfo.enabled += 1;
+        if (isModEffectivelyEnabled(mod, alwaysEnabledSet, canDisableAlwaysEnabledMods)) categoryInfo.enabled += 1;
       }
     }
 
@@ -403,7 +406,7 @@ const Categories = memo(() => {
         if (secondCategory.category === uncategorizedCategoryName) return 1;
         return firstCategory.category.localeCompare(secondCategory.category);
       });
-  }, [alwaysEnabledModNames, mods]);
+  }, [alwaysEnabledModNames, canDisableAlwaysEnabledMods, mods]);
 
   const filteredGroups = useMemo<CategoryGroup[]>(() => {
     let data = groupedCategories.map((group) => ({ ...group, filteredMods: [...group.mods] }));
@@ -477,8 +480,8 @@ const Categories = memo(() => {
       const alwaysEnabledSet = new Set(alwaysEnabledModNames);
       for (const categoryGroup of data) {
         categoryGroup.filteredMods = [...categoryGroup.filteredMods].sort((firstMod, secondMod) => {
-          const firstIsEnabled = isModEffectivelyEnabled(firstMod, alwaysEnabledSet);
-          const secondIsEnabled = isModEffectivelyEnabled(secondMod, alwaysEnabledSet);
+          const firstIsEnabled = isModEffectivelyEnabled(firstMod, alwaysEnabledSet, canDisableAlwaysEnabledMods);
+          const secondIsEnabled = isModEffectivelyEnabled(secondMod, alwaysEnabledSet, canDisableAlwaysEnabledMods);
           if (firstIsEnabled === secondIsEnabled) return 0;
           if (enabledSortMode === "enabledFirst") return firstIsEnabled ? -1 : 1;
           return firstIsEnabled ? 1 : -1;
@@ -493,6 +496,7 @@ const Categories = memo(() => {
     enabledSortMode,
     groupedCategories,
     alwaysEnabledModNames,
+    canDisableAlwaysEnabledMods,
     isAuthorShown,
     localized.noMatches,
     nameFilter,
@@ -525,7 +529,7 @@ const Categories = memo(() => {
           id: buildModRowId(group.category, mod.path),
           kind: "mod",
           category: group.category,
-          isEnabled: isModEffectivelyEnabled(mod, alwaysEnabledSet),
+          isEnabled: isModEffectivelyEnabled(mod, alwaysEnabledSet, canDisableAlwaysEnabledMods),
           path: mod.path,
           humanName: normalizeModLabel(mod),
           name: mod.name,
@@ -535,7 +539,7 @@ const Categories = memo(() => {
     }
 
     return rows;
-  }, [alwaysEnabledModNames, filteredGroups, hiddenCategories]);
+  }, [alwaysEnabledModNames, canDisableAlwaysEnabledMods, filteredGroups, hiddenCategories]);
 
   const onOverlayClick = useCallback(() => {
     clearSelection();
@@ -657,10 +661,10 @@ const Categories = memo(() => {
 
       const selectedMod = modByPath.get(row.path);
       if (!selectedMod) return;
-      if (alwaysEnabledModNames.includes(selectedMod.name)) return;
+      if (alwaysEnabledModNames.includes(selectedMod.name) && !canDisableAlwaysEnabledMods) return;
       dispatch(toggleMod(selectedMod));
     },
-    [alwaysEnabledModNames, dispatch, modByPath],
+    [alwaysEnabledModNames, canDisableAlwaysEnabledMods, dispatch, modByPath],
   );
 
   const onSelectCategoryChange = useCallback(
@@ -846,11 +850,12 @@ const Categories = memo(() => {
           const ariaLabel = isCategoryRow(row) ? `Toggle category ${categoryLabel}` : `Toggle mod ${row.humanName}`;
           const isDisabled = isCategoryRow(row)
             ? row.allModPaths.length === 0 ||
-              row.allModPaths.every((path) => {
-                const mod = modByPath.get(path);
-                return mod ? alwaysEnabledModNames.includes(mod.name) : false;
-              })
-            : alwaysEnabledModNames.includes(modByPath.get(row.path)?.name ?? "");
+              (!canDisableAlwaysEnabledMods &&
+                row.allModPaths.every((path) => {
+                  const mod = modByPath.get(path);
+                  return mod ? alwaysEnabledModNames.includes(mod.name) : false;
+                }))
+            : !canDisableAlwaysEnabledMods && alwaysEnabledModNames.includes(modByPath.get(row.path)?.name ?? "");
 
           return (
             <div className={`flex h-full items-center justify-center ${isThumbnailShown && "scale-125"}`}>
@@ -961,6 +966,7 @@ const Categories = memo(() => {
     handleToggleEnabled,
     hiddenCategories,
     alwaysEnabledModNames,
+    canDisableAlwaysEnabledMods,
     isAuthorShown,
     isDev,
     isThumbnailShown,

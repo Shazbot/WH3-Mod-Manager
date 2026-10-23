@@ -26,6 +26,32 @@ export interface UnitViewerEntity {
   size: string;
 }
 
+/** One crew member of a war machine and the engine attachment point it stands on. */
+export interface UnitViewerEngineRider {
+  attachmentPoint: string;
+  variantMeshPath: string;
+  /** battle_personalities.man_animations_table: the animation bin this seat plays from. */
+  animationTable?: string;
+}
+
+export interface UnitViewerVisualPart {
+  role: "crew" | "rider" | "mount" | "engine";
+  label: string;
+  variantMeshPath: string;
+  scale?: number;
+  /** Number of copies of this part: crew/rider = men, mount = mounts. */
+  count?: number;
+  /** Engine only: skeleton attachment points for crew and draught animals. */
+  riderAttachmentPoint?: string;
+  draughtAttachmentPoint?: string;
+  /** Engine only: crew models per attachment point (from battle personalities). */
+  engineRiders?: UnitViewerEngineRider[];
+  /** Engine only: candidate pack paths of the "tech" animation holding the `ap_*` attachment bones, tried in order. */
+  techAnimPaths?: string[];
+  /** Animation bin table (land man_animation, mount animation, or seat crew table). */
+  animationTable?: string;
+}
+
 export interface UnitViewerMeleeWeapon {
   key: string;
   baseDamage: number;
@@ -168,6 +194,8 @@ export interface UnitViewerUnitModel {
   unitCardPath?: string;
   /** Resolved variantmeshdefinition used by the 3D unit preview. */
   variantMeshPath?: string;
+  /** Separately previewable visual parts (primary part first). */
+  visualParts?: UnitViewerVisualPart[];
   /** Source DB rows needed to optionally save a painted VMD as a faction-specific unit variant. */
   painterVariantContext?: UnitViewerPainterVariantContext;
   attributes: UnitViewerAttribute[];

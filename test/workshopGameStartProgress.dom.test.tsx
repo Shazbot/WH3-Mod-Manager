@@ -23,6 +23,7 @@ describe("Workshop game-start progress", () => {
         return unsubscribe;
       }),
       cancelWorkshopModStaging: vi.fn(),
+      skipWorkshopModOptimization: vi.fn(),
     } as unknown as NonNullable<Window["api"]>;
   });
 
@@ -81,6 +82,25 @@ describe("Workshop game-start progress", () => {
     expect(window.api?.cancelWorkshopModStaging).toHaveBeenCalledWith("launch-1");
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("Canceling Workshop mod staging");
+  });
+
+  it("offers launching without optimizing next to Cancel launch while optimizing", () => {
+    render(<WorkshopGameStartProgressCard />);
+    send({ runId: "launch-1", status: "running", stage: "optimizing", currentMod: "big.pack", percent: 40 });
+
+    expect(screen.getByRole("status")).toHaveTextContent("Optimizing big.pack (1/1)");
+    fireEvent.click(screen.getByRole("button", { name: "Launch without optimizing" }));
+    expect(window.api?.skipWorkshopModOptimization).toHaveBeenCalledWith("launch-1");
+    expect(screen.getByRole("button", { name: "Launching without optimizing…" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel launch" }));
+    expect(window.api?.cancelWorkshopModStaging).toHaveBeenCalledWith("launch-1");
+  });
+
+  it("does not offer skipping outside the optimizing stage", () => {
+    render(<WorkshopGameStartProgressCard />);
+    send({ runId: "launch-1", status: "running", stage: "copying", percent: 40 });
+    expect(screen.queryByRole("button", { name: "Launch without optimizing" })).toBeNull();
   });
 
   it("uses Escape to request cancellation instead of hiding an active run", () => {

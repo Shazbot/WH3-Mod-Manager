@@ -49,6 +49,7 @@ const PackComparisonModal = memo(
 
     return (
       <Modal
+        dismissible
         show={isOpen}
         onClose={onClose}
         size="2xl"
@@ -136,6 +137,7 @@ const SaveGame = memo((props: SaveGameProps) => {
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
   const workshopModStagingMode = useAppSelector((state) => state.app.workshopModStagingMode);
   const compressWorkshopModsOnStart = useAppSelector((state) => state.app.compressWorkshopModsOnStart);
+  const optimizeWorkshopModsOnStart = useAppSelector((state) => state.app.optimizeWorkshopModsOnStart);
   const cleanUpWorkshopModStagingAfterGameExit = useAppSelector(
     (state) => state.app.cleanUpWorkshopModStagingAfterGameExit,
   );
@@ -171,6 +173,7 @@ const SaveGame = memo((props: SaveGameProps) => {
           isClosedOnPlay,
           workshopModStagingMode,
           compressWorkshopModsOnStart,
+          optimizeWorkshopModsOnStart,
           cleanUpWorkshopModStagingAfterGameExit,
           packDataOverwrites,
           userFlowOptions,
@@ -188,6 +191,7 @@ const SaveGame = memo((props: SaveGameProps) => {
       isClosedOnPlay,
       workshopModStagingMode,
       compressWorkshopModsOnStart,
+      optimizeWorkshopModsOnStart,
       cleanUpWorkshopModStagingAfterGameExit,
       packDataOverwrites,
       userFlowOptions,
@@ -254,6 +258,7 @@ const SaveGame = memo((props: SaveGameProps) => {
     <>
       {props.isOpen && (
         <Modal
+          dismissible
           show={props.isOpen}
           onClose={onClose}
           size="2xl"

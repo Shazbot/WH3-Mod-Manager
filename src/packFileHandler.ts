@@ -1,5 +1,10 @@
 import BinaryFile from "binary-file";
+import { isPackedFlowName } from "./nodeGraph/flowPackOperations";
 import { isLoadOrderRulesPackedFilePath } from "./utility/loadOrderRulesFile";
+import {
+  isNativePatchContributionPackedFile,
+  isNativePatchManifestPackedFile,
+} from "./utility/nativePatchPackFileNames";
 import { hasPackedFileNameHash, readPackedFileIndexEntry } from "./utility/packFileIndex";
 
 const isStartposPackedFile = (packedFileName: string) => {
@@ -10,6 +15,10 @@ const isStartposPackedFile = (packedFileName: string) => {
 export interface PackedFileIndexScan {
   hasStartpos: boolean;
   hasLoadOrderRules: boolean;
+  /** Whether the pack ships native patch manifests or flow contributions. */
+  hasNativePatches: boolean;
+  /** Whether the pack ships node flows (whmmflows\\...), which run on game start. */
+  hasFlows: boolean;
   /**
    * The rules file's name exactly as the pack stores it.
    *
@@ -33,7 +42,12 @@ export const scanPackedFileIndex = (
   hasCompressionFlag: boolean,
   hasFileNameHash = false,
 ): PackedFileIndexScan => {
-  const scan: PackedFileIndexScan = { hasStartpos: false, hasLoadOrderRules: false };
+  const scan: PackedFileIndexScan = {
+    hasStartpos: false,
+    hasLoadOrderRules: false,
+    hasNativePatches: false,
+    hasFlows: false,
+  };
   let position = 0;
 
   for (let index = 0; index < packFileCount; index++) {
@@ -46,7 +60,14 @@ export const scanPackedFileIndex = (
       scan.hasLoadOrderRules = true;
       scan.loadOrderRulesFileName = name;
     }
-    if (scan.hasStartpos && scan.hasLoadOrderRules) return scan;
+    if (
+      !scan.hasNativePatches &&
+      (isNativePatchManifestPackedFile(name) || isNativePatchContributionPackedFile(name))
+    ) {
+      scan.hasNativePatches = true;
+    }
+    if (!scan.hasFlows && isPackedFlowName(name)) scan.hasFlows = true;
+    if (scan.hasStartpos && scan.hasLoadOrderRules && scan.hasNativePatches && scan.hasFlows) return scan;
 
     position = entry.nextPosition;
   }
@@ -66,6 +87,8 @@ export const readPackHeader = async (path: string, hasCompressionFlag = true): P
   let isMovie = false;
   let hasStartpos = false;
   let hasLoadOrderRules = false;
+  let hasNativePatches = false;
+  let hasFlows = false;
   let loadOrderRulesFileName: string | undefined;
   const dependencyPacks: string[] = [];
 
@@ -111,6 +134,8 @@ export const readPackHeader = async (path: string, hasCompressionFlag = true): P
       );
       hasStartpos = scan.hasStartpos;
       hasLoadOrderRules = scan.hasLoadOrderRules;
+      hasNativePatches = scan.hasNativePatches;
+      hasFlows = scan.hasFlows;
       loadOrderRulesFileName = scan.loadOrderRulesFileName;
     }
   } catch (e) {
@@ -119,5 +144,14 @@ export const readPackHeader = async (path: string, hasCompressionFlag = true): P
     if (file) file.close();
   }
 
-  return { path, isMovie, hasStartpos, hasLoadOrderRules, loadOrderRulesFileName, dependencyPacks };
+  return {
+    path,
+    isMovie,
+    hasStartpos,
+    hasLoadOrderRules,
+    hasNativePatches,
+    hasFlows,
+    loadOrderRulesFileName,
+    dependencyPacks,
+  };
 };

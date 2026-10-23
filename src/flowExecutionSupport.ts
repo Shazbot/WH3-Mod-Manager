@@ -16,6 +16,10 @@ export interface FlowExecutionContext {
   rowsByPackedFile: WeakMap<PackedFile, AmendedSchemaField[][]>;
   columnIndexesByPackedFile: WeakMap<PackedFile, Map<string, number>>;
   outputPackByPath: Map<string, NewPackedFile[]>;
+  /** Runtime-only identity for the flow currently being executed. */
+  flowFileName?: string;
+  flowSourcePackPath?: string;
+  flowSourcePackName?: string;
   /**
    * Packs that must be read from somewhere other than their own path, keyed by the original path.
    *

@@ -19,6 +19,7 @@ import { buildRpfmTsvContent, getRpfmTsvExportPath } from "./utility/rpfmTsv";
 import { buildImportedPackedFile } from "./utility/packImportStaging";
 import { applyTextPackedFileEdit } from "./utility/textPackStaging";
 import { compareFilesByteForByte } from "./utility/fileComparison";
+import { createSharedAsyncLoader, forEachWithConcurrency } from "./utility/packHeaderStartup";
 import { invalidateCustomizableModPath } from "./utility/customizableModsState";
 import { encodeDdsAsPng } from "./esfMap/dds";
 import { createInFlightTableRequests } from "./components/viewer/inFlightTableRequests";
@@ -48,6 +49,8 @@ import {
   type BuiltUnitViewerData,
   type UnitViewerTableRows,
 } from "./unitViewer/data";
+import { extractBinAnimClipPaths, pickBinStandingEntry } from "./visuals/twAnimBin";
+import { parseTwAnimSkeleton } from "./visuals/twAnimSkeleton";
 import { loadUnitViewerDiskCache, saveUnitViewerDiskCache } from "./unitViewer/cache";
 import { buildVariantMeshCatalog, type VariantMeshCatalog } from "./visuals/variantMesh";
 import {
@@ -227,11 +230,12 @@ import {
   getModSourceId,
   getWorkshopModSyncItems,
   insertCustomSourceAfterData,
+  getModSourceKind,
   isWorkshopMod,
   normalizeModSourceOrder,
   WORKSHOP_MOD_SOURCE_ID,
 } from "./modSources";
-import { sortByNameAndLoadOrder } from "./modSortingHelpers";
+import { getModSortName, sortByNameAndLoadOrder } from "./modSortingHelpers";
 import {
   createModdingFolderPacks,
   replaceEnabledModsWithGeneratedPacks,
@@ -380,17 +384,54 @@ import {
   parseLoadOrderRulesFile,
 } from "./utility/loadOrderRulesFile";
 import { collator } from "./utility/packFileSorting";
-import { launchGame, resolveGameLaunchPlan } from "./utility/gameLaunch";
+import { buildGameLaunchArguments, launchGame, resolveGameLaunchPlan } from "./utility/gameLaunch";
+import { buildNativePatchLaunchPlan, readNativePatchPackEntry, type NativePatchPack } from "./nativePatches/planner";
+import type { NativePatchFlowRuntimeContribution } from "./nativePatches/flowTemplate";
+import { parseNativePatchFlowTemplate } from "./nativePatches/flowTemplate";
+import { createFlowExecutionContext } from "./flowExecutionSupport";
+import { launchNativePatchPlan } from "./nativePatches/launch";
+import type { NativePatchSkippedPackage } from "./nativePatches/manifest";
+import { NativePatchPackageError } from "./nativePatches/failurePolicy";
+import { nativePatchUserMessage } from "./nativePatches/messages";
 import {
   cleanupWorkshopModStaging,
   getWorkshopModStagingFolderInfo,
   buildWorkshopStagingWorkingDirectoryLines,
   stageWorkshopMods,
+  type WorkshopStagingOptimizerOutcome,
   WorkshopModStagingError,
   WORKSHOP_MOD_STAGING_FOLDER,
   type WorkshopStagingProgress,
   type WorkshopStagingResult,
 } from "./utility/workshopModStaging";
+import { makeWorkshopStagingProgressEvent } from "./utility/workshopStagingProgressEvent";
+import { WORKSHOP_OPTIMIZER_PROFILE_ID } from "./workshopModOptimizer/hostRunner";
+import { registerVisualAssetCheckIpc } from "./workshopModOptimizer/visualCheckIpc";
+import { buildOptimizerLaunchLog } from "./workshopModOptimizer/logFormat";
+import type { WorkshopModOptimizer } from "./workshopModOptimizer/optimizer";
+import { packHasOptimizableVisuals } from "./workshopModOptimizer/packInspection";
+import {
+  type CustomFolderStaging,
+  comparableDirectory,
+  selectCustomFolderStaging,
+} from "./workshopModOptimizer/stagingSelection";
+import {
+  type BackgroundModsPayload,
+  getOptimizerBackground,
+  initOptimizerBackground,
+  optimizerGameChanged,
+  optimizerPackChanged,
+  updateOptimizerBackground,
+} from "./workshopModOptimizer/backgroundRuntime";
+import {
+  createWorkshopModOptimizer,
+  getWorkshopOptimizerCache,
+  removeLegacyOptimizerCacheOnce,
+} from "./workshopModOptimizer/runtime";
+import { computeGameIdentity } from "./workshopModOptimizer/packInspection";
+import { formatSavedBytes, totalOptimizations } from "./workshopModOptimizer/summary";
+import { formatHousekeepingLine } from "./workshopModOptimizer/cache";
+import { scheduleStartupHousekeeping } from "./workshopModOptimizer/housekeepingSchedule";
 import { findGameProcessIds } from "./utility/gameProcess";
 import { packFileContains } from "./utility/packSearch";
 import steamCollectionScript from "./utility/steamCollectionScript";
@@ -705,8 +746,7 @@ const getVisualsTableContribution = (pack: Pack): VisualsTableContribution => {
   };
 
   forEachTableRow("variants_tables", (row) => {
-    const value = (fieldName: string) =>
-      row.find((field) => field.name === fieldName)?.resolvedKeyValue || "";
+    const value = (fieldName: string) => row.find((field) => field.name === fieldName)?.resolvedKeyValue || "";
     const variantName = value("variant_name");
     if (!variantName) return;
     const variantFilename = value("variant_filename");
@@ -725,17 +765,10 @@ const getVisualsTableContribution = (pack: Pack): VisualsTableContribution => {
     ]);
   });
   forEachTableRow("unit_variants_tables", (row) => {
-    const value = (fieldName: string) =>
-      row.find((field) => field.name === fieldName)?.resolvedKeyValue || "";
+    const value = (fieldName: string) => row.find((field) => field.name === fieldName)?.resolvedKeyValue || "";
     const unitKey = value("unit");
     if (!unitKey) return;
-    contribution.unitVariants.push([
-      unitKey,
-      value("faction"),
-      value("variant"),
-      value("name"),
-      value("unit_card"),
-    ]);
+    contribution.unitVariants.push([unitKey, value("faction"), value("variant"), value("name"), value("unit_card")]);
   });
   forEachTableRow("main_units_tables", (row) => {
     const unitKey = row.find((field) => field.name === "unit")?.resolvedKeyValue;
@@ -781,6 +814,8 @@ interface ActiveWorkshopStagingRun {
   runId: string;
   senderId: number;
   controller: AbortController;
+  /** Aborted by "Launch without optimizing"; staging carries on without the optimizer. */
+  skipOptimizationController: AbortController;
   canceled: boolean;
   lastProgress: WorkshopStagingProgress;
 }
@@ -791,62 +826,8 @@ const globalSearchCancelStateByWebContentsId = new Map<
 >();
 
 const workshopStagingProgressChannel = "workshopModStagingProgress";
-
-const workshopStagingStageForPhase = (phase: WorkshopStagingProgress["phase"]): string => {
-  switch (phase) {
-    case "planning":
-      return "preparing";
-    case "pruning":
-      return "cleaning";
-    case "copying":
-      return "copying";
-    case "compressing":
-      return "compressing";
-    case "checkpointing":
-      return "saving";
-    case "completed":
-      return "complete";
-    case "canceled":
-      return "cleaning";
-    default:
-      return phase;
-  }
-};
-
-const makeWorkshopStagingProgressEvent = (
-  runId: string,
-  progress: WorkshopStagingProgress,
-  status: WorkshopModStagingProgressStatus,
-  overrides: Partial<WorkshopModStagingProgressEvent> = {},
-): WorkshopModStagingProgressEvent => {
-  const total = Number.isFinite(progress.total) ? Math.max(0, progress.total) : 0;
-  const completed = Number.isFinite(progress.current) ? Math.max(0, Math.min(total, progress.current)) : 0;
-  const byteFraction =
-    progress.bytesCopied !== undefined && progress.totalBytes !== undefined && progress.totalBytes > 0
-      ? Math.min(1, Math.max(0, progress.bytesCopied / progress.totalBytes))
-      : undefined;
-  const fileFraction =
-    progress.fileIndex !== undefined && progress.fileCount !== undefined && progress.fileCount > 0
-      ? Math.min(1, Math.max(0, progress.fileIndex / progress.fileCount))
-      : undefined;
-  const itemFraction = byteFraction ?? fileFraction ?? 0;
-  return {
-    runId,
-    status,
-    stage: workshopStagingStageForPhase(progress.phase),
-    ...(total > 0 ? { percent: Math.round(((completed + itemFraction) / total) * 100) } : {}),
-    completedMods: completed,
-    totalMods: total,
-    ...(progress.bytesCopied !== undefined ? { bytesCopied: progress.bytesCopied } : {}),
-    ...(progress.totalBytes !== undefined ? { totalBytes: progress.totalBytes } : {}),
-    ...(progress.fileIndex !== undefined ? { fileIndex: progress.fileIndex } : {}),
-    ...(progress.fileCount !== undefined ? { fileCount: progress.fileCount } : {}),
-    ...(progress.modName ? { currentMod: progress.modName } : {}),
-    ...(progress.phase === "compressing" && progress.message ? { currentFile: progress.message } : {}),
-    ...(progress.message ? { detail: progress.message } : {}),
-    ...overrides,
-  };
-};
+/** The savings line of the latest launch that optimized mods, kept for the options drawer. */
+let lastOptimizerRunText: string | undefined;
 
 const sendWorkshopStagingProgress = (sender: Electron.WebContents, progress: WorkshopModStagingProgressEvent): void => {
   if (sender.isDestroyed()) return;
@@ -1613,6 +1594,43 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   };
   const packPathKey = (packPath: string) =>
     packPath.startsWith("memory://") ? packPath.toLowerCase() : nodePath.resolve(packPath).toLowerCase();
+  const physicalPackPathKey = async (packPath: string) => {
+    try {
+      return packPathKey(await fs.promises.realpath(packPath));
+    } catch {
+      return packPathKey(packPath);
+    }
+  };
+  const recentProgrammaticPackWrites = new Map<string, { size: number; mtimeMs: number; expiresAt: number }>();
+  const rememberProgrammaticPackWrite = async (packPath: string) => {
+    try {
+      const stat = await fs.promises.stat(packPath);
+      recentProgrammaticPackWrites.set(await physicalPackPathKey(packPath), {
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+        expiresAt: Date.now() + 30_000,
+      });
+    } catch {
+      // A write that could not be statted is handled as an ordinary disk change if a watcher sees it.
+    }
+  };
+  const isRecentProgrammaticPackWrite = async (packPath: string) => {
+    const key = await physicalPackPathKey(packPath);
+    const expected = recentProgrammaticPackWrites.get(key);
+    if (!expected) return false;
+    if (Date.now() > expected.expiresAt) {
+      recentProgrammaticPackWrites.delete(key);
+      return false;
+    }
+    try {
+      const stat = await fs.promises.stat(packPath);
+      if (stat.size === expected.size && stat.mtimeMs === expected.mtimeMs) return true;
+    } catch {
+      // A deleted or replaced file is an external change from the viewer's perspective.
+    }
+    recentProgrammaticPackWrites.delete(key);
+    return false;
+  };
   const findPackByPath = (packPath: string) =>
     appData.packsData.find((pack) => pack.path === packPath || packPathKey(pack.path) === packPathKey(packPath));
   const broadcastPackStagingState = (packPath: string) => {
@@ -3524,7 +3542,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       if (!rootPath) return { success: false, error: "Missing variantmeshdefinition path" };
       const queue = [rootPath];
       const seen = new Set<string>();
-      const bindings: Array<{ baseColourSourcePath: string; baseColourPreviewFileNames: string[]; maskUrl: string }> = [];
+      const bindings: Array<{ baseColourSourcePath: string; baseColourPreviewFileNames: string[]; maskUrl: string }> =
+        [];
       const bindingKeys = new Set<string>();
       while (queue.length > 0) {
         const requestedPath = queue.shift()!;
@@ -3546,7 +3565,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             if (!bindingKeys.has(bindingKey)) {
               bindingKeys.add(bindingKey);
               const normalizedBasePath = basePath.replaceAll("\\", "/").trim().toLowerCase();
-              const stem = basePath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") || "texture";
+              const stem =
+                basePath
+                  .split(/[\\/]/)
+                  .pop()
+                  ?.replace(/\.[^.]+$/, "") || "texture";
               const cacheKey = `${normalizedBasePath}|default|False|ktx2|srgb=True`;
               const hash = createHash("sha256").update(`${normalizedBasePath}|${cacheKey}`).digest("hex").slice(0, 10);
               bindings.push({
@@ -3559,14 +3582,21 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         }
         for (const reference of getSupportedVisualReferences(text)) {
           const referenceExtension = getSupportedVisualDependencyExtension(reference);
-          if (referenceExtension === "variantmeshdefinition" || referenceExtension === "wsmodel" || referenceExtension === "xml.material") {
+          if (
+            referenceExtension === "variantmeshdefinition" ||
+            referenceExtension === "wsmodel" ||
+            referenceExtension === "xml.material"
+          ) {
             queue.push(reference);
           }
         }
       }
       return { success: true, bindings };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : "Failed to resolve faction-colour masks" };
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to resolve faction-colour masks",
+      };
     }
   });
 
@@ -3596,6 +3626,40 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         success: false,
         error: error instanceof Error ? error.message : "Failed to resolve unit appearances",
       };
+    }
+  });
+
+  ipcMain.handle("getUnitViewerAnimationBinClips", async (_event, sessionId: string, tableName: string) => {
+    try {
+      const session = unitViewerSessions.get(sessionId);
+      if (!session) return { success: false, error: "Unit Viewer session expired" };
+      if (!/^[\w.-]+$/.test(tableName || "")) return { success: false, error: "Invalid animation table" };
+      const asset = await getUnitViewerAsset(session, `animations\\database\\battle\\bin\\${tableName}.bin`);
+      if (!asset) return { success: false, error: "Animation table not found" };
+      const standing = pickBinStandingEntry(asset.buffer);
+      return {
+        success: true,
+        clips: extractBinAnimClipPaths(asset.buffer),
+        standingClip: standing?.clip,
+        standingClipMetadataPath: standing?.metadataPath,
+        fragmentPath: `animations/database/battle/bin/${tableName}.bin`,
+      };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Failed to read animation table" };
+    }
+  });
+
+  ipcMain.handle("getUnitViewerSkeletonAnim", async (_event, sessionId: string, assetPath: string) => {
+    try {
+      const session = unitViewerSessions.get(sessionId);
+      if (!session) return { success: false, error: "Unit Viewer session expired" };
+      const normalizedPath = normalizePackFilePath(assetPath || "");
+      if (!/\.anim$/i.test(normalizedPath)) return { success: false, error: "Not an animation path" };
+      const asset = await getUnitViewerAsset(session, normalizedPath);
+      if (!asset) return { success: false, error: "Animation not found" };
+      return { success: true, bones: parseTwAnimSkeleton(asset.buffer) };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Failed to read animation skeleton" };
     }
   });
 
@@ -5580,6 +5644,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       if (appData.currentGame != "wh3") return await setLastGameUpdateTimeUsingAppManifest();
       const res = await fetch(
         `https://raw.githubusercontent.com/Shazbot/WH3-Mod-Manager/tw_updates/tw_updates/wh3.json`,
+        { signal: AbortSignal.timeout(15_000) },
       );
       // eslint-disable-next-line prefer-const
       let gameUpdates = (await res.json()) as GameUpdateData[];
@@ -5691,27 +5756,58 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
     removePackFromCollisions(path);
   };
+  const onPackChangedOnDisk = async (path: string, fromWatcher = false) => {
+    optimizerPackChanged(path);
+    await onPackDeleted(path);
+    const changedPathKey = await physicalPackPathKey(path);
+    const openViewerPackPath = await (async () => {
+      for (const openPath of appData.openViewerPackPaths) {
+        if ((await physicalPackPathKey(openPath)) === changedPathKey) return openPath;
+      }
+      return undefined;
+    })();
+    // A workshop content pack may be open through its Data-folder symlink. Invalidate that alias
+    // too so a later viewer read cannot reuse its retained index.
+    if (openViewerPackPath && packPathKey(openViewerPackPath) !== packPathKey(path)) {
+      await invalidateCachedPackData(openViewerPackPath);
+    }
+    if (openViewerPackPath && !(await isRecentProgrammaticPackWrite(path))) {
+      windows.viewerWindow?.webContents.send("viewerPackChangedOnDisk", openViewerPackPath);
+    }
+    await onNewPackFound(path, fromWatcher);
+  };
   const getAllMods = async (afterModsPopulated?: () => void | Promise<void>) => {
     const timeStartedFetchingSubbedIds = Date.now();
+    let subscribedIdsSettled = false;
+    let subscribedIds: string[] = [];
     try {
-      appData.subscribedModIds = [];
       const child = fork(
         nodePath.join(__dirname, "sub.js"),
         [gameToSteamId[appData.currentGame], "getSubscribedIds"],
         {},
       );
       child.on("message", (workshopIds: string[]) => {
-        appData.subscribedModIds = workshopIds;
+        subscribedIds = workshopIds;
+        subscribedIdsSettled = true;
         console.log("getSubscribedIds returned:", workshopIds);
+      });
+      // Steam not running makes the child exit without a message; that is an answer too.
+      child.on("exit", () => {
+        subscribedIdsSettled = true;
+      });
+      child.on("error", () => {
+        subscribedIdsSettled = true;
       });
     } catch (e) {
       console.log(e);
+      subscribedIdsSettled = true;
     }
     try {
       let mods = await getMods(log);
-      while (Date.now() - timeStartedFetchingSubbedIds < 5000 && appData.subscribedModIds.length == 0) {
+      while (Date.now() - timeStartedFetchingSubbedIds < 5000 && !subscribedIdsSettled) {
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
+      appData.subscribedModIds = subscribedIds;
       console.log("before subscription filter:", mods.length);
       // for (const mod of mods) {
       //   if (!mod.isInData && !appData.subscribedModIds.includes(mod.workshopId)) console.log(mod.workshopId);
@@ -5725,30 +5821,28 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       await afterModsPopulated?.();
       const packHeadersToSend: PackHeaderData[] = [];
       const modLoadOrderRules: Record<string, LoadOrderRule[]> = {};
-      await Promise.all(
-        mods.map(async (mod) => {
-          try {
-            if (mod == null || mod.path == null) {
-              console.error("MOD OR MOD PATH IS NULL");
-              return;
-            }
-            const packHeaderData = await readPackHeaderCached(mod.path);
-            if (packHeaderData.isMovie || packHeaderData.hasStartpos || packHeaderData.dependencyPacks.length > 0)
-              packHeadersToSend.push(packHeaderData);
-
-            // The header scan already told us whether this pack has rules, so only the few that do
-            // get opened again.
-            if (packHeaderData.hasLoadOrderRules) {
-              const rules = await readModLoadOrderRulesCached(mod.path, mod.name, packHeaderData);
-              if (rules.length > 0) modLoadOrderRules[mod.name] = rules;
-            }
-          } catch (e) {
-            if (e instanceof Error) {
-              log(e.message);
-            }
+      await forEachWithConcurrency(mods, 4, async (mod) => {
+        try {
+          if (mod == null || mod.path == null) {
+            console.error("MOD OR MOD PATH IS NULL");
+            return;
           }
-        }),
-      );
+          const packHeaderData = await readPackHeaderCached(mod.path);
+          if (packHeaderData.isMovie || packHeaderData.hasStartpos || packHeaderData.dependencyPacks.length > 0)
+            packHeadersToSend.push(packHeaderData);
+
+          // The header scan already told us whether this pack has rules, so only the few that do
+          // get opened again.
+          if (packHeaderData.hasLoadOrderRules) {
+            const rules = await readModLoadOrderRulesCached(mod.path, mod.name, packHeaderData);
+            if (rules.length > 0) modLoadOrderRules[mod.name] = rules;
+          }
+        } catch (e) {
+          if (e instanceof Error) {
+            log(e.message);
+          }
+        }
+      });
       mainWindow?.webContents.send("setPackHeaderData", packHeadersToSend);
       appData.modLoadOrderRules = modLoadOrderRules;
       refreshMainLoadOrderRules();
@@ -5849,7 +5943,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         }
         await saveVanillaPackFilesCache();
         appData.vanillaPacksDBFileNames.sort((a, b) => collator.compare(a, b));
-        await fetchGameUpdates();
+        // A network fetch: don't hold the Workshop update check and the folder watchers behind it.
+        void fetchGameUpdates();
       }
       try {
         const workshopUpdateChild = fork(
@@ -5922,13 +6017,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const contentFolder = appData.gamesToGameFolderPaths[appData.currentGame].contentFolder;
     const gamePath = appData.gamesToGameFolderPaths[appData.currentGame].gamePath;
     if (!contentFolder || !dataFolder || !gamePath) return;
+    const isIgnoredInModFolder = (path: string, stats?: fs.Stats) =>
+      /whmm_backups/.test(path) || (!!stats && !stats.isDirectory() && !path.endsWith(".pack"));
     if (!contentWatcher) {
-      const sanitizedContentFolder = contentFolder.replaceAll("\\", "/").replaceAll("//", "/");
       console.log("content folder:", contentFolder);
       contentWatcher = chokidar
-        .watch(`${sanitizedContentFolder}/**/*.pack`, {
+        .watch(contentFolder, {
+          depth: 1,
+          disableGlobbing: true,
           ignoreInitial: true,
-          ignored: /whmm_backups/,
+          ignored: isIgnoredInModFolder,
           awaitWriteFinish: {
             stabilityThreshold: 2000,
             pollInterval: 100,
@@ -5944,8 +6042,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         })
         .on("change", async (path) => {
           console.log("NEW CONTENT CHANGE", path);
-          await onPackDeleted(path);
-          await onNewPackFound(path);
+          await onPackChangedOnDisk(path);
         });
     }
     if (!downloadsWatcher) {
@@ -5955,10 +6052,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         .replace("/content/", "/downloads/");
       console.log("downloads folder:", downloadsFolder);
       downloadsWatcher = chokidar
-        .watch(`${downloadsFolder}/**/*.pack`, {
+        .watch(downloadsFolder, {
+          depth: 1,
+          disableGlobbing: true,
           ignoreInitial: true,
           awaitWriteFinish: true,
-          ignored: /whmm_backups/,
+          ignored: isIgnoredInModFolder,
         })
         .on("add", async (path) => {
           console.log("NEW DOWNLOADS ADD", path);
@@ -5969,13 +6068,15 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         });
     }
     if (!dataWatcher) {
-      const sanitizedDataFolder = dataFolder.replaceAll("\\", "/").replaceAll("//", "/");
+      const dataFolders = [dataFolder, nodePath.join(dataFolder, "modding")].filter(fsExtra.existsSync);
       dataWatcher = chokidar
-        .watch([`${sanitizedDataFolder}/*.pack`, `${sanitizedDataFolder}/modding/*.pack`], {
+        .watch(dataFolders, {
+          depth: 0,
+          disableGlobbing: true,
           ignoreInitial: true,
           awaitWriteFinish: true,
           followSymlinks: false,
-          ignored: /whmm_backups/,
+          ignored: isIgnoredInModFolder,
         })
         .on("add", async (path) => {
           console.log("dataWatcher add:", path);
@@ -5986,44 +6087,42 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         })
         .on("change", async (path) => {
           console.log("data pack changed:", path);
-          await onPackDeleted(path);
           console.log("dataWatcher change:", path);
-          await onNewPackFound(path);
+          await onPackChangedOnDisk(path);
         });
     }
     const customFolders = appData.gamesToGameFolderPaths[appData.currentGame].customModFolders || [];
     const existingCustomFolders = customFolders.filter((folder) => fsExtra.existsSync(folder.path));
     if (!customModFoldersWatcher && existingCustomFolders.length > 0) {
-      const customFolderPatterns = existingCustomFolders.flatMap((folder) => {
-        const sanitizedFolder = folder.path.replaceAll("\\", "/").replaceAll("//", "/");
-        return [`${sanitizedFolder}/*.pack`, `${sanitizedFolder}/*/*.pack`];
-      });
+      const customFolderPaths = existingCustomFolders.map((folder) => folder.path);
       customModFoldersWatcher = chokidar
-        .watch(customFolderPatterns, {
+        .watch(customFolderPaths, {
+          depth: 1,
+          disableGlobbing: true,
           ignoreInitial: true,
           awaitWriteFinish: true,
           followSymlinks: false,
-          ignored: /whmm_backups/,
+          ignored: isIgnoredInModFolder,
         })
         .on("add", async (path) => onNewPackFound(path, true))
         .on("unlink", async (path) => onPackDeleted(path))
         .on("change", async (path) => {
-          await onPackDeleted(path);
-          await onNewPackFound(path, true);
+          await onPackChangedOnDisk(path, true);
         });
     }
     if (!mergedWatcher) {
       const mergedDirPath = nodePath.join(gamePath, "/merged/");
       await fsExtra.ensureDir(mergedDirPath);
-      const sanitizedGamePath = gamePath.replaceAll("\\", "/").replaceAll("//", "/");
       mergedWatcher = chokidar
-        .watch([`${sanitizedGamePath}/merged/*.pack`], {
+        .watch(mergedDirPath, {
+          depth: 0,
+          disableGlobbing: true,
           ignoreInitial: false,
           awaitWriteFinish: {
             stabilityThreshold: 3000,
             pollInterval: 100,
           },
-          ignored: /whmm_backups/,
+          ignored: isIgnoredInModFolder,
           usePolling: true,
         })
         .on("add", async (path) => {
@@ -6034,8 +6133,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         })
         .on("change", async (path) => {
           console.log("pack changed:", path);
-          await onPackDeleted(path);
-          await onNewPackFound(path);
+          await onPackChangedOnDisk(path);
         });
     }
   };
@@ -6044,12 +6142,24 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       // readAppConfig has already migrated anything older than the current config version
       const appState = await readAppConfig();
       if (!appData.hasReadConfig) {
-        fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "justRun"], {}); // forces steam workshop to download mods
+        // No separate "justRun" helper: getAllMods runs right after this and its getSubscribedIds helper
+        // connects to Steam too, which is what nudges the Workshop into downloading mods.
         setStartingConfig(appState);
       }
       appData.gamesToGameFolderPaths = appState.gameFolderPaths;
       for (const game of supportedGames) {
         const folderPaths = appData.gamesToGameFolderPaths[game];
+        // Older Shogun 2 configs used the game directory as a placeholder for Workshop content.
+        if (game === "shogun2" && folderPaths.gamePath && folderPaths.contentFolder === folderPaths.gamePath) {
+          folderPaths.contentFolder = nodePath.resolve(
+            folderPaths.gamePath,
+            "..",
+            "..",
+            "workshop",
+            "content",
+            gameToSteamId[game],
+          );
+        }
         folderPaths.customModFolders = folderPaths.customModFolders || [];
         folderPaths.modSourceOrder = normalizeModSourceOrder(
           folderPaths,
@@ -6173,6 +6283,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     dependencyPacks: string[];
     /** Absent on entries written before load order rules existed, which forces a re-read. */
     hasLoadOrderRules?: boolean;
+    /** Absent on entries written before native patch detection, which forces a re-read. */
+    hasNativePatches?: boolean;
+    /** Absent on entries written before flow detection, which forces a re-read. */
+    hasFlows?: boolean;
     loadOrderRulesFileName?: string;
     /** The parsed rules, kept here so a restart does not reopen every pack that has them. */
     loadOrderRules?: LoadOrderRule[];
@@ -6180,19 +6294,21 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   type PackHeaderCache = Record<string, PackHeaderCacheEntry>;
   const PACK_HEADER_CACHE_FILE = "pack-headers-cache.bin";
   let packHeaderCache: PackHeaderCache | null = null;
-  const loadPackHeaderCache = async (): Promise<PackHeaderCache> => {
-    if (packHeaderCache !== null) return packHeaderCache;
-    try {
+  const loadPackHeaderCache = createSharedAsyncLoader<PackHeaderCache>(
+    async () => {
       const cacheFilePath = nodePath.join(app.getPath("userData"), PACK_HEADER_CACHE_FILE);
       const compressed = await fs.promises.readFile(cacheFilePath);
       const json = await zstdDecompress(compressed);
-      packHeaderCache = JSON.parse(json.toString("utf8")) as PackHeaderCache;
-      return packHeaderCache!;
-    } catch {
-      packHeaderCache = {};
-      return packHeaderCache;
-    }
-  };
+      const loadedCache = JSON.parse(json.toString("utf8")) as PackHeaderCache;
+      packHeaderCache = loadedCache;
+      return loadedCache;
+    },
+    () => {
+      const emptyCache: PackHeaderCache = {};
+      packHeaderCache = emptyCache;
+      return emptyCache;
+    },
+  );
   const savePackHeaderCache = async (): Promise<void> => {
     if (!packHeaderCache) return;
     try {
@@ -6219,13 +6335,17 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         entry.size === stat.size &&
         entry.lastChangedLocal === stat.mtimeMs &&
         typeof entry.hasStartpos === "boolean" &&
-        typeof entry.hasLoadOrderRules === "boolean"
+        typeof entry.hasLoadOrderRules === "boolean" &&
+        typeof entry.hasNativePatches === "boolean" &&
+        typeof entry.hasFlows === "boolean"
       ) {
         return {
           path,
           isMovie: entry.isMovie,
           hasStartpos: entry.hasStartpos,
           hasLoadOrderRules: entry.hasLoadOrderRules,
+          hasNativePatches: entry.hasNativePatches,
+          hasFlows: entry.hasFlows,
           loadOrderRulesFileName: entry.loadOrderRulesFileName,
           dependencyPacks: entry.dependencyPacks,
         };
@@ -6239,6 +6359,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         isMovie: data.isMovie,
         hasStartpos: data.hasStartpos,
         hasLoadOrderRules: data.hasLoadOrderRules ?? false,
+        hasNativePatches: data.hasNativePatches ?? false,
+        hasFlows: data.hasFlows ?? false,
         loadOrderRulesFileName: data.loadOrderRulesFileName,
         dependencyPacks: data.dependencyPacks,
       };
@@ -6291,16 +6413,21 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     createdFlowPackFileNames: string[];
     /** Packs a flow wrote a full replacement for, which are left out of the mod list. */
     replacedPackPaths?: string[];
+    /** Terminal native contributions live in memory and must be rebuilt on each launch. */
+    hasRuntimeNativePatchContributions?: boolean;
   }
   interface FlowExecutionCache {
     version: number;
     byGame: Partial<Record<SupportedGames, FlowExecutionCacheEntry>>;
   }
   const FLOW_EXECUTION_CACHE_FILE = "flow-execution-cache.bin";
+  // 10: native patch schema outputs can provide Custom Rows Input declarations before patch execution.
+  // 9: terminal native patch nodes register contributions in memory rather than saved pack files.
+  // 8: native patch template selection and contribution generation now affect saved flow outputs.
   // 7: automatic flow execution uses saved pack content only; also invalidate v6 entries that included staged data.
   // 5: replacement outputs retain the source pack name; older cached outputs may use the Save
   // Changes node's configured name instead.
-  const FLOW_EXECUTION_CACHE_VERSION = 7;
+  const FLOW_EXECUTION_CACHE_VERSION = 10;
   let flowExecutionCache: FlowExecutionCache | null = null;
   const loadFlowExecutionCache = async (): Promise<FlowExecutionCache> => {
     if (flowExecutionCache !== null) return flowExecutionCache;
@@ -6590,8 +6717,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       size: number;
       mtimeMs: number;
     }> = [];
-    for (const mod of sortedEnabledMods) {
-      const stat = await getModStatForFlowSignature(mod);
+    const modStats = await Promise.all(sortedEnabledMods.map((mod) => getModStatForFlowSignature(mod)));
+    for (const [index, mod] of sortedEnabledMods.entries()) {
+      const stat = modStats[index];
       if (!stat) return null;
       enabledModsSignatureData.push({
         path: mod.path,
@@ -7116,6 +7244,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       graphExecutionRequest: {
         nodes: SerializedNode[];
         connections: SerializedConnection[];
+        flowExecution?: {
+          flowFileName?: string;
+          flowSourcePackPath?: string;
+          flowSourcePackName?: string;
+        };
       },
     ): Promise<{
       success: boolean;
@@ -7123,6 +7256,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       totalExecuted: number;
       successCount: number;
       failureCount: number;
+      skippedNodeIds?: string[];
       error?: string;
     }> => {
       try {
@@ -7147,7 +7281,14 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         });
         // Import graph execution function
         const { executeNodeGraph } = await import("./nodeGraphExecutor");
-        const result = await executeNodeGraph(graphExecutionRequest);
+        const executionContext = createFlowExecutionContext();
+        executionContext.flowFileName = graphExecutionRequest.flowExecution?.flowFileName;
+        executionContext.flowSourcePackPath = graphExecutionRequest.flowExecution?.flowSourcePackPath;
+        executionContext.flowSourcePackName = graphExecutionRequest.flowExecution?.flowSourcePackName;
+        const result = await executeNodeGraph({
+          ...graphExecutionRequest,
+          executionContext,
+        });
         // Convert Map to Array for serialization
         const serializedExecutionResults = Array.from(result.executionResults.entries());
         return {
@@ -7362,6 +7503,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       try {
         // Write the pack with unsaved files appended/overwritten
         await writePack(sortedFilesToSave, savePath, pack, true, [], deletedPaths);
+        if (replacedOriginal) await rememberProgrammaticPackWrite(savePath);
         console.log(`Pack saved to: ${savePath}`);
       } catch (error) {
         // If we can't overwrite (file in use/locked), save as _modified instead
@@ -8134,6 +8276,78 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       }
     },
   );
+  ipcMain.handle("listNativePatchFlowTemplates", async (_event, packPath: string) => {
+    try {
+      const pack = await readPack(packPath, {
+        skipParsingTables: true,
+        skipSorting: true,
+      });
+      const nativePack: NativePatchPack = {
+        path: packPath,
+        pack: { path: pack.path, packedFiles: pack.packedFiles },
+        priority: 0,
+        displayName: pack.name,
+      };
+      const templates: Array<Record<string, unknown>> = [];
+      const errors: Array<{ path: string; error: string }> = [];
+      const entries = pack.packedFiles.filter((entry) => {
+        const name = entry.name.replace(/\\/g, "/").replace(/^\/+/, "");
+        return /^whmm_patch_templates\/.+\.wh3patchtemplate\.json$/i.test(name);
+      });
+      for (const entry of entries) {
+        try {
+          const template = parseNativePatchFlowTemplate(
+            await readNativePatchPackEntry(nativePack, entry, 8 * 1024 * 1024),
+          );
+          const parameterById = new Map(
+            (template.native_patch.parameters as Array<Record<string, any>>).map((parameter) => [
+              parameter.id,
+              parameter,
+            ]),
+          );
+          templates.push({
+            path: entry.name.replace(/\\/g, "/"),
+            id: template.template.id,
+            version: template.template.version,
+            name: template.template.name,
+            fingerprint: template.fingerprint,
+            scalars: template.inputs.scalars.map((input) => {
+              const parameter = parameterById.get(input.parameter)!;
+              return {
+                id: input.id,
+                parameter: input.parameter,
+                type: parameter.type,
+                default: parameter.default,
+                min: parameter.min,
+                max: parameter.max,
+                capacity: parameter.capacity,
+                max_key_bytes: parameter.max_key_bytes,
+              };
+            }),
+            tables: template.inputs.tables.map((input) => ({
+              ...input,
+              columns: parameterById.get(input.parameter)?.columns ?? [],
+            })),
+          });
+        } catch (error) {
+          errors.push({
+            path: entry.name,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      templates.sort((first, second) =>
+        String(first.path) < String(second.path) ? -1 : String(first.path) > String(second.path) ? 1 : 0,
+      );
+      return { success: true, templates, errors };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to read native patch templates",
+      };
+    }
+  });
+
   ipcMain.handle("readFileFromPack", async (event, packPath: string, fileName: string) => {
     try {
       console.log("readFileFromPack:", packPath, fileName);
@@ -8962,11 +9176,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           appData.gamesToGameFolderPaths[game].contentFolder = calculatedContentPath;
           mainWindow?.webContents.send("setContentFolder", calculatedContentPath);
         }
-        // shogun 2 doesn't use the content folder, puts subscribed to mods directly into data
-        if (requestedGame == "shogun2") {
-          appData.gamesToGameFolderPaths[game].contentFolder = wh3FolderPath;
-          mainWindow?.webContents.send("setContentFolder", wh3FolderPath);
-        }
         refreshModsIfFoldersValid(requestedGame);
       }
     } catch (e) {
@@ -9069,7 +9278,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
     const translated: Record<string, string> = {};
     for (const id of Object.keys(translationIds)) {
-      translated[id] = i18n.t(id);
+      const text = i18n.t(id);
+      // The renderer sends its bundled English strings. A key the main process has not loaded
+      // (the locale files are read once at startup) comes back as the key itself; show the English
+      // text instead of the raw key.
+      const fallback = translationIds[id];
+      translated[id] = text === id && typeof fallback === "string" ? fallback : text;
     }
     return translated;
   });
@@ -11965,6 +12179,25 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   ipcMain.on("getPackData", (event, packPath: string, table?: DBTable) => {
     getPackData(packPath, table, undefined, getPackDataDestination(event.sender));
   });
+  ipcMain.handle("reloadPackForViewer", async (_event, packPath: string): Promise<ReloadPackForViewerResult> => {
+    try {
+      await invalidateCachedPackData(packPath);
+      const pack = await readPack(packPath, { skipParsingTables: true });
+
+      delete appData.unsavedPacksData[packPath];
+      delete appData.deletedPackFilePaths[packPath];
+      appendPacksData(pack, undefined, false);
+      broadcastPackStagingState(packPath);
+
+      return { success: true, packData: getPackViewData(pack) };
+    } catch (error) {
+      console.error("Failed to reload viewer pack from disk:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to reload pack from disk",
+      };
+    }
+  });
   ipcMain.on("getPackDataWithLocs", (event, packPath: string, table?: DBTable) => {
     getPackData(packPath, table, true, getPackDataDestination(event.sender));
   });
@@ -13182,6 +13415,56 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   ipcMain.handle("getDataFolder", async (event) => {
     return appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
   });
+  const logOptimizerOutcomes = ({
+    mods,
+    realDataPackNames,
+    stagedCustomFolders,
+    optimizer,
+    result,
+    userSkipped,
+  }: {
+    mods: Mod[];
+    realDataPackNames: Set<string>;
+    stagedCustomFolders: CustomFolderStaging | undefined;
+    optimizer: WorkshopModOptimizer;
+    result: { optimizerResults: WorkshopStagingOptimizerOutcome[] };
+    userSkipped: boolean;
+  }) => {
+    for (const line of buildOptimizerLaunchLog({
+      mods: mods.map((mod) => ({
+        name: mod.name,
+        path: mod.path,
+        modDirectory: mod.modDirectory,
+        sourceKind: getModSourceKind(mod),
+        isInModding: mod.isInModding,
+      })),
+      dataPackNames: realDataPackNames,
+      stagedDirectories: stagedCustomFolders?.stagedDirectories ?? new Set<string>(),
+      comparableDirectory,
+      recordFor: (path) => optimizer.getRecord(path),
+      outcomes: result.optimizerResults,
+      userSkipped,
+    })) {
+      console.log(line);
+    }
+  };
+  /** The savings of the launch's optimized mods: one log line, and one short line under the Optimize option. */
+  const reportOptimizerSummary = (outcomes: WorkshopStagingOptimizerOutcome[]) => {
+    const totals = totalOptimizations(
+      outcomes
+        .filter((outcome) => outcome.status === "optimized" || outcome.status === "restored")
+        .map((outcome) => outcome.summary),
+    );
+    if (!totals) return;
+    const text = i18n.t("optimizerSummaryLine", {
+      count: totals.mods,
+      size: formatSavedBytes(totals.savedBytes),
+      draws: Math.round(totals.drawCalls),
+    });
+    console.log(`Optimizer: ${text}`);
+    lastOptimizerRunText = text;
+    mainWindow?.webContents.send("workshopOptimizerLastRun", text);
+  };
   const getRealDataPackNames = async (dataFolder: string): Promise<Set<string>> => {
     const names = new Set(appData.allMods.filter((mod) => mod.isInData).map((mod) => mod.name.toLowerCase()));
     const collectPackNames = async (folderPath: string) => {
@@ -13198,6 +13481,52 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     await collectPackNames(nodePath.join(dataFolder, "modding"));
     return names;
   };
+  /** The optimizer cache is in use by a launch, a background job or a running game. */
+  const isOptimizerCacheBusy = () =>
+    !!activeWorkshopStagingRun || appData.isWH3Running || getOptimizerBackground()?.getStatus().state === "running";
+  let housekeepingRunning = false;
+  /**
+   * Keeps the optimizer cache bounded (see `WorkshopOptimizerCache.housekeep`). Fire and forget: it never
+   * blocks startup or the UI, never runs while the cache is in use, and never throws.
+   */
+  const runOptimizerHousekeeping = async (afterJob = false): Promise<void> => {
+    if (housekeepingRunning || (!afterJob && isOptimizerCacheBusy())) return;
+    const gamePath = appData.gamesToGameFolderPaths[appData.currentGame]?.gamePath;
+    if (!gamePath || appData.currentGame !== "wh3" || !fs.existsSync(gamePath)) return;
+    housekeepingRunning = true;
+    try {
+      const cache = getWorkshopOptimizerCache(gamePath);
+      if (!fs.existsSync(cache.root)) return;
+      const line = formatHousekeepingLine(await cache.housekeep());
+      if (line) console.log(line);
+    } catch (error) {
+      console.warn("Optimizer cache housekeeping failed:", error);
+    } finally {
+      housekeepingRunning = false;
+    }
+  };
+  initOptimizerBackground({
+    afterJob: () => runOptimizerHousekeeping(true),
+    getDataPackNames: getRealDataPackNames,
+    sendStatus: (status) => mainWindow?.webContents.send("workshopOptimizerBackgroundStatus", status),
+  });
+  // A game patch changes the packs every cached result was made against: replan when the identity of the
+  // game's packs changes.
+  let lastGameIdentity: string | undefined;
+  const checkGameIdentity = async () => {
+    try {
+      const identity = await computeGameIdentity(getVanillaPackPathsInLoadOrder());
+      if (lastGameIdentity !== undefined && identity !== lastGameIdentity) optimizerGameChanged();
+      lastGameIdentity = identity;
+    } catch {
+      // The game folder may not be configured yet.
+    }
+  };
+  void checkGameIdentity();
+  void removeLegacyOptimizerCacheOnce();
+  // Once, a little after startup, off the startup path.
+  scheduleStartupHousekeeping(() => runOptimizerHousekeeping());
+  setInterval(() => void checkGameIdentity(), 10 * 60 * 1000).unref();
   ipcMain.on(
     "startGame",
     async (
@@ -13234,6 +13563,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             runId,
             senderId: event.sender.id,
             controller: new AbortController(),
+            skipOptimizationController: new AbortController(),
             canceled: false,
             lastProgress: { phase: "planning", current: 0, total: 0 },
           }
@@ -13252,23 +13582,27 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
 
       let stagingCompleted = false;
       let stagingFailureMessage: string | undefined;
-      console.log("before start:");
-      for (const pack of appData.packsData) {
-        console.log(pack.name, pack.readTables);
-      }
-      const reportGameLaunchError = (message: string, error?: unknown) => {
+      const reportGameLaunchError = (message: string, error?: unknown, userMessage = message) => {
         console.error(message, error);
         mainWindow?.webContents.send("handleLog", message);
         mainWindow?.webContents.send("addToast", {
           type: "warning",
-          messages: [message],
+          messages: [userMessage],
           startTime: Date.now(),
         } as Toast);
       };
+      const reportNativePatchSkip = (notice: NativePatchSkippedPackage) => {
+        const message = `Native patch '${notice.packageId}' from '${notice.sourceModName || notice.sourcePackPath || "unknown mod"}' was skipped: ${notice.message}`;
+        if (notice.policy === "warn")
+          reportGameLaunchError(message, undefined, nativePatchUserMessage([notice], "skipped"));
+        else console.log(message);
+      };
       let workshopStagingResult: WorkshopStagingResult | undefined;
       let stagedGamePath: string | undefined;
+      let isPreparingNativePatches = false;
+      let nativeHelperMayBeRunning = false;
       const cleanStagingAfterFailedLaunch = async () => {
-        if (!workshopStagingResult || !stagedGamePath) return;
+        if (nativeHelperMayBeRunning || !workshopStagingResult || !stagedGamePath) return;
         try {
           await cleanupWorkshopModStaging(stagedGamePath);
           appData.workshopStagingCleanupPending = false;
@@ -13318,28 +13652,137 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             ? startGameOptions.workshopModStagingMode
             : "disabled";
         const cleanUpWorkshopModStagingAfterGameExit = !!startGameOptions.cleanUpWorkshopModStagingAfterGameExit;
+        // Optimizing staged mods is part of copy-mode staging for Warhammer III and implies compression.
+        const optimizeWorkshopMods =
+          appData.currentGame === "wh3" &&
+          workshopModStagingMode === "copy" &&
+          startGameOptions.optimizeWorkshopModsOnStart === true;
+        if (optimizeWorkshopMods) await removeLegacyOptimizerCacheOnce();
+        const optimizerCache = getWorkshopOptimizerCache(gamePath);
+        const workshopOptimizer = optimizeWorkshopMods
+          ? createWorkshopModOptimizer({
+              cache: optimizerCache,
+              dataFolder,
+              loadOrder: sortedMods.map((mod) => ({
+                name: mod.name,
+                path: mod.path,
+                workshopId: mod.workshopId,
+                reqModIdToName: mod.reqModIdToName,
+                dependencyPacks: mod.dependencyPacks,
+              })),
+              // A background job making a mod this launch needs is waited for, not restarted.
+              background: getOptimizerBackground(),
+            })
+          : undefined;
+        if (optimizeWorkshopMods && !workshopOptimizer) {
+          const message = i18n.t("automaticWorkshopStagingOptimizeUnavailable");
+          mainWindow?.webContents.send("addToast", {
+            type: "warning",
+            messages: [message],
+            startTime: Date.now(),
+          } as Toast);
+        }
         const compressWorkshopMods =
           appData.currentGame === "wh3" &&
           workshopModStagingMode === "copy" &&
-          startGameOptions.compressWorkshopModsOnStart === true;
+          (startGameOptions.compressWorkshopModsOnStart === true || optimizeWorkshopMods);
         let realDataPackNames = new Set<string>();
         let stagedWorkshopModNames = new Set<string>();
+        // Custom mod folders the optimizer stages as a whole (their working-directory line is dropped).
+        let stagedCustomFolders: CustomFolderStaging | undefined;
         if (workshopModStagingMode !== "disabled") {
           throwIfWorkshopStagingCanceled();
           realDataPackNames = await getRealDataPackNames(dataFolder);
           stagedGamePath = gamePath;
-          workshopStagingResult = await stageWorkshopMods({
-            gameFolder: gamePath,
-            mode: workshopModStagingMode,
-            workshopMods: sortedMods.filter((mod) => isWorkshopMod(mod)),
-            realDataPackNames,
-            canCreateSymbolicLinks: appData.canCreateSymbolicLinks,
-            recreateDestination: cleanUpWorkshopModStagingAfterGameExit,
-            compressMods: compressWorkshopMods,
-            includeRigidModelV2: appData.isRigidModelV2CompressionEnabled,
-            signal: workshopStagingRun?.controller.signal,
-            onProgress: (progress) => reportStagingProgress(progress),
-          });
+          if (workshopOptimizer) {
+            stagedCustomFolders = await selectCustomFolderStaging({
+              mods: sortedMods.map((mod) => ({
+                name: mod.name,
+                path: mod.path,
+                modDirectory: mod.modDirectory,
+                sourceKind: getModSourceKind(mod),
+                isInModding: mod.isInModding,
+              })),
+              dataPackNames: realDataPackNames,
+              hasVisualAssets: packHasOptimizableVisuals,
+              listPackNames: async (directory) => {
+                try {
+                  return new Set(
+                    (await fs.promises.readdir(directory))
+                      .filter((name) => name.toLowerCase().endsWith(".pack"))
+                      .map((name) => name.toLowerCase()),
+                  );
+                } catch {
+                  return new Set<string>();
+                }
+              },
+            });
+            for (const [directory, reason] of stagedCustomFolders.folderReasons) {
+              console.log(
+                `Optimizer: custom folder ${directory} is staged this launch (${reason}); its line is dropped.`,
+              );
+            }
+          }
+          const stagedCustomPaths = new Set(stagedCustomFolders?.mods.map((mod) => mod.path) ?? []);
+          const background = getOptimizerBackground();
+          if (workshopOptimizer) background?.setLaunchActive(true);
+          try {
+            workshopStagingResult = await stageWorkshopMods({
+              gameFolder: gamePath,
+              mode: workshopModStagingMode,
+              workshopMods: sortedMods.filter((mod) => isWorkshopMod(mod) || stagedCustomPaths.has(mod.path)),
+              realDataPackNames,
+              canCreateSymbolicLinks: appData.canCreateSymbolicLinks,
+              recreateDestination: cleanUpWorkshopModStagingAfterGameExit,
+              compressMods: compressWorkshopMods,
+              includeRigidModelV2: appData.isRigidModelV2CompressionEnabled,
+              optimizer: workshopOptimizer,
+              optimizerProfile: workshopOptimizer ? WORKSHOP_OPTIMIZER_PROFILE_ID : undefined,
+              skipOptimizationSignal: workshopStagingRun?.skipOptimizationController.signal,
+              signal: workshopStagingRun?.controller.signal,
+              onProgress: (progress) => reportStagingProgress(progress),
+            });
+          } finally {
+            if (workshopOptimizer) background?.setLaunchActive(false);
+          }
+          for (const warning of workshopOptimizer?.warnings ?? []) {
+            workshopStagingResult.compressionWarnings.push(warning);
+          }
+          for (const outcome of workshopStagingResult.optimizerResults) {
+            if (outcome.status !== "failed") continue;
+            const message = i18n.t("automaticWorkshopStagingOptimizeFailed", {
+              mod: outcome.name,
+              error: outcome.message ?? "",
+            });
+            mainWindow?.webContents.send("handleLog", message);
+            mainWindow?.webContents.send("addToast", {
+              type: "warning",
+              messages: [message],
+              startTime: Date.now(),
+            } as Toast);
+          }
+          optimizerCache.unpinAll();
+          if (workshopOptimizer) {
+            logOptimizerOutcomes({
+              mods: sortedMods,
+              realDataPackNames,
+              stagedCustomFolders,
+              optimizer: workshopOptimizer,
+              result: workshopStagingResult,
+              userSkipped: workshopStagingRun?.skipOptimizationController.signal.aborted === true,
+            });
+            reportOptimizerSummary(workshopStagingResult.optimizerResults);
+          } else if (startGameOptions.optimizeWorkshopModsOnStart === true) {
+            console.log(
+              `Optimizer: not run (${
+                appData.currentGame !== "wh3"
+                  ? "only available for Warhammer III"
+                  : workshopModStagingMode !== "copy"
+                    ? `${workshopModStagingMode === "symlink" ? "symlink" : "staging off"} mode, copy mode is required`
+                    : "the optimizer is unavailable"
+              }).`,
+            );
+          }
           stagingCompleted = true;
           reportStagingProgress(
             {
@@ -13352,6 +13795,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             { stage: "complete", percent: 100, detail: "Workshop mods ready" },
           );
           if (activeWorkshopStagingRun === workshopStagingRun) activeWorkshopStagingRun = undefined;
+          if (workshopOptimizer) setTimeout(() => void runOptimizerHousekeeping(), 2000).unref();
           stagedWorkshopModNames = new Set(workshopStagingResult.stagedModNames.map((name) => name.toLowerCase()));
           log(
             `Prepared ${stagedWorkshopModNames.size} Workshop mod(s) in ${workshopStagingResult.destinationPath}; ` +
@@ -13432,6 +13876,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           vanillaPacks.push(dataMod);
         }
         let extraEnabledMods = "";
+        let startGameTempPackPath: string | undefined;
         if (
           startGameOptions.isMakeUnitsGeneralsEnabled ||
           startGameOptions.isScriptLoggingEnabled ||
@@ -13442,10 +13887,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           await fs.mkdirSync(nodePath.join(appDataPath, "tempPacks"), { recursive: true });
           log("getting start game dbs");
           await getDBsForGameStartOptions(sortedMods.concat(vanillaPacks), startGameOptions);
-          console.log("before start:");
-          for (const pack of appData.packsData) {
-            console.log(pack.name, pack.readTables);
-          }
+          const packsWithTables = appData.packsData.filter(
+            (pack) => pack.readTables === "all" || pack.readTables.length > 0,
+          );
+          console.log(
+            `before start: ${appData.packsData.length} packs loaded, ${packsWithTables.length} with parsed tables`,
+          );
           const tempPackName = "!!!!out.pack";
           const tempPackPath = nodePath.join(appDataPath, "tempPacks", tempPackName);
           log("writing start game pack");
@@ -13477,6 +13924,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           }
           if (!failedWriting) {
             log("done writing temp pack");
+            startGameTempPackPath = tempPackPath;
             extraEnabledMods =
               `\nadd_working_directory "${linuxBit + nodePath.join(appDataPath, "tempPacks")}";` +
               `\nmod "${tempPackName}";`;
@@ -13499,12 +13947,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         );
         console.log("enabledModsWithOverwrites:", enabledModsWithOverwrites);
         const overwriteModEntries: Array<{ sourcePath: string; name: string }> = [];
+        let overwritesDirPath: string | undefined;
         /** Original pack path -> the overwrite copy a flow should read in its place. */
         const packPathSubstitutes = new Map<string, string>();
         /** Packs a flow wrote a whole replacement for; the original must not be loaded alongside it. */
         const replacedPackPaths = new Set<string>();
         if (enabledModsWithOverwrites.length > 0) {
-          const overwritesDirPath = nodePath.join(
+          overwritesDirPath = nodePath.join(
             appData.gamesToGameFolderPaths[appData.currentGame].gamePath as string,
             "/whmm_overwrites/",
           );
@@ -13533,10 +13982,15 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         let enabledModsWithFlows: Mod[] = [];
         let createdFlowPacks: string[] = [];
         let flowExecutionHadErrors = false;
+        const runtimeNativePatchContributions: NativePatchFlowRuntimeContribution[] = [];
         if (flowExecutionSignatureHash) {
           const flowCache = await loadFlowExecutionCache();
           const cachedEntry = flowCache.byGame[appData.currentGame];
-          if (cachedEntry && cachedEntry.signatureHash === flowExecutionSignatureHash) {
+          if (
+            cachedEntry &&
+            cachedEntry.signatureHash === flowExecutionSignatureHash &&
+            !cachedEntry.hasRuntimeNativePatchContributions
+          ) {
             if (cachedEntry.modsWithFlows.length === 0) {
               shouldExecuteFlows = false;
               console.log("Flow execution cache hit: no flow mods found in previous launch.");
@@ -13573,29 +14027,32 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
               }
             }
           } else {
-            console.log("Flow execution cache miss: signature changed or no prior cache entry.");
+            console.log(
+              "Flow execution cache miss: signature changed, runtime contributions need rebuilding, or no prior entry.",
+            );
           }
         } else {
           console.log("Flow execution cache unavailable: failed to build signature, executing flows normally.");
         }
         if (shouldExecuteFlows) {
-          for (const packPath of sortedMods.map((mod) => mod.path)) {
-            const pack = appData.packsData.find((packData) => packData.path == packPath);
-            if (!pack || (pack && pack.packedFiles.length == 0)) {
-              await readModsByPath([packPath], { readFlows: true, skipParsingTables: true });
+          // Only packs that ship flows need reading; the cached header scan says which ones do.
+          // This covers every pack userFlowOptions can name, since those are enabled mods too.
+          const packPathsToRead = sortedMods
+            .map((mod) => mod.path)
+            .filter((packPath) => {
+              const pack = appData.packsData.find((packData) => packData.path == packPath);
+              return !pack || pack.packedFiles.length == 0;
+            });
+          await forEachWithConcurrency(packPathsToRead, 4, async (packPath) => {
+            let mayHaveFlows = true;
+            try {
+              mayHaveFlows = (await readPackHeaderCached(packPath)).hasFlows !== false;
+            } catch {
+              // fall back to a full read
             }
-          }
-          for (const packPath of Object.keys(startGameOptions.userFlowOptions)) {
-            const mod = sortedMods.find((mod) => mod.path === packPath || mod.name == packPath);
-            if (mod) {
-              console.log("FOUND MOD TO READ FOR FLOWS:", mod.name);
-              const pack = appData.packsData.find((packData) => packData.path == mod.path);
-              if (!pack || (pack && pack.packedFiles.length == 0)) {
-                console.log("need to read pack for flows:", mod.name);
-                await readModsByPath([mod.path], { readFlows: true, skipParsingTables: true });
-              }
-            }
-          }
+            if (mayHaveFlows) await readModsByPath([packPath], { readFlows: true, skipParsingTables: true });
+          });
+          void savePackHeaderCache();
           // Execute flows for enabled mods
           enabledModsWithFlows = sortedMods.filter((iterMod) => {
             const pack = appData.packsData.find((packData) => packData.path == iterMod.path);
@@ -13649,6 +14106,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                 createdPackPaths,
                 replacedPackPaths: flowReplacedPackPaths,
                 hadErrors,
+                nativePatchFlowError,
+                nativePatchContributions,
               } = await executeFlowsForPack(
                 packPathToUse,
                 "", // No target path needed
@@ -13658,8 +14117,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                 packPathSubstitutes,
               );
               createdFlowPacks.push(...createdPackPaths);
+              runtimeNativePatchContributions.push(...nativePatchContributions);
               for (const replacedPath of flowReplacedPackPaths) replacedPackPaths.add(replacedPath);
               flowExecutionHadErrors = flowExecutionHadErrors || hadErrors;
+              if (nativePatchFlowError) {
+                isPreparingNativePatches = true;
+                throw new Error(`Native Patch flow failed: ${nativePatchFlowError}`);
+              }
             }
             console.log(`Created ${createdFlowPacks.length} pack(s) from flows:`, createdFlowPacks);
           }
@@ -13677,9 +14141,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
               flowCache.byGame[appData.currentGame] = {
                 signatureHash: flowExecutionSignatureHash,
                 createdAt: Date.now(),
-                modsWithFlows: enabledModsWithFlows.map((mod) => ({ path: mod.path, name: mod.name })),
+                modsWithFlows: enabledModsWithFlows.map((mod) => ({
+                  path: mod.path,
+                  name: mod.name,
+                })),
                 createdFlowPackFileNames: [...new Set(createdFlowPacks.map((path) => nodePath.basename(path)))],
                 replacedPackPaths: [...replacedPackPaths],
+                hasRuntimeNativePatchContributions: runtimeNativePatchContributions.length > 0,
               };
               await saveFlowExecutionCache();
             } else {
@@ -13715,6 +14183,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           stagedModNames: stagedWorkshopModNames,
           realDataPackNames,
           pathPrefix: linuxBit,
+          stagedDirectories: stagedCustomFolders?.stagedDirectories,
           mods: enabledModsWithoutMergedInMods.map((mod) => ({
             name: mod.name,
             modDirectory: mod.modDirectory,
@@ -13775,11 +14244,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           modListFileName: fileNameWithModList,
           saveName,
         });
-        if (launchPlan.kind === "error") {
-          reportGameLaunchError(launchPlan.message);
-          await cleanStagingAfterFailedLaunch();
-          return;
-        }
+        const launchNormally = async () =>
+          launchPlan.kind === "error"
+            ? { started: false as const, message: launchPlan.message }
+            : launchGame(launchPlan.candidates, gamePath);
         // Create steam_appid.txt for Attila
         if (appData.currentGame === "attila" || appData.currentGame === "rome2" || appData.currentGame == "shogun2") {
           const steamAppIdPath = nodePath.join(
@@ -13794,18 +14262,189 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           }
         }
         mainWindow?.webContents.send("handleLog", "starting game:");
-        for (const candidate of launchPlan.candidates) {
+        for (const candidate of launchPlan.kind === "launch" ? launchPlan.candidates : []) {
           const description = [candidate.command, ...candidate.args].map((arg) => JSON.stringify(arg)).join(" ");
           console.log("Game launch candidate:", description);
           mainWindow?.webContents.send("handleLog", description);
         }
 
-        const launchResult = await launchGame(launchPlan.candidates, gamePath);
-        if (!launchResult.started) {
-          reportGameLaunchError(launchResult.message);
+        let launchFailureMessage: string | undefined;
+        let launchFailureUserMessage: string | undefined;
+        let launched = false;
+        if (appData.currentGame === "wh3") {
+          isPreparingNativePatches = true;
+          const modPackPaths = enabledModsWithoutMergedInMods.map((mod) => {
+            if (stagedWorkshopModNames.has(mod.name.toLowerCase()) && workshopStagingResult) {
+              return nodePath.join(workshopStagingResult.destinationPath, mod.name);
+            }
+            if (
+              (isWorkshopMod(mod) ||
+                stagedCustomFolders?.stagedDirectories.has(comparableDirectory(mod.modDirectory))) &&
+              [...realDataPackNames].some((name) => name.toLowerCase() === mod.name.toLowerCase())
+            ) {
+              return nodePath.join(dataFolder, mod.name);
+            }
+            return mod.isInModding ? nodePath.join(dataFolder, mod.name) : mod.path;
+          });
+          const overwritePackPaths = overwriteModEntries
+            .filter((entry) => !replacedPackPaths.has(entry.sourcePath))
+            .map((entry) => (overwritesDirPath ? nodePath.join(overwritesDirPath, entry.name) : undefined))
+            .filter((path): path is string => Boolean(path));
+          const enabledPackPaths = [
+            ...modPackPaths,
+            ...(startGameTempPackPath ? [startGameTempPackPath] : []),
+            ...overwritePackPaths,
+            ...createdFlowPacks,
+          ].filter((packPath) => nodePath.extname(packPath).toLowerCase() === ".pack");
+          const pathIdentity = (packPath: string) => {
+            const resolved = nodePath.resolve(packPath);
+            return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+          };
+          const modNamesByPath = new Map(
+            modPackPaths.map((packPath, index) => [
+              pathIdentity(packPath),
+              getModSortName(enabledModsWithoutMergedInMods[index]),
+            ]),
+          );
+          const modNamesByFileName = new Map(mods.map((mod) => [mod.name.toLowerCase(), getModSortName(mod)]));
+          const indexedPacks = new Map<string, NativePatchPack>();
+          const indexNativePatchPack = async (packPath: string, priority: number): Promise<NativePatchPack> => {
+            const key = pathIdentity(packPath);
+            const existing = indexedPacks.get(key);
+            if (existing) {
+              existing.priority = Math.max(existing.priority, priority);
+              return existing;
+            }
+            if (!fs.existsSync(packPath) || !fs.statSync(packPath).isFile()) {
+              throw new Error(`Final WH3 pack is missing: ${packPath}`);
+            }
+            const packIndex = await readPack(packPath, {
+              skipParsingTables: true,
+              skipSorting: true,
+            });
+            const stats = fs.statSync(packPath);
+            if (!packIndex.packHeader || packIndex.packHeader.pack_file_count !== packIndex.packedFiles.length) {
+              throw new Error(`Could not read the complete pack index for ${packPath}`);
+            }
+            for (const entry of packIndex.packedFiles) {
+              if (
+                !Number.isSafeInteger(entry.file_size) ||
+                entry.file_size < 0 ||
+                !Number.isSafeInteger(entry.start_pos) ||
+                entry.start_pos < 0 ||
+                entry.start_pos + entry.file_size > stats.size
+              ) {
+                throw new Error(`Invalid packed-file index range for ${entry.name} in ${packPath}`);
+              }
+            }
+            const displayName =
+              modNamesByPath.get(key) ?? modNamesByFileName.get(nodePath.basename(packPath).toLowerCase());
+            const indexed = { path: packPath, pack: packIndex, priority, displayName };
+            indexedPacks.set(key, indexed);
+            return indexed;
+          };
+          const enabledPacks: NativePatchPack[] = [];
+          // Only packs that may carry native patch manifests or flow contributions need a full index;
+          // the cached header scan tells us cheaply. Runtime flow contributions keep their source
+          // pack's priority, so those source packs are indexed too.
+          const runtimeContributionPackKeys = new Set(
+            runtimeNativePatchContributions.map((contribution) => pathIdentity(contribution.sourcePackPath)),
+          );
+          for (const [priority, packPath] of enabledPackPaths.entries()) {
+            if (!runtimeContributionPackKeys.has(pathIdentity(packPath))) {
+              if (!fs.existsSync(packPath) || !fs.statSync(packPath).isFile()) {
+                throw new Error(`Final WH3 pack is missing: ${packPath}`);
+              }
+              let mayHaveNativePatches = true;
+              try {
+                mayHaveNativePatches = (await readPackHeaderCached(packPath)).hasNativePatches !== false;
+              } catch {
+                // fall back to a full index
+              }
+              if (!mayHaveNativePatches) continue;
+            }
+            const indexed = await indexNativePatchPack(packPath, priority);
+            if (!enabledPacks.includes(indexed)) enabledPacks.push(indexed);
+          }
+          void savePackHeaderCache();
+          const nativePlan = await buildNativePatchLaunchPlan({
+            runId: randomUUID(),
+            targetPath: gameExecutablePath,
+            enabledPacks,
+            runtimeContributions: runtimeNativePatchContributions,
+            onSkippedPackage: reportNativePatchSkip,
+            effectiveContentPacks: async () => {
+              const vanillaPaths = getVanillaPackPathsInLoadOrder().filter(
+                (packPath) => nodePath.extname(packPath).toLowerCase() === ".pack",
+              );
+              const contentPacks: NativePatchPack[] = [];
+              for (const [priority, packPath] of vanillaPaths.entries()) {
+                contentPacks.push(await indexNativePatchPack(packPath, priority - vanillaPaths.length));
+              }
+              for (const [priority, packPath] of enabledPackPaths.entries()) {
+                contentPacks.push(await indexNativePatchPack(packPath, vanillaPaths.length + priority));
+              }
+              return contentPacks;
+            },
+          });
+          if (!nativePlan) {
+            isPreparingNativePatches = false;
+            const launchResult = await launchNormally();
+            launched = launchResult.started;
+            if (!launchResult.started) launchFailureMessage = launchResult.message;
+          } else {
+            for (const prepared of nativePlan.packages) {
+              const message = `Native patch ${prepared.manifest.package.id}@${prepared.manifest.package.version}: ${prepared.sourcePackPath} (${prepared.manifestPath})`;
+              log(message);
+              mainWindow?.webContents.send("handleLog", message);
+            }
+            nativeHelperMayBeRunning = true;
+            const nativeLaunchResult = await launchNativePatchPlan({
+              plan: nativePlan,
+              appDataPath,
+              platform: process.platform,
+              steamId: gameToSteamId.wh3,
+              gameArguments: buildGameLaunchArguments(fileNameWithModList, saveName),
+              gameWorkingDirectory: gamePath,
+              onSkippedPackage: reportNativePatchSkip,
+              onAttempt: (invocation) => {
+                const description = [invocation.command, ...invocation.args]
+                  .map((arg) => JSON.stringify(arg))
+                  .join(" ");
+                console.log("Native patch helper launch:", description);
+                mainWindow?.webContents.send("handleLog", "Preparing native patch startup activation.");
+              },
+            });
+            if (nativeLaunchResult.kind === "unpatched") {
+              nativeHelperMayBeRunning = false;
+              isPreparingNativePatches = false;
+              const launchResult = await launchNormally();
+              launched = launchResult.started;
+              if (!launchResult.started) launchFailureMessage = launchResult.message;
+            } else if (nativeLaunchResult.kind === "started") {
+              launched = true;
+            } else {
+              nativeHelperMayBeRunning = !nativeLaunchResult.cancellationAcknowledged;
+              launchFailureMessage = nativeLaunchResult.cancellationAcknowledged
+                ? nativeLaunchResult.message
+                : `${nativeLaunchResult.message} Startup state is unknown; launch files and staged mods were retained. Check the game process before trying again.`;
+              launchFailureUserMessage = nativePatchUserMessage(
+                nativeLaunchResult.packages,
+                nativeLaunchResult.cancellationAcknowledged ? "stopped" : "unknown",
+              );
+            }
+          }
+        } else {
+          const launchResult = await launchNormally();
+          launched = launchResult.started;
+          if (!launchResult.started) launchFailureMessage = launchResult.message;
+        }
+        if (!launched) {
+          reportGameLaunchError(launchFailureMessage || "Game launch failed.", undefined, launchFailureUserMessage);
           await cleanStagingAfterFailedLaunch();
           return;
         }
+        isPreparingNativePatches = false;
         if (cleanUpWorkshopModStagingAfterGameExit && workshopStagingResult) {
           appData.workshopStagingCleanupPending = true;
           appData.workshopStagingCleanupGamePath = gamePath;
@@ -13855,7 +14494,15 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           reportGameLaunchError(message, e);
         } else {
           stagingFailureMessage = e instanceof Error ? e.message : String(e);
-          console.log(e);
+          if (isPreparingNativePatches) {
+            reportGameLaunchError(
+              stagingFailureMessage,
+              e,
+              e instanceof Error && e.message.startsWith("Native Patch flow failed:")
+                ? e.message
+                : nativePatchUserMessage(e instanceof NativePatchPackageError ? e.packages : [], "stopped"),
+            );
+          } else console.log(e);
         }
       } finally {
         if (workshopStagingRun && !stagingCompleted) {
@@ -13890,6 +14537,89 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       }
     },
   );
+  ipcMain.on("skipWorkshopModOptimization", (event, requestedRunId?: string) => {
+    const run = activeWorkshopStagingRun;
+    if (!run || run.senderId !== event.sender.id || run.canceled) return;
+    if (typeof requestedRunId === "string" && requestedRunId.length > 0 && requestedRunId !== run.runId) return;
+    run.skipOptimizationController.abort();
+  });
+  const getCurrentGamePath = () => appData.gamesToGameFolderPaths[appData.currentGame]?.gamePath;
+  ipcMain.handle("getWorkshopOptimizerCacheInfo", async () => {
+    try {
+      const gamePath = getCurrentGamePath();
+      if (!gamePath) return { success: true, size: 0, hasContents: false, lastRun: lastOptimizerRunText };
+      return {
+        success: true,
+        ...(await getWorkshopOptimizerCache(gamePath).getInfo()),
+        lastRun: lastOptimizerRunText,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        size: 0,
+        hasContents: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+  ipcMain.handle("clearWorkshopOptimizerCache", async () => {
+    // A launch or a background job is reading from and writing to this folder, and a running game may
+    // have staged packs open that are hard links of its entries.
+    if (isOptimizerCacheBusy()) {
+      return { success: false, code: "STAGING_ACTIVE", error: i18n.t("workshopOptimizerCacheBusy") };
+    }
+    try {
+      const gamePath = getCurrentGamePath();
+      if (gamePath) await getWorkshopOptimizerCache(gamePath).clear();
+      lastOptimizerRunText = undefined;
+      return { success: true };
+    } catch (error) {
+      const message = i18n.t("workshopOptimizerCacheClearFailed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, code: "CLEAR_FAILED", error: message };
+    }
+  });
+  ipcMain.handle("openWorkshopOptimizerReport", async (_event, modName: string) => {
+    const gamePath = getCurrentGamePath();
+    const reportPath = gamePath ? getWorkshopOptimizerCache(gamePath).reportPathFor(String(modName)) : "";
+    const failure =
+      reportPath && fs.existsSync(reportPath)
+        ? await shell.openPath(reportPath)
+        : i18n.t("workshopOptimizerReportMissing");
+    if (failure) {
+      mainWindow?.webContents.send("addToast", { type: "info", messages: [failure], startTime: Date.now() } as Toast);
+      return { success: false, error: failure };
+    }
+    return { success: true };
+  });
+  ipcMain.on(
+    "updateWorkshopOptimizerBackground",
+    (_event, enabledMods: Mod[], settings: { optimize: boolean; workshopModStagingMode: string }) => {
+      const gamePath = getCurrentGamePath();
+      const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
+      if (!gamePath || !dataFolder) return;
+      const payload: BackgroundModsPayload = {
+        gamePath,
+        dataFolder,
+        mods: sortByNameAndLoadOrder(enabledMods.filter((mod) => mod.isEnabled)).map((mod) => ({
+          name: mod.name,
+          path: mod.path,
+          modDirectory: mod.modDirectory,
+          sourceKind: getModSourceKind(mod),
+          isInModding: mod.isInModding,
+          workshopId: mod.workshopId,
+          reqModIdToName: mod.reqModIdToName,
+          dependencyPacks: mod.dependencyPacks,
+        })),
+      };
+      updateOptimizerBackground(payload, { ...settings, currentGame: appData.currentGame });
+    },
+  );
+  ipcMain.on("cancelWorkshopOptimizerBackground", () => getOptimizerBackground()?.cancel());
+  // "Check visual assets" (per mod): runs the host's check action; see workshopModOptimizer/visualCheckIpc.ts.
+  registerVisualAssetCheckIpc(mainWindow);
+  ipcMain.handle("getWorkshopOptimizerBackgroundStatus", () => getOptimizerBackground()?.getStatus());
   ipcMain.on("cancelWorkshopModStaging", (event, requestedRunId?: string) => {
     const run = activeWorkshopStagingRun;
     if (!run || run.senderId !== event.sender.id) return;
@@ -14377,10 +15107,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         }
 
         let filePathsToExtract = filePaths;
-        const recursivelyResolvedFiles = new Map<
-          string,
-          { pack: Pack; packPath: string; fileName: string }
-        >();
+        const recursivelyResolvedFiles = new Map<string, { pack: Pack; packPath: string; fileName: string }>();
         if (recursive) {
           if (filePaths.length !== 1) {
             return {
@@ -14437,13 +15164,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                   const packedFile = findPackedFileCaseInsensitive(resolved.pack, resolved.fileName);
                   if (packedFile) {
                     let buffer = Buffer.allocUnsafe(packedFile.file_size);
-                    fs.readSync(
-                      getDependencyFileId(resolved.packPath),
-                      buffer,
-                      0,
-                      buffer.length,
-                      packedFile.start_pos,
-                    );
+                    fs.readSync(getDependencyFileId(resolved.packPath), buffer, 0, buffer.length, packedFile.start_pos);
                     if (packedFile.is_compressed) {
                       buffer = Buffer.from(await decompressPackedPayload(buffer, packedFile.name));
                     }
@@ -14510,8 +15231,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             ? recursivelyResolvedFiles.get(normalizePackFilePathKey(requestedPath))
             : undefined;
           const resolved =
-            recursiveResolved ??
-            (await resolveVisualsFileInSession(session, requestedPath, { preferredPackPath }));
+            recursiveResolved ?? (await resolveVisualsFileInSession(session, requestedPath, { preferredPackPath }));
           if (!resolved?.pack || !resolved.packPath || !resolved.fileName) {
             skipped.push({ name: requestedPath, reason: "File was not found in the visuals packs" });
             continue;
@@ -14568,7 +15288,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         );
         for (const result of ensureDirResults) {
           if (result.status === "rejected") {
-            errors.push(result.reason instanceof Error ? result.reason.message : "Failed to create extraction directory");
+            errors.push(
+              result.reason instanceof Error ? result.reason.message : "Failed to create extraction directory",
+            );
           }
         }
 

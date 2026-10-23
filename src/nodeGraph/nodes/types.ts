@@ -1,5 +1,6 @@
 import { DBVersion, SCHEMA_FIELD_TYPE } from "../../packFileTypes";
 import type { FilterRow, FlowNodeDataPatch } from "../types";
+import type { NativePatchTableSchemas } from "../nativePatchSchema";
 
 export interface NodeData extends Record<string, unknown> {
   label: string;
@@ -57,6 +58,8 @@ export interface SaveChangesNodeData extends NodeData {
   openInWindows: boolean;
   /** Open the written pack in the viewer window after a manual run. */
   openInViewer?: boolean;
+  /** Write a movie pack, which the game loads automatically when stored in its data folder. */
+  saveAsMoviePack?: boolean;
   inputType: "ChangedColumnSelection" | "Text" | "TableSelection";
 }
 
@@ -91,6 +94,7 @@ export interface GroupedColumnsToTextNodeData extends NodeData {
 
 export interface PackFilesDropdownNodeData extends NodeData {
   selectedPack: string;
+  includeBaseGame?: boolean;
   outputType: "PackFiles";
   useCurrentPack?: boolean;
 }
@@ -388,6 +392,18 @@ export interface ReadTSVFromPackNodeData extends NodeData {
   tableName: string;
   schemaColumns: Array<{ name: string; type: SCHEMA_FIELD_TYPE }>;
   inputType: "CustomSchema";
+  outputType: "TableSelection";
+}
+
+export interface NativePatchFlowNodeData extends NodeData {
+  /** Empty means use the pack that owns the flow; explicit selections persist a portable mod name. */
+  selectedPackName: string;
+  templatePath: string;
+  scalarValues: Record<string, unknown>;
+  scalarOptionBindings: Record<string, string>;
+  tableBindings: string[];
+  /** Editor metadata only; execution reads the schema from the validated template. */
+  tableSchemas?: NativePatchTableSchemas;
   outputType: "TableSelection";
 }
 

@@ -102,11 +102,7 @@ describe("unit painter pack staging", () => {
       await fs.writeFile(fullPath, bytes);
     }
 
-    const packFiles = await buildUnitPainterPackFiles(
-      generated,
-      [vmdPath, wsModelPath, texturePath],
-      vmdPath,
-    );
+    const packFiles = await buildUnitPainterPackFiles(generated, [vmdPath, wsModelPath, texturePath], vmdPath);
 
     const previousGame = appData.currentGame;
     appData.currentGame = "wh3";
@@ -161,39 +157,37 @@ describe("unit painter pack staging", () => {
     tileB[4] = 77;
     tileB[7] = 255;
 
-    const projectFiles = await buildUnitPainterProjectPackFiles(
-      sourceVmd,
-      [{ slotPath: "body", choiceIndex: 2 }],
-      {
-        activeLayerId: "layer-2",
-        usedColorHistory: ["#AABBCC", "#112233", "#aabbcc"],
-        selectedColor: "#445566",
-        factionScope: {
-          faction: "wh_main_emp_empire",
-          unitKey: "wh_main_emp_inf_swordsmen",
-          sourceVariantName: "wh_emp_state_troops_sword_and_shieldmen",
-          unitVariantName: "wh_main_emp_inf_swordmen",
-          unitCard: "wh_main_emp_swordsmen",
-          sourceVariantDetails: {
-            techFolder: "",
-            variantFilename: "emp_state_troops_sword_and_shieldmen",
-            lowPolyFilename: "hu1\\emp\\low_poly\\empire_state_troops_sword_shield_lowlod",
-            mountScale: "1.0000",
-            scale: "1.0000",
-            scaleVariation: "0.0500",
-            superLowPolyFilename: "hu1\\imposter\\humanoid_imposter",
-          },
-          newVariantName: "whmm_emp_state_troops_swordsmen_reikland",
-          newVariantFilename: "emp_state_troops_swordsmen_reikland_painted",
+    const projectFiles = await buildUnitPainterProjectPackFiles(sourceVmd, [{ slotPath: "body", choiceIndex: 2 }], {
+      activeLayerId: "layer-2",
+      usedColorHistory: ["#AABBCC", "#112233", "#aabbcc"],
+      selectedColor: "#445566",
+      factionScope: {
+        faction: "wh_main_emp_empire",
+        unitKey: "wh_main_emp_inf_swordsmen",
+        sourceVariantName: "wh_emp_state_troops_sword_and_shieldmen",
+        unitVariantName: "wh_main_emp_inf_swordmen",
+        unitCard: "wh_main_emp_swordsmen",
+        sourceVariantDetails: {
+          techFolder: "",
+          variantFilename: "emp_state_troops_sword_and_shieldmen",
+          lowPolyFilename: "hu1\\emp\\low_poly\\empire_state_troops_sword_shield_lowlod",
+          mountScale: "1.0000",
+          scale: "1.0000",
+          scaleVariation: "0.0500",
+          superLowPolyFilename: "hu1\\imposter\\humanoid_imposter",
         },
-        layers: [
-          { id: "layer-1", name: "Cloth", visible: true, opacity: 0.5, textures: [] },
-          {
-            id: "layer-2",
-            name: "Trim",
-            visible: false,
-            opacity: 1,
-            textures: [{
+        newVariantName: "whmm_emp_state_troops_swordsmen_reikland",
+        newVariantFilename: "emp_state_troops_swordsmen_reikland_painted",
+      },
+      layers: [
+        { id: "layer-1", name: "Cloth", visible: true, opacity: 0.5, textures: [] },
+        {
+          id: "layer-2",
+          name: "Trim",
+          visible: false,
+          opacity: 1,
+          textures: [
+            {
               sourceVirtualPath: "variantmeshes\\unit\\body_base_colour.dds",
               width: 4096,
               height: 4096,
@@ -201,11 +195,11 @@ describe("unit painter pack staging", () => {
                 { key: 65, rgbaBytes: tileB },
                 { key: 0, rgbaBytes: tileA },
               ],
-            }],
-          },
-        ],
-      },
-    );
+            },
+          ],
+        },
+      ],
+    });
 
     const manifestFile = projectFiles.find((file) => file.name === UNIT_PAINTER_PROJECT_MANIFEST_PATH);
     expect(manifestFile?.buffer).toBeDefined();
@@ -367,15 +361,15 @@ describe("unit painter pack staging", () => {
     for (const formatVersion of [1, 2]) {
       expect(() =>
         parseUnitPainterProjectManifest(
-          Buffer.from(JSON.stringify({
-            formatVersion,
-            sourceVariantMeshDefinition: "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition",
-            variantSelections: [],
-            activeLayerId: "layer-1",
-            layers: [
-              { id: "layer-1", name: "Paint 1", visible: true, opacity: 1, textures: [] },
-            ],
-          })),
+          Buffer.from(
+            JSON.stringify({
+              formatVersion,
+              sourceVariantMeshDefinition: "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition",
+              variantSelections: [],
+              activeLayerId: "layer-1",
+              layers: [{ id: "layer-1", name: "Paint 1", visible: true, opacity: 1, textures: [] }],
+            }),
+          ),
         ),
       ).toThrow(/expected version 3/i);
     }
@@ -384,27 +378,33 @@ describe("unit painter pack staging", () => {
   it("rejects malformed tile metadata", () => {
     expect(() =>
       parseUnitPainterProjectManifest(
-        Buffer.from(JSON.stringify({
-          formatVersion: 3,
-          sourceVariantMeshDefinition: "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition",
-          variantSelections: [],
-          activeLayerId: "layer-1",
-          layers: [{
-            id: "layer-1",
-            name: "Paint 1",
-            visible: true,
-            opacity: 1,
-            textures: [{
-              sourceVirtualPath: "variantmeshes\\unit\\body_base_colour.dds",
-              width: 4096,
-              height: 4096,
-              tileSize: 64,
-              tileKeys: [0, 0],
-              filePath: "whmm_unit_painter\\layers\\01_layer-1\\textures\\001.tiles.zst",
-              encoding: "zstd",
-            }],
-          }],
-        })),
+        Buffer.from(
+          JSON.stringify({
+            formatVersion: 3,
+            sourceVariantMeshDefinition: "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition",
+            variantSelections: [],
+            activeLayerId: "layer-1",
+            layers: [
+              {
+                id: "layer-1",
+                name: "Paint 1",
+                visible: true,
+                opacity: 1,
+                textures: [
+                  {
+                    sourceVirtualPath: "variantmeshes\\unit\\body_base_colour.dds",
+                    width: 4096,
+                    height: 4096,
+                    tileSize: 64,
+                    tileKeys: [0, 0],
+                    filePath: "whmm_unit_painter\\layers\\01_layer-1\\textures\\001.tiles.zst",
+                    encoding: "zstd",
+                  },
+                ],
+              },
+            ],
+          }),
+        ),
       ),
     ).toThrow(/tile/i);
   });
@@ -412,19 +412,18 @@ describe("unit painter pack staging", () => {
   it("rejects malformed optional painter color metadata", () => {
     expect(() =>
       parseUnitPainterProjectManifest(
-        Buffer.from(JSON.stringify({
-          formatVersion: 3,
-          sourceVariantMeshDefinition: "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition",
-          variantSelections: [],
-          activeLayerId: "layer-1",
-          usedColorHistory: ["#123456", "not-a-color"],
-          selectedColor: "#abcdef",
-          layers: [
-            { id: "layer-1", name: "Paint 1", visible: true, opacity: 1, textures: [] },
-          ],
-        })),
+        Buffer.from(
+          JSON.stringify({
+            formatVersion: 3,
+            sourceVariantMeshDefinition: "variantmeshes\\variantmeshdefinitions\\unit.variantmeshdefinition",
+            variantSelections: [],
+            activeLayerId: "layer-1",
+            usedColorHistory: ["#123456", "not-a-color"],
+            selectedColor: "#abcdef",
+            layers: [{ id: "layer-1", name: "Paint 1", visible: true, opacity: 1, textures: [] }],
+          }),
+        ),
       ),
     ).toThrow(/used color/i);
   });
-
 });

@@ -1,0 +1,85 @@
+{
+  "format": "wh3-native-patch-template",
+  "format_version": 1,
+  "template": {
+    "id": "example.mapping.data-only",
+    "version": "1.0.0",
+    "name": "Data-only mapping example"
+  },
+  "native_patch": {
+    "format": "wh3-native-patch",
+    "format_version": 3,
+    "package": {
+      "id": "example.mapping.data-only",
+      "version": "1.0.0",
+      "name": "Data-only mapping example"
+    },
+    "requires_loader": {
+      "min_version": "2.2.0",
+      "capabilities": ["blocks.v1", "table-parameters.v1"]
+    },
+    "target": {
+      "id": "game",
+      "filename": "Warhammer3.exe",
+      "machine": "amd64"
+    },
+    "lifecycle": {
+      "apply": "startup",
+      "before": "game_initialization",
+      "change": "restart",
+      "lifetime": "process"
+    },
+    "allocation_policy": {
+      "type": "module_window",
+      "module": "game",
+      "min_rva": "after_image",
+      "max_rva_exclusive": "0x80000000"
+    },
+    "requires": [],
+    "conflicts": [],
+    "claims": [],
+    "blocks": [
+      {
+        "id": "mapping_storage",
+        "size": 388,
+        "alignment": 4,
+        "protection": "rw",
+        "source": { "zero": true }
+      }
+    ],
+    "symbols": {},
+    "signatures": [],
+    "guards": [],
+    "writes": [],
+    "fixups": [],
+    "runtime_functions": [],
+    "assets": [],
+    "parameters": [
+      {
+        "id": "mapping_data",
+        "type": "table",
+        "capacity": 8,
+        "columns": [
+          { "name": "flag", "type": "ascii", "max_bytes": 15 },
+          { "name": "unit_set", "type": "ascii", "max_bytes": 31 }
+        ],
+        "count_at": { "block": "mapping_storage", "offset": 0 },
+        "entries_at": { "block": "mapping_storage", "offset": 4 }
+      }
+    ]
+  },
+  "inputs": {
+    "scalars": [],
+    "tables": [
+      {
+        "id": "mappings",
+        "table_name": "Example mappings",
+        "parameter": "mapping_data",
+        "max_rows": 8,
+        "group_by": "flag",
+        "value_column": "unit_set",
+        "provider_merge": "identical_by_group"
+      }
+    ]
+  }
+}

@@ -38,7 +38,24 @@ declare global {
     currentFile?: string;
     detail?: string;
     error?: string;
+    /** The optimizing stage is restoring a cached result. */
+    fromCache?: boolean;
   }
+
+  /** Status of the background optimization, see src/workshopModOptimizer/background.ts. */
+  interface WorkshopOptimizerBackgroundStatus {
+    state: "idle" | "waiting" | "running" | "paused";
+    total: number;
+    done: number;
+    currentMod?: string;
+    fraction?: number;
+    stage?: string;
+  }
+
+  /** State of the per-mod "Check visual assets" action, see src/workshopModOptimizer/visualCheckIpc.ts. */
+  type VisualAssetCheckState = import("./workshopModOptimizer/visualCheckIpc").VisualAssetCheckState;
+  type VisualAssetCheckReport = import("./workshopModOptimizer/visualCheck").VisualCheckReport;
+  type VisualAssetCheckFinding = import("./workshopModOptimizer/hostRunner").HostCheckFinding;
 
   type DiagnosticPathTarget = "appLogFile" | "appLogsFolder" | "latestGameScriptLog";
 
@@ -131,6 +148,10 @@ declare global {
     hasStartpos: boolean;
     /** Whether the pack ships its own whmm\load_order.whmm, spotted during the header's index walk. */
     hasLoadOrderRules?: boolean;
+    /** Whether the pack ships native patch manifests or flow contributions. */
+    hasNativePatches?: boolean;
+    /** Whether the pack ships node flows, which run on game start. */
+    hasFlows?: boolean;
     /** That file's name as the pack spells it, which is what a targeted read has to ask for. */
     loadOrderRulesFileName?: string;
     dependencyPacks: string[];
@@ -227,6 +248,8 @@ declare global {
     filter: string;
     alwaysEnabledModNames: string[];
     hiddenModNames: string[];
+    /** Pack names of mods whose missing required mods the user chose to stop being warned about. */
+    ignoredMissingReqModNames: string[];
     saves: GameSave[];
     isOnboardingToRun: boolean;
     hasConfigBeenRead: boolean;
@@ -237,15 +260,20 @@ declare global {
     isClosedOnPlay: boolean;
     workshopModStagingMode: WorkshopModStagingMode;
     compressWorkshopModsOnStart: boolean;
+    optimizeWorkshopModsOnStart: boolean;
     cleanUpWorkshopModStagingAfterGameExit: boolean;
     /** Read the game's English locs even when the app is set to another language. */
     isUsingEnglishLocalizations: boolean;
     isCompatCheckingVanillaPacks: boolean;
     isAuthorEnabled: boolean;
+    /** Show the optional Last Subscribed column in the wide mod list. */
+    isSubbedTimeEnabled: boolean;
     /** Split the All Mods tab into a disabled-mods list on the left and an enabled-mods list on the right. */
     isDualModListLayoutEnabled: boolean;
     /** How much room a row gets in the dual layout, where two lists share the width one used to have. */
     modListDensity: ModListDensity;
+    /** Width of the ordinary All Mods workspace, including its utility sidebar. */
+    modListWidth: ModListWidth;
     /**
      * Number the rows of the dual layout's disabled list. The index is the mod's rank among every mod
      * rather than a prediction of where it lands once enabled, so it can be turned off for a quieter
@@ -275,6 +303,8 @@ declare global {
     isAutoStartCustomBattleEnabled: boolean;
     isChangingGameProcessPriority: boolean;
     isFeaturesForModdersEnabled: boolean;
+    /** Allow mods marked always-enabled to be turned off in the mod manager. */
+    canDisableAlwaysEnabledMods: boolean;
     moddersPrefix: string;
     /** Include eligible .rigid_model_v2 files when compressing packs from the analysis panel. */
     isRigidModelV2CompressionEnabled: boolean;
@@ -286,6 +316,8 @@ declare global {
     packsData: Record<string, PackViewData>;
     unsavedPacksData: Record<string, PackedFile[]>;
     deletedPackFilePaths: Record<string, string[]>;
+    /** Open viewer packs whose files changed on disk after they were loaded. */
+    staleViewerPackPaths: Record<string, boolean>;
     /** Physical packs most recently opened in the mod viewer, newest first. */
     recentPackPaths: string[];
     packCollisions: PackCollisions;
@@ -392,6 +424,8 @@ declare global {
 
   type ModListDensity = "compact" | "comfortable" | "roomy";
 
+  type ModListWidth = "default" | "wide" | "full";
+
   type UnitViewerMode = "visualize" | "compare";
 
   type WorkshopModStagingMode = import("./utility/workshopModStaging").WorkshopModStagingMode;
@@ -410,9 +444,11 @@ declare global {
     AppState,
     | "wasOnboardingEverRun"
     | "isAuthorEnabled"
+    | "isSubbedTimeEnabled"
     | "areThumbnailsEnabled"
     | "isDualModListLayoutEnabled"
     | "modListDensity"
+    | "modListWidth"
     | "isShowingDisabledModsLoadOrder"
     | "isModListCategoryViewEnabled"
     | "isPresetAuthorEnabled"
@@ -425,12 +461,14 @@ declare global {
     | "isAutoStartCustomBattleEnabled"
     | "isChangingGameProcessPriority"
     | "isFeaturesForModdersEnabled"
+    | "canDisableAlwaysEnabledMods"
     | "moddersPrefix"
     | "isRigidModelV2CompressionEnabled"
     | "compressModsOnUpload"
     | "isClosedOnPlay"
     | "workshopModStagingMode"
     | "compressWorkshopModsOnStart"
+    | "optimizeWorkshopModsOnStart"
     | "cleanUpWorkshopModStagingAfterGameExit"
     | "isUsingEnglishLocalizations"
     | "categories"
@@ -485,6 +523,7 @@ declare global {
     games: Record<SupportedGames, GameConfig>;
     alwaysEnabledModNames: string[];
     hiddenModNames: string[];
+    ignoredMissingReqModNames: string[];
   };
 
   /** The flattened single-game view of the config that main sends to the renderer. */
@@ -493,6 +532,7 @@ declare global {
       configVersion: number;
       alwaysEnabledModNames: string[];
       hiddenModNames: string[];
+      ignoredMissingReqModNames: string[];
       appFolderPaths: GameFolderPaths;
     };
 
@@ -520,6 +560,7 @@ declare global {
       | "isClosedOnPlay"
       | "workshopModStagingMode"
       | "compressWorkshopModsOnStart"
+      | "optimizeWorkshopModsOnStart"
       | "cleanUpWorkshopModStagingAfterGameExit"
       | "packDataOverwrites"
       | "userFlowOptions"
@@ -601,6 +642,12 @@ declare global {
     packPath: string;
     tables: string[];
     packedFiles: Record<string, PackedFile>;
+  }
+
+  interface ReloadPackForViewerResult {
+    success: boolean;
+    packData?: PackViewData;
+    error?: string;
   }
 
   interface PackReadingOptions {
@@ -1561,6 +1608,7 @@ declare global {
     | "getcountercolumn"
     | "customschema"
     | "readtsvfrompack"
+    | "nativepatch"
     | "customrowsinput"
     | "multifilter"
     | "addnewcolumn"

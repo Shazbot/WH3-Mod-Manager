@@ -118,6 +118,7 @@ const stageCopyKey: Record<string, string> = {
   copying: "workshopGameStartCopying",
   compress: "workshopGameStartCompressing",
   compressing: "workshopGameStartCompressing",
+  optimizing: "workshopGameStartOptimizing",
   cleanup: "workshopGameStartCleaning",
   cleaning: "workshopGameStartCleaning",
   checkpointing: "workshopGameStartCheckpointing",
@@ -138,6 +139,7 @@ const stageFallback: Record<string, string> = {
   copying: "Copying Workshop mods…",
   compress: "Compressing Workshop mods…",
   compressing: "Compressing Workshop mods…",
+  optimizing: "Optimizing mods…",
   cleanup: "Cleaning up Workshop mods…",
   cleaning: "Cleaning up Workshop mods…",
   checkpointing: "Saving Workshop staging checkpoint…",
@@ -152,6 +154,9 @@ const getStageLabel = (localized: Record<string, string>, stage: string): string
   const key = stageCopyKey[normalizedStage];
   return (key && localized[key]) || stageFallback[normalizedStage] || humanizeStage(stage);
 };
+
+const interpolate = (template: string, values: Record<string, string | number>): string =>
+  template.replace(/\{\{(\w+)\}\}/g, (match, name: string) => (name in values ? String(values[name]) : match));
 
 const getCurrentItem = (progress: WorkshopGameStartProgress): string | undefined =>
   progress.currentMod || progress.currentFile;
@@ -185,6 +190,7 @@ const WorkshopGameStartProgressCard = memo(() => {
   const localized = useContext(localizationContext) as Record<string, string>;
   const [progress, setProgress] = useState<WorkshopGameStartProgress>();
   const [cancelRequestedRunId, setCancelRequestedRunId] = useState<string>();
+  const [skipRequestedRunId, setSkipRequestedRunId] = useState<string>();
   const cancelRequestedRunIdRef = useRef<string>();
   const seenRunIds = useRef(new Set<string>());
 
@@ -255,6 +261,16 @@ const WorkshopGameStartProgressCard = memo(() => {
   const isCanceling = status === "canceling" || cancelRequestedRunId === progress?.runId;
   const cancel = window.api?.cancelWorkshopModStaging;
   const canCancel = isRunning && !isCanceling && !!cancel;
+  const skipOptimization = window.api?.skipWorkshopModOptimization;
+  const isOptimizing = progress?.stage.toLowerCase() === "optimizing";
+  const isSkipRequested = skipRequestedRunId === progress?.runId;
+  const canSkipOptimization = isRunning && isOptimizing && !isCanceling && !!skipOptimization;
+
+  const requestSkipOptimization = useCallback(() => {
+    if (!progress || !canSkipOptimization || !skipOptimization || skipRequestedRunId === progress.runId) return;
+    setSkipRequestedRunId(progress.runId);
+    skipOptimization(progress.runId);
+  }, [canSkipOptimization, progress, skipOptimization, skipRequestedRunId]);
 
   const requestCancel = useCallback(() => {
     if (!progress || !canCancel || !cancel || cancelRequestedRunIdRef.current === progress.runId) return;
@@ -284,6 +300,24 @@ const WorkshopGameStartProgressCard = memo(() => {
   const stageLabel = getStageLabel(localized, progress.stage);
   const title = localized.workshopGameStartTitle || "Preparing Workshop mods for game start";
   const progressLabel = localized.workshopGameStartProgressLabel || "Workshop mod staging progress";
+  const isOptimizingStage = progress.stage.toLowerCase() === "optimizing" && status === "running" && !stagingComplete;
+  const optimizingValues = {
+    mod: progress.currentMod ?? "",
+    current: Math.min(progress.totalMods ?? 1, (progress.completedMods ?? 0) + 1),
+    total: progress.totalMods ?? 1,
+    stage: progress.detail ?? "",
+  };
+  const optimizingLabel = !isOptimizingStage
+    ? undefined
+    : progress.fromCache
+      ? interpolate(
+          localized.workshopGameStartOptimizedFromCache || "Restoring optimized {{mod}} from the cache",
+          optimizingValues,
+        )
+      : interpolate(
+          localized.workshopGameStartOptimizingMod || "Optimizing {{mod}} ({{current}}/{{total}}): {{stage}}",
+          optimizingValues,
+        ).replace(/:\s*$/, "");
   const statusLabel = stagingComplete
     ? localized.workshopGameStartComplete || "Workshop mods ready"
     : status === "cancelled"
@@ -292,7 +326,7 @@ const WorkshopGameStartProgressCard = memo(() => {
         ? localized.workshopGameStartFailed || "Workshop mod staging failed"
         : isCanceling
           ? localized.workshopGameStartCanceling || "Canceling Workshop mod staging…"
-          : stageLabel;
+          : (optimizingLabel ?? stageLabel);
   const cancelLabel = localized.workshopGameStartCancel || localized.cancel || "Cancel";
 
   return (
@@ -324,7 +358,9 @@ const WorkshopGameStartProgressCard = memo(() => {
             )}
             <div className="min-w-0 flex-1">
               <p className="text-sm text-gray-600 dark:text-gray-300">{statusLabel}</p>
-              {currentItem && <p className="mt-1 break-all text-xs text-gray-500 dark:text-gray-400">{currentItem}</p>}
+              {currentItem && !isOptimizingStage && (
+                <p className="mt-1 break-all text-xs text-gray-500 dark:text-gray-400">{currentItem}</p>
+              )}
               {progress.completedMods !== undefined && progress.totalMods !== undefined && (
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   {progress.completedMods} / {progress.totalMods} mods
@@ -335,7 +371,7 @@ const WorkshopGameStartProgressCard = memo(() => {
                   {formatBytes(progress.bytesCopied)} / {formatBytes(progress.totalBytes)}
                 </p>
               )}
-              {progress.detail && (
+              {progress.detail && !isOptimizingStage && (
                 <p className="mt-1 break-words text-xs text-gray-500 dark:text-gray-400">{progress.detail}</p>
               )}
               {progress.error && <p className="mt-1 break-words text-xs text-red-600">{progress.error}</p>}
@@ -361,13 +397,29 @@ const WorkshopGameStartProgressCard = memo(() => {
       </Modal.Body>
       {((isRunning && !!cancel) || isCanceling) && (
         <Modal.Footer>
+          {(canSkipOptimization || (isOptimizing && isSkipRequested)) && (
+            <button
+              className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={!canSkipOptimization || isSkipRequested}
+              onClick={requestSkipOptimization}
+              type="button"
+            >
+              {isSkipRequested
+                ? localized.workshopGameStartSkippingOptimization || "Launching without optimizing…"
+                : localized.workshopGameStartSkipOptimization || "Launch without optimizing"}
+            </button>
+          )}
           <button
-            className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={!canCancel}
             onClick={requestCancel}
             type="button"
           >
-            {isCanceling ? localized.workshopGameStartCanceling || "Canceling Workshop mod staging…" : cancelLabel}
+            {isCanceling
+              ? localized.workshopGameStartCanceling || "Canceling Workshop mod staging…"
+              : isOptimizing
+                ? localized.workshopGameStartCancelLaunch || "Cancel launch"
+                : cancelLabel}
           </button>
         </Modal.Footer>
       )}

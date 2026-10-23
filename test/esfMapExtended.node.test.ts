@@ -354,10 +354,7 @@ describe("extended map files", () => {
         y: 40,
         subtype: "lord_b",
         rank: 1,
-        units: [
-          { unit_key: "new_unit" },
-          { id: 20, unit_key: "supplied_unit", xp: 2, health: 80 },
-        ],
+        units: [{ unit_key: "new_unit" }, { id: 20, unit_key: "supplied_unit", xp: 2, health: 80 }],
       },
     });
     const character = state.document.faction_to_chars[0].chars[1];

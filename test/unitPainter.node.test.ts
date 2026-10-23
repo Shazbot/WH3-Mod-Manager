@@ -35,30 +35,13 @@ const makePainter = (texture = makeTexture()) => {
   geometry.setAttribute(
     "position",
     new THREE.Float32BufferAttribute(
-      [
-        0.25, 0.25, 0,
-        0.5, 0.25, 0,
-        0.25, 0.5, 0,
-        0.52, 0.25, 0,
-        0.77, 0.25, 0,
-        0.52, 0.5, 0,
-      ],
+      [0.25, 0.25, 0, 0.5, 0.25, 0, 0.25, 0.5, 0, 0.52, 0.25, 0, 0.77, 0.25, 0, 0.52, 0.5, 0],
       3,
     ),
   );
   geometry.setAttribute(
     "uv",
-    new THREE.Float32BufferAttribute(
-      [
-        0.25, 0.25,
-        0.5, 0.25,
-        0.25, 0.5,
-        0.52, 0.25,
-        0.77, 0.25,
-        0.52, 0.5,
-      ],
-      2,
-    ),
+    new THREE.Float32BufferAttribute([0.25, 0.25, 0.5, 0.25, 0.25, 0.5, 0.52, 0.25, 0.77, 0.25, 0.52, 0.5], 2),
   );
 
   const material = new THREE.MeshBasicMaterial({ map: texture });
@@ -95,10 +78,7 @@ const getPixel = (material: THREE.MeshBasicMaterial, x: number, y: number) => {
   return [data[offset], data[offset + 1], data[offset + 2], data[offset + 3]];
 };
 
-const paint = (
-  painter: ReturnType<typeof makePainter>,
-  settings: Partial<UnitPainterBrushSettings> = {},
-) => {
+const paint = (painter: ReturnType<typeof makePainter>, settings: Partial<UnitPainterBrushSettings> = {}) => {
   painter.session.beginStroke();
   painter.session.paintIntersection(
     painter.intersection,
@@ -154,19 +134,13 @@ describe("unit painter", () => {
     try {
       const textureId = painter.session.textureViews[0].id;
       painter.session.beginStroke();
-      const result = painter.session.paintTexturePoint(
-        textureId,
-        2.5,
-        2.5,
-        1,
-        {
-          radiusPx: 12,
-          opacity: 1,
-          hardness: 1,
-          mode: "paint",
-          color: { r: 80, g: 120, b: 200 },
-        },
-      );
+      const result = painter.session.paintTexturePoint(textureId, 2.5, 2.5, 1, {
+        radiusPx: 12,
+        opacity: 1,
+        hardness: 1,
+        mode: "paint",
+        color: { r: 80, g: 120, b: 200 },
+      });
       expect(result?.changed).toBe(true);
       expect(painter.session.endStroke()).toBe(true);
       expect(getPixel(painter.material, 2, 2)).toEqual([80, 120, 200, 255]);
@@ -207,24 +181,16 @@ describe("unit painter", () => {
     try {
       const textureId = painter.session.textureViews[0].id;
 
-      expect(
-        painter.session.selectTexturePoint(textureId, 14.5, 8.5, "island", "replace"),
-      ).toBeDefined();
-      expect(
-        painter.session.selectTexturePoint(textureId, 20.5, 8.5, "island", "add"),
-      ).toBeDefined();
+      expect(painter.session.selectTexturePoint(textureId, 14.5, 8.5, "island", "replace")).toBeDefined();
+      expect(painter.session.selectTexturePoint(textureId, 20.5, 8.5, "island", "add")).toBeDefined();
       expect(painter.session.selectionCount).toBe(2);
       expect(painter.session.getTextureViews("island")[0].selectedUvTriangles).toHaveLength(12);
 
-      expect(
-        painter.session.selectTexturePoint(textureId, 14.5, 8.5, "island", "toggle"),
-      ).toBeDefined();
+      expect(painter.session.selectTexturePoint(textureId, 14.5, 8.5, "island", "toggle")).toBeDefined();
       expect(painter.session.selectionCount).toBe(1);
       expect(painter.session.getTextureViews("island")[0].selectedUvTriangles).toHaveLength(6);
 
-      expect(
-        painter.session.selectTexturePoint(textureId, 20.5, 8.5, "island", "toggle"),
-      ).toBeDefined();
+      expect(painter.session.selectTexturePoint(textureId, 20.5, 8.5, "island", "toggle")).toBeDefined();
       expect(painter.session.selectionCount).toBe(0);
       expect(painter.session.selectionInfo).toBeUndefined();
     } finally {
@@ -298,9 +264,7 @@ describe("unit painter", () => {
     const painter = makePainter(texture);
     try {
       const textureId = painter.session.textureViews[0].id;
-      expect(
-        painter.session.selectSimilarTexturePoint(textureId, 14.5, 8.5, 0, "replace"),
-      ).toBe(true);
+      expect(painter.session.selectSimilarTexturePoint(textureId, 14.5, 8.5, 0, "replace")).toBe(true);
       expect(painter.session.hasSimilarSelection).toBe(true);
       expect(painter.session.getTextureViews("similar")[0].selectedPixelMask).toBeDefined();
 
@@ -383,8 +347,7 @@ describe("unit painter", () => {
       painter.session.selectTexturePoint(textureId, 14.5, 8.5, "island", "replace");
 
       expect(painter.session.splitSelection("island", "vertical")).toBe(true);
-      expect(painter.session.selectionPartitionInfo?.regions.map(({ label }) => label))
-        .toEqual(["Left", "Right"]);
+      expect(painter.session.selectionPartitionInfo?.regions.map(({ label }) => label)).toEqual(["Left", "Right"]);
       expect(painter.session.selectionPartitionInfo?.regions[0].active).toBe(true);
 
       expect(
@@ -438,8 +401,7 @@ describe("unit painter", () => {
 
       expect(painter.session.splitSelection("similar", "horizontal")).toBe(true);
       expect(painter.session.selectionPartitionInfo?.depth).toBe(2);
-      expect(painter.session.selectionPartitionInfo?.regions.map(({ label }) => label))
-        .toEqual(["Top", "Bottom"]);
+      expect(painter.session.selectionPartitionInfo?.regions.map(({ label }) => label)).toEqual(["Top", "Bottom"]);
       expect(painter.session.selectionPartitionInfo?.pathLabels).toEqual(["Left", "Top"]);
 
       expect(
@@ -505,12 +467,15 @@ describe("unit painter", () => {
       expect(painter.session.selectSimilarTexturePoint(textureId, 1.5, 1.5, 0, "replace")).toBe(true);
 
       expect(painter.session.splitSelection("similar", "x")).toBe(true);
-      expect(painter.session.selectionPartitionInfo?.regions.map(({ label }) => label))
-        .toEqual(["Top", "Right", "Bottom", "Left"]);
+      expect(painter.session.selectionPartitionInfo?.regions.map(({ label }) => label)).toEqual([
+        "Top",
+        "Right",
+        "Bottom",
+        "Left",
+      ]);
 
       expect(painter.session.setSelectionPartitionRegion("right")).toBe(true);
-      expect(painter.session.selectionPartitionInfo?.regions.find(({ id }) => id === "right")?.active)
-        .toBe(true);
+      expect(painter.session.selectionPartitionInfo?.regions.find(({ id }) => id === "right")?.active).toBe(true);
       expect(painter.session.setSelectionPartitionRegion("left", "add")).toBe(true);
       expect(
         painter.session.selectionPartitionInfo?.regions
@@ -598,36 +563,14 @@ describe("unit painter", () => {
     const height = 32;
     const data = new Uint8Array(width * height * 4);
     for (let index = 3; index < data.length; index += 4) data[index] = 255;
-    const texture = new THREE.DataTexture(
-      data,
-      width,
-      height,
-      THREE.RGBAFormat,
-      THREE.UnsignedByteType,
-    );
+    const texture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat, THREE.UnsignedByteType);
     texture.flipY = false;
     texture.userData.wh3SourceVirtualPath = "variantmeshes\\unit\\wide_base_colour.dds";
     texture.needsUpdate = true;
 
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute(
-      "position",
-      new THREE.Float32BufferAttribute([
-        0, 0, 0,
-        1, 0, 0,
-        0, 1, 0,
-        1, 1, 0,
-      ], 3),
-    );
-    geometry.setAttribute(
-      "uv",
-      new THREE.Float32BufferAttribute([
-        0, 0,
-        1, 0,
-        0, 1,
-        1, 1,
-      ], 2),
-    );
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0], 3));
+    geometry.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 1, 1], 2));
     geometry.setIndex([0, 1, 2, 1, 3, 2]);
     const material = new THREE.MeshBasicMaterial({ map: texture });
     const mesh = new THREE.Mesh(geometry, material);
@@ -665,12 +608,14 @@ describe("unit painter", () => {
 
     try {
       const textureId = session.textureViews[0].id;
-      expect(session.addDecalLayerAtTexturePoint(textureId, width / 2, height / 2, {
-        name: "wide-mark.png",
-        width: 8,
-        height: 4,
-        rgbaBytes: sourceBytes,
-      })).toBeTruthy();
+      expect(
+        session.addDecalLayerAtTexturePoint(textureId, width / 2, height / 2, {
+          name: "wide-mark.png",
+          width: 8,
+          height: 4,
+          rgbaBytes: sourceBytes,
+        }),
+      ).toBeTruthy();
 
       const zero = getPaintBounds();
       expect(zero.width).toBeGreaterThan(zero.height);
@@ -690,10 +635,7 @@ describe("unit painter", () => {
 
   it("flips decal source sampling without changing its placement", () => {
     const painter = makePainter();
-    const sourceBytes = new Uint8Array([
-      255, 0, 0, 255,     0, 255, 0, 255,
-      0, 0, 255, 255,     255, 255, 255, 255,
-    ]);
+    const sourceBytes = new Uint8Array([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255]);
 
     try {
       expect(
@@ -737,13 +679,7 @@ describe("unit painter", () => {
       normalData[index + 2] = 255;
       normalData[index + 3] = 255;
     }
-    const normal = new THREE.DataTexture(
-      normalData,
-      WIDTH,
-      HEIGHT,
-      THREE.RGBAFormat,
-      THREE.UnsignedByteType,
-    );
+    const normal = new THREE.DataTexture(normalData, WIDTH, HEIGHT, THREE.RGBAFormat, THREE.UnsignedByteType);
     normal.flipY = false;
     normal.userData.wh3SourceVirtualPath = "variantmeshes\\unit\\body_normal.dds";
     normal.needsUpdate = true;
@@ -773,20 +709,22 @@ describe("unit painter", () => {
           rgbaBytes: sourceBytes,
         }),
       ).toBeTruthy();
-      expect(replacement.updateActiveDecal({
-        affectNormal: true,
-        normalStrength: 2,
-        normalHeightSource: "alpha",
-      })).toBe(true);
-      const positive = replacement.exportModifiedTextures().find((texture) =>
-        texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds"
-      )?.rgbaBytes;
+      expect(
+        replacement.updateActiveDecal({
+          affectNormal: true,
+          normalStrength: 2,
+          normalHeightSource: "alpha",
+        }),
+      ).toBe(true);
+      const positive = replacement
+        .exportModifiedTextures()
+        .find((texture) => texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds")?.rgbaBytes;
       expect(positive).toBeDefined();
 
       expect(replacement.updateActiveDecal({ normalStrength: -2 })).toBe(true);
-      const negative = replacement.exportModifiedTextures().find((texture) =>
-        texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds"
-      )?.rgbaBytes;
+      const negative = replacement
+        .exportModifiedTextures()
+        .find((texture) => texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds")?.rgbaBytes;
       expect(negative).toBeDefined();
 
       let foundOppositeSlope = false;
@@ -819,13 +757,7 @@ describe("unit painter", () => {
       normalData[index + 2] = 255;
       normalData[index + 3] = 255;
     }
-    const normal = new THREE.DataTexture(
-      normalData,
-      WIDTH,
-      HEIGHT,
-      THREE.RGBAFormat,
-      THREE.UnsignedByteType,
-    );
+    const normal = new THREE.DataTexture(normalData, WIDTH, HEIGHT, THREE.RGBAFormat, THREE.UnsignedByteType);
     normal.flipY = false;
     normal.userData.wh3SourceVirtualPath = "variantmeshes\\unit\\body_normal.dds";
     normal.needsUpdate = true;
@@ -843,30 +775,36 @@ describe("unit painter", () => {
     }
 
     try {
-      expect(session.addDecalLayerAtIntersection(painter.intersection, {
-        name: "solid-badge.png",
-        width: 16,
-        height: 16,
-        rgbaBytes: sourceBytes,
-      })).toBeTruthy();
-      expect(session.updateActiveDecal({
-        affectNormal: true,
-        normalStrength: 2,
-        normalHeightSource: "alpha",
-      })).toBe(true);
-      const alphaNormal = session.exportModifiedTextures().find((texture) =>
-        texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds"
-      )?.rgbaBytes;
+      expect(
+        session.addDecalLayerAtIntersection(painter.intersection, {
+          name: "solid-badge.png",
+          width: 16,
+          height: 16,
+          rgbaBytes: sourceBytes,
+        }),
+      ).toBeTruthy();
+      expect(
+        session.updateActiveDecal({
+          affectNormal: true,
+          normalStrength: 2,
+          normalHeightSource: "alpha",
+        }),
+      ).toBe(true);
+      const alphaNormal = session
+        .exportModifiedTextures()
+        .find((texture) => texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds")?.rgbaBytes;
       expect(alphaNormal).toBeDefined();
 
-      expect(session.updateActiveDecal({
-        normalHeightSource: "emboss",
-        normalBevelPx: 6,
-        normalSoftnessPx: 1,
-      })).toBe(true);
-      const embossNormal = session.exportModifiedTextures().find((texture) =>
-        texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds"
-      )?.rgbaBytes;
+      expect(
+        session.updateActiveDecal({
+          normalHeightSource: "emboss",
+          normalBevelPx: 6,
+          normalSoftnessPx: 1,
+        }),
+      ).toBe(true);
+      const embossNormal = session
+        .exportModifiedTextures()
+        .find((texture) => texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds")?.rgbaBytes;
       expect(embossNormal).toBeDefined();
       expect(embossNormal).not.toEqual(alphaNormal);
       expect(session.activeDecalInfo?.normalBevelPx).toBe(6);
@@ -875,9 +813,9 @@ describe("unit painter", () => {
       // Reapplying the same emboss settings exercises the cached height field
       // and must be deterministic.
       expect(session.updateActiveDecal({ normalStrength: 2 })).toBe(true);
-      const secondEmboss = session.exportModifiedTextures().find((texture) =>
-        texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds"
-      )?.rgbaBytes;
+      const secondEmboss = session
+        .exportModifiedTextures()
+        .find((texture) => texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds")?.rgbaBytes;
       expect(secondEmboss).toEqual(embossNormal);
     } finally {
       session.dispose();
@@ -901,32 +839,38 @@ describe("unit painter", () => {
     }
 
     try {
-      expect(painter.session.addDecalLayerAtIntersection(painter.intersection, {
-        name: "old.png",
-        width: 4,
-        height: 4,
-        rgbaBytes: original,
-      })).toBeTruthy();
-      expect(painter.session.updateActiveDecal({
-        centerU: 0.44,
-        centerV: 0.34,
-        widthU: 0.13,
-        heightV: 0.09,
-        rotationDeg: 27,
-        tintEnabled: true,
-        tint: { r: 90, g: 120, b: 210 },
-        affectNormal: true,
-        normalStrength: -1.5,
-        flipX: true,
-      })).toBe(true);
+      expect(
+        painter.session.addDecalLayerAtIntersection(painter.intersection, {
+          name: "old.png",
+          width: 4,
+          height: 4,
+          rgbaBytes: original,
+        }),
+      ).toBeTruthy();
+      expect(
+        painter.session.updateActiveDecal({
+          centerU: 0.44,
+          centerV: 0.34,
+          widthU: 0.13,
+          heightV: 0.09,
+          rotationDeg: 27,
+          tintEnabled: true,
+          tint: { r: 90, g: 120, b: 210 },
+          affectNormal: true,
+          normalStrength: -1.5,
+          flipX: true,
+        }),
+      ).toBe(true);
       const before = painter.session.activeDecalInfo!;
 
-      expect(painter.session.replaceActiveDecalSource({
-        name: "new.png",
-        width: 2,
-        height: 6,
-        rgbaBytes: replacement,
-      })).toBe(true);
+      expect(
+        painter.session.replaceActiveDecalSource({
+          name: "new.png",
+          width: 2,
+          height: 6,
+          rgbaBytes: replacement,
+        }),
+      ).toBe(true);
 
       const after = painter.session.activeDecalInfo!;
       expect(after.sourceName).toBe("new.png");
@@ -959,19 +903,23 @@ describe("unit painter", () => {
     for (let index = 0; index < source.length; index += 4) source[index + 3] = 255;
 
     try {
-      expect(painter.session.addDecalLayerAtIntersection(painter.intersection, {
-        name: "tall.png",
-        width: 2,
-        height: 4,
-        rgbaBytes: source,
-      })).toBeTruthy();
-      expect(painter.session.updateActiveDecal({
-        widthU: 0.47,
-        heightV: 0.11,
-        rotationDeg: -83,
-        flipX: true,
-        flipY: true,
-      })).toBe(true);
+      expect(
+        painter.session.addDecalLayerAtIntersection(painter.intersection, {
+          name: "tall.png",
+          width: 2,
+          height: 4,
+          rgbaBytes: source,
+        }),
+      ).toBeTruthy();
+      expect(
+        painter.session.updateActiveDecal({
+          widthU: 0.47,
+          heightV: 0.11,
+          rotationDeg: -83,
+          flipX: true,
+          flipY: true,
+        }),
+      ).toBe(true);
       const centerU = painter.session.activeDecalInfo!.centerU;
       const centerV = painter.session.activeDecalInfo!.centerV;
 
@@ -1003,14 +951,8 @@ describe("unit painter", () => {
 
     const makeTriangle = (u0: number, v0: number, u1: number, v1: number, u2: number, v2: number) => {
       const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute(
-        "position",
-        new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3),
-      );
-      geometry.setAttribute(
-        "uv",
-        new THREE.Float32BufferAttribute([u0, v0, u1, v1, u2, v2], 2),
-      );
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3));
+      geometry.setAttribute("uv", new THREE.Float32BufferAttribute([u0, v0, u1, v1, u2, v2], 2));
       return geometry;
     };
 
@@ -1025,23 +967,21 @@ describe("unit painter", () => {
     root.updateMatrixWorld(true);
     const session = createUnitPainterSession(root);
 
-    const hit = (
-      mesh: THREE.Mesh,
-      uv: THREE.Vector2,
-    ) => ({
-      distance: 1,
-      point: new THREE.Vector3(),
-      object: mesh,
-      uv,
-      face: {
-        a: 0,
-        b: 1,
-        c: 2,
-        normal: new THREE.Vector3(0, 0, 1),
-        materialIndex: 0,
-      },
-      faceIndex: 0,
-    }) as THREE.Intersection<THREE.Object3D>;
+    const hit = (mesh: THREE.Mesh, uv: THREE.Vector2) =>
+      ({
+        distance: 1,
+        point: new THREE.Vector3(),
+        object: mesh,
+        uv,
+        face: {
+          a: 0,
+          b: 1,
+          c: 2,
+          normal: new THREE.Vector3(0, 0, 1),
+          materialIndex: 0,
+        },
+        faceIndex: 0,
+      }) as THREE.Intersection<THREE.Object3D>;
 
     const sourceBytes = new Uint8Array(4 * 4 * 4);
     for (let index = 0; index < sourceBytes.length; index += 4) {
@@ -1064,12 +1004,7 @@ describe("unit painter", () => {
       expect(getPixel(materialA, 9, 9)).toEqual([255, 255, 255, 255]);
 
       expect(session.beginActiveDecalTransform()).toBe(true);
-      expect(
-        session.moveActiveDecalToIntersection(
-          hit(meshB, new THREE.Vector2(0.7, 0.3)),
-          true,
-        ),
-      ).toBe(true);
+      expect(session.moveActiveDecalToIntersection(hit(meshB, new THREE.Vector2(0.7, 0.3)), true)).toBe(true);
       expect(session.endActiveDecalTransform()).toBe(true);
 
       expect(session.activeDecalInfo?.targetTextureId).not.toBe(firstTextureId);
@@ -1102,13 +1037,7 @@ describe("unit painter", () => {
       normalData[index + 2] = 255;
       normalData[index + 3] = 255;
     }
-    const normal = new THREE.DataTexture(
-      normalData,
-      WIDTH,
-      HEIGHT,
-      THREE.RGBAFormat,
-      THREE.UnsignedByteType,
-    );
+    const normal = new THREE.DataTexture(normalData, WIDTH, HEIGHT, THREE.RGBAFormat, THREE.UnsignedByteType);
     normal.flipY = false;
     normal.userData.wh3SourceVirtualPath = "variantmeshes\\unit\\body_normal.dds";
     normal.needsUpdate = true;
@@ -1159,29 +1088,30 @@ describe("unit painter", () => {
       expect(project.layers.at(-1)?.decal?.normalSoftnessPx).toBe(2);
       expect(project.layers.at(-1)?.decal?.flipX).toBe(true);
       expect(project.layers.at(-1)?.decal?.flipY).toBe(true);
-      expect(project.layers.at(-1)?.decal?.normalSourceVirtualPath)
-        .toBe("variantmeshes\\unit\\body_normal.dds");
+      expect(project.layers.at(-1)?.decal?.normalSourceVirtualPath).toBe("variantmeshes\\unit\\body_normal.dds");
       expect(project.layers.at(-1)?.decal?.placementMask?.tiles.length).toBeGreaterThan(0);
       expect(project.layers.at(-1)?.decal?.placementMask?.width).toBe(WIDTH);
       expect(project.layers.at(-1)?.decal?.placementMask?.height).toBe(HEIGHT);
 
-      expect(replacement.updateActiveDecal({
-        centerU: 0.41,
-        centerV: 0.33,
-        widthU: 0.17,
-        heightV: 0.12,
-        rotationDeg: 31,
-        tintEnabled: true,
-        tint: { r: 180, g: 70, b: 45 },
-      })).toBe(true);
+      expect(
+        replacement.updateActiveDecal({
+          centerU: 0.41,
+          centerV: 0.33,
+          widthU: 0.17,
+          heightV: 0.12,
+          rotationDeg: 31,
+          tintEnabled: true,
+          tint: { r: 180, g: 70, b: 45 },
+        }),
+      ).toBe(true);
 
       const finalProject = replacement.exportProjectState();
       const exported = replacement.exportModifiedTextures();
-      expect(exported.some((texture) =>
-        texture.sourceVirtualPath === "variantmeshes\\unit\\body_base_colour.dds"
-      )).toBe(true);
-      const normalExport = exported.find((texture) =>
-        texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds"
+      expect(
+        exported.some((texture) => texture.sourceVirtualPath === "variantmeshes\\unit\\body_base_colour.dds"),
+      ).toBe(true);
+      const normalExport = exported.find(
+        (texture) => texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds",
       );
       expect(normalExport).toBeDefined();
       expect(normalExport?.rgbaBytes).not.toEqual(normalData);
@@ -1199,9 +1129,8 @@ describe("unit painter", () => {
       roundTripNormal.userData.wh3SourceVirtualPath = "variantmeshes\\unit\\body_normal.dds";
       roundTripNormal.needsUpdate = true;
       const roundTripPainter = makePainter(roundTripBase);
-      (
-        roundTripPainter.material as THREE.MeshBasicMaterial & { normalMap?: THREE.Texture }
-      ).normalMap = roundTripNormal;
+      (roundTripPainter.material as THREE.MeshBasicMaterial & { normalMap?: THREE.Texture }).normalMap =
+        roundTripNormal;
       roundTripPainter.session.dispose();
       const roundTripSession = createUnitPainterSession(roundTripPainter.mesh);
       try {
@@ -1209,21 +1138,19 @@ describe("unit painter", () => {
         expect(roundTripSession.activeDecalInfo).toEqual(replacement.activeDecalInfo);
 
         const roundTripExport = roundTripSession.exportModifiedTextures();
-        const byPath = new Map(exported.map((texture) => [
-          texture.sourceVirtualPath,
-          texture.rgbaBytes,
-        ]));
-        expect(roundTripExport.map((texture) => texture.sourceVirtualPath).toSorted())
-          .toEqual([...byPath.keys()].toSorted());
+        const byPath = new Map(exported.map((texture) => [texture.sourceVirtualPath, texture.rgbaBytes]));
+        expect(roundTripExport.map((texture) => texture.sourceVirtualPath).toSorted()).toEqual(
+          [...byPath.keys()].toSorted(),
+        );
         for (const texture of roundTripExport) {
           expect(texture.rgbaBytes).toEqual(byPath.get(texture.sourceVirtualPath));
         }
 
         const reexportedProject = roundTripSession.exportProjectState();
-        expect(reexportedProject.layers.at(-1)?.decal?.sourceName)
-          .toBe(finalProject.layers.at(-1)?.decal?.sourceName);
-        expect(reexportedProject.layers.at(-1)?.decal?.placementMask)
-          .toEqual(finalProject.layers.at(-1)?.decal?.placementMask);
+        expect(reexportedProject.layers.at(-1)?.decal?.sourceName).toBe(finalProject.layers.at(-1)?.decal?.sourceName);
+        expect(reexportedProject.layers.at(-1)?.decal?.placementMask).toEqual(
+          finalProject.layers.at(-1)?.decal?.placementMask,
+        );
       } finally {
         roundTripSession.dispose();
         roundTripPainter.geometry.dispose();
@@ -1245,14 +1172,7 @@ describe("unit painter", () => {
         "uv",
         new THREE.InterleavedBufferAttribute(
           new THREE.InterleavedBuffer(
-            new Float32Array([
-              0.25, 0.25, 0,
-              0.5, 0.25, 0,
-              0.25, 0.5, 0,
-              0.52, 0.25, 0,
-              0.77, 0.25, 0,
-              0.52, 0.5, 0,
-            ]),
+            new Float32Array([0.25, 0.25, 0, 0.5, 0.25, 0, 0.25, 0.5, 0, 0.52, 0.25, 0, 0.77, 0.25, 0, 0.52, 0.5, 0]),
             3,
           ),
           2,
@@ -1264,8 +1184,7 @@ describe("unit painter", () => {
       const island = painter.session.selectTexturePoint(textureId, 14.5, 8.5, "island");
       expect(island?.textureId).toBe(textureId);
       expect(island?.hasUvIsland).toBe(true);
-      expect(painter.session.getTexturePointSurfaceHighlight(textureId, 14.5, 8.5, "island")?.scope)
-        .toBe("island");
+      expect(painter.session.getTexturePointSurfaceHighlight(textureId, 14.5, 8.5, "island")?.scope).toBe("island");
     } finally {
       painter.session.dispose();
       painter.geometry.dispose();
@@ -1366,9 +1285,9 @@ describe("unit painter", () => {
 
       expect(events.length).toBeGreaterThan(0);
       expect(events.every((event) => event.textureId === painter.session.textureViews[0].id)).toBe(true);
-      expect(events.some((event) =>
-        event.minX <= 14 && event.maxX >= 14 && event.minY <= 8 && event.maxY >= 8
-      )).toBe(true);
+      expect(events.some((event) => event.minX <= 14 && event.maxX >= 14 && event.minY <= 8 && event.maxY >= 8)).toBe(
+        true,
+      );
     } finally {
       painter.session.dispose();
       painter.geometry.dispose();
@@ -1391,43 +1310,19 @@ describe("unit painter", () => {
       };
 
       painter.session.beginStroke();
-      const withoutPadding = painter.session.paintTexturePoint(
-        textureId,
-        7.4,
-        8.5,
-        1,
-        settings,
-        "island",
-        0,
-      );
+      const withoutPadding = painter.session.paintTexturePoint(textureId, 7.4, 8.5, 1, settings, "island", 0);
       expect(withoutPadding?.changed).toBe(false);
       expect(painter.session.endStroke()).toBe(false);
       expect(getPixel(painter.material, 7, 8)).toEqual([0, 0, 0, 255]);
 
       painter.session.beginStroke();
-      const withPadding = painter.session.paintTexturePoint(
-        textureId,
-        7.4,
-        8.5,
-        1,
-        settings,
-        "island",
-        2,
-      );
+      const withPadding = painter.session.paintTexturePoint(textureId, 7.4, 8.5, 1, settings, "island", 2);
       expect(withPadding?.changed).toBe(true);
       expect(painter.session.endStroke()).toBe(true);
       expect(getPixel(painter.material, 7, 8)).toEqual([255, 80, 20, 255]);
 
       painter.session.beginStroke();
-      painter.session.paintTexturePoint(
-        textureId,
-        17.5,
-        8.5,
-        1,
-        settings,
-        "island",
-        8,
-      );
+      painter.session.paintTexturePoint(textureId, 17.5, 8.5, 1, settings, "island", 8);
       painter.session.endStroke();
 
       // x=17 belongs to the second disconnected island. Padding from the first
@@ -1652,7 +1547,6 @@ describe("unit painter", () => {
     }
   });
 
-
   it("returns exact material and UV-island triangle surfaces for highlighting", () => {
     const painter = makePainter();
     try {
@@ -1745,7 +1639,6 @@ describe("unit painter", () => {
     expect(mirroredLocalDirection.z).toBeCloseTo(localDirection.z, 6);
   });
 
-
   it("leaves a ray on the local symmetry plane unchanged", () => {
     const root = new THREE.Object3D();
     root.position.set(2, 3, -1);
@@ -1762,7 +1655,6 @@ describe("unit painter", () => {
     expect(mirrored.origin.distanceTo(source.origin)).toBeLessThan(1e-6);
     expect(mirrored.direction.distanceTo(source.direction)).toBeLessThan(1e-6);
   });
-
 
   it("resets only the selected UV island and keeps the reset undoable", () => {
     const painter = makePainter();
@@ -1851,7 +1743,6 @@ describe("unit painter", () => {
     }
   });
 
-
   it("restores painted pixels toward the original BaseColour and keeps undo intact", () => {
     const painter = makePainter(makeTexture({ x: 14, y: 8, r: 40, g: 80, b: 120 }));
     try {
@@ -1918,7 +1809,6 @@ describe("unit painter", () => {
     expect(noisy.carried).toBeCloseTo(sparse.carried, 6);
   });
 
-
   it("keeps touched-tile GPU update ranges within individual texture rows", () => {
     const painter = makePainter();
     try {
@@ -1944,11 +1834,13 @@ describe("unit painter", () => {
       expect(ranges[63]).toEqual({ start: 128 * 63 * 4, count: 128 * 4 });
       expect(ranges[64]).toEqual({ start: 128 * 64 * 4, count: 64 * 4 });
       expect(ranges.at(-1)).toEqual({ start: 128 * 127 * 4, count: 64 * 4 });
-      expect(ranges.every((range) => {
-        const firstRow = Math.floor(range.start / (128 * 4));
-        const lastRow = Math.floor((range.start + range.count - 1) / (128 * 4));
-        return firstRow === lastRow;
-      })).toBe(true);
+      expect(
+        ranges.every((range) => {
+          const firstRow = Math.floor(range.start / (128 * 4));
+          const lastRow = Math.floor((range.start + range.count - 1) / (128 * 4));
+          return firstRow === lastRow;
+        }),
+      ).toBe(true);
     } finally {
       painter.session.dispose();
       painter.geometry.dispose();
@@ -2007,15 +1899,15 @@ describe("unit painter", () => {
       ).toBe(true);
       painter.session.endStroke();
 
-      const rows = target.editable.updateRanges.map((range) =>
-        Math.floor(range.start / (WIDTH * 4)),
-      );
+      const rows = target.editable.updateRanges.map((range) => Math.floor(range.start / (WIDTH * 4)));
       expect(new Set(rows).size).toBe(rows.length);
-      expect(target.editable.updateRanges.every((range) => {
-        const firstRow = Math.floor(range.start / (WIDTH * 4));
-        const lastRow = Math.floor((range.start + range.count - 1) / (WIDTH * 4));
-        return firstRow === lastRow;
-      })).toBe(true);
+      expect(
+        target.editable.updateRanges.every((range) => {
+          const firstRow = Math.floor(range.start / (WIDTH * 4));
+          const lastRow = Math.floor((range.start + range.count - 1) / (WIDTH * 4));
+          return firstRow === lastRow;
+        }),
+      ).toBe(true);
     } finally {
       painter.session.dispose();
       painter.geometry.dispose();
@@ -2059,9 +1951,7 @@ describe("unit painter", () => {
 
       expect(painter.session.lastStrokeGpuProfile.updateRanges).toBeGreaterThan(0);
       expect(painter.session.lastStrokeGpuProfile.updateBytes).toBeGreaterThan(0);
-      expect(painter.session.lastStrokeGpuProfile.updateRanges).toBe(
-        target.editable.updateRanges.length,
-      );
+      expect(painter.session.lastStrokeGpuProfile.updateRanges).toBe(target.editable.updateRanges.length);
       expect(painter.session.lastStrokeGpuProfile.updateBytes).toBe(
         target.editable.updateRanges.reduce((total, range) => total + range.count, 0),
       );
@@ -2093,11 +1983,13 @@ describe("unit painter", () => {
       paint(painter, { color: { r: 230, g: 40, b: 20 } });
 
       expect(target.editable.updateRanges.length).toBeGreaterThan(1);
-      expect(target.editable.updateRanges.every((range) => {
-        const firstRow = Math.floor(range.start / (WIDTH * 4));
-        const lastRow = Math.floor((range.start + range.count - 1) / (WIDTH * 4));
-        return firstRow === lastRow;
-      })).toBe(true);
+      expect(
+        target.editable.updateRanges.every((range) => {
+          const firstRow = Math.floor(range.start / (WIDTH * 4));
+          const lastRow = Math.floor((range.start + range.count - 1) / (WIDTH * 4));
+          return firstRow === lastRow;
+        }),
+      ).toBe(true);
     } finally {
       painter.session.dispose();
       painter.geometry.dispose();
@@ -2137,11 +2029,13 @@ describe("unit painter", () => {
         start: WIDTH * (HEIGHT - 1) * 4,
         count: WIDTH * 4,
       });
-      expect(target.editable.updateRanges.every((range) => {
-        const firstRow = Math.floor(range.start / (WIDTH * 4));
-        const lastRow = Math.floor((range.start + range.count - 1) / (WIDTH * 4));
-        return firstRow === lastRow;
-      })).toBe(true);
+      expect(
+        target.editable.updateRanges.every((range) => {
+          const firstRow = Math.floor(range.start / (WIDTH * 4));
+          const lastRow = Math.floor((range.start + range.count - 1) / (WIDTH * 4));
+          return firstRow === lastRow;
+        }),
+      ).toBe(true);
     } finally {
       painter.session.dispose();
       painter.geometry.dispose();
@@ -2165,19 +2059,20 @@ describe("unit painter", () => {
 
       const internal = painter.session as unknown as {
         uvMaskCacheBytes: number;
-        uvMaskCacheLru: Map<number, {
-          mask: { tiles: Map<number, Uint8Array>; byteSize: number };
-        }>;
+        uvMaskCacheLru: Map<
+          number,
+          {
+            mask: { tiles: Map<number, Uint8Array>; byteSize: number };
+          }
+        >;
       };
       const masks = [...internal.uvMaskCacheLru.values()].map((entry) => entry.mask);
       expect(masks.length).toBeGreaterThan(0);
-      expect(masks.every((mask) =>
-        [...mask.tiles.values()].every((tile) => tile.byteLength === (64 * 64) / 8),
-      )).toBe(true);
-      expect(masks.every((mask) => mask.byteSize === mask.tiles.size * ((64 * 64) / 8))).toBe(true);
-      expect(internal.uvMaskCacheBytes).toBe(
-        masks.reduce((total, mask) => total + mask.byteSize, 0),
+      expect(masks.every((mask) => [...mask.tiles.values()].every((tile) => tile.byteLength === (64 * 64) / 8))).toBe(
+        true,
       );
+      expect(masks.every((mask) => mask.byteSize === mask.tiles.size * ((64 * 64) / 8))).toBe(true);
+      expect(internal.uvMaskCacheBytes).toBe(masks.reduce((total, mask) => total + mask.byteSize, 0));
     } finally {
       painter.session.dispose();
       painter.geometry.dispose();
@@ -2240,10 +2135,7 @@ describe("unit painter", () => {
       };
       const getActiveTileCount = () => {
         const active = internal.paintLayers.find((layer) => layer.id === internal.activePaintLayerId);
-        return [...(active?.textures.values() ?? [])].reduce(
-          (count, texture) => count + texture.tiles.size,
-          0,
-        );
+        return [...(active?.textures.values() ?? [])].reduce((count, texture) => count + texture.tiles.size, 0);
       };
       const getTouchedTileCount = () =>
         [...internal.targetsByEditableTexture.values()].reduce(
@@ -2406,9 +2298,11 @@ describe("unit painter", () => {
       expect(source.session.renameLayer(topId!, "Green highlights")).toBe(true);
 
       const state = source.session.exportProjectState();
-      expect(state.layers.flatMap((layer) => layer.textures).every((texture) =>
-        texture.tiles.every((tile) => tile.rgbaBytes.length === 64 * 64 * 4),
-      )).toBe(true);
+      expect(
+        state.layers
+          .flatMap((layer) => layer.textures)
+          .every((texture) => texture.tiles.every((tile) => tile.rgbaBytes.length === 64 * 64 * 4)),
+      ).toBe(true);
       expect(state.layers.flatMap((layer) => layer.textures).some((texture) => texture.tiles.length > 0)).toBe(true);
       reopened.session.loadProjectLayers(state);
 
@@ -2514,7 +2408,6 @@ describe("unit painter", () => {
     }
   });
 
-
   it("merge down preserves the current two-layer appearance and is undoable", () => {
     const painter = makePainter();
     try {
@@ -2541,5 +2434,4 @@ describe("unit painter", () => {
       painter.material.dispose();
     }
   });
-
 });

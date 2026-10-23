@@ -8,10 +8,10 @@ export function findAlwaysEnabledMods(mods: Mod[], alwaysEnabledModNames: string
   return mods.filter((m) => names.has(m.name));
 }
 
-/** The mods that will actually load: explicitly enabled, plus the always-enabled ones. */
-export function getEnabledMods(mods: Mod[], alwaysEnabledModNames: string[]) {
+/** The mods that will actually load, unless the user has opted to disable always-enabled mods. */
+export function getEnabledMods(mods: Mod[], alwaysEnabledModNames: string[], canDisableAlwaysEnabledMods = false) {
   const names = new Set(alwaysEnabledModNames);
-  return mods.filter((mod) => mod.isEnabled || names.has(mod.name));
+  return mods.filter((mod) => mod.isEnabled || (!canDisableAlwaysEnabledMods && names.has(mod.name)));
 }
 
 export function findMod(mods: Mod[], mod: { name: string }) {

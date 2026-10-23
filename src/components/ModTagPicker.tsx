@@ -59,6 +59,7 @@ const ModTagPicker = memo(() => {
     <>
       {currentModToUpload && isModTagPickerOpen && (
         <Modal
+          dismissible
           show={isModTagPickerOpen}
           onClose={onClose}
           size="lg"

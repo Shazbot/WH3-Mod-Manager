@@ -2924,7 +2924,8 @@ const SkillsView = memo(
                   id: "id" in comparisonSkill ? comparisonSkill.id : comparisonSkill.key,
                   img: "img" in comparisonSkill ? comparisonSkill.img : comparisonSkill.iconPath,
                   effects: comparisonSkill.effects.map((effect) => ({ ...effect, key: "", iconData: "" })) as Effect[],
-                  localizedTitle: "localizedName" in comparisonSkill ? comparisonSkill.localizedName : comparisonSkill.localizedTitle,
+                  localizedTitle:
+                    "localizedName" in comparisonSkill ? comparisonSkill.localizedName : comparisonSkill.localizedTitle,
                   localizedDescription:
                     "localizedDescription" in comparisonSkill
                       ? comparisonSkill.localizedDescription
@@ -3117,7 +3118,9 @@ const SkillsView = memo(
           }) ||
           (() => {
             const originalNodeId = originalNodeIdBySkillKey.get(skillKey);
-            return originalNodeId ? skillNodes.find((node) => (node.data as SkillData).nodeId === originalNodeId) : undefined;
+            return originalNodeId
+              ? skillNodes.find((node) => (node.data as SkillData).nodeId === originalNodeId)
+              : undefined;
           })();
 
         // A metadata edit creates a replacement character-skill row even when the node's current
@@ -3143,7 +3146,8 @@ const SkillsView = memo(
           const comparableSkill = selectedSkill
             ? {
                 id: "id" in selectedSkill ? selectedSkill.id : selectedSkill.key,
-                localizedTitle: "localizedName" in selectedSkill ? selectedSkill.localizedName : selectedSkill.localizedTitle,
+                localizedTitle:
+                  "localizedName" in selectedSkill ? selectedSkill.localizedName : selectedSkill.localizedTitle,
                 localizedDescription: selectedSkill.localizedDescription,
                 img: "img" in selectedSkill ? selectedSkill.img : selectedSkill.iconPath,
                 maxLevel: selectedSkill.maxLevel,
@@ -3302,7 +3306,8 @@ const SkillsView = memo(
             const comparableSkill = selectedSkill
               ? {
                   id: "id" in selectedSkill ? selectedSkill.id : selectedSkill.key,
-                  localizedTitle: "localizedName" in selectedSkill ? selectedSkill.localizedName : selectedSkill.localizedTitle,
+                  localizedTitle:
+                    "localizedName" in selectedSkill ? selectedSkill.localizedName : selectedSkill.localizedTitle,
                   localizedDescription: selectedSkill.localizedDescription,
                   img: "img" in selectedSkill ? selectedSkill.img : selectedSkill.iconPath,
                   maxLevel: selectedSkill.maxLevel,
@@ -3313,7 +3318,13 @@ const SkillsView = memo(
             const skillMetadataChanged = !comparableSkill || !skillMetadataMatches(data, comparableSkill);
             const needsLockReplacement = lockChangedNodeIds.has(origNodeId);
             const needsReplacement =
-              edgesChanged || posChanged || skillChanged || factionChanged || subcultureChanged || skillMetadataChanged || needsLockReplacement;
+              edgesChanged ||
+              posChanged ||
+              skillChanged ||
+              factionChanged ||
+              subcultureChanged ||
+              skillMetadataChanged ||
+              needsLockReplacement;
 
             if (needsReplacement) {
               const newNodeKey = await makeNodeKey(currentRow, currentCol, data.faction, data.subculture);
@@ -3379,7 +3390,11 @@ const SkillsView = memo(
                   img: selectedExistingSkill.iconPath,
                   maxLevel: selectedExistingSkill.maxLevel,
                   unlockRank: selectedExistingSkill.unlockRank,
-                  effects: selectedExistingSkill.effects.map((effect) => ({ ...effect, key: "", iconData: "" })) as Effect[],
+                  effects: selectedExistingSkill.effects.map((effect) => ({
+                    ...effect,
+                    key: "",
+                    iconData: "",
+                  })) as Effect[],
                 }
               : undefined;
             const shouldCloneExistingSkill =
@@ -3450,7 +3465,11 @@ const SkillsView = memo(
           const newNode = newNodes.find((node) => node.newNodeKey === finalNodeKey);
           finalSkillKeyByNodeId.set(
             data.nodeId,
-            replacement?.newSkillKey || replacement?.characterSkillKey || newNode?.newSkillKey || data.existingSkillKey || data.id,
+            replacement?.newSkillKey ||
+              replacement?.characterSkillKey ||
+              newNode?.newSkillKey ||
+              data.existingSkillKey ||
+              data.id,
           );
         }
 
@@ -3763,12 +3782,14 @@ const SkillsView = memo(
         if (!lockedNode) continue;
 
         for (const [lockingSkillKey, requiredLevel] of skillAndLevelArray) {
-          const lockingNode = nodes.find(
-            (n) => {
-              const data = n.data as SkillData;
-              return data.id === lockingSkillKey || data.existingSkillKey === lockingSkillKey || data.nodeId === lockingSkillKey;
-            },
-          );
+          const lockingNode = nodes.find((n) => {
+            const data = n.data as SkillData;
+            return (
+              data.id === lockingSkillKey ||
+              data.existingSkillKey === lockingSkillKey ||
+              data.nodeId === lockingSkillKey
+            );
+          });
           if (!lockingNode) continue;
 
           const edgeId = `lock-${lockingNode.id}-${lockedNode.id}`;
@@ -4080,7 +4101,10 @@ const SkillsView = memo(
         };
 
         const visibleSkillIds = new Set(
-          nodes.filter(isSkillNode).filter(isVisibleInNormalMode).map((node) => node.id),
+          nodes
+            .filter(isSkillNode)
+            .filter(isVisibleInNormalMode)
+            .map((node) => node.id),
         );
         const visibleGroupMemberCounts = new Map<string, number>();
         for (const node of nodes) {
@@ -4096,14 +4120,21 @@ const SkillsView = memo(
         const visibleNodeIds = new Set([...visibleSkillIds, ...visibleGroupIds]);
         const nodeToVisibleContainer: Record<string, string> = {};
         for (const node of nodes) {
-          if (isSkillNode(node) && visibleSkillIds.has(node.id) && node.parentId && visibleGroupIds.has(node.parentId)) {
+          if (
+            isSkillNode(node) &&
+            visibleSkillIds.has(node.id) &&
+            node.parentId &&
+            visibleGroupIds.has(node.parentId)
+          ) {
             nodeToVisibleContainer[node.id] = node.parentId;
           }
         }
 
         const normalModeNodes = nodes
           .filter((node) => node.type !== "addPlaceholder")
-          .filter((node) => (isSkillNode(node) ? visibleSkillIds.has(node.id) : isGroupNode(node) ? visibleGroupIds.has(node.id) : false))
+          .filter((node) =>
+            isSkillNode(node) ? visibleSkillIds.has(node.id) : isGroupNode(node) ? visibleGroupIds.has(node.id) : false,
+          )
           .map((node) => {
             if (isSkillNode(node)) {
               const data = node.data as SkillData;
@@ -4151,12 +4182,8 @@ const SkillsView = memo(
             .map((e) => {
               // Remove edit-mode styling
               const { interactionWidth, ...rest } = e as any;
-              const source = visibleNodeIds.has(e.source)
-                ? nodeToVisibleContainer[e.source] || e.source
-                : undefined;
-              const target = visibleNodeIds.has(e.target)
-                ? nodeToVisibleContainer[e.target] || e.target
-                : undefined;
+              const source = visibleNodeIds.has(e.source) ? nodeToVisibleContainer[e.source] || e.source : undefined;
+              const target = visibleNodeIds.has(e.target) ? nodeToVisibleContainer[e.target] || e.target : undefined;
               if (!source || !target) return undefined;
               return {
                 ...rest,
@@ -5133,7 +5160,7 @@ const SkillsView = memo(
             </button>
           </Modal.Footer>
         </Modal>
-        <Modal show={isResetConfirmOpen} onClose={() => setIsResetConfirmOpen(false)} size="md">
+        <Modal dismissible show={isResetConfirmOpen} onClose={() => setIsResetConfirmOpen(false)} size="md">
           <Modal.Header>Reset Skill Tree</Modal.Header>
           <Modal.Body>
             <p className="text-gray-300">Reset skill tree to original values? All changes will be lost.</p>
