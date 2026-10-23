@@ -1,6 +1,6 @@
 import { AmendedSchemaField } from "../packFileTypes";
 import { SkillsDataCacheCore } from "./cache";
-import { normalizeSkillIconPath } from "../skills";
+import { normalizeSkillIconPath, normalizeTaggedImagePath } from "../skills";
 
 export type GetTableRowDataFn = (
   packsTableData: PackViewData[],
@@ -25,8 +25,8 @@ export const applyModOverlayToSkillsDataCore = (
     const icon = schemaFieldRow.find((sF) => sF.name == "icon")?.resolvedKeyValue;
     const isPositive = schemaFieldRow.find((sF) => sF.name == "is_positive_value_good")?.resolvedKeyValue;
     const priority = schemaFieldRow.find((sF) => sF.name == "priority")?.resolvedKeyValue;
-    if (!key || !icon || !isPositive || !priority) return;
-    core.effectsToEffectData[key] = { key, icon, isPositive, priority };
+    if (!key || !isPositive || !priority) return;
+    core.effectsToEffectData[key] = { key, icon: icon ?? "", isPositive, priority };
   });
 
   getTableRowDataFn(modPacksTableData, "character_skill_node_sets_tables", (schemaFieldRow) => {
@@ -164,6 +164,27 @@ export const applyModOverlayToSkillsDataCore = (
     }
   });
 
+  getTableRowDataFn(modPacksTableData, "character_skills_to_level_reached_criterias_tables", (schemaFieldRow) => {
+    const skill = schemaFieldRow.find((sF) => sF.name == "character_skill")?.resolvedKeyValue;
+    const level = schemaFieldRow.find((sF) => sF.name == "character_level")?.resolvedKeyValue;
+    if (!skill || level == undefined) return;
+    core.skillsToAutoUnlockRank[skill] = Math.min(core.skillsToAutoUnlockRank[skill] ?? Infinity, Number(level));
+  });
+
+  getTableRowDataFn(modPacksTableData, "ui_tagged_images_tables", (schemaFieldRow) => {
+    const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
+    const imagePath = schemaFieldRow.find((sF) => sF.name == "image_path")?.resolvedKeyValue;
+    if (key && imagePath) core.uiTaggedImages[key] = normalizeTaggedImagePath(imagePath);
+  });
+
+  getTableRowDataFn(modPacksTableData, "effect_bonus_value_unit_attribute_junctions_tables", (schemaFieldRow) => {
+    const effect = schemaFieldRow.find((sF) => sF.name == "effect")?.resolvedKeyValue;
+    const attribute = schemaFieldRow.find((sF) => sF.name == "unit_attribute")?.resolvedKeyValue;
+    if (!effect || !attribute) return;
+    core.effectToUnitAttributes[effect] = core.effectToUnitAttributes[effect] || [];
+    if (!core.effectToUnitAttributes[effect].includes(attribute)) core.effectToUnitAttributes[effect].push(attribute);
+  });
+
   getTableRowDataFn(modPacksTableData, "character_skill_nodes_skill_locks_tables", (schemaFieldRow) => {
     const skill = schemaFieldRow.find((sF) => sF.name == "character_skill")?.resolvedKeyValue;
     const skillNode = schemaFieldRow.find((sF) => sF.name == "character_skill_node")?.resolvedKeyValue;
@@ -221,7 +242,6 @@ export const applyModOverlayToSkillsDataCore = (
     const bonusValueId = schemaFieldRow.find((sF) => sF.name == "bonus_value_id")?.resolvedKeyValue;
     const unitAbilityKey = schemaFieldRow.find((sF) => sF.name == "unit_ability")?.resolvedKeyValue;
     if (!effect || !bonusValueId || !unitAbilityKey) return;
-    if (!bonusValueId.startsWith("enable")) return;
     core.effectToUnitAbilityEnables[effect] = core.effectToUnitAbilityEnables[effect] || [];
     if (
       !core.effectToUnitAbilityEnables[effect].some(
@@ -438,6 +458,7 @@ export const applyModOverlayToSkillsDataCore = (
     const key = schemaFieldRow.find((sF) => sF.name == "ability_group")?.resolvedKeyValue;
     const iconPath = schemaFieldRow.find((sF) => sF.name == "icon_path")?.resolvedKeyValue;
     if (!key || !iconPath) return;
-    core.specialAbilityGroupsByKey[key] = { key, iconPath };
+    const isComposite = parseBool(schemaFieldRow.find((sF) => sF.name == "is_composite_group")?.resolvedKeyValue);
+    core.specialAbilityGroupsByKey[key] = { key, iconPath, isComposite };
   });
 };

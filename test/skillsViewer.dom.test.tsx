@@ -16,17 +16,24 @@ vi.mock("../src/components/skillsViewer/SkillsTreeView", () => ({
   default: ({
     tableFilter,
     onSelect,
+    onHover,
     onDoubleClick,
+    isSelectionCleared,
   }: {
     tableFilter: string;
     onSelect?: (subtype: string, subtypeIndex: number) => void;
-    onDoubleClick?: (subtype: string, subtypeIndex: number) => void;
+    onHover?: (subtype: string, subtypeIndex: number) => void;
+    onDoubleClick?: (subtype: string, subtypeIndex: number, firstClickSelected: boolean) => void;
+    isSelectionCleared?: boolean;
   }) => (
     <div>
       <div data-testid="tree-filter">{tableFilter}</div>
+      <div data-testid="tree-selection-cleared">{String(!!isSelectionCleared)}</div>
       <button onClick={() => onSelect?.("beta", 0)}>select-beta</button>
+      <button onClick={() => onHover?.("beta", 0)}>hover-beta</button>
       <button onClick={() => onSelect?.("delta", 0)}>select-delta</button>
-      <button onClick={() => onDoubleClick?.("gamma", 0)}>open-gamma</button>
+      <button onClick={() => onDoubleClick?.("gamma", 0, false)}>open-gamma</button>
+      <button onClick={() => onDoubleClick?.("beta", 0, true)}>open-beta</button>
     </div>
   ),
 }));
@@ -131,13 +138,21 @@ const renderViewer = (skillsData = createSkillsData("alpha")) => {
 
 describe("SkillsViewer", () => {
   let getSkillsForSubtypeMock: ReturnType<typeof vi.fn>;
+  let prefetchSkillsForSubtypeMock: ReturnType<typeof vi.fn>;
+  let setSkillsSelectionMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.useFakeTimers();
     getSkillsForSubtypeMock = vi.fn();
+    prefetchSkillsForSubtypeMock = vi.fn((subtype: string, subtypeIndex: number) =>
+      Promise.resolve(createSkillsData(subtype, subtypeIndex)),
+    );
+    setSkillsSelectionMock = vi.fn();
     window.api = {
       ...window.api,
       getSkillsForSubtype: getSkillsForSubtypeMock,
+      prefetchSkillsForSubtype: prefetchSkillsForSubtypeMock,
+      setSkillsSelection: setSkillsSelectionMock,
     } as NonNullable<Window["api"]>;
   });
 
@@ -233,5 +248,113 @@ describe("SkillsViewer", () => {
       store.dispatch(setSkillsData(createSkillsData("beta", 0, betaRequestId)));
     });
     expect(screen.getByTestId("skills-view")).toHaveTextContent("view-delta-0");
+  });
+
+  it("sends a double-clicked tree to a new tab when its first click is still loading", () => {
+    const store = renderViewer();
+
+    fireEvent.click(screen.getByRole("button", { name: "select-beta" }));
+    fireEvent.click(screen.getByRole("button", { name: "open-beta" }));
+
+    expect(getSkillsForSubtypeMock).toHaveBeenCalledTimes(1);
+    act(() => {
+      store.dispatch(setSkillsData(createSkillsData("beta", 0, getSkillsForSubtypeMock.mock.calls[0][2])));
+    });
+
+    expect(screen.getByTestId("skills-view")).toHaveTextContent("view-beta-0");
+    fireEvent.click(screen.getByText("alpha"));
+    expect(screen.getByTestId("skills-view")).toHaveTextContent("view-alpha-0");
+  });
+
+  it("moves a double-clicked tree to a new tab once its first click has loaded", () => {
+    const store = renderViewer();
+
+    fireEvent.click(screen.getByRole("button", { name: "select-beta" }));
+    act(() => {
+      store.dispatch(setSkillsData(createSkillsData("beta", 0, getSkillsForSubtypeMock.mock.calls[0][2])));
+    });
+    expect(screen.queryByText("alpha")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "open-beta" }));
+
+    expect(getSkillsForSubtypeMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("skills-view")).toHaveTextContent("view-beta-0");
+    fireEvent.click(screen.getByText("alpha"));
+    expect(screen.getByTestId("skills-view")).toHaveTextContent("view-alpha-0");
+    fireEvent.click(screen.getByText("beta"));
+    expect(screen.getByTestId("skills-view")).toHaveTextContent("view-beta-0");
+  });
+
+  it("keeps an older tab's tree when switching back to it", () => {
+    const store = renderViewer();
+
+    fireEvent.click(screen.getByRole("button", { name: "open-gamma" }));
+    act(() => {
+      store.dispatch(setSkillsData(createSkillsData("gamma", 0, getSkillsForSubtypeMock.mock.calls[0][2])));
+    });
+    expect(screen.getByTestId("skills-view")).toHaveTextContent("view-gamma-0");
+
+    fireEvent.click(screen.getByText("alpha"));
+    expect(screen.getByTestId("skills-view")).toHaveTextContent("view-alpha-0");
+  });
+
+  it("closes the only tab, clears the list selection and opens the next clicked tree in a new tab", () => {
+    const store = renderViewer();
+    expect(screen.getByTestId("tree-selection-cleared")).toHaveTextContent("false");
+
+    fireEvent.click(screen.getByText("alpha").parentElement!.querySelector("button")!);
+    expect(screen.queryByText("alpha")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("skills-view")).not.toBeInTheDocument();
+    expect(screen.getByTestId("tree-selection-cleared")).toHaveTextContent("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "select-beta" }));
+    act(() => {
+      store.dispatch(setSkillsData(createSkillsData("beta", 0, getSkillsForSubtypeMock.mock.calls[0][2])));
+    });
+    expect(screen.getByTestId("skills-view")).toHaveTextContent("view-beta-0");
+    expect(screen.getByTestId("tree-selection-cleared")).toHaveTextContent("false");
+
+    // A double-click finds the tree already in its own tab, so it opens no second one.
+    fireEvent.click(screen.getByRole("button", { name: "open-beta" }));
+    expect(getSkillsForSubtypeMock).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByText("beta")).toHaveLength(1);
+  });
+
+  it("closes a tab on middle click", () => {
+    renderViewer();
+
+    fireEvent(screen.getByText("alpha"), new MouseEvent("auxclick", { bubbles: true, button: 1 }));
+    expect(screen.queryByText("alpha")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("skills-view")).not.toBeInTheDocument();
+  });
+
+  it("shows a hovered tree on click without asking main again", async () => {
+    renderViewer();
+
+    fireEvent.click(screen.getByRole("button", { name: "hover-beta" }));
+    fireEvent.click(screen.getByRole("button", { name: "hover-beta" }));
+    expect(prefetchSkillsForSubtypeMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "select-beta" }));
+    await act(async () => {});
+
+    expect(screen.getByTestId("skills-view")).toHaveTextContent("view-beta-0");
+    expect(getSkillsForSubtypeMock).not.toHaveBeenCalled();
+    expect(setSkillsSelectionMock).toHaveBeenCalledWith("beta", 0);
+  });
+
+  it("drops hovered trees when main pushes rebuilt data", async () => {
+    const store = renderViewer();
+
+    fireEvent.click(screen.getByRole("button", { name: "hover-beta" }));
+    await act(async () => {});
+    act(() => {
+      store.dispatch(setSkillsData(createSkillsData("alpha")));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "select-beta" }));
+    await act(async () => {});
+    expect(getSkillsForSubtypeMock).toHaveBeenCalledWith("beta", 0, expect.any(String));
+    expect(screen.getByTestId("skills-view")).toHaveTextContent("view-alpha-0");
   });
 });
