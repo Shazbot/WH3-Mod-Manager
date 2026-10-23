@@ -22,7 +22,13 @@ const WorkshopOptimizerBackground = memo(() => {
   const signature = useMemo(
     () =>
       `${optimize}|${workshopModStagingMode}|` +
-      enabledMods.map((mod) => `${mod.path}|${mod.loadOrder ?? ""}|${mod.lastChangedLocal ?? ""}`).join("\n"),
+      enabledMods
+        .map(
+          (mod) =>
+            `${mod.path}|${mod.loadOrder ?? ""}|${mod.lastChangedLocal ?? ""}|` +
+            `${mod.workshopId ?? ""}|${JSON.stringify(mod.reqModIdToName ?? [])}|${(mod.dependencyPacks ?? []).join(",")}`,
+        )
+        .join("\n"),
     [enabledMods, optimize, workshopModStagingMode],
   );
 
@@ -40,6 +46,10 @@ const WorkshopOptimizerBackground = memo(() => {
           humanName: mod.humanName,
           sourceKind: mod.sourceKind,
           sourceId: mod.sourceId,
+          // The dependency edges go into the cache keys: without them the keys differ from a launch's.
+          workshopId: mod.workshopId,
+          reqModIdToName: mod.reqModIdToName,
+          dependencyPacks: mod.dependencyPacks,
         })),
         { optimize: !!optimize, workshopModStagingMode },
       );

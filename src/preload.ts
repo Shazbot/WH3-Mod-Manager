@@ -234,6 +234,9 @@ const api = {
       | "humanName"
       | "sourceKind"
       | "sourceId"
+      | "workshopId"
+      | "reqModIdToName"
+      | "dependencyPacks"
     >[],
     settings: { optimize: boolean; workshopModStagingMode: string },
   ) => ipcRenderer.send("updateWorkshopOptimizerBackground", enabledMods, settings),
