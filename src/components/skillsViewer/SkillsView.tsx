@@ -4655,10 +4655,6 @@ const SkillsView = memo(
           }
           multiSelectionKeyCode="Shift"
         >
-          <Panel position="top-right">
-            <div className="text-slate-200 text-xl opacity-80">{subtype}</div>
-            <div className="text-slate-200 text-xl opacity-80">{`${localized.rank} ${currentRank}`}</div>
-          </Panel>
           {notification && (
             <Panel position="bottom-center">
               <div
