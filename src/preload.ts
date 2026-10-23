@@ -234,12 +234,16 @@ const api = {
       | "humanName"
       | "sourceKind"
       | "sourceId"
+      | "workshopId"
+      | "reqModIdToName"
+      | "dependencyPacks"
     >[],
     settings: { optimize: boolean; workshopModStagingMode: string },
   ) => ipcRenderer.send("updateWorkshopOptimizerBackground", enabledMods, settings),
   getWorkshopOptimizerBackgroundStatus: (): Promise<WorkshopOptimizerBackgroundStatus | undefined> =>
     ipcRenderer.invoke("getWorkshopOptimizerBackgroundStatus"),
   cancelWorkshopOptimizerBackground: () => ipcRenderer.send("cancelWorkshopOptimizerBackground"),
+  runWorkshopOptimizerBackgroundNow: () => ipcRenderer.send("runWorkshopOptimizerBackgroundNow"),
   onWorkshopOptimizerBackgroundStatus: (
     callback: (event: Electron.IpcRendererEvent, status: WorkshopOptimizerBackgroundStatus) => void,
   ) => {
@@ -250,11 +254,22 @@ const api = {
     ipcRenderer.on("workshopOptimizerLastRun", callback);
     return () => ipcRenderer.removeListener("workshopOptimizerLastRun", callback);
   },
-  clearWorkshopOptimizerCache: (): Promise<{
+  /** `stopBackground`: stop background optimization first (used when leaving copy mode). */
+  clearWorkshopOptimizerCache: (options?: {
+    stopBackground?: boolean;
+  }): Promise<{
     success: boolean;
     code?: "STAGING_ACTIVE" | "CLEAR_FAILED";
     error?: string;
-  }> => ipcRenderer.invoke("clearWorkshopOptimizerCache"),
+  }> => ipcRenderer.invoke("clearWorkshopOptimizerCache", options),
+  getWorkshopOptimizerRunReport: (): Promise<WorkshopOptimizerRunReport | undefined> =>
+    ipcRenderer.invoke("getWorkshopOptimizerRunReport"),
+  onWorkshopOptimizerRunReport: (
+    callback: (event: Electron.IpcRendererEvent, report: WorkshopOptimizerRunReport) => void,
+  ) => {
+    ipcRenderer.on("workshopOptimizerRunReport", callback);
+    return () => ipcRenderer.removeListener("workshopOptimizerRunReport", callback);
+  },
   openWorkshopOptimizerReport: (modName: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("openWorkshopOptimizerReport", modName),
   startVisualAssetCheck: (

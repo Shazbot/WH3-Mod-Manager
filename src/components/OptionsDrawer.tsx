@@ -50,6 +50,8 @@ import AboutScreen from "./AboutScreen";
 import CreateSteamCollection from "./CreateSteamCollection";
 import ImportSteamCollection from "./ImportSteamCollection";
 import { useLocalizations } from "../localizationContext";
+import OptimizeNowButton from "./OptimizeNowButton";
+import OptimizerRunReportButton from "./OptimizerRunReportButton";
 import ISO6391 from "iso-639-1";
 import { gameToSupportedGameOptions, supportedGames } from "../supportedGames";
 import store from "../store";
@@ -303,13 +305,13 @@ const OptionsDrawer = memo(() => {
     optimizeWorkshopModsOnStart,
   ]);
 
-  const clearWorkshopOptimizerCache = useCallback(async () => {
+  const clearWorkshopOptimizerCache = useCallback(async (options?: { stopBackground?: boolean }) => {
     const clear = window.api?.clearWorkshopOptimizerCache;
     if (!clear) return;
     setIsClearingWorkshopOptimizerCache(true);
     setWorkshopStagingFolderMessage(undefined);
     try {
-      const result = await clear();
+      const result = await clear(options);
       setWorkshopStagingFolderMessage(
         result?.success
           ? { message: localized.workshopOptimizerCacheCleared || "Cleared optimized mods cache.", isError: false }
@@ -333,6 +335,18 @@ const OptionsDrawer = memo(() => {
     localized.workshopOptimizerCacheCleared,
     refreshWorkshopOptimizerCacheInfo,
   ]);
+
+  // Optimized packs are only used in copy mode: leaving it clears their cache.
+  const changeWorkshopModStagingMode = useCallback(
+    (mode: WorkshopModStagingMode) => {
+      const leavingCopy = workshopModStagingMode === "copy" && mode !== "copy";
+      dispatch(setWorkshopModStagingMode(mode));
+      if (leavingCopy && workshopOptimizerCacheInfo.hasContents) {
+        void clearWorkshopOptimizerCache({ stopBackground: true });
+      }
+    },
+    [clearWorkshopOptimizerCache, dispatch, workshopModStagingMode, workshopOptimizerCacheInfo.hasContents],
+  );
 
   const clearWorkshopStagingFolder = useCallback(async () => {
     const clearWorkshopModStaging = window.api?.clearWorkshopModStaging;
@@ -1351,7 +1365,7 @@ const OptionsDrawer = memo(() => {
                     name="automatic-workshop-staging-mode"
                     id="disable-automatic-workshop-staging"
                     checked={workshopModStagingMode === "disabled"}
-                    onChange={() => dispatch(setWorkshopModStagingMode("disabled"))}
+                    onChange={() => changeWorkshopModStagingMode("disabled")}
                   />
                   <span className="ml-3">{localized.automaticWorkshopStagingDisabled || "Off"}</span>
                 </label>
@@ -1362,7 +1376,7 @@ const OptionsDrawer = memo(() => {
                     id="automatically-copy-workshop-mods-on-start"
                     aria-label={localized.automaticallyCopyWorkshopModsOnStart || "Copy mod files"}
                     checked={workshopModStagingMode === "copy"}
-                    onChange={() => dispatch(setWorkshopModStagingMode("copy"))}
+                    onChange={() => changeWorkshopModStagingMode("copy")}
                   />
                   <span className="ml-3 flex min-w-0 flex-1 items-center justify-between gap-2">
                     <span>{localized.automaticallyCopyWorkshopModsOnStart || "Copy mod files"}</span>
@@ -1390,7 +1404,7 @@ const OptionsDrawer = memo(() => {
                     id="automatically-link-workshop-mods-on-start"
                     checked={workshopModStagingMode === "symlink"}
                     disabled={!canCreateSymbolicLinks}
-                    onChange={() => dispatch(setWorkshopModStagingMode("symlink"))}
+                    onChange={() => changeWorkshopModStagingMode("symlink")}
                   />
                   <span className="ml-3">
                     {localized.automaticallyCopySymbolicLinksOnStart || "Create symbolic links"}
@@ -1479,13 +1493,17 @@ const OptionsDrawer = memo(() => {
                       {(localized.optimizerLastRun || "Last run: {{summary}}").replace("{{summary}}", lastOptimizerRun)}
                     </p>
                   )}
+                  <div className="mt-2 flex flex-wrap items-center gap-2 px-2">
+                    {optimizeWorkshopModsOnStart && <OptimizeNowButton />}
+                    <OptimizerRunReportButton />
+                  </div>
                   {(workshopOptimizerCacheInfo.hasContents || isClearingWorkshopOptimizerCache) && (
                     <div className="mt-2 flex flex-wrap items-center gap-3 px-2">
                       <button
                         type="button"
                         className="rounded border border-gray-600 bg-gray-800 px-3 py-1.5 text-xs font-medium uppercase text-gray-200 hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-500 disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={isClearingWorkshopOptimizerCache}
-                        onClick={clearWorkshopOptimizerCache}
+                        onClick={() => void clearWorkshopOptimizerCache()}
                       >
                         {isClearingWorkshopOptimizerCache
                           ? localized.automaticWorkshopStagingClearing || "Clearing…"

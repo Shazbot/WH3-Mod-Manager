@@ -13,7 +13,8 @@ import type { OptimizerBackgroundJoin } from "./optimizer";
  *   results that are not cached yet, one host process at a time, at below-normal priority.
  * - A change of the mod list, of an enabled pack or of the game starts the debounce again; a change during
  *   a pass stops it (killing the host) and replans.
- * - While the game runs nothing runs; the pass is redone after it exits.
+ * - While the game runs nothing runs; the pass is redone after it exits. "Paused" is shown only when the
+ *   game stopped jobs that were running: with nothing left to do (or not known yet) the status stays idle.
  * - A launch takes over: it waits for the job that makes a mod it needs (without restarting it), stops any
  *   other job and holds the background back until it is done.
  * Results go to the cache only. Nothing here touches the staging folder.
@@ -50,6 +51,8 @@ export interface BackgroundStatus {
   /** Progress of the current job, 0..1. */
   fraction?: number;
   stage?: string;
+  /** True when the last plan for the current mod list found nothing left to optimize; unknown otherwise. */
+  upToDate?: boolean;
 }
 
 export interface BackgroundDeps<Snapshot> {
@@ -86,6 +89,9 @@ export class BackgroundOptimizer<Snapshot> implements OptimizerBackgroundJoin {
   private gameWasRunning = false;
   private status: BackgroundStatus = { state: "idle", total: 0, done: 0 };
   private disposed = false;
+  private upToDate = false;
+  /** The last pass planned the mods and found nothing to optimize. */
+  private lastPassFoundNothing = false;
 
   constructor(private readonly deps: BackgroundDeps<Snapshot>) {}
 
@@ -102,8 +108,8 @@ export class BackgroundOptimizer<Snapshot> implements OptimizerBackgroundJoin {
   }
 
   private publish(status: BackgroundStatus) {
-    this.status = status;
-    this.deps.onStatus(status);
+    this.status = { ...status, upToDate: this.upToDate };
+    this.deps.onStatus(this.status);
   }
 
   /**
@@ -112,6 +118,7 @@ export class BackgroundOptimizer<Snapshot> implements OptimizerBackgroundJoin {
    */
   notifyChange(snapshot: Snapshot | undefined) {
     this.snapshot = snapshot;
+    this.upToDate = false;
     this.stopPass();
     if (this.timer !== undefined) this.clearTimer(this.timer);
     this.timer = undefined;
@@ -137,7 +144,9 @@ export class BackgroundOptimizer<Snapshot> implements OptimizerBackgroundJoin {
       this.stopPass();
       if (this.timer !== undefined) this.clearTimer(this.timer);
       this.timer = undefined;
-      if (this.snapshot !== undefined) this.publish({ state: "paused", total: 0, done: 0 });
+      // Only work the game actually interrupted counts as paused.
+      const interrupted = this.status.state === "running" || this.status.state === "paused";
+      this.publish({ state: interrupted && this.snapshot !== undefined ? "paused" : "idle", total: 0, done: 0 });
     } else if (this.snapshot !== undefined && !this.launchActive) {
       if (this.timer !== undefined) this.clearTimer(this.timer);
       this.timer = this.setTimer(() => this.start(), this.deps.afterGameMs ?? 15_000);
@@ -160,6 +169,31 @@ export class BackgroundOptimizer<Snapshot> implements OptimizerBackgroundJoin {
     }
   }
 
+  /** The cache lost results (it was cleared): the mods are no longer known to be up to date. */
+  markStale() {
+    if (!this.upToDate) return;
+    this.upToDate = false;
+    this.publish(this.status);
+  }
+
+  /**
+   * Starts a pass now instead of waiting for the debounce. Resolves when that pass ends:
+   * "nothingToDo" when every mod was optimized already, "ran" otherwise, "notStarted" when a pass
+   * could not or need not start.
+   */
+  async runNow(): Promise<"nothingToDo" | "ran" | "notStarted"> {
+    if (this.disposed || this.snapshot === undefined || this.launchActive || this.deps.isGameRunning()) {
+      return "notStarted";
+    }
+    if (this.passController || this.running) return "notStarted";
+    if (this.timer !== undefined) this.clearTimer(this.timer);
+    this.timer = undefined;
+    this.lastPassFoundNothing = false;
+    this.start();
+    await this.passDone;
+    return this.lastPassFoundNothing ? "nothingToDo" : "ran";
+  }
+
   /** The user cancelled: nothing runs until the next change. */
   cancel() {
     if (this.timer !== undefined) this.clearTimer(this.timer);
@@ -167,6 +201,14 @@ export class BackgroundOptimizer<Snapshot> implements OptimizerBackgroundJoin {
     this.stopPass();
     this.running?.controller.abort();
     this.publish({ state: "idle", total: 0, done: 0 });
+  }
+
+  /** Cancels like `cancel` and resolves once the job and the pass have really ended. */
+  async stop(): Promise<void> {
+    const running = this.running;
+    this.cancel();
+    await running?.done;
+    await this.passDone;
   }
 
   dispose() {
@@ -183,19 +225,25 @@ export class BackgroundOptimizer<Snapshot> implements OptimizerBackgroundJoin {
     this.timer = undefined;
     if (this.disposed || this.snapshot === undefined || this.launchActive) return;
     if (this.deps.isGameRunning()) {
+      // Nothing was planned yet, so it is unknown whether anything needs optimizing: the pass is redone
+      // after the game exits without claiming work is paused.
       this.gameWasRunning = true;
-      this.publish({ state: "paused", total: 0, done: 0 });
+      if (this.status.state !== "paused") this.publish({ state: "idle", total: 0, done: 0 });
       return;
     }
 
     const controller = new AbortController();
     this.passController = controller;
     const snapshot = this.snapshot;
-    this.passDone = this.runPass(snapshot, controller).catch((error) => {
-      this.deps.log(
-        `Optimizer (background): the pass failed (${error instanceof Error ? error.message : String(error)}).`,
-      );
-    });
+    this.passDone = this.runPass(snapshot, controller)
+      .catch((error) => {
+        this.deps.log(
+          `Optimizer (background): the pass failed (${error instanceof Error ? error.message : String(error)}).`,
+        );
+      })
+      .finally(() => {
+        if (this.passController === controller) this.passController = undefined;
+      });
   }
 
   private async runPass(snapshot: Snapshot, controller: AbortController) {
@@ -212,6 +260,8 @@ export class BackgroundOptimizer<Snapshot> implements OptimizerBackgroundJoin {
       return;
     }
     if (!pass || pass.jobs.length === 0) {
+      this.upToDate = !!pass;
+      this.lastPassFoundNothing = !!pass;
       if (!this.launchActive) pass?.release?.();
       if (pass && pass.considered > 0) {
         this.deps.log(`Optimizer (background): all ${pass.considered} mod(s) are optimized already.`);
@@ -226,14 +276,18 @@ export class BackgroundOptimizer<Snapshot> implements OptimizerBackgroundJoin {
         pass.jobs.map((job) => job.mod.name).join(", "),
     );
     let done = 0;
+    let allReady = true;
     for (const job of pass.jobs) {
       if (controller.signal.aborted || this.launchActive) break;
       this.publish({ state: "running", total: pass.jobs.length, done, currentMod: job.mod.name, fraction: 0 });
       const result = await this.runJob(pass, job, controller, done);
       if (!this.launchActive) await this.deps.afterJob?.().catch(() => undefined);
       if (result === "stopped") break;
+      if (result === "failed") allReady = false;
       done++;
     }
+    // Only a pass that made every job's result counts; a failed job is not cached and can be retried.
+    if (allReady && done === pass.jobs.length && !controller.signal.aborted) this.upToDate = true;
 
     if (!this.launchActive) pass.release?.();
     if (!controller.signal.aborted || this.status.state === "running") {
@@ -246,7 +300,7 @@ export class BackgroundOptimizer<Snapshot> implements OptimizerBackgroundJoin {
     job: BackgroundJob,
     pass_: AbortController,
     done: number,
-  ): Promise<"finished" | "stopped"> {
+  ): Promise<"finished" | "failed" | "stopped"> {
     const controller = new AbortController();
     const forward = () => controller.abort();
     pass_.signal.addEventListener("abort", forward, { once: true });
@@ -298,7 +352,8 @@ export class BackgroundOptimizer<Snapshot> implements OptimizerBackgroundJoin {
     pass_.signal.removeEventListener("abort", forward);
     if (this.running === running) this.running = undefined;
     this.deps.log(pass.describe(job, outcome!));
-    return outcome!.status === "stopped" || controller.signal.aborted ? "stopped" : "finished";
+    if (outcome!.status === "stopped" || controller.signal.aborted) return "stopped";
+    return outcome!.status === "ready" ? "finished" : "failed";
   }
 
   async joinOrPreempt(
