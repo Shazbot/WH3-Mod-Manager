@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as fs from "fs";
 import * as nodePath from "path";
 import * as os from "os";
+import * as crypto from "crypto";
 
 import {
   closeVanillaLocCaches,
@@ -98,6 +99,28 @@ describe("vanilla loc cache store", () => {
     expect(await openOrBuildVanillaLocCache(request)).toBeUndefined();
     expect(fs.readdirSync(userDataPath).some((entry) => entry.endsWith(".bin"))).toBe(false);
     expect((await openOrBuildVanillaLocCache(request))?.get("key")).toBe("rebuilt");
+    expect(readEntries).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not publish or abandon a build canceled after staging", async () => {
+    const { userDataPath, packPath } = makeWorkspace();
+    const readEntries = vi.fn(() => [["key", "retryable"] as const]);
+    let cancellationChecks = 0;
+    const request = {
+      userDataPath,
+      game: "wh3",
+      packPaths: [packPath],
+      readEntries,
+      shouldCancel: () => ++cancellationChecks >= 3,
+    };
+
+    expect(await openOrBuildVanillaLocCache(request)).toBeUndefined();
+    expect(fs.readdirSync(userDataPath).some((entry) => entry.endsWith(".bin"))).toBe(false);
+    expect(fs.readdirSync(userDataPath).some((entry) => entry.endsWith(".bin.id"))).toBe(false);
+    expect(fs.readdirSync(userDataPath).some((entry) => entry.endsWith(".building"))).toBe(false);
+
+    request.shouldCancel = () => false;
+    expect((await openOrBuildVanillaLocCache(request))?.get("key")).toBe("retryable");
     expect(readEntries).toHaveBeenCalledTimes(2);
   });
 
@@ -212,5 +235,99 @@ describe("vanilla loc cache store", () => {
 
     expect(rebuilt).toHaveBeenCalledTimes(1);
     expect(reader?.get("key")).toBe("rebuilt");
+  });
+
+  it("verifies the published content checksum and rebuilds a corrupted file", async () => {
+    const { userDataPath, packPath } = makeWorkspace();
+    const readEntries = vi.fn(() => [["key", "original"] as const]);
+    const request = { userDataPath, game: "wh3", packPaths: [packPath], readEntries };
+    expect((await openOrBuildVanillaLocCache(request))?.get("key")).toBe("original");
+    closeVanillaLocCaches();
+
+    const binName = fs.readdirSync(userDataPath).find((entry) => entry.endsWith(".bin"))!;
+    const filePath = nodePath.join(userDataPath, binName);
+    const corrupted = fs.readFileSync(filePath);
+    corrupted[corrupted.length - 1] ^= 1;
+    fs.writeFileSync(filePath, corrupted);
+    readEntries.mockReturnValue([["key", "rebuilt"] as const]);
+
+    expect((await openOrBuildVanillaLocCache(request))?.get("key")).toBe("rebuilt");
+    expect(readEntries).toHaveBeenCalledTimes(2);
+
+    const stampName = fs.readdirSync(userDataPath).find((entry) => entry.endsWith(".bin.id"))!;
+    const stamp = JSON.parse(fs.readFileSync(nodePath.join(userDataPath, stampName), "utf8")) as {
+      identity: string;
+      contentSha256: string;
+    };
+    expect(stamp.identity).toBe(getVanillaLocCacheIdentity("wh3", [packPath]));
+    expect(stamp.contentSha256).toBe(crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex"));
+  });
+
+  it("rebuilds a v3 cache even when its identity stamp matches", async () => {
+    const { userDataPath, packPath } = makeWorkspace();
+    const readEntries = vi.fn(() => [["key", "original"] as const]);
+    const request = { userDataPath, game: "wh3", packPaths: [packPath], readEntries };
+    expect((await openOrBuildVanillaLocCache(request))?.get("key")).toBe("original");
+    closeVanillaLocCaches();
+
+    const binName = fs.readdirSync(userDataPath).find((entry) => entry.endsWith(".bin"))!;
+    const filePath = nodePath.join(userDataPath, binName);
+    const oldBytes = fs.readFileSync(filePath);
+    oldBytes.writeUInt32LE(3, 4);
+    fs.writeFileSync(filePath, oldBytes);
+    const stampName = fs.readdirSync(userDataPath).find((entry) => entry.endsWith(".bin.id"))!;
+    fs.writeFileSync(
+      nodePath.join(userDataPath, stampName),
+      JSON.stringify({
+        identity: getVanillaLocCacheIdentity("wh3", [packPath]),
+        contentSha256: crypto.createHash("sha256").update(oldBytes).digest("hex"),
+      }),
+    );
+    readEntries.mockReturnValue([["key", "rebuilt"] as const]);
+
+    expect((await openOrBuildVanillaLocCache(request))?.get("key")).toBe("rebuilt");
+    expect(readEntries).toHaveBeenCalledTimes(2);
+  });
+
+  it("rebuilds when exact-source proof or file-order fingerprint changes", async () => {
+    const { userDataPath, packPath } = makeWorkspace();
+    const readEntries = vi.fn(() => [["key", "gui order"] as const]);
+    const common = {
+      userDataPath,
+      game: "wh3",
+      packPaths: [packPath],
+      sourceFormat: "packCore-exact-loc",
+      decoderRevision: "packCore-loc-v1",
+    };
+    expect(
+      (await openOrBuildVanillaLocCache({
+        ...common,
+        orderFingerprint: "gui-order",
+        readEntries,
+      }))?.get("key"),
+    ).toBe("gui order");
+    closeVanillaLocCaches();
+
+    readEntries.mockReturnValue([["key", "pack-index order"] as const]);
+    expect(
+      (await openOrBuildVanillaLocCache({
+        ...common,
+        orderFingerprint: "pack-index-order",
+        readEntries,
+      }))?.get("key"),
+    ).toBe("pack-index order");
+    closeVanillaLocCaches();
+
+    readEntries.mockReturnValue([["key", "legacy-source"] as const]);
+    expect(
+      (await openOrBuildVanillaLocCache({
+        userDataPath,
+        game: "wh3",
+        packPaths: [packPath],
+        orderFingerprint: "pack-index-order",
+        readEntries,
+      }))?.get("key"),
+    ).toBe("legacy-source");
+    expect(readEntries).toHaveBeenCalledTimes(3);
   });
 });

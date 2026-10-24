@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { buildVanillaLocCacheBytes } from "../../src/vanillaLocCache/build";
+import { buildVanillaLocCacheBytes, type VanillaLocCacheEntry } from "../../src/vanillaLocCache/build";
 import { readVanillaLocCacheHeader, VANILLA_LOC_CACHE_HEADER_BYTES } from "../../src/vanillaLocCache/format";
 import { createMemorySource, openVanillaLocCache } from "../../src/vanillaLocCache/read";
+import { VANILLA_LOC_UNKNOWN_ROW_INDEX } from "../../src/vanillaLocCache/format";
 
-const openFrom = (entries: Array<readonly [string, string]>) => {
+const openFrom = (entries: Array<VanillaLocCacheEntry>) => {
   const bytes = buildVanillaLocCacheBytes(entries);
   const reader = openVanillaLocCache(createMemorySource(bytes));
   if (!reader) throw new Error("the reader rejected the builder's own output");
@@ -46,6 +47,38 @@ describe("vanilla loc cache", () => {
     expect(reader.get("shared")).toBe("second");
     expect(reader.get("other")).toBe("kept");
     expect(reader.count).toBe(2);
+  });
+
+  it("keeps winning-entry source labels and original row indices", async () => {
+    const { reader } = openFrom([
+      ["shared", "first", "pack\\first.loc", 7],
+      ["without_row", "value", "pack\\legacy.loc"],
+      ["shared", "second", "pack\\later.loc", 19],
+    ]);
+
+    expect(reader.getEntry("shared")).toEqual({
+      value: "second",
+      sourceLabel: "pack\\later.loc",
+      rowIndex: 19,
+    });
+    expect(reader.getEntry("without_row")).toEqual({
+      value: "value",
+      sourceLabel: "pack\\legacy.loc",
+      rowIndex: VANILLA_LOC_UNKNOWN_ROW_INDEX,
+    });
+    const visited: Array<[string, string | undefined, number | undefined]> = [];
+    reader.forEachEntry((_key, _value, _rank, sourceLabel, rowIndex) => {
+      visited.push([_key, sourceLabel, rowIndex]);
+    });
+    expect(visited).toContainEqual(["shared", "pack\\later.loc", 19]);
+    expect(visited).toContainEqual(["without_row", "pack\\legacy.loc", VANILLA_LOC_UNKNOWN_ROW_INDEX]);
+
+    const asyncVisited: Array<[string, string | undefined, number | undefined]> = [];
+    await reader.forEachEntryAsync?.((_key, _value, _rank, sourceLabel, rowIndex) => {
+      asyncVisited.push([_key, sourceLabel, rowIndex]);
+    });
+    expect(asyncVisited).toContainEqual(["shared", "pack\\later.loc", 19]);
+    expect(asyncVisited).toContainEqual(["without_row", "pack\\legacy.loc", VANILLA_LOC_UNKNOWN_ROW_INDEX]);
   });
 
   it("round-trips non-ascii text and keys that straddle a checkpoint boundary", () => {
@@ -92,6 +125,10 @@ describe("vanilla loc cache", () => {
     const wrongVersion = Uint8Array.from(bytes);
     new DataView(wrongVersion.buffer).setUint32(4, 99, true);
     expect(openVanillaLocCache(createMemorySource(wrongVersion))).toBeUndefined();
+
+    const oldVersion = Uint8Array.from(bytes);
+    new DataView(oldVersion.buffer).setUint32(4, 3, true);
+    expect(openVanillaLocCache(createMemorySource(oldVersion))).toBeUndefined();
   });
 
   it("writes a header the reader agrees with", () => {

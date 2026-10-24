@@ -2,10 +2,11 @@ import * as nodePath from "path";
 
 import { PackedFile } from "../packFileTypes";
 import { parseDBTablePath } from "../utility/packFileHelpers";
+import { canonicalizeExistingPath } from "../vanillaCacheIdentity";
 
 /** Path comparison used before any cache reader is opened or built. */
 export const isSamePackPath = (candidatePath: string, expectedPath: string): boolean =>
-  nodePath.resolve(candidatePath) === nodePath.resolve(expectedPath);
+  canonicalizeExistingPath(candidatePath) === canonicalizeExistingPath(expectedPath);
 
 export const isVanillaDbPackPath = (
   candidatePath: string,

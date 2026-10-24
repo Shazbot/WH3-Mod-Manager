@@ -21,9 +21,14 @@
  */
 
 export const VANILLA_LOC_CACHE_MAGIC = "WLCC";
+export const VANILLA_LOC_CACHE_EXACT_SOURCE_FORMAT = "packCore-exact-loc";
+export const VANILLA_LOC_CACHE_DECODER_REVISION = "packCore-loc-v1";
 
 /** Bump when the layout or build-validity contract changes. A reader rejects older files. */
-export const VANILLA_LOC_CACHE_VERSION = 3;
+export const VANILLA_LOC_CACHE_VERSION = 4;
+
+/** Used where a source row index is not available (for example, old tuple-shaped fixture inputs). */
+export const VANILLA_LOC_UNKNOWN_ROW_INDEX = 0xffffffff;
 
 export const VANILLA_LOC_CACHE_HEADER_BYTES = 36;
 
@@ -47,6 +52,8 @@ export interface VanillaLocCacheSections {
   sourceBytesOffset: number;
   sourceCheckpointsOffset: number;
   sourceIdsOffset: number;
+  /** One source row index per winning key, stored after source ids. */
+  rowIndicesOffset: number;
   /** The furthest byte the layout points at, used to reject a file truncated mid-write. */
   requiredSize: number;
 }
@@ -60,6 +67,7 @@ export const getVanillaLocCacheSections = (meta: VanillaLocCacheMeta): VanillaLo
   const sourceBytesOffset = valueBlobOffset + meta.valueBlobLength;
   const sourceCheckpointsOffset = sourceBytesOffset + meta.sourceBytesLength;
   const sourceIdsOffset = sourceCheckpointsOffset + meta.sourceCheckpointCount * 4;
+  const rowIndicesOffset = sourceIdsOffset + meta.count * 2;
   return {
     keyBytesOffset,
     checkpointsOffset,
@@ -68,7 +76,8 @@ export const getVanillaLocCacheSections = (meta: VanillaLocCacheMeta): VanillaLo
     sourceBytesOffset,
     sourceCheckpointsOffset,
     sourceIdsOffset,
-    requiredSize: sourceIdsOffset + meta.count * 2,
+    rowIndicesOffset,
+    requiredSize: rowIndicesOffset + meta.count * 4,
   };
 };
 

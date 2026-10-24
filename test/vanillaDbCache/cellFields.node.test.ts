@@ -94,6 +94,21 @@ describe("cell fields", () => {
     ]);
   });
 
+  it("counts StringU8 and present optional strings in UTF-8 bytes", () => {
+    const value = "café😀";
+    const byteLength = Buffer.byteLength(value, "utf8");
+
+    expect(buildStringCellFields("StringU8", value, 0)).toEqual([
+      { type: "Int16", val: byteLength },
+      { type: "String", val: value },
+    ]);
+    expect(buildStringCellFields("OptionalStringU8", value, 1)).toEqual([
+      { type: "Int8", val: 1 },
+      { type: "Int16", val: byteLength },
+      { type: "String", val: value },
+    ]);
+  });
+
   it("gives StringU16 a single field, since its length prefix is dropped on read", () => {
     expect(buildStringCellFields("StringU16", "wide", 0)).toEqual([{ type: "String", val: "wide" }]);
   });

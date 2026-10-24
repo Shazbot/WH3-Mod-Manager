@@ -1,5 +1,10 @@
 import { buildFrontCodedBlock } from "../vanillaDbCache/frontCodedBlock";
-import { getVanillaLocCacheSections, writeVanillaLocCacheHeader, type VanillaLocCacheMeta } from "./format";
+import {
+  getVanillaLocCacheSections,
+  VANILLA_LOC_UNKNOWN_ROW_INDEX,
+  writeVanillaLocCacheHeader,
+  type VanillaLocCacheMeta,
+} from "./format";
 
 const textEncoder = new TextEncoder();
 
@@ -10,12 +15,12 @@ const textEncoder = new TextEncoder();
  * an earlier one. Sorting happens here rather than in the caller because ranks in the key block have
  * to agree with the value offsets, and keeping both in one place is what guarantees that.
  */
-export type VanillaLocCacheEntry = readonly [key: string, value: string, sourceLabel?: string];
+export type VanillaLocCacheEntry = readonly [key: string, value: string, sourceLabel?: string, rowIndex?: number];
 
 export const buildVanillaLocCacheBytes = (entriesInPackOrder: Iterable<VanillaLocCacheEntry>) => {
-  const byKey = new Map<string, { value: string; sourceLabel?: string }>();
-  for (const [key, value, sourceLabel] of entriesInPackOrder) {
-    if (key !== "") byKey.set(key, { value, sourceLabel });
+  const byKey = new Map<string, { value: string; sourceLabel?: string; rowIndex?: number }>();
+  for (const [key, value, sourceLabel, rowIndex] of entriesInPackOrder) {
+    if (key !== "") byKey.set(key, { value, sourceLabel, rowIndex });
   }
 
   const keys = Array.from(byKey.keys()).sort();
@@ -27,6 +32,14 @@ export const buildVanillaLocCacheBytes = (entriesInPackOrder: Iterable<VanillaLo
   const sourceBlock = buildFrontCodedBlock(sourceLabels);
   const sourceIdByLabel = new Map(sourceLabels.map((source, index) => [source, index]));
   const sourceIds = keys.map((key) => sourceIdByLabel.get(byKey.get(key)?.sourceLabel ?? "") ?? 0xffff);
+  const rowIndices = keys.map((key) => {
+    const rowIndex = byKey.get(key)?.rowIndex;
+    if (rowIndex === undefined) return VANILLA_LOC_UNKNOWN_ROW_INDEX;
+    if (!Number.isInteger(rowIndex) || rowIndex < 0 || rowIndex >= VANILLA_LOC_UNKNOWN_ROW_INDEX) {
+      throw new RangeError(`Invalid vanilla loc source row index: ${rowIndex}`);
+    }
+    return rowIndex;
+  });
   const encodedSourceBytes = sourceBlock.bytes;
 
   const encodedValues = keys.map((key) => textEncoder.encode(byKey.get(key)!.value));
@@ -65,6 +78,9 @@ export const buildVanillaLocCacheBytes = (entriesInPackOrder: Iterable<VanillaLo
   }
   for (let index = 0; index < sourceIds.length; index++) {
     view.setUint16(sections.sourceIdsOffset + index * 2, sourceIds[index], true);
+  }
+  for (let index = 0; index < rowIndices.length; index++) {
+    view.setUint32(sections.rowIndicesOffset + index * 4, rowIndices[index], true);
   }
 
   return bytes;

@@ -142,7 +142,13 @@ import { addFactionDataToEsfMap, factionFlagPath } from "./esfMap/factions";
 import { addSettlementTypeDataToEsfMap } from "./esfMap/settlementTypes";
 import type { EsfMapDiplomacyIconUrls, EsfMapResponse } from "./esfMap/types";
 import { getVanillaLocalisationPackPaths as getVanillaLocalisationPackPathsFor } from "./vanillaLocCache/packs";
-import { VanillaLocCacheBuildCanceled, openOrBuildVanillaLocCache } from "./vanillaLocCache/store";
+import { openOrBuildVanillaLocCache } from "./vanillaLocCache/store";
+import {
+  EXACT_VANILLA_LOC_DECODER_REVISION,
+  EXACT_VANILLA_LOC_SOURCE_FORMAT,
+  indexExactVanillaLocPackSet,
+  readExactVanillaLocEntries,
+} from "./vanillaLocCache/exactSource";
 import { runGlobalSearch, type GlobalSearchRunDeps } from "./globalSearch/run";
 import { createProgressThrottle } from "./globalSearch/progressThrottle";
 import type { GlobalSearchRequest, GlobalSearchResponse } from "./globalSearch/types";
@@ -1213,7 +1219,7 @@ const appendPacksData = (newPack: Pack, mod?: Mod, emitToMainWindow = true) => {
  */
 export const forEachPackLocEntry = (
   pack: Pack,
-  visit: (key: string, value: string, locFileName: string) => boolean | void,
+  visit: (key: string, value: string, locFileName: string, rowIndex: number) => boolean | void,
 ) => {
   const locPackedFiles = Object.values(pack.packedFiles).filter((packedFile) => packedFile.name.endsWith(".loc"));
   const packViewData = getPackViewData(pack, undefined, true);
@@ -1221,10 +1227,12 @@ export const forEachPackLocEntry = (
   for (const packedFile of locPackedFiles) {
     const data = getPackTableData(packedFile.name, packViewData);
     if (!data) continue;
+    let fileRowIndex = 0;
     for (const rows of Object.values(data)) {
       for (const row of rows) {
+        const rowIndex = fileRowIndex++;
         const locKey = row[0] as string;
-        if (locKey && visit(locKey, row[1] as string, packedFile.name) === false) return;
+        if (locKey && visit(locKey, row[1] as string, packedFile.name, rowIndex) === false) return;
       }
     }
   }
@@ -1361,20 +1369,21 @@ export const getVanillaLocLookup = async (vanillaPackPaths: string[]): Promise<R
     return vanillaPackPaths.map((packPath) => loadedByPath.get(packPath)).filter((pack): pack is Pack => !!pack);
   };
 
-  const reader = await openOrBuildVanillaLocCache({
-    userDataPath: app.getPath("userData"),
-    game: appData.currentGame,
-    packPaths: vanillaPackPaths,
-    readEntries: async () => {
-      const entries: Array<readonly [string, string, string]> = [];
-      for (const pack of await readVanillaLocPacks()) {
-        forEachPackLocEntry(pack, (key, value, locFileName) => {
-          entries.push([key, value, `${pack.path}\0${locFileName}`]);
-        });
-      }
-      return entries;
-    },
-  });
+  let reader: Awaited<ReturnType<typeof openOrBuildVanillaLocCache>>;
+  try {
+    const exactPackSet = indexExactVanillaLocPackSet(vanillaPackPaths, appData.currentGame, "gui");
+    reader = await openOrBuildVanillaLocCache({
+      userDataPath: app.getPath("userData"),
+      game: appData.currentGame,
+      packPaths: vanillaPackPaths,
+      sourceFormat: EXACT_VANILLA_LOC_SOURCE_FORMAT,
+      decoderRevision: EXACT_VANILLA_LOC_DECODER_REVISION,
+      orderFingerprint: exactPackSet.orderFingerprint,
+      readEntries: () => readExactVanillaLocEntries(exactPackSet),
+    });
+  } catch (error) {
+    console.log("vanilla loc cache: exact source unavailable", error);
+  }
   if (reader) return { "vanilla-loc-cache": reader };
   return getLocsFromPacks(await readVanillaLocPacks(), getLocsTrie);
 };
@@ -8773,23 +8782,25 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
         if (!dataFolder) return undefined;
         const packPaths = getVanillaLocalisationPackPaths(dataFolder);
-        return openOrBuildVanillaLocCache({
-          userDataPath: app.getPath("userData"),
-          game: appData.currentGame,
-          packPaths,
-          readEntries: async () => {
-            const entries: Array<readonly [string, string, string]> = [];
-            for (const packPath of packPaths) {
-              if (cancelState.canceled) throw new VanillaLocCacheBuildCanceled();
-              const pack = await readPackAfterInFlight(packPath, { skipParsingTables: true, readLocs: true });
-              forEachPackLocEntry(pack, (key, value, locFileName) => {
-                entries.push([key, value, `${pack.path}\0${locFileName}`]);
-              });
-            }
-            if (cancelState.canceled) throw new VanillaLocCacheBuildCanceled();
-            return entries;
-          },
-        });
+        if (cancelState.canceled) return undefined;
+        try {
+          const exactPackSet = indexExactVanillaLocPackSet(packPaths, appData.currentGame, "gui");
+          if (cancelState.canceled) return undefined;
+          return openOrBuildVanillaLocCache({
+            userDataPath: app.getPath("userData"),
+            game: appData.currentGame,
+            packPaths,
+            sourceFormat: EXACT_VANILLA_LOC_SOURCE_FORMAT,
+            decoderRevision: EXACT_VANILLA_LOC_DECODER_REVISION,
+            orderFingerprint: exactPackSet.orderFingerprint,
+            shouldCancel: () => cancelState.canceled,
+            readEntries: () =>
+              readExactVanillaLocEntries(exactPackSet, { shouldCancel: () => cancelState.canceled }),
+          });
+        } catch (error) {
+          if (!cancelState.canceled) console.log("vanilla loc cache: exact source unavailable", error);
+          return undefined;
+        }
       };
       const forEachPackedFileBufferRegistered: GlobalSearchRunDeps["forEachPackedFileBuffer"] = async (
         packPath,

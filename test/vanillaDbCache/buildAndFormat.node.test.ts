@@ -65,6 +65,13 @@ describe("cache header", () => {
 
     expect(decodeVanillaDbCacheHeader(bytes)).toBeUndefined();
   });
+
+  it("rejects v3 caches so their Number-narrowed I64 columns are rebuilt", () => {
+    const bytes = encodeVanillaDbCacheHeader(10);
+    new DataView(bytes.buffer).setUint32(4, 3, true);
+
+    expect(decodeVanillaDbCacheHeader(bytes)).toBeUndefined();
+  });
 });
 
 describe("compact metadata", () => {
@@ -246,6 +253,22 @@ describe("cache builder", () => {
     expect(meta.tables[0].rowCount).toBe(2);
     expect(meta.tables[0].schemaVersion).toBe(3);
     expect(meta.tables[0].packedFileVersion).toBe(3);
+  });
+
+  it("does not mark legacy GUI rows as exact-source cache content", () => {
+    const markedIdentity = {
+      ...identity,
+      sourceFormat: "packCore-exact",
+      decoderRevision: "packCore-db-v1",
+    };
+    const { bytes } = buildVanillaDbCache(
+      [packedFile("db\\main_units_tables\\data__", unitsRows, 3)],
+      () => unitsSchema,
+      markedIdentity,
+    );
+
+    expect(readMeta(bytes).meta.sourceFormat).toBeUndefined();
+    expect(readMeta(bytes).meta.decoderRevision).toBeUndefined();
   });
 
   it("records a column per schema field, in schema order", () => {

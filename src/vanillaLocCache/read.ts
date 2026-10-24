@@ -5,7 +5,12 @@ import {
   type FrontCodedBlock,
 } from "../vanillaDbCache/frontCodedBlock";
 import { createFileSource, createMemorySource, type VanillaDbCacheSource } from "../vanillaDbCache/read";
-import { getVanillaLocCacheSections, readVanillaLocCacheHeader, VANILLA_LOC_CACHE_HEADER_BYTES } from "./format";
+import {
+  getVanillaLocCacheSections,
+  readVanillaLocCacheHeader,
+  VANILLA_LOC_CACHE_HEADER_BYTES,
+  VANILLA_LOC_UNKNOWN_ROW_INDEX,
+} from "./format";
 
 export { createFileSource, createMemorySource };
 export type VanillaLocCacheSource = VanillaDbCacheSource;
@@ -15,14 +20,16 @@ const textDecoder = new TextDecoder();
 export interface VanillaLocCacheReader {
   /** The value for a key, or undefined if this cache does not hold it. */
   get(key: string): string | undefined;
-  /** Visits every entry in key order. The optional fourth argument is its source label. */
+  /** Raw value and source provenance for a key, or undefined if this cache does not hold it. */
+  getEntry(key: string): VanillaLocCacheEntryInfo | undefined;
+  /** Visits every entry in key order; the last two arguments are its source label and source row. */
   forEachEntry(
-    visit: (key: string, value: string, rank: number, sourceLabel?: string) => boolean | void,
+    visit: (key: string, value: string, rank: number, sourceLabel?: string, rowIndex?: number) => boolean | void,
     options?: { batchBytes?: number },
   ): void;
   /** Async counterpart for long walks that must give cancellation and IPC messages a turn. */
   forEachEntryAsync?: (
-    visit: (key: string, value: string, rank: number, sourceLabel?: string) => boolean | void,
+    visit: (key: string, value: string, rank: number, sourceLabel?: string, rowIndex?: number) => boolean | void,
     options?: {
       batchBytes?: number;
       yieldEvery?: number;
@@ -30,9 +37,16 @@ export interface VanillaLocCacheReader {
     },
   ) => Promise<void>;
   readonly count: number;
-  /** Bytes held resident: the key block, its checkpoints and the value offsets. */
+  /** Bytes held resident: key/value indexes and source label/row provenance. */
   readonly residentBytes: number;
   close(): void;
+}
+
+export interface VanillaLocCacheEntryInfo {
+  value: string;
+  sourceLabel?: string;
+  /** `VANILLA_LOC_UNKNOWN_ROW_INDEX` when the input did not provide a row index. */
+  rowIndex: number;
 }
 
 /**
@@ -64,6 +78,7 @@ export const openVanillaLocCache = (source: VanillaLocCacheSource): VanillaLocCa
   const sourceBytes = source.read(sections.sourceBytesOffset, meta.sourceBytesLength);
   const sourceCheckpointBytes = source.read(sections.sourceCheckpointsOffset, meta.sourceCheckpointCount * 4);
   const sourceIdBytes = source.read(sections.sourceIdsOffset, meta.count * 2);
+  const rowIndexBytes = source.read(sections.rowIndicesOffset, meta.count * 4);
 
   // Copied into aligned arrays rather than viewed in place: a source is free to hand back a slice at
   // any byte offset, and a Uint32Array cannot be laid over one that is not 4-byte aligned.
@@ -92,6 +107,9 @@ export const openVanillaLocCache = (source: VanillaLocCacheSource): VanillaLocCa
   const sourceIds = new Uint16Array(meta.count);
   const sourceIdView = new DataView(sourceIdBytes.buffer, sourceIdBytes.byteOffset, sourceIdBytes.byteLength);
   for (let index = 0; index < meta.count; index++) sourceIds[index] = sourceIdView.getUint16(index * 2, true);
+  const rowIndices = new Uint32Array(meta.count);
+  const rowIndexView = new DataView(rowIndexBytes.buffer, rowIndexBytes.byteOffset, rowIndexBytes.byteLength);
+  for (let index = 0; index < meta.count; index++) rowIndices[index] = rowIndexView.getUint32(index * 4, true);
   const sourceBlock: FrontCodedBlock = {
     bytes: sourceBytes,
     checkpoints: sourceCheckpoints,
@@ -116,6 +134,16 @@ export const openVanillaLocCache = (source: VanillaLocCacheSource): VanillaLocCa
       if (rank < 0) return undefined;
       return decodeValueAt(rank);
     },
+    getEntry(key) {
+      const rank = findFrontCodedRank(keyBlock, key);
+      if (rank < 0) return undefined;
+      const sourceLabel = sourceById(sourceIds[rank]);
+      return {
+        value: decodeValueAt(rank),
+        sourceLabel,
+        rowIndex: rowIndices[rank] ?? VANILLA_LOC_UNKNOWN_ROW_INDEX,
+      };
+    },
     forEachEntry(visit, { batchBytes = 1024 * 1024 } = {}) {
       if (meta.count === 0) return;
       const safeBatchBytes = Math.max(1, batchBytes);
@@ -135,7 +163,7 @@ export const openVanillaLocCache = (source: VanillaLocCacheSource): VanillaLocCa
           const end = valueOffsets[rank + 1] - valueOffsets[batchStart];
           const value = textDecoder.decode(batch.subarray(start, end));
           const sourceLabel = sourceById(sourceIds[rank]);
-          if (visit(keyEntry.value, value, rank, sourceLabel) === false) return;
+          if (visit(keyEntry.value, value, rank, sourceLabel, rowIndices[rank]) === false) return;
         }
         batchStart = batchEnd;
       }
@@ -161,7 +189,7 @@ export const openVanillaLocCache = (source: VanillaLocCacheSource): VanillaLocCa
           const end = valueOffsets[rank + 1] - valueOffsets[batchStart];
           const value = textDecoder.decode(batch.subarray(start, end));
           const sourceLabel = sourceById(sourceIds[rank]);
-          if (visit(keyEntry.value, value, rank, sourceLabel) === false) return;
+          if (visit(keyEntry.value, value, rank, sourceLabel, rowIndices[rank]) === false) return;
           visited++;
           if (yieldToEventLoop && visited % safeYieldEvery === 0) await yieldToEventLoop();
         }
@@ -175,7 +203,8 @@ export const openVanillaLocCache = (source: VanillaLocCacheSource): VanillaLocCa
       valueOffsets.byteLength +
       sourceBytes.length +
       sourceCheckpoints.byteLength +
-      sourceIds.byteLength,
+      sourceIds.byteLength +
+      rowIndices.byteLength,
     close: source.close,
   };
 };

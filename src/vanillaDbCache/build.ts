@@ -1,13 +1,14 @@
-import { DBVersion, PackedFile, SchemaField } from "../packFileTypes";
+import { DBVersion, Field, PackedFile, SchemaField } from "../packFileTypes";
 import { parseDBTablePath } from "../utility/packFileHelpers";
 import {
   isEncodableCellType,
   isStringCellType,
+  readI64Cell,
   readNumericCell,
   readOptionalPresentByte,
   readStringCell,
 } from "./cellFields";
-import { encodeDictionaryColumn, encodeNumericColumn } from "./columnCodec";
+import { encodeDictionaryColumn, encodeI64Column, encodeNumericColumn } from "./columnCodec";
 import { buildFrontCodedBlock } from "./frontCodedBlock";
 import { checksumBytes } from "./checksum";
 import {
@@ -20,17 +21,20 @@ import {
   encodeVanillaDbCacheMetaBlock,
 } from "./format";
 
-/**
- * Builds the cache from packed files that `readPack` has already parsed.
- *
- * Takes parsed packed files rather than a path on purpose: the pack reader defines what a cell means,
- * and parsing again here would be a second implementation to keep in step with it. The schema lookup
- * is injected for the same reason - it keeps this a pure function over its inputs, testable without
- * Electron, the schema globals or a game install.
- */
-
-/** Resolves the DBVersion a packed file's rows were parsed with, matching what readPack chose. */
+/** Resolves the DBVersion a packed file's rows were parsed with, matching the legacy GUI reader. */
 export type ResolveTableSchema = (packedFile: PackedFile) => DBVersion | undefined;
+
+/** Parsed exact rows supplied by packCore, without copying or synthesizing source cell bytes. */
+export type VanillaDbCacheBuildCell = readonly Field[];
+export type VanillaDbCacheBuildRow = readonly VanillaDbCacheBuildCell[];
+
+export interface VanillaDbCacheBuildTable {
+  packedFilePath: string;
+  schema: DBVersion;
+  rows: readonly VanillaDbCacheBuildRow[];
+  packedFileVersion?: number;
+  guid?: string;
+}
 
 export interface BuildVanillaDbCacheResult {
   bytes: Uint8Array;
@@ -47,7 +51,7 @@ interface PendingColumn {
   presentPayload?: Uint8Array;
 }
 
-/** Rows of cells, sliced out of the flat per-cell array readPack produces. */
+/** Rows of cells, sliced out of the flat per-cell array the legacy GUI reader produces. */
 const chunkIntoRows = (schemaFields: SchemaField[], columnCount: number): SchemaField[][] => {
   if (columnCount <= 0) return [];
   const rowCount = Math.floor(schemaFields.length / columnCount);
@@ -65,11 +69,7 @@ export const buildVanillaDbCache = (
 ): BuildVanillaDbCacheResult => {
   const skipped: BuildVanillaDbCacheResult["skipped"] = [];
 
-  // Every string is collected before any column is encoded: a column stores pool ids, an id is a rank
-  // in the sorted pool, and a rank is only final once the pool holds everything.
-  const poolValues = new Set<string>([""]);
-  const parsedTables: Array<{ packedFile: PackedFile; dbVersion: DBVersion; rows: SchemaField[][] }> = [];
-
+  const tables: VanillaDbCacheBuildTable[] = [];
   for (const packedFile of packedFiles) {
     const dbVersion = resolveTableSchema(packedFile);
     if (!dbVersion) {
@@ -80,25 +80,71 @@ export const buildVanillaDbCache = (
       skipped.push({ packedFilePath: packedFile.name, reason: "not parsed" });
       continue;
     }
+    tables.push({
+      packedFilePath: packedFile.name,
+      schema: dbVersion,
+      rows: chunkIntoRows(packedFile.schemaFields, dbVersion.fields.length).map((row) =>
+        row.map((cell) => cell.fields),
+      ),
+      packedFileVersion: packedFile.version,
+      guid: packedFile.guid,
+    });
+  }
+
+  // A cache built from the old GUI parser must never carry the exact-source proof that production
+  // headless reuse requires, even if a caller passes a richer identity object.
+  const legacyIdentity = { ...identity, sourceFormat: undefined, decoderRevision: undefined };
+  const built = buildVanillaDbCacheFromTables(tables, legacyIdentity);
+  return { ...built, skipped: [...skipped, ...built.skipped] };
+};
+
+/** Builds from rows already parsed by packCore's shared exact DB decoder. */
+export const buildVanillaDbCacheFromTables = (
+  inputTables: readonly VanillaDbCacheBuildTable[],
+  identity: VanillaDbCacheIdentity,
+): BuildVanillaDbCacheResult => {
+  const skipped: BuildVanillaDbCacheResult["skipped"] = [];
+
+  // Every string is collected before any column is encoded: a column stores pool ids, an id is a rank
+  // in the sorted pool, and a rank is only final once the pool holds everything.
+  const poolValues = new Set<string>([""]);
+  const parsedTables: Array<{
+    packedFilePath: string;
+    packedFileVersion?: number;
+    guid?: string;
+    dbVersion: DBVersion;
+    rows: readonly VanillaDbCacheBuildRow[];
+  }> = [];
+
+  for (const table of inputTables) {
+    const dbVersion = table.schema;
     const unsupported = dbVersion.fields.find((schemaField) => !isEncodableCellType(schemaField.field_type));
     if (unsupported) {
-      // parseTypeBuffer has no case for this type, so the rows it produced are misaligned from the
-      // field it gave up on onwards. Storing them would preserve the damage, not the data.
       skipped.push({
-        packedFilePath: packedFile.name,
+        packedFilePath: table.packedFilePath,
         reason: `unsupported field type ${unsupported.field_type}`,
       });
       continue;
     }
 
-    const rows = chunkIntoRows(packedFile.schemaFields, dbVersion.fields.length);
+    if (table.rows.some((row) => row.length !== dbVersion.fields.length)) {
+      skipped.push({ packedFilePath: table.packedFilePath, reason: "row does not match schema" });
+      continue;
+    }
+    const rows = table.rows;
     for (const row of rows) {
       for (let column = 0; column < dbVersion.fields.length; column++) {
         const fieldType = dbVersion.fields[column].field_type;
-        if (isStringCellType(fieldType)) poolValues.add(readStringCell(fieldType, row[column].fields));
+        if (isStringCellType(fieldType)) poolValues.add(readStringCell(fieldType, [...row[column]]));
       }
     }
-    parsedTables.push({ packedFile, dbVersion, rows });
+    parsedTables.push({
+      packedFilePath: table.packedFilePath,
+      packedFileVersion: table.packedFileVersion,
+      guid: table.guid,
+      dbVersion,
+      rows,
+    });
   }
 
   const sortedPoolValues = Array.from(poolValues).sort();
@@ -118,26 +164,35 @@ export const buildVanillaDbCache = (
   let payloadCursor = pool.bytes.length + poolCheckpointBytes.length;
 
   const tables: VanillaDbCacheTableMeta[] = [];
-  for (const { packedFile, dbVersion, rows } of parsedTables) {
+  for (const { packedFilePath, packedFileVersion, guid, dbVersion, rows } of parsedTables) {
     const columns: PendingColumn[] = [];
 
     for (let column = 0; column < dbVersion.fields.length; column++) {
       const { name, field_type: fieldType, is_key: isKey } = dbVersion.fields[column];
 
       if (!isStringCellType(fieldType)) {
-        const values = rows.map((row) => readNumericCell(row[column].fields));
-        columns.push({ name, fieldType, isKey, payload: encodeNumericColumn(values) });
+        if (fieldType === "I64") {
+          columns.push({
+            name,
+            fieldType,
+            isKey,
+            payload: encodeI64Column(rows.map((row) => readI64Cell([...row[column]]))),
+          });
+        } else {
+          const values = rows.map((row) => readNumericCell([...row[column]]));
+          columns.push({ name, fieldType, isKey, payload: encodeNumericColumn(values) });
+        }
         continue;
       }
 
-      const poolIds = rows.map((row) => poolIdByValue.get(readStringCell(fieldType, row[column].fields))!);
+      const poolIds = rows.map((row) => poolIdByValue.get(readStringCell(fieldType, [...row[column]]))!);
       const payload = encodeDictionaryColumn(poolIds);
 
       // The presence byte gets its own column: only the byte 1 makes a string present, and any other
       // value has to come back as itself rather than as "absent".
       const presentPayload =
         fieldType === "OptionalStringU8"
-          ? encodeNumericColumn(rows.map((row) => readOptionalPresentByte(row[column].fields)))
+          ? encodeNumericColumn(rows.map((row) => readOptionalPresentByte([...row[column]])))
           : undefined;
 
       columns.push({ name, fieldType, isKey, payload, presentPayload });
@@ -171,12 +226,12 @@ export const buildVanillaDbCache = (
     }
 
     tables.push({
-      packedFilePath: packedFile.name,
-      dbName: parseDBTablePath(packedFile.name)?.dbName ?? packedFile.name,
+      packedFilePath,
+      dbName: parseDBTablePath(packedFilePath)?.dbName ?? packedFilePath,
       rowCount: rows.length,
       schemaVersion: dbVersion.version,
-      packedFileVersion: packedFile.version,
-      guid: packedFile.guid,
+      packedFileVersion,
+      guid,
       columns: columnMetas,
     });
   }
@@ -203,6 +258,12 @@ export const buildVanillaDbCache = (
     },
     tables,
   };
+  if (identity.dbPackMtimeNs !== undefined) meta.dbPackMtimeNs = identity.dbPackMtimeNs;
+  if (identity.dbPackCtimeNs !== undefined) meta.dbPackCtimeNs = identity.dbPackCtimeNs;
+  if (identity.dbPackDev !== undefined) meta.dbPackDev = identity.dbPackDev;
+  if (identity.dbPackIno !== undefined) meta.dbPackIno = identity.dbPackIno;
+  if (identity.sourceFormat !== undefined) meta.sourceFormat = identity.sourceFormat;
+  if (identity.decoderRevision !== undefined) meta.decoderRevision = identity.decoderRevision;
 
   const metaJson = encodeVanillaDbCacheMetaBlock(meta);
   const header = encodeVanillaDbCacheHeader(metaJson.length);

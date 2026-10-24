@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { buildVanillaDbCache } from "../../src/vanillaDbCache/build";
+import { buildVanillaDbCache, buildVanillaDbCacheFromTables } from "../../src/vanillaDbCache/build";
+import { checksumBytes } from "../../src/vanillaDbCache/checksum";
 import { VanillaDbCacheIntegrityError, createMemorySource, openVanillaDbCache } from "../../src/vanillaDbCache/read";
-import { VANILLA_DB_CACHE_HEADER_BYTES, decodeVanillaDbCacheHeader } from "../../src/vanillaDbCache/format";
+import {
+  VANILLA_DB_CACHE_HEADER_BYTES,
+  decodeVanillaDbCacheHeader,
+  decodeVanillaDbCacheMetaBlock,
+  encodeVanillaDbCacheHeader,
+  encodeVanillaDbCacheMetaBlock,
+} from "../../src/vanillaDbCache/format";
 import type { DBField, DBVersion, Field, PackedFile, SchemaField } from "../../src/packFileTypes";
 
 const identity = {
@@ -87,6 +94,127 @@ describe("vanilla db cache reader", () => {
     const { reader } = openBuilt([packedFile("db\\x_tables\\data__", rows.flat(), 4)], () => everyTypeSchema);
 
     expect(reader.getTableRows("db\\x_tables\\data__")).toEqual(rows);
+  });
+
+  it("serves exact I64 and JSON-safe typed rows while keeping legacy numeric APIs", () => {
+    const tablePath = "db\\exact_values_tables\\data__";
+    const schema: DBVersion = {
+      version: 1,
+      fields: [
+        field("key", "StringU8", true),
+        field("wide", "StringU16"),
+        field("note", "OptionalStringU8"),
+        field("enabled", "Boolean"),
+        field("big", "I64"),
+      ],
+    };
+    const exactRows = [
+      [
+        [
+          { type: "Int16", val: Buffer.byteLength("café😀", "utf8") },
+          { type: "String", val: "café😀" },
+        ],
+        [{ type: "String", val: "猫" }],
+        [{ type: "Int8", val: 0 }],
+        [{ type: "UInt8", val: 1 }],
+        [{ type: "I64", val: "-9223372036854775808" }],
+      ],
+      [
+        [
+          { type: "Int16", val: 1 },
+          { type: "String", val: "x" },
+        ],
+        [{ type: "String", val: "😀" }],
+        [
+          { type: "Int8", val: 1 },
+          { type: "Int16", val: 0 },
+          { type: "String", val: "" },
+        ],
+        [{ type: "UInt8", val: 0 }],
+        [{ type: "I64", val: "9223372036854775807" }],
+      ],
+    ] as const;
+    const exactIdentity = {
+      ...identity,
+      dbPackMtimeNs: "456000000000",
+      dbPackCtimeNs: "123000000000",
+      dbPackDev: "7",
+      dbPackIno: "42",
+      sourceFormat: "packCore-exact",
+      decoderRevision: "packCore-db-v1",
+    };
+    const { bytes } = buildVanillaDbCacheFromTables(
+      [{ packedFilePath: tablePath, schema, rows: exactRows }],
+      exactIdentity,
+    );
+    const reader = openVanillaDbCache(createMemorySource(bytes), exactIdentity)!;
+    if (!reader) throw new Error("expected the exact cache to open");
+
+    expect(reader.getColumnI64Strings(tablePath, "big")).toEqual([
+      "-9223372036854775808",
+      "9223372036854775807",
+    ]);
+    expect(reader.meta).toMatchObject({
+      dbPackMtimeNs: "456000000000",
+      dbPackCtimeNs: "123000000000",
+      dbPackDev: "7",
+      dbPackIno: "42",
+      sourceFormat: "packCore-exact",
+      decoderRevision: "packCore-db-v1",
+    });
+    expect(reader.getTypedTableRows(tablePath)).toEqual([
+      { key: "café😀", wide: "猫", note: null, enabled: true, big: "-9223372036854775808" },
+      { key: "x", wide: "😀", note: "", enabled: false, big: "9223372036854775807" },
+    ]);
+    expect(reader.getColumnNumbers(tablePath, "big")?.[0]).toBe(Number("-9223372036854775808"));
+    const legacyRows = reader.getTableRows(tablePath)!;
+    expect(legacyRows[0][0].fields[0].val).toBe(Buffer.byteLength("café😀", "utf8"));
+    expect(legacyRows[0][4].fields[0].val).toBe(Number("-9223372036854775808"));
+  });
+
+  it("rejects unsafe legacy Number inputs for an I64 column", () => {
+    const schema: DBVersion = { version: 1, fields: [field("big", "I64")] };
+    const packed = packedFile("db\\unsafe_tables\\data__", [cell("I64", [{ type: "I64", val: Number.MAX_SAFE_INTEGER + 1 }])]);
+
+    expect(() => buildVanillaDbCache([packed], () => schema, identity)).toThrow(/safe integer/);
+  });
+
+  it("rejects malformed booleans, optional flags, non-finite numbers, and column row-count drift", () => {
+    const invalidCases: Array<{ fieldType: DBField["field_type"]; fields: Field[] }> = [
+      { fieldType: "Boolean", fields: [{ type: "UInt8", val: 7 }] },
+      { fieldType: "OptionalStringU8", fields: [{ type: "Int8", val: 255 }] },
+      { fieldType: "F64", fields: [{ type: "F64", val: Number.POSITIVE_INFINITY }] },
+    ];
+    for (const [index, invalid] of invalidCases.entries()) {
+      const schema: DBVersion = { version: 1, fields: [field("value", invalid.fieldType)] };
+      const packed = packedFile(`db\\invalid_typed_${index}_tables\\data__`, [cell(invalid.fieldType, invalid.fields)]);
+      const { reader } = openBuilt([packed], () => schema);
+      expect(() => reader.getTypedTableRows(packed.name)).toThrow();
+    }
+
+    const schema: DBVersion = { version: 1, fields: [field("value", "I32")] };
+    const tablePath = "db\\row_count_drift_tables\\data__";
+    const packed = packedFile(tablePath, [cell("I32", [{ type: "I32", val: 1 }]), cell("I32", [{ type: "I32", val: 2 }])]);
+    const bytes = buildVanillaDbCache([packed], () => schema, identity).bytes;
+    const header = decodeVanillaDbCacheHeader(bytes)!;
+    const metaBlockStart = VANILLA_DB_CACHE_HEADER_BYTES;
+    const payloadStart = metaBlockStart + header.metaJsonLength;
+    const meta = decodeVanillaDbCacheMetaBlock(bytes.subarray(metaBlockStart, payloadStart))!;
+    const column = meta.tables[0].columns[0];
+    const modifiedColumn = bytes.slice(payloadStart + column.offset, payloadStart + column.offset + column.length);
+    modifiedColumn[0] = 1; // The encoded column now claims one row while metadata still describes two.
+    column.checksum = checksumBytes(modifiedColumn);
+    const payload = bytes.slice(payloadStart);
+    payload.set(modifiedColumn, column.offset);
+    const newMetaBlock = encodeVanillaDbCacheMetaBlock(meta);
+    const newHeader = encodeVanillaDbCacheHeader(newMetaBlock.length);
+    const malformed = new Uint8Array(newHeader.length + newMetaBlock.length + payload.length);
+    malformed.set(newHeader, 0);
+    malformed.set(newMetaBlock, newHeader.length);
+    malformed.set(payload, newHeader.length + newMetaBlock.length);
+    const reader = openVanillaDbCache(createMemorySource(malformed))!;
+
+    expect(() => reader.getTypedTableRows(tablePath)).toThrow(/has 1 rows; expected 2/);
   });
 
   it("rejects corruption in a column when that lazy block is read", () => {
@@ -259,6 +387,14 @@ describe("vanilla db cache reader", () => {
 
       expect(openVanillaDbCache(createMemorySource(bytes.subarray(0, bytes.length - 1)))).toBeUndefined();
       expect(openVanillaDbCache(createMemorySource(bytes))).toBeDefined();
+    });
+
+    it("rejects v3 bytes and opens a rebuilt v4 cache", () => {
+      const oldBytes = built();
+      new DataView(oldBytes.buffer, oldBytes.byteOffset, oldBytes.byteLength).setUint32(4, 3, true);
+      expect(openVanillaDbCache(createMemorySource(oldBytes), identity)).toBeUndefined();
+
+      expect(openVanillaDbCache(createMemorySource(built()), identity)).toBeDefined();
     });
 
     it("returns undefined when the game has been patched or the schema changed", () => {

@@ -6,12 +6,22 @@ import * as nodePath from "path";
 import appData from "../appData";
 import { readPack } from "../packFileSerializer";
 import { DBVersion, Pack, PackedFile, SchemaField } from "../packFileTypes";
-import { DBNameToDBVersions, getSchemaFileName } from "../schema";
+import { getCanonicalFileIdentity } from "../vanillaCacheIdentity";
+import { getSchemaFileName, getSchemaForGame } from "../schema";
 import { SupportedGames, gameToPackWithDBTablesName } from "../supportedGames";
 import { parseDBTablePath, resolveParsedDBVersion } from "../utility/packFileHelpers";
-import { buildVanillaDbCache } from "./build";
+import { collator } from "../utility/packFileSorting";
+import { parseDbTable, readDbTablePreamble, readPackIndex, readPayload } from "../packCore";
+import { publishCacheFiles } from "../vanillaCacheFiles";
+import { buildVanillaDbCacheFromTables, type VanillaDbCacheBuildTable } from "./build";
+import { isEncodableCellType } from "./cellFields";
 import { createCacheBuildGeneration } from "./buildGeneration";
-import { VanillaDbCacheIdentity, isVanillaDbCacheCurrent } from "./format";
+import {
+  VANILLA_DB_CACHE_DECODER_REVISION,
+  VANILLA_DB_CACHE_EXACT_SOURCE_FORMAT,
+  VanillaDbCacheIdentity,
+  isVanillaDbCacheCurrent,
+} from "./format";
 import { VanillaDbCacheBuildPhase, VanillaDbCacheBuildStatus, reportVanillaDbCacheBuildProgress } from "./progress";
 import { CacheCandidateResult, openCacheCandidate } from "./openPolicy";
 import {
@@ -74,13 +84,20 @@ const getIdentity = (game: SupportedGames): GameCacheIdentity | undefined => {
   if (!schemaHash) return undefined;
 
   try {
-    const stats = fs.statSync(dbPackPath);
+    const source = getCanonicalFileIdentity(dbPackPath);
+    if (!source) return undefined;
     return {
       game,
-      dbPackPath,
-      dbPackSize: stats.size,
-      dbPackMtimeMs: stats.mtimeMs,
+      dbPackPath: source.path,
+      dbPackSize: Number(source.size),
+      dbPackMtimeMs: source.mtimeMs,
+      dbPackMtimeNs: source.mtimeNs.toString(10),
+      dbPackCtimeNs: source.ctimeNs.toString(10),
+      dbPackDev: source.dev.toString(10),
+      dbPackIno: source.ino.toString(10),
       schemaHash,
+      sourceFormat: VANILLA_DB_CACHE_EXACT_SOURCE_FORMAT,
+      decoderRevision: VANILLA_DB_CACHE_DECODER_REVISION,
     };
   } catch {
     return undefined;
@@ -133,49 +150,77 @@ const reportBuildProgress = (
   });
 };
 
-const removeBuildFile = async (filePath: string): Promise<void> => {
-  try {
-    await fs.promises.unlink(filePath);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-  }
-};
-
 const buildCacheFile = async (
   identity: GameCacheIdentity,
   context: CacheBuildContext,
 ): Promise<BuildCacheFileResult> => {
+  const isSourceStillCurrent = () => {
+    const currentIdentity = getIdentity(identity.game);
+    return currentIdentity !== undefined && buildCacheIdentityKey(currentIdentity) === buildCacheIdentityKey(identity);
+  };
   const startedAt = performance.now();
   console.log(`vanilla db cache: building for ${identity.game} from ${identity.dbPackPath}`);
 
-  // The whole DB region, parsed. This is the cost the cache exists to stop paying on every start, and
-  // it is the same parse getDefaultTableVersions and the compat check already do cold.
+  // The one-time build uses the same exact pack index, payload reader and DB decoder as headless
+  // tooling. Legacy readPack narrows I64 through Number and decodes StringU8 as ASCII, so it cannot
+  // be the source for a cache later reused by byte-accurate headless operations.
   reportBuildProgress(identity, context, "indexing", 5);
-  const pack = await readPack(identity.dbPackPath, { skipParsingTables: true });
-  if (!context.isCurrent()) return "cancelled";
-  const tablePaths = pack.packedFiles
-    .filter((packedFile) => parseDBTablePath(packedFile.name) != undefined)
-    .map((packedFile) => packedFile.name);
-  if (tablePaths.length === 0) {
+  const pack = readPackIndex(identity.dbPackPath, { game: identity.game });
+  if (!context.isCurrent() || !isSourceStillCurrent()) return "cancelled";
+  const tableEntries = pack.entries
+    .filter((entry) => parseDBTablePath(entry.name) != undefined)
+    .sort((first, second) => collator.compare(first.name, second.name));
+  if (tableEntries.length === 0) {
     console.log("vanilla db cache: no db tables in the pack, nothing to build");
     return "empty";
   }
 
   reportBuildProgress(identity, context, "parsing", 20);
-  const parsed = await readPack(identity.dbPackPath, { tablesToRead: tablePaths });
-  if (!context.isCurrent()) return "cancelled";
-  const dbVersionsForGame = DBNameToDBVersions[identity.game];
+  const dbVersionsForGame = await getSchemaForGame(identity.game);
+  const tables: VanillaDbCacheBuildTable[] = [];
+  const skippedDuringParse: Array<{ packedFilePath: string; reason: string }> = [];
+  for (const entry of tableEntries) {
+    if (!context.isCurrent()) return "cancelled";
+    const parsedPath = parseDBTablePath(entry.name);
+    if (!parsedPath) continue;
+    try {
+      const payload = await readPayload(pack, entry, { game: identity.game });
+      if (!context.isCurrent()) return "cancelled";
+      const preamble = readDbTablePreamble(payload);
+      const schema = resolveParsedDBVersion(preamble.version, dbVersionsForGame[parsedPath.dbName]);
+      if (!schema) {
+        skippedDuringParse.push({ packedFilePath: entry.name, reason: "no matching schema" });
+        continue;
+      }
+      const unsupported = schema.fields.find((field) => !isEncodableCellType(field.field_type));
+      if (unsupported) {
+        skippedDuringParse.push({
+          packedFilePath: entry.name,
+          reason: `unsupported field type ${unsupported.field_type}`,
+        });
+        continue;
+      }
+      const parsed = parseDbTable(payload, schema, { game: identity.game });
+      tables.push({
+        packedFilePath: entry.name,
+        schema: parsed.schema,
+        rows: parsed.rows.map((row) => row.cells.map((cell) => cell.fields)),
+        packedFileVersion: parsed.preamble.version,
+        guid: parsed.preamble.guid,
+      });
+    } catch (error) {
+      skippedDuringParse.push({
+        packedFilePath: entry.name,
+        reason: error instanceof Error ? `parse failed: ${error.message}` : "parse failed",
+      });
+    }
+  }
+  if (!context.isCurrent() || !isSourceStillCurrent()) return "cancelled";
 
   reportBuildProgress(identity, context, "encoding", 65);
-  const { bytes, meta, skipped } = buildVanillaDbCache(
-    parsed.packedFiles,
-    (packedFile) => {
-      const dbName = parseDBTablePath(packedFile.name)?.dbName;
-      if (!dbName) return undefined;
-      return resolveParsedDBVersion(packedFile.version, dbVersionsForGame?.[dbName]);
-    },
-    identity,
-  );
+  const builtCache = buildVanillaDbCacheFromTables(tables, identity);
+  const { bytes, meta } = builtCache;
+  const skipped = [...skippedDuringParse, ...builtCache.skipped];
   if (!context.isCurrent()) return "cancelled";
 
   // This is the one failure known to be deterministic: the reader rejected bytes straight from the
@@ -189,17 +234,13 @@ const buildCacheFile = async (
 
   // Written aside and renamed, so a crash mid-write cannot leave a half file where the real one goes.
   const cacheFilePath = nodePath.join(app.getPath("userData"), cacheFileName(identity.game));
-  const temporaryPath = `${cacheFilePath}.building`;
   reportBuildProgress(identity, context, "writing", 92);
-  // Remove a temporary file left by a previous crash before replacing it with this attempt's bytes.
-  await removeBuildFile(temporaryPath);
-  try {
-    await fs.promises.writeFile(temporaryPath, bytes);
-    if (!context.isCurrent()) return "cancelled";
-    await fs.promises.rename(temporaryPath, cacheFilePath);
-  } finally {
-    await removeBuildFile(temporaryPath);
-  }
+  const published = await publishCacheFiles({
+    cachePath: cacheFilePath,
+    cacheBytes: bytes,
+    shouldPublish: () => context.isCurrent() && isSourceStillCurrent(),
+  });
+  if (!published) return "cancelled";
 
   console.log(
     `vanilla db cache: built ${meta.tables.length} tables, ${skipped.length} skipped,` +

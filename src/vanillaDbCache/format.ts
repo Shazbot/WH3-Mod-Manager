@@ -28,14 +28,17 @@ import { SCHEMA_FIELD_TYPE } from "../packFileTypes";
  */
 
 export const VANILLA_DB_CACHE_MAGIC = "WDBC";
+export const VANILLA_DB_CACHE_EXACT_SOURCE_FORMAT = "packCore-exact";
+export const VANILLA_DB_CACHE_DECODER_REVISION = "packCore-db-v1";
 
 /**
  * Bumped whenever the bytes stop meaning what an older reader thinks they mean. A mismatch rebuilds.
  *
  * 2: the metadata block is gzipped.
  * 3: independently-read payload blocks carry checksums.
+ * 4: I64 columns use an exact signed 64-bit encoding; source identity proves packCore decoding.
  */
-export const VANILLA_DB_CACHE_VERSION = 3;
+export const VANILLA_DB_CACHE_VERSION = 4;
 
 export const VANILLA_DB_CACHE_HEADER_BYTES = 12;
 
@@ -91,6 +94,14 @@ export interface VanillaDbCacheMeta {
   dbPackPath: string;
   dbPackSize: number;
   dbPackMtimeMs: number;
+  /** Higher precision file identity fields are strings so bigint stats remain JSON-safe. */
+  dbPackMtimeNs?: string;
+  dbPackCtimeNs?: string;
+  dbPackDev?: string;
+  dbPackIno?: string;
+  /** Present for production caches built from the shared exact decoder. */
+  sourceFormat?: string;
+  decoderRevision?: string;
   /**
    * sha1 of the bundled schema file. A schema correction can change a table's field list without the
    * pack changing at all, and decoding against the wrong layout usually still parses.
@@ -115,7 +126,13 @@ export interface VanillaDbCacheIdentity {
   dbPackPath: string;
   dbPackSize: number;
   dbPackMtimeMs: number;
+  dbPackMtimeNs?: string;
+  dbPackCtimeNs?: string;
+  dbPackDev?: string;
+  dbPackIno?: string;
   schemaHash: string;
+  sourceFormat?: string;
+  decoderRevision?: string;
 }
 
 /** Whether a cache was built from the same inputs the caller has now. */
@@ -124,7 +141,13 @@ export const isVanillaDbCacheCurrent = (meta: VanillaDbCacheMeta, identity: Vani
   meta.dbPackPath === identity.dbPackPath &&
   meta.dbPackSize === identity.dbPackSize &&
   meta.dbPackMtimeMs === identity.dbPackMtimeMs &&
-  meta.schemaHash === identity.schemaHash;
+  meta.dbPackMtimeNs === identity.dbPackMtimeNs &&
+  meta.dbPackCtimeNs === identity.dbPackCtimeNs &&
+  meta.dbPackDev === identity.dbPackDev &&
+  meta.dbPackIno === identity.dbPackIno &&
+  meta.schemaHash === identity.schemaHash &&
+  meta.sourceFormat === identity.sourceFormat &&
+  meta.decoderRevision === identity.decoderRevision;
 
 /**
  * Wire form of the metadata.
@@ -165,7 +188,13 @@ interface CompactMeta {
   dbPackPath: string;
   dbPackSize: number;
   dbPackMtimeMs: number;
+  dbPackMtimeNs?: string;
+  dbPackCtimeNs?: string;
+  dbPackDev?: string;
+  dbPackIno?: string;
   schemaHash: string;
+  sourceFormat?: string;
+  decoderRevision?: string;
   payloadBytes: number;
   fieldTypes: SCHEMA_FIELD_TYPE[];
   /** [poolLength, poolCount, checkpointsLength, poolChecksum, checkpointsChecksum, chunkChecksums] */
@@ -192,7 +221,13 @@ export const encodeVanillaDbCacheMeta = (meta: VanillaDbCacheMeta): string => {
     dbPackPath: meta.dbPackPath,
     dbPackSize: meta.dbPackSize,
     dbPackMtimeMs: meta.dbPackMtimeMs,
+    dbPackMtimeNs: meta.dbPackMtimeNs,
+    dbPackCtimeNs: meta.dbPackCtimeNs,
+    dbPackDev: meta.dbPackDev,
+    dbPackIno: meta.dbPackIno,
     schemaHash: meta.schemaHash,
+    sourceFormat: meta.sourceFormat,
+    decoderRevision: meta.decoderRevision,
     payloadBytes: meta.payloadBytes,
     fieldTypes,
     pool: [
@@ -300,7 +335,7 @@ export const decodeVanillaDbCacheMeta = (json: string): VanillaDbCacheMeta | und
 
     if (cursor !== compact.payloadBytes) return undefined;
 
-    return {
+    const decodedMeta: VanillaDbCacheMeta = {
       game: compact.game,
       payloadBytes: compact.payloadBytes,
       dbPackPath: compact.dbPackPath,
@@ -319,6 +354,13 @@ export const decodeVanillaDbCacheMeta = (json: string): VanillaDbCacheMeta | und
       },
       tables,
     };
+    if (compact.dbPackMtimeNs !== undefined) decodedMeta.dbPackMtimeNs = compact.dbPackMtimeNs;
+    if (compact.dbPackCtimeNs !== undefined) decodedMeta.dbPackCtimeNs = compact.dbPackCtimeNs;
+    if (compact.dbPackDev !== undefined) decodedMeta.dbPackDev = compact.dbPackDev;
+    if (compact.dbPackIno !== undefined) decodedMeta.dbPackIno = compact.dbPackIno;
+    if (compact.sourceFormat !== undefined) decodedMeta.sourceFormat = compact.sourceFormat;
+    if (compact.decoderRevision !== undefined) decodedMeta.decoderRevision = compact.decoderRevision;
+    return decodedMeta;
   } catch {
     return undefined;
   }

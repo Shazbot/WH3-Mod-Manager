@@ -2,7 +2,12 @@ import * as fs from "fs";
 import { SchemaField } from "../packFileTypes";
 import { buildNumericCellFields, buildStringCellFields, isStringCellType } from "./cellFields";
 import { checksumBytes } from "./checksum";
-import { decodeDictionaryColumn, decodeDictionaryColumnIds, decodeNumericColumn } from "./columnCodec";
+import {
+  decodeDictionaryColumn,
+  decodeDictionaryColumnIds,
+  decodeI64Column,
+  decodeNumericColumn,
+} from "./columnCodec";
 import { FRONT_CODED_CHECKPOINT_INTERVAL, FrontCodedBlock, readAllFrontCodedEntries } from "./frontCodedBlock";
 import {
   VANILLA_DB_CACHE_HEADER_BYTES,
@@ -157,6 +162,10 @@ export interface VanillaDbCacheReader {
   getColumnStrings(packedFilePath: string, columnName: string): string[] | undefined;
   /** One number per row for a numeric column. */
   getColumnNumbers(packedFilePath: string, columnName: string): Float64Array | undefined;
+  /** Exact I64 values as decimal strings, without passing through JavaScript Number. */
+  getColumnI64Strings(packedFilePath: string, columnName: string): string[] | undefined;
+  /** Rows as JSON-safe typed values: I64 strings, optional strings as null, and booleans as booleans. */
+  getTypedTableRows(packedFilePath: string): Array<Record<string, VanillaDbCacheTypedValue>> | undefined;
   /** The distinct pool ids a string column holds, ascending, without expanding its rows. */
   getColumnPoolIds(packedFilePath: string, columnName: string): Uint32Array | undefined;
   /** One pool id per row of a string column. */
@@ -169,6 +178,8 @@ export interface VanillaDbCacheReader {
   stats(): VanillaDbCacheStats;
   close(): void;
 }
+
+export type VanillaDbCacheTypedValue = string | number | boolean | null;
 
 export class VanillaDbCacheIntegrityError extends Error {
   constructor(blockName: string) {
@@ -275,14 +286,29 @@ export const openVanillaDbCache = (
   const columnSlice = (offset: number, length: number, checksum: number, blockName: string) =>
     verifyBlock(source.read(payloadStart + offset, length), checksum, blockName);
 
+  const i64StringsFor = (tablePath: string, column: VanillaDbCacheColumnMeta): string[] => {
+    const cacheKey = `i64:${tablePath}:${column.name}`;
+    const cached = decoded.get<string[]>(cacheKey);
+    if (cached) return cached;
+
+    const values = decodeI64Column(
+      columnSlice(column.offset, column.length, column.checksum, `${tablePath}:${column.name}`),
+    );
+    decoded.set(cacheKey, values, values.reduce((total, value) => total + value.length * 2 + 16, 0));
+    return values;
+  };
+
   const numbersFor = (tablePath: string, column: VanillaDbCacheColumnMeta): Float64Array => {
     const cacheKey = `num:${tablePath}:${column.name}`;
     const cached = decoded.get<Float64Array>(cacheKey);
     if (cached) return cached;
 
-    const values = decodeNumericColumn(
-      columnSlice(column.offset, column.length, column.checksum, `${tablePath}:${column.name}`),
-    );
+    const values =
+      column.fieldType === "I64"
+        ? Float64Array.from(i64StringsFor(tablePath, column), Number)
+        : decodeNumericColumn(
+            columnSlice(column.offset, column.length, column.checksum, `${tablePath}:${column.name}`),
+          );
     decoded.set(cacheKey, values, values.byteLength);
     return values;
   };
@@ -320,6 +346,21 @@ export const openVanillaDbCache = (
   const findColumn = (table: VanillaDbCacheTableMeta, columnName: string) =>
     table.columns.find((column) => column.name === columnName);
 
+  const stringsFor = (tablePath: string, column: VanillaDbCacheColumnMeta): string[] => {
+    const ids = poolIdsFor(tablePath, column);
+    const byId = new Map<number, string>();
+    const values: string[] = new Array(ids.length);
+    for (let row = 0; row < ids.length; row++) {
+      let value = byId.get(ids[row]);
+      if (value === undefined) {
+        value = resolvePoolValue(ids[row]) ?? "";
+        byId.set(ids[row], value);
+      }
+      values[row] = value;
+    }
+    return values;
+  };
+
   return {
     meta,
 
@@ -332,6 +373,13 @@ export const openVanillaDbCache = (
       const column = table && findColumn(table, columnName);
       if (!table || !column || isStringCellType(column.fieldType)) return undefined;
       return numbersFor(packedFilePath, column);
+    },
+
+    getColumnI64Strings(packedFilePath, columnName) {
+      const table = tableByPath.get(packedFilePath);
+      const column = table && findColumn(table, columnName);
+      if (!table || !column || column.fieldType !== "I64") return undefined;
+      return i64StringsFor(packedFilePath, column);
     },
 
     getColumnPoolIds(packedFilePath, columnName) {
@@ -406,21 +454,7 @@ export const openVanillaDbCache = (
       const table = tableByPath.get(packedFilePath);
       const column = table && findColumn(table, columnName);
       if (!table || !column || !isStringCellType(column.fieldType)) return undefined;
-
-      const ids = poolIdsFor(packedFilePath, column);
-      // Distinct ids are resolved once each: a column of ten thousand rows usually holds far fewer
-      // distinct strings, and each resolution may page in a pool chunk.
-      const byId = new Map<number, string>();
-      const values: string[] = new Array(ids.length);
-      for (let row = 0; row < ids.length; row++) {
-        let value = byId.get(ids[row]);
-        if (value === undefined) {
-          value = resolvePoolValue(ids[row]) ?? "";
-          byId.set(ids[row], value);
-        }
-        values[row] = value;
-      }
-      return values;
+      return stringsFor(packedFilePath, column);
     },
 
     getTableRows(packedFilePath) {
@@ -462,6 +496,81 @@ export const openVanillaDbCache = (
           cells[index] = cell;
         }
         rows[row] = cells;
+      }
+      return rows;
+    },
+
+    getTypedTableRows(packedFilePath) {
+      const table = tableByPath.get(packedFilePath);
+      if (!table) return undefined;
+
+      const columnValues = table.columns.map((column) => {
+        if (column.fieldType === "I64") {
+          const i64 = i64StringsFor(packedFilePath, column);
+          if (i64.length !== table.rowCount) {
+            throw new Error(`I64 column ${column.name} has ${i64.length} rows; expected ${table.rowCount}`);
+          }
+          return { column, i64 };
+        }
+        if (isStringCellType(column.fieldType)) {
+          const strings = stringsFor(packedFilePath, column);
+          if (strings.length !== table.rowCount) {
+            throw new Error(`String column ${column.name} has ${strings.length} rows; expected ${table.rowCount}`);
+          }
+          const presence = presenceFor(packedFilePath, column);
+          if (column.fieldType === "OptionalStringU8" && !presence) {
+            throw new Error(`Optional string column ${column.name} has no presence column`);
+          }
+          if (presence && presence.length !== table.rowCount) {
+            throw new Error(`Presence column ${column.name} has ${presence.length} rows; expected ${table.rowCount}`);
+          }
+          if (column.fieldType === "OptionalStringU8") {
+            for (const value of presence!) {
+              if (value !== 0 && value !== 1) {
+                throw new Error(`Invalid OptionalStringU8 presence byte ${value} in column ${column.name}`);
+              }
+            }
+          }
+          return {
+            column,
+            strings,
+            presence,
+          };
+        }
+        const numbers = numbersFor(packedFilePath, column);
+        if (numbers.length !== table.rowCount) {
+          throw new Error(`Numeric column ${column.name} has ${numbers.length} rows; expected ${table.rowCount}`);
+        }
+        return { column, numbers };
+      });
+
+      const rows: Array<Record<string, VanillaDbCacheTypedValue>> = new Array(table.rowCount);
+      for (let rowIndex = 0; rowIndex < table.rowCount; rowIndex++) {
+        const row: Record<string, VanillaDbCacheTypedValue> = {};
+        for (const entry of columnValues) {
+          const { column } = entry;
+          if (entry.i64) {
+            row[column.name] = entry.i64[rowIndex];
+          } else if (entry.strings) {
+            row[column.name] =
+              column.fieldType === "OptionalStringU8" && entry.presence?.[rowIndex] !== 1
+                ? null
+                : entry.strings[rowIndex];
+          } else if (column.fieldType === "Boolean") {
+            const value = entry.numbers![rowIndex];
+            if (value !== 0 && value !== 1) {
+              throw new Error(`Invalid Boolean value ${value} in column ${column.name}`);
+            }
+            row[column.name] = value === 1;
+          } else {
+            const value = entry.numbers![rowIndex];
+            if (!Number.isFinite(value)) {
+              throw new Error(`Non-finite numeric value ${value} in column ${column.name}`);
+            }
+            row[column.name] = value;
+          }
+        }
+        rows[rowIndex] = row;
       }
       return rows;
     },

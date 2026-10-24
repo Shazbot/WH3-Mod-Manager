@@ -5,8 +5,10 @@ import {
   NUMERIC_ENCODING_FLOAT64,
   NUMERIC_ENCODING_INT_BITPACKED,
   decodeDictionaryColumn,
+  decodeI64Column,
   decodeNumericColumn,
   encodeDictionaryColumn,
+  encodeI64Column,
   encodeNumericColumn,
 } from "../../src/vanillaDbCache/columnCodec";
 
@@ -129,6 +131,19 @@ describe("numeric column codec", () => {
     const values = Array.from({ length: 1000 }, (_unused, index) => (index * 7919) % 1000);
 
     expect(roundTripNumeric(values)).toEqual(values);
+  });
+});
+
+describe("exact I64 column codec", () => {
+  it("round trips the signed extremes and values beyond JavaScript's safe integer range", () => {
+    const values = ["-9223372036854775808", "-9007199254740993", "9007199254740993", "9223372036854775807"];
+
+    expect(decodeI64Column(encodeI64Column(values))).toEqual(values);
+  });
+
+  it("rejects unsafe Number inputs and malformed column lengths", () => {
+    expect(() => encodeI64Column([Number.MAX_SAFE_INTEGER + 1])).toThrow(/safe integer/);
+    expect(() => decodeI64Column(new Uint8Array([1, 0, 0, 0]))).toThrow(/length/);
   });
 });
 

@@ -1,10 +1,9 @@
 /**
  * Encoding of one table column for the vanilla DB cache.
  *
- * Two shapes cover every DB field type. Numbers - booleans, ints, floats, colours - go through the
- * numeric codec, which picks the narrowest representation that still round-trips exactly. Strings go
- * through the dictionary codec, which stores each distinct value once as an id into the shared string
- * pool and gives each row a bit-packed index into that list.
+ * Numeric types other than I64 use a narrow numeric codec, strings use a shared dictionary, and I64
+ * uses a fixed-width signed encoding so every 64-bit value remains exact. The numeric codec picks the
+ * narrowest representation that still round-trips exactly.
  *
  * Exactness is the whole point: the cache stands in for `readPack`, so a decoded cell has to equal the
  * one a real parse produces. Every choice here is made by checking the values rather than trusting the
@@ -16,6 +15,46 @@ export const NUMERIC_ENCODING_INT_BITPACKED = 0;
 export const NUMERIC_ENCODING_FLOAT32 = 1;
 export const NUMERIC_ENCODING_FLOAT64 = 2;
 export const ENCODING_DICTIONARY = 3;
+
+const MIN_I64 = -(1n << 63n);
+const MAX_I64 = (1n << 63n) - 1n;
+
+const toI64 = (value: bigint | number | string): bigint => {
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value)) {
+      throw new RangeError(`I64 Number input must be a safe integer: ${value}`);
+    }
+  } else if (typeof value === "string" && !/^-?\d+$/.test(value)) {
+    throw new TypeError(`I64 string input must be a decimal integer: ${value}`);
+  }
+
+  const exact = typeof value === "bigint" ? value : BigInt(value);
+  if (exact < MIN_I64 || exact > MAX_I64) throw new RangeError(`I64 value is out of range: ${exact}`);
+  return exact;
+};
+
+/** Exact I64 encoding: u32 row count followed by signed little-endian 64-bit values. */
+export const encodeI64Column = (values: readonly (bigint | number | string)[]): Uint8Array => {
+  if (values.length > 0xffffffff) throw new RangeError(`I64 column has too many rows: ${values.length}`);
+  const bytes = new Uint8Array(4 + values.length * 8);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  view.setUint32(0, values.length, true);
+  values.forEach((value, index) => view.setBigInt64(4 + index * 8, toI64(value), true));
+  return bytes;
+};
+
+/** Exact I64 values as JSON-safe decimal strings. */
+export const decodeI64Column = (bytes: Uint8Array): string[] => {
+  if (bytes.length < 4) throw new Error("Truncated I64 column count");
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const count = view.getUint32(0, true);
+  if (bytes.length !== 4 + count * 8) throw new Error("Invalid I64 column length");
+  const values = new Array<string>(count);
+  for (let index = 0; index < count; index++) {
+    values[index] = view.getBigInt64(4 + index * 8, true).toString(10);
+  }
+  return values;
+};
 
 /** Range a frame-of-reference integer column can span before bit packing stops paying. */
 const MAX_BITPACKED_WIDTH = 32;
@@ -159,9 +198,8 @@ export const encodeNumericColumn = (values: readonly number[]): Uint8Array => {
 };
 
 /**
- * Always a Float64Array, whatever the stored encoding: every numeric field type readPack produces is
- * a JS number, and a double holds all of them exactly - including the I64 values it has already
- * narrowed through `Number()`.
+ * Always a Float64Array, whatever the stored encoding. Exact I64 columns use `decodeI64Column` and do
+ * not pass through this numeric path; this function also preserves the legacy GUI's Number view.
  */
 export const decodeNumericColumn = (bytes: Uint8Array): Float64Array => {
   const [rowCount, afterRowCount] = readVarint(bytes, 0);

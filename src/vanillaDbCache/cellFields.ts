@@ -1,8 +1,8 @@
 import { Field, SCHEMA_FIELD_TYPE } from "../packFileTypes";
 
 /**
- * Conversion between the `Field[]` shapes `parseTypeBuffer` produces and the plain values the column
- * codecs store.
+ * Conversion between legacy GUI `Field[]` shapes and exact packCore `Field[]` shapes and the plain
+ * values the column codecs store.
  *
  * This is the fidelity contract of the whole cache. A decoded cell has to be indistinguishable from
  * one `readPack` produced, because consumers read `fields[0].val`, `fields[1].val` and so on directly,
@@ -15,7 +15,7 @@ import { Field, SCHEMA_FIELD_TYPE } from "../packFileTypes";
  * |---------------------|---------------------------------------------------------------|
  * | `Boolean`           | `[{UInt8, byte}]`                                             |
  * | `ColourRGB`         | `[{I32, n}]`                                                  |
- * | `I16` `I32` `I64`   | `[{I16\|I32\|I64, n}]`                                        |
+ * | `I16` `I32` `I64`   | `[{I16\|I32\|I64, n}]` in the GUI; packCore I64 is decimal text |
  * | `F32` `F64`         | `[{F32\|F64, n}]`                                             |
  * | `StringU16`         | `[{String, s}]` - the length prefix is dropped on read        |
  * | `StringU8`          | `[{Int16, length}, {String, s}]`                              |
@@ -75,6 +75,18 @@ const numericFieldType = (fieldType: SCHEMA_FIELD_TYPE): Field["type"] => {
 
 export const readNumericCell = (fields: Field[]): number => Number(fields[0]?.val ?? 0);
 
+/** Exact signed I64 from packCore; legacy fixture inputs remain accepted only while safe. */
+export const readI64Cell = (fields: Field[]): string | number => {
+  const value = fields[0]?.val ?? 0;
+  if (typeof value === "number" && !Number.isSafeInteger(value)) {
+    throw new RangeError(`I64 Number input must be a safe integer: ${value}`);
+  }
+  if (typeof value !== "number" && typeof value !== "string") {
+    throw new TypeError(`Invalid I64 cell value: ${String(value)}`);
+  }
+  return value;
+};
+
 /**
  * The string a cell holds, or "" when it holds none.
  *
@@ -97,22 +109,21 @@ export const buildNumericCellFields = (fieldType: SCHEMA_FIELD_TYPE, value: numb
 /**
  * `presentByte` is only consulted for OptionalStringU8.
  *
- * The StringU8 length field is recomputed from the string rather than stored: `parseTypeBuffer` reads
- * exactly `length` bytes and decodes them as ascii, which yields one character per byte, so the two
- * can never disagree.
+ * The StringU8 length field is recomputed in UTF-8 bytes, matching packCore's exact decoder and the
+ * length prefix stored in the source table. StringU16 does not carry a length in this cell shape.
  */
 export const buildStringCellFields = (fieldType: SCHEMA_FIELD_TYPE, value: string, presentByte: number): Field[] => {
   if (fieldType === "StringU16") return [{ type: "String", val: value }];
   if (fieldType === "StringU8") {
     return [
-      { type: "Int16", val: value.length },
+      { type: "Int16", val: Buffer.byteLength(value, "utf8") },
       { type: "String", val: value },
     ];
   }
   if (presentByte !== OPTIONAL_STRING_PRESENT) return [{ type: "Int8", val: presentByte }];
   return [
     { type: "Int8", val: OPTIONAL_STRING_PRESENT },
-    { type: "Int16", val: value.length },
+    { type: "Int16", val: Buffer.byteLength(value, "utf8") },
     { type: "String", val: value },
   ];
 };

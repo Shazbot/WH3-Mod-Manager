@@ -58,12 +58,24 @@ export const buildCacheIdentityKey = (identity: {
   dbPackPath: string;
   dbPackSize: number;
   dbPackMtimeMs: number;
+  dbPackMtimeNs?: string;
+  dbPackCtimeNs?: string;
+  dbPackDev?: string;
+  dbPackIno?: string;
   schemaHash: string;
+  sourceFormat?: string;
+  decoderRevision?: string;
 }): string =>
   JSON.stringify([
     identity.game,
     identity.dbPackPath,
     identity.dbPackSize,
     identity.dbPackMtimeMs,
+    identity.dbPackMtimeNs,
+    identity.dbPackCtimeNs,
+    identity.dbPackDev,
+    identity.dbPackIno,
     identity.schemaHash,
+    identity.sourceFormat,
+    identity.decoderRevision,
   ]);
