@@ -52,6 +52,7 @@ import {
   getAutomationSchemaProvider as schemaProviderFor,
   readAutomationPack as readIndex,
   readAutomationPayload as readLogical,
+  readAutomationReadonlyTable,
 } from "./packAccess";
 import type { AutomationCacheRequestScope, AutomationCacheService } from "./cacheService";
 
@@ -350,8 +351,6 @@ const runSearch: OperationHandler<"pack_search"> = async (request, context) => {
   return { data: { ...fullResult, ...(reportPath ? { reportPath } : {}) }, diagnostics };
 };
 
-const getSchemaRows = (table: ParsedDbTable, columns?: readonly string[]) => tableRowsToJson(table, columns);
-
 const runTableRead = async (
   packPath: string,
   tablePath: string,
@@ -365,13 +364,12 @@ const runTableRead = async (
 ) => {
   const pack = await readIndex(packPath, context);
   const entry = findEntry(pack, tablePath);
-  const bytes = await readLogical(pack, entry, context);
-  const loaded = await loadPackedTable(entry.name, bytes, schemaProviderFor(context));
-  const allRows = getSchemaRows(loaded.parsed);
-  const matchingRows = queryTableRows(loaded.parsed, allRows, filters, sort);
-  const selectedColumns = columns ?? loaded.parsed.schema.fields.map((field) => field.name);
+  const loaded = await readAutomationReadonlyTable(pack, entry, context);
+  const allRows = loaded.rows;
+  const matchingRows = queryTableRows(loaded, allRows, filters, sort);
+  const selectedColumns = columns ?? loaded.schema.fields.map((field) => field.name);
   const columnMetadata = selectedColumns.map((name) => {
-    const matches = loaded.parsed.schema.fields.filter((field) => field.name === name);
+    const matches = loaded.schema.fields.filter((field) => field.name === name);
     if (matches.length !== 1) throw new AutomationError("INVALID_ARGUMENT", matches.length === 0 ? `Unknown table field: ${name}` : `Ambiguous table field name: ${name}`);
     return {
       name: matches[0].name,
@@ -387,7 +385,7 @@ const runTableRead = async (
   const data = {
     packPath: pack.path,
     tablePath: entry.name,
-    version: loaded.parsed.schema.version,
+    version: loaded.schema.version,
     isLoc: loaded.isLoc,
     totalRows: selectedRows.length,
     columns: columnMetadata,

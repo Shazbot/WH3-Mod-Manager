@@ -179,7 +179,7 @@ const assertUniqueEntries = (entries: readonly RawPackWriteEntry[]) => {
 };
 
 const rowJsonKey = (row: EffectiveDbRow): Record<string, unknown> => Object.fromEntries(
-  row.loaded.parsed.schema.fields.filter((field) => field.is_key).map((field) => [field.name, row.row[field.name]]),
+  row.loaded.schema.fields.filter((field) => field.is_key).map((field) => [field.name, row.row[field.name]]),
 );
 
 export const runPackSubset = async (request: SubsetRequest, context: AutomationContext) => {
@@ -281,13 +281,13 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
     throwIfAborted(context.signal);
     const filePath = normalizeInternalPackPath(rowRoot.filePath);
     const rows = await exactRowsFor(filePath);
-    const loaded = rows[0]?.loaded ?? await loadDbSchema(filePath);
+    const schema = rows[0]?.loaded.schema ?? (await loadDbSchema(filePath)).parsed.schema;
     try {
-      queryTableRows(loaded.parsed, [], rowRoot.where as TableFilter[]);
+      queryTableRows({ schema }, [], rowRoot.where as TableFilter[]);
     } catch (error) {
       throw new AutomationError("INVALID_ARGUMENT", error instanceof Error ? error.message : String(error), { filePath });
     }
-    const matches = rows.filter((row) => queryTableRows(row.loaded.parsed, [row.row], rowRoot.where as TableFilter[]).length > 0);
+    const matches = rows.filter((row) => queryTableRows(row.loaded, [row.row], rowRoot.where as TableFilter[]).length > 0);
     if (matches.length === 0) throw new AutomationError("VALIDATION", `No rows match selector in ${filePath}`);
     for (const row of matches) {
       const key = normalizePackFilePathKey(row.entry.name);
@@ -430,8 +430,10 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
   for (const group of includedRows.values()) {
     throwIfAborted(context.signal);
     if (!group.rows.size) continue;
-    const firstRow = group.rows.values().next().value as EffectiveDbRow;
-    const table = firstRow.loaded.parsed;
+    const bytes = await readAutomationPayload(group.provider.pack, group.entry, context);
+    const loaded = await loadPackedTable(group.entry.name, bytes, getAutomationSchemaProvider(context));
+    if (loaded.isLoc) throw new AutomationError("VALIDATION", `Selected DB file is a localization table: ${group.entry.name}`);
+    const table = loaded.parsed;
     const selectedIndexes = [...group.rows.keys()].sort((left, right) => left - right);
     const outputBytes = rewriteDbTableRows(table, selectedIndexes.map((index) => {
       const row = table.rows[index];

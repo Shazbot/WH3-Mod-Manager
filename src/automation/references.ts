@@ -11,8 +11,9 @@ import type { CorePack, CorePackEntry } from "../packCore";
 import { decodePackedTextBuffer } from "../utility/packFileViewing";
 import { AutomationError, throwIfAborted, yieldToEventLoop, type AutomationDiagnostic } from "./errors";
 import { normalizeInternalPackPath } from "./filesystem";
-import { readAutomationPack, readAutomationPayload, getAutomationSchemaProvider } from "./packAccess";
-import { loadPackedTable, queryTableRows, tableRowsToJson, type TableFilter, type TableRow, type LoadedTable } from "./tables";
+import { readAutomationPack, readAutomationPayload, readAutomationReadonlyTable } from "./packAccess";
+import { queryTableRows, type TableFilter, type TableRow } from "./tables";
+import type { ReadonlyTableData } from "./cacheService";
 import type { AutomationContext } from "./operations";
 
 const filterValueSchema = z.union([z.string(), z.number().finite(), z.boolean(), z.null(), z.array(z.union([z.string(), z.number().finite(), z.boolean(), z.null()]))]);
@@ -76,9 +77,9 @@ export interface EffectiveDbRow {
   provider: ReferenceProvider;
   entry: CorePackEntry;
   logicalTable: string;
-  loaded: LoadedTable;
+  loaded: ReadonlyTableData;
   rowIndex: number;
-  row: TableRow;
+  row: Readonly<TableRow>;
   identity?: string;
 }
 
@@ -232,10 +233,10 @@ export const resolveReferenceAsset = (environment: ReferenceEnvironment, request
   };
 };
 
-const loadedSchemaCompatible = (first: LoadedTable, next: LoadedTable) =>
-  first.isLoc === next.isLoc && first.parsed.schema.version === next.parsed.schema.version &&
-  first.parsed.schema.fields.length === next.parsed.schema.fields.length && first.parsed.schema.fields.every((field, index) => {
-    const other = next.parsed.schema.fields[index];
+const loadedSchemaCompatible = (first: ReadonlyTableData, next: ReadonlyTableData) =>
+  first.isLoc === next.isLoc && first.schema.version === next.schema.version &&
+  first.schema.fields.length === next.schema.fields.length && first.schema.fields.every((field, index) => {
+    const other = next.schema.fields[index];
     return field.name === other.name && field.field_type === other.field_type && field.is_key === other.is_key;
   });
 
@@ -284,11 +285,10 @@ export const loadExactDbFileRows = (environment: ReferenceEnvironment, packedPat
     const ref = getEffectiveDbFileRefs(environment, logical).find((candidate) => normalizePackFilePathKey(candidate.entry.name) === canonicalPath);
     if (!ref) return [];
     try {
-      const bytes = await readAutomationPayload(ref.provider.pack, ref.entry, environment.context);
-      const loaded = await loadPackedTable(ref.entry.name, bytes, getAutomationSchemaProvider(environment.context));
+      const loaded = await readAutomationReadonlyTable(ref.provider.pack, ref.entry, environment.context);
       if (loaded.isLoc) return [];
-      const values = tableRowsToJson(loaded.parsed);
-      const keyFields = loaded.parsed.schema.fields.filter((field) => field.is_key);
+      const values = loaded.rows;
+      const keyFields = loaded.schema.fields.filter((field) => field.is_key);
       const rows = values.map((row, rowIndex): EffectiveDbRow => {
         throwIfAborted(environment.context.signal);
         const completeKey = keyFields.length > 0 && keyFields.every((field) => row[field.name] !== null && row[field.name] !== undefined);
@@ -307,7 +307,7 @@ export const loadExactDbFileRows = (environment: ReferenceEnvironment, packedPat
       for (const row of rows) environment.rowById.set(row.id, row);
       return rows;
     } catch (error) {
-      if (error instanceof AutomationError && error.code === "CANCELLED") throw error;
+      if (error instanceof AutomationError && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code)) throw error;
       environment.complete = false;
       environment.diagnostics.push(diagnostic(
         error instanceof AutomationError && error.code === "UNSUPPORTED" ? "UNSUPPORTED_DB_TABLE" : "INVALID_DB_TABLE",
@@ -327,7 +327,7 @@ export const loadEffectiveDbRows = (environment: ReferenceEnvironment, logicalTa
   if (cached) return cached;
   const promise = (async () => {
     const fileRefs = getEffectiveDbFileRefs(environment, canonical);
-    const parsedByFile: Array<{ ref: DbFileRef; loaded: LoadedTable; rows: EffectiveDbRow[] }> = [];
+    const parsedByFile: Array<{ ref: DbFileRef; loaded: ReadonlyTableData; rows: EffectiveDbRow[] }> = [];
     for (const ref of fileRefs) {
       const rows = await loadExactDbFileRows(environment, ref.entry.name);
       if (rows.length) parsedByFile.push({ ref, loaded: rows[0].loaded, rows });
@@ -542,17 +542,16 @@ class ReferenceGraphBuilder {
     if (topFiles.length !== 1) throw new AutomationError("CONFLICT", `DB table path is duplicated in the winning pack: ${normalizedPath}`);
     const schemaRef = topFiles[0];
     try {
-      const bytes = await readAutomationPayload(schemaRef.provider.pack, schemaRef.entry, this.environment.context);
-      const schemaTable = await loadPackedTable(schemaRef.entry.name, bytes, getAutomationSchemaProvider(this.environment.context));
-      queryTableRows(schemaTable.parsed, [], where);
+      const schemaTable = await readAutomationReadonlyTable(schemaRef.provider.pack, schemaRef.entry, this.environment.context);
+      queryTableRows(schemaTable, [], where);
     } catch (error) {
-      if (error instanceof AutomationError && error.code === "UNSUPPORTED") throw error;
+      if (error instanceof AutomationError && ["UNSUPPORTED", "CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code)) throw error;
       throw new AutomationError("INVALID_ARGUMENT", error instanceof Error ? error.message : String(error), { filePath: normalizedPath });
     }
     const rows = await loadExactDbFileRows(this.environment, normalizedPath);
     const matches: EffectiveDbRow[] = [];
     for (const row of rows) {
-      if (queryTableRows(row.loaded.parsed, [row.row], where).length) matches.push(row);
+      if (queryTableRows(row.loaded, [row.row], where).length) matches.push(row);
     }
     if (matches.length === 0) {
       this.environment.complete = false;
@@ -564,7 +563,7 @@ class ReferenceGraphBuilder {
   }
 
   addDbRowRoot(row: EffectiveDbRow): string {
-    const keyFields = row.loaded.parsed.schema.fields.filter((field) => field.is_key);
+    const keyFields = row.loaded.schema.fields.filter((field) => field.is_key);
     const node: ReferenceGraphNode = {
       id: row.id,
       path: row.entry.name,
@@ -682,7 +681,7 @@ class ReferenceGraphBuilder {
     if (!source) return;
     const sourceNode = this.nodes.get(id);
     if (sourceNode) sourceNode.coverage = "supportedFields";
-    for (const field of source.loaded.parsed.schema.fields) {
+    for (const field of source.loaded.schema.fields) {
       if (this.hitLimit) break;
       const value = source.row[field.name];
       if (value === null || value === undefined || (typeof value === "string" && value.trim() === "")) continue;
@@ -707,7 +706,7 @@ class ReferenceGraphBuilder {
             providerKind: target.provider.kind,
             rowIndex: target.rowIndex,
             table: target.logicalTable,
-            key: Object.fromEntries(target.loaded.parsed.schema.fields.filter((item) => item.is_key).map((item) => [item.name, target.row[item.name]])),
+            key: Object.fromEntries(target.loaded.schema.fields.filter((item) => item.is_key).map((item) => [item.name, target.row[item.name]])),
           });
           this.addEdge({ source: id, target: target.id, relationship: "db-reference", sourceField: field.name, status: "found" });
           if (this.nodes.has(target.id)) this.queueNode("db", target.id, depth + 1);

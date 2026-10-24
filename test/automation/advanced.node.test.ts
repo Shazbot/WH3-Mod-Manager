@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { createAutomationContext, executeAutomationRequest } from "../../src/automation/registry";
+import { createAutomationCacheService, createAutomationContext, executeAutomationRequest } from "../../src/automation/registry";
 import { getSupportedVisualReferenceDetails } from "../../src/visuals/dependencies";
 import { dbPreambleMarkers, parseDbTable, parseTypeBufferExact, readPackIndex, readRawPayload, serializeDbTable, serializeSchemaFieldToBuffer, writeRawPack } from "../../src/packCore";
 import type { DBField, DBVersion, Field } from "../../src/packFileTypes";
@@ -156,10 +156,17 @@ describe("advanced headless pack operations", () => {
       { name: target, buffer: Buffer.from("dds") },
     ], metadata());
     const context = createAutomationContext();
-    const full = expectData<{ references: { total: number; items: unknown[] }; complete: boolean }>(await executeAutomationRequest({
-      operation: "asset_find_references", packPaths: [packPath], targetPath: target,
-    }, context));
+    const reverseRequest = { operation: "asset_find_references", packPaths: [packPath], targetPath: target };
+    const reverseResponse = await executeAutomationRequest(reverseRequest, context);
+    const full = expectData<{ references: { total: number; items: unknown[] }; complete: boolean }>(reverseResponse);
     expect(full.references.total).toBe(2);
+
+    const cache = createAutomationCacheService();
+    try {
+      expect(await executeAutomationRequest(reverseRequest, createAutomationContext({ readRoots: [tempRoot], cache }))).toEqual(reverseResponse);
+    } finally {
+      await cache.close();
+    }
 
     const bounded = expectData<{ references: { items: unknown[] }; complete: boolean; coverage: { nodes: number } }>(await executeAutomationRequest({
       operation: "asset_find_references", packPaths: [packPath], targetPath: target, maxNodes: 1,
@@ -203,22 +210,32 @@ describe("advanced headless pack operations", () => {
       { name: "db\\sample_tables\\zzz", buffer: serializeRows(sourceSchema, [sourceRows("zzz-target")]) },
       { name: "db\\target_tables\\data", buffer: serializeRows(targetSchema, [[keyField("abc-target")], [keyField("zzz-target")]]) },
     ], metadata());
-    const context = createAutomationContext({
-      schemaProvider: async () => ({ sample_tables: [sourceSchema], target_tables: [targetSchema] }),
-    });
-    const graph = expectData<{
-      nodePage: { items: Array<{ id: string; path: string; key?: Record<string, unknown> }> };
-      edgePage: { items: Array<{ source: string; target: string }> };
-    }>(await executeAutomationRequest({
+    const schemaProvider = async () => ({ sample_tables: [sourceSchema], target_tables: [targetSchema] });
+    const context = createAutomationContext({ schemaProvider });
+    const request = {
       operation: "asset_resolve_references",
       packPaths: [dbPack],
       roots: [{ filePath: "db\\sample_tables\\zzz", where: [{ field: "key", op: "eq", value: "shared" }] }],
-    }, context));
+    };
+    const graphResponse = await executeAutomationRequest(request, context);
+    const graph = expectData<{
+      nodePage: { items: Array<{ id: string; path: string; key?: Record<string, unknown> }> };
+      edgePage: { items: Array<{ source: string; target: string }> };
+    }>(graphResponse);
     const zzzRoot = graph.nodePage.items.find((node) => node.path === "db\\sample_tables\\zzz");
     const zzzTarget = graph.nodePage.items.find((node) => node.key?.key === "zzz-target");
     expect(zzzRoot).toBeDefined();
     expect(zzzTarget).toBeDefined();
     expect(graph.edgePage.items).toContainEqual(expect.objectContaining({ source: zzzRoot?.id, target: zzzTarget?.id }));
+
+    const cache = createAutomationCacheService({ schemaFingerprint: "reference-fixture-v1" });
+    const cachedContext = createAutomationContext({ schemaProvider, readRoots: [tempRoot], cache });
+    try {
+      expect(await executeAutomationRequest(request, cachedContext)).toEqual(graphResponse);
+      expect(cache.stats().hits.typedTables).toBeGreaterThan(0);
+    } finally {
+      await cache.close();
+    }
 
     const encodedBOM = Buffer.from([4, 0, 0xef, 0xbb, 0xbf, 0x41]);
     expect(parseTypeBufferExact(encodedBOM, 0, "StringU8").fields[1].val).toBe("\uFEFFA");
@@ -404,21 +421,56 @@ describe("advanced headless pack operations", () => {
     const tablePack = path.join(tempRoot, "subset-rows.pack");
     await writeRawPack(tablePack, [{ name: tablePath, buffer: Buffer.concat([sourceTable, Buffer.from([0xcc])]) }], metadata());
     const rowOut = path.join(tempRoot, "subset-row-out.pack");
-    const tableContext = createAutomationContext({ schemaProvider: async () => ({ sample_tables: [schema] }) });
-    expectData(await executeAutomationRequest({
+    const subsetCache = createAutomationCacheService({ schemaFingerprint: "subset-fixture-v1" });
+    const tableContext = createAutomationContext({ schemaProvider: async () => ({ sample_tables: [schema] }), cache: subsetCache });
+    try {
+      const warmRequest = { operation: "pack_read_table", packPath: tablePack, tablePath };
+      await executeAutomationRequest(warmRequest, tableContext);
+      await executeAutomationRequest(warmRequest, tableContext);
+      const warmTypedHits = subsetCache.stats().hits.typedTables;
+      expect(warmTypedHits).toBeGreaterThan(0);
+      expectData(await executeAutomationRequest({
+        operation: "pack_subset",
+        sourcePackPaths: [tablePack],
+        rows: [{ filePath: tablePath, where: [{ field: "key", op: "eq", value: "alpha" }] }],
+        outputPath: rowOut,
+      }, tableContext));
+      expect(subsetCache.stats().hits.typedTables).toBe(warmTypedHits);
+      const outputBytes = readPackBytes(rowOut, tablePath);
+      const parsed = parseDbTable(outputBytes, schema);
+      const originalParsed = parseDbTable(Buffer.concat([sourceTable, Buffer.from([0xcc])]), schema);
+      expect(parsed.rows).toHaveLength(1);
+      expect(parsed.preamble.bytes).toEqual(originalParsed.preamble.bytes);
+      expect(parsed.rows[0].cells[0].bytes).toEqual(originalParsed.rows[0].cells[0].bytes);
+      expect(parsed.rows[0].cells[1].bytes).toEqual(originalParsed.rows[0].cells[1].bytes);
+      expect(parsed.trailingBytes).toEqual(Buffer.from([0xcc]));
+    } finally {
+      await subsetCache.close();
+    }
+  });
+
+  it("validates row selectors against the schema of an empty DB file", async () => {
+    const schema: DBVersion = { version: 4, fields: [field("key", "StringU8", true)] };
+    const tablePath = "db\\empty_tables\\data";
+    const packPath = path.join(tempRoot, "empty-subset-table.pack");
+    await writeRawPack(packPath, [{
+      name: tablePath,
+      buffer: serializeDbTable(schema, [], { preamble: dbPreamble(schema.version) }),
+    }], metadata());
+    const context = createAutomationContext({ schemaProvider: async () => ({ empty_tables: [schema] }) });
+    const baseRequest = {
       operation: "pack_subset",
-      sourcePackPaths: [tablePack],
-      rows: [{ filePath: tablePath, where: [{ field: "key", op: "eq", value: "alpha" }] }],
-      outputPath: rowOut,
-    }, tableContext));
-    const outputBytes = readPackBytes(rowOut, tablePath);
-    const parsed = parseDbTable(outputBytes, schema);
-    const originalParsed = parseDbTable(Buffer.concat([sourceTable, Buffer.from([0xcc])]), schema);
-    expect(parsed.rows).toHaveLength(1);
-    expect(parsed.preamble.bytes).toEqual(originalParsed.preamble.bytes);
-    expect(parsed.rows[0].cells[0].bytes).toEqual(originalParsed.rows[0].cells[0].bytes);
-    expect(parsed.rows[0].cells[1].bytes).toEqual(originalParsed.rows[0].cells[1].bytes);
-    expect(parsed.trailingBytes).toEqual(Buffer.from([0xcc]));
+      sourcePackPaths: [packPath],
+      outputPath: path.join(tempRoot, "empty-subset-out.pack"),
+    };
+    expect(await executeAutomationRequest({
+      ...baseRequest,
+      rows: [{ filePath: tablePath, where: [{ field: "key", op: "eq", value: "missing" }] }],
+    }, context)).toMatchObject({ ok: false, error: { code: "VALIDATION", message: expect.stringContaining("No rows match") } });
+    expect(await executeAutomationRequest({
+      ...baseRequest,
+      rows: [{ filePath: tablePath, where: [{ field: "unknown", op: "eq", value: "missing" }] }],
+    }, context)).toMatchObject({ ok: false, error: { code: "INVALID_ARGUMENT", message: expect.stringContaining("Unknown table field: unknown") } });
   });
 
   it("does not publish a strict self-contained pack with unsupported rigid internals", async () => {

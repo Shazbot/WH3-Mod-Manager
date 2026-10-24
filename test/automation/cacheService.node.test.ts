@@ -16,6 +16,7 @@ import { VANILLA_LOC_CACHE_DECODER_REVISION, VANILLA_LOC_CACHE_EXACT_SOURCE_FORM
 import { buildVanillaLocCacheBytes } from "../../src/vanillaLocCache/build";
 import { indexExactVanillaLocPackSet, readExactVanillaLocEntries } from "../../src/vanillaLocCache/exactSource";
 import { getVanillaLocCacheFilePath, getVanillaLocCacheIdentity } from "../../src/vanillaLocCache/identity";
+import { getSchemaFilePath, getSchemaForGame } from "../../src/schema";
 
 const temporaryDirectories: string[] = [];
 const services: Array<ReturnType<typeof createAutomationCacheService>> = [];
@@ -132,6 +133,31 @@ const makeGuiDbCache = (packPath: string, directory: string, includeTarget = tru
 };
 
 describe("automation cache service", () => {
+  it("uses the default schema file identity in source tests and caps readers at eight", async () => {
+    const root = workspace();
+    const packPath = path.join(root, "default-schema.pack");
+    const tableName = "main_units_tables";
+    const versions = await getSchemaForGame("wh3");
+    const schema = versions[tableName][0];
+    expect(fs.existsSync(getSchemaFilePath("wh3"))).toBe(true);
+    await writeRawPack(packPath, [{
+      name: `db\\${tableName}\\data__`,
+      buffer: serializeDbTable(schema, [], { version: schema.version }),
+    }], metadata());
+    const cache = makeService();
+    const scope = cache.beginRequest({ policy: new FilesystemPolicy({ readRoots: [root] }) });
+    try {
+      const first = await scope.getReadonlyTable(packPath, `db\\${tableName}\\data__`);
+      const second = await scope.getReadonlyTable(packPath, `db\\${tableName}\\data__`);
+      expect(first?.schema.version).toBe(schema.version);
+      expect(second?.rows).toEqual([]);
+      expect(cache.stats().hits.typedTables).toBe(1);
+    } finally {
+      scope.close();
+    }
+    expect(() => createAutomationCacheService({ maxReaders: 9 })).toThrow(RangeError);
+  });
+
   it("shares request-scoped pack indexes and bypasses source payload bytes", async () => {
     const root = workspace();
     const packPath = path.join(root, "source.pack");
@@ -670,6 +696,12 @@ describe("automation cache service", () => {
     try {
       const lease = await scope.getVanillaRawLoc([packPath]);
       expect(lease).toBeDefined();
+      const visited: string[] = [];
+      await lease!.lookup.forEachEntry(async (key) => {
+        await Promise.resolve();
+        visited.push(key);
+      });
+      expect(visited).toHaveLength(700);
       await expect(lease!.lookup.forEachEntry(() => {
         controller.abort();
       })).rejects.toMatchObject({ code: "CANCELLED" });

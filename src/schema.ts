@@ -48,6 +48,10 @@ export const getSchemaFileName = (game: SupportedGames): string => {
   return schemaMap[game];
 };
 
+/** Absolute path to the bundled schema file used by the loader and cache identities. */
+export const getSchemaFilePath = (game: SupportedGames): string =>
+  path.join(__dirname, `../schema/${getSchemaFileName(game)}`);
+
 const loadSchemaForGame = async (game: SupportedGames): Promise<any> => {
   if (schemaCache.has(game)) {
     return schemaCache.get(game);
@@ -60,8 +64,7 @@ const loadSchemaForGame = async (game: SupportedGames): Promise<any> => {
 
   const loadingPromise = (async () => {
     try {
-      const schemaFileName = getSchemaFileName(game);
-      const compressedBuffer = fs.readFileSync(path.join(__dirname, `../schema/${schemaFileName}`));
+      const compressedBuffer = fs.readFileSync(getSchemaFilePath(game));
 
       const { decompress } = await import("@mongodb-js/zstd");
       const decompressedBuffer = await decompress(compressedBuffer);

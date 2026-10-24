@@ -14,7 +14,7 @@ import {
 import { parseDBTablePath, resolveParsedDBVersion } from "../utility/packFileHelpers";
 import { normalizePackFilePath, normalizePackFilePathKey } from "../utility/packFilePathUtils";
 import {
-  getSchemaFileName,
+  getSchemaFilePath,
   getSchemaForGame,
   clearSchemaCache,
 } from "../schema";
@@ -62,7 +62,7 @@ export interface RawLocalizationEntry {
 export interface RawLocalizationLookup {
   getRaw(key: string): RawLocalizationEntry | undefined;
   forEachEntry(
-    visit: (key: string, entry: RawLocalizationEntry) => boolean | void,
+    visit: (key: string, entry: RawLocalizationEntry) => boolean | void | Promise<boolean | void>,
   ): Promise<void>;
 }
 
@@ -322,7 +322,7 @@ const estimateRowsBytes = (data: ReadonlyTableData): number => {
 };
 
 const schemaFileHash = (game: "wh3"): string => {
-  const schemaPath = path.join(__dirname, `../schema/${getSchemaFileName(game)}`);
+  const schemaPath = getSchemaFilePath(game);
   return crypto.createHash("sha1").update(fs.readFileSync(schemaPath)).digest("hex");
 };
 
@@ -420,7 +420,7 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
     throw new RangeError(`cache memory must be between ${MIN_AUTOMATION_CACHE_MEMORY_MIB} and ${MAX_AUTOMATION_CACHE_MEMORY_MIB} MiB`);
   }
   const maxReaders = options.maxReaders ?? 8;
-  if (!Number.isInteger(maxReaders) || maxReaders < 1) throw new RangeError("maxReaders must be a positive integer");
+  if (!Number.isInteger(maxReaders) || maxReaders < 1 || maxReaders > 8) throw new RangeError("maxReaders must be an integer from 1 through 8");
   const cacheDir = options.cacheDir ? path.resolve(options.cacheDir) : undefined;
   const whmmCacheDir = options.whmmCacheDir ? path.resolve(options.whmmCacheDir) : undefined;
   const budget = new RetainedBudget(memoryMiB * 1024 * 1024, maxReaders);

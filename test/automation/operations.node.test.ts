@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createAutomationContext, executeAutomationRequest } from "../../src/automation/registry";
+import { createAutomationCacheService, createAutomationContext, executeAutomationRequest } from "../../src/automation/registry";
 import { AutomationError } from "../../src/automation/errors";
 import { FilesystemPolicy } from "../../src/automation/filesystem";
 import { parseDbTable, readPackIndex, readRawPayload, serializeDbTable, writeRawPack } from "../../src/packCore";
@@ -93,6 +93,30 @@ describe("headless pack automation", () => {
       { name: "balance", type: "I64", isKey: false },
       { name: "label", type: "StringU8", isKey: false },
     ]);
+  });
+
+  it("keeps cached table reads and queries byte-for-byte envelope compatible", async () => {
+    const cache = createAutomationCacheService({ schemaFingerprint: "operations-fixture-v1" });
+    const cachedContext = createAutomationContext({ schemaProvider, cache });
+    const readRequest = { operation: "pack_read_table", packPath: sourcePack, tablePath };
+    const queryRequest = {
+      operation: "pack_query_table",
+      packPath: sourcePack,
+      tablePath,
+      filters: [{ field: "balance", op: "gt", value: "9007199254740992" }],
+      sort: [{ field: "balance", direction: "desc" }],
+      columns: ["key", "balance", "label"],
+    };
+    try {
+      const uncachedRead = await executeAutomationRequest(readRequest, context);
+      const uncachedQuery = await executeAutomationRequest(queryRequest, context);
+      expect(await executeAutomationRequest(readRequest, cachedContext)).toEqual(uncachedRead);
+      expect(await executeAutomationRequest(queryRequest, cachedContext)).toEqual(uncachedQuery);
+      expect(await executeAutomationRequest(queryRequest, cachedContext)).toEqual(uncachedQuery);
+      expect(cache.stats().hits.typedTables).toBeGreaterThanOrEqual(2);
+    } finally {
+      await cache.close();
+    }
   });
 
   it("patches one cell, reads it back, and preserves the preamble, untouched cells, trailer, and compressed entry bytes", async () => {

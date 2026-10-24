@@ -5,8 +5,8 @@ import { getLocKeyColumns } from "../utility/locKeyGeneration";
 import { normalizePackFilePathKey } from "../utility/packFilePathUtils";
 import { getCanonicalLogicalTableName } from "../utility/effectiveDbRow";
 import { AutomationError, throwIfAborted, yieldToEventLoop } from "./errors";
-import { getAutomationSchemaProvider, readAutomationPayload } from "./packAccess";
-import { loadPackedTable, tableRowsToJson } from "./tables";
+import { getAutomationSchemaProvider, readAutomationReadonlyTable } from "./packAccess";
+import type { RawLocalizationEntry, RawLocalizationLookupLease } from "./cacheService";
 import {
   loadEffectiveDbRows,
   prepareReferenceEnvironment,
@@ -64,71 +64,116 @@ export interface LocalizationEntry {
   rowIndex: number;
 }
 
-/** Same low-to-high pack and in-pack file/row iteration used by the GUI loc lookup. */
-export const loadLocalization = async (environment: ReferenceEnvironment): Promise<Map<string, LocalizationEntry>> => {
-  const result = new Map<string, LocalizationEntry>();
-  for (const provider of environment.providers) {
-    for (const entry of provider.pack.entries) {
-      if (!entry.name.toLowerCase().endsWith(".loc")) continue;
-      await yieldToEventLoop(environment.context.signal);
-      const samePath = provider.entriesByPath.get(normalizePackFilePathKey(entry.name));
-      if (samePath?.length !== 1) {
-        environment.complete = false;
-        environment.diagnostics.push({
-          code: "AMBIGUOUS_LOC_FILE",
-          message: "Duplicate localization file path was excluded",
-          severity: "warning",
-          path: entry.name,
-        });
-        continue;
-      }
-      try {
-        const loaded = await loadPackedTable(
-          entry.name,
-          await readAutomationPayload(provider.pack, entry, environment.context),
-          getAutomationSchemaProvider(environment.context),
-        );
-        const rows = tableRowsToJson(loaded.parsed);
-        for (let index = 0; index < rows.length; index++) {
-          throwIfAborted(environment.context.signal);
-          const row = rows[index];
-          const key = String(row.key ?? "");
-          if (!key) continue;
-          const text = String(row.text ?? "");
-          result.set(key, {
-            locKey: key,
-            text,
-            rawText: text,
-            packPath: provider.pack.path,
-            filePath: entry.name,
-            rowIndex: index,
+export interface LocalizationLookup {
+  get(key: string): LocalizationEntry | undefined;
+  forEachEntry(visit: (entry: LocalizationEntry) => boolean | void | Promise<boolean | void>): Promise<void>;
+}
+
+/** Layered raw lookup: mods override vanilla while rendering always sees the current overlay. */
+export const loadLocalization = async (environment: ReferenceEnvironment): Promise<LocalizationLookup> => {
+  const vanillaFallback = new Map<string, RawLocalizationEntry>();
+  const modOverlay = new Map<string, RawLocalizationEntry>();
+  const vanillaProviders = environment.providers.filter((provider) => provider.kind === "vanilla");
+  let vanillaLease: RawLocalizationLookupLease | undefined;
+  if (environment.context.cacheRequest && vanillaProviders.length) {
+    vanillaLease = await environment.context.cacheRequest.getVanillaRawLoc(vanillaProviders.map((provider) => provider.pack.path), "packIndex");
+  }
+
+  const readProviders = async (
+    providers: typeof environment.providers,
+    destination: Map<string, RawLocalizationEntry>,
+  ): Promise<void> => {
+    for (const provider of providers) {
+      for (const entry of provider.pack.entries) {
+        if (!entry.name.toLowerCase().endsWith(".loc")) continue;
+        await yieldToEventLoop(environment.context.signal);
+        const samePath = provider.entriesByPath.get(normalizePackFilePathKey(entry.name));
+        if (samePath?.length !== 1) {
+          environment.complete = false;
+          environment.diagnostics.push({
+            code: "AMBIGUOUS_LOC_FILE",
+            message: "Duplicate localization file path was excluded",
+            severity: "warning",
+            path: entry.name,
+          });
+          continue;
+        }
+        try {
+          const loaded = await readAutomationReadonlyTable(provider.pack, entry, environment.context);
+          if (!loaded.isLoc) throw new AutomationError("VALIDATION", "Packed localization entry did not decode as a LOC table");
+          for (let index = 0; index < loaded.rows.length; index++) {
+            throwIfAborted(environment.context.signal);
+            const row = loaded.rows[index];
+            const key = String(row.key ?? "");
+            if (!key) continue;
+            destination.set(key, {
+              rawText: String(row.text ?? ""),
+              packPath: provider.pack.path,
+              filePath: entry.name,
+              rowIndex: index,
+            });
+          }
+        } catch (error) {
+          if (error instanceof AutomationError && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code)) throw error;
+          environment.complete = false;
+          environment.diagnostics.push({
+            code: "INVALID_LOC_FILE",
+            message: error instanceof Error ? error.message : String(error),
+            severity: "warning",
+            path: entry.name,
           });
         }
-      } catch (error) {
-        if (error instanceof AutomationError && error.code === "CANCELLED") throw error;
-        environment.complete = false;
-        environment.diagnostics.push({
-          code: "INVALID_LOC_FILE",
-          message: error instanceof Error ? error.message : String(error),
-          severity: "warning",
-          path: entry.name,
-        });
       }
     }
-  }
-  let resolved = 0;
-  for (const item of result.values()) {
-    if ((resolved++ & 255) === 0) await yieldToEventLoop(environment.context.signal);
-    item.text = stripGameMarkup(
-      resolveTextReplacements(item.rawText, (key) => result.get(key)?.rawText) ?? item.rawText,
-    );
-  }
-  return result;
+  };
+
+  if (!vanillaLease) await readProviders(vanillaProviders, vanillaFallback);
+  await readProviders(environment.providers.filter((provider) => provider.kind === "mod"), modOverlay);
+
+  const getRaw = (key: string): RawLocalizationEntry | undefined =>
+    modOverlay.get(key) ?? vanillaLease?.lookup.getRaw(key) ?? vanillaFallback.get(key);
+  const entryFor = (key: string, source: RawLocalizationEntry): LocalizationEntry => ({
+    locKey: key,
+    ...source,
+    text: stripGameMarkup(
+      resolveTextReplacements(source.rawText, (replacementKey) => getRaw(replacementKey)?.rawText) ?? source.rawText,
+    ),
+  });
+  return {
+    get(key) {
+      const source = getRaw(key);
+      return source ? entryFor(key, source) : undefined;
+    },
+    async forEachEntry(visit) {
+      let keepGoing = true;
+      let scanned = 0;
+      const emit = async (key: string, source: RawLocalizationEntry): Promise<boolean> => {
+        if (modOverlay.has(key)) return true;
+        throwIfAborted(environment.context.signal);
+        if ((scanned++ & 255) === 0) await yieldToEventLoop(environment.context.signal);
+        keepGoing = (await visit(entryFor(key, source))) !== false;
+        return keepGoing;
+      };
+      if (vanillaLease) {
+        await vanillaLease.lookup.forEachEntry((key, source) => emit(key, source));
+      } else {
+        for (const [key, source] of vanillaFallback) {
+          if (!(await emit(key, source))) break;
+        }
+      }
+      if (!keepGoing) return;
+      for (const [key, source] of modOverlay) {
+        throwIfAborted(environment.context.signal);
+        if ((scanned++ & 255) === 0) await yieldToEventLoop(environment.context.signal);
+        if ((await visit(entryFor(key, source))) === false) return;
+      }
+    },
+  };
 };
 
 /** Loc identity is schema-defined, including concatenated composite keys in localised_key_order. */
 export const rowLocalizationKeys = (item: EffectiveDbRow): Array<{ field: string; locKey: string }> => {
-  const schema = item.loaded.parsed.schema;
+  const schema = item.loaded.schema;
   const indexes = getLocKeyColumns(schema);
   if (!indexes.length || indexes.some((index) => !schema.fields[index] || item.row[schema.fields[index].name] == null))
     return [];
@@ -194,18 +239,15 @@ export const runLocalizationLookup = async (
   );
   const locs = await loadLocalization(environment);
   const matches = new Map<string, LocalizationEntry & { dbReferences: unknown[] }>();
-  if (request.searchBy !== "dbKey") {
-    for (const loc of locs.values()) {
-      if (
-        matchesLookup(
-          request.searchBy === "text" ? loc.text : loc.locKey,
-          request.query,
-          request.match,
-          request.caseSensitive,
-        )
-      )
+  if (request.searchBy === "locKey" && request.match === "exact" && request.caseSensitive) {
+    const loc = locs.get(request.query);
+    if (loc) matches.set(loc.locKey, { ...loc, dbReferences: [] });
+  } else if (request.searchBy !== "dbKey") {
+    await locs.forEachEntry((loc) => {
+      if (matchesLookup(request.searchBy === "text" ? loc.text : loc.locKey, request.query, request.match, request.caseSensitive)) {
         matches.set(loc.locKey, { ...loc, dbReferences: [] });
-    }
+      }
+    });
   }
   const schema = await getAutomationSchemaProvider(context)("wh3");
   const tables = request.tables?.map((table) =>
@@ -230,7 +272,7 @@ export const runLocalizationLookup = async (
     let scanned = 0;
     for (const item of await loadEffectiveDbRows(environment, table)) {
       if ((scanned++ & 127) === 0) await yieldToEventLoop(context.signal);
-      const keys = item.loaded.parsed.schema.fields.filter((field) => field.is_key);
+      const keys = item.loaded.schema.fields.filter((field) => field.is_key);
       if (
         request.searchBy === "dbKey" &&
         !keys.some((field) =>
@@ -256,10 +298,10 @@ export const runLocalizationLookup = async (
     }
   }
   const items = [...matches.values()]
-    .sort((a, b) => a.locKey.localeCompare(b.locKey))
+    .sort((a, b) => a.locKey.localeCompare(b.locKey) || (a.locKey === b.locKey ? 0 : a.locKey < b.locKey ? -1 : 1))
     .map((item) => ({
       ...item,
-      translationFound: locs.has(item.locKey),
+      translationFound: locs.get(item.locKey) !== undefined,
       dbReferenceCount: item.dbReferences.length,
       dbReferencesTruncated: false,
     }));

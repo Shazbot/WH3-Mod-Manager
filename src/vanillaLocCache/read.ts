@@ -29,7 +29,7 @@ export interface VanillaLocCacheReader {
   ): void;
   /** Async counterpart for long walks that must give cancellation and IPC messages a turn. */
   forEachEntryAsync?: (
-    visit: (key: string, value: string, rank: number, sourceLabel?: string, rowIndex?: number) => boolean | void,
+    visit: (key: string, value: string, rank: number, sourceLabel?: string, rowIndex?: number) => boolean | void | Promise<boolean | void>,
     options?: {
       batchBytes?: number;
       yieldEvery?: number;
@@ -199,7 +199,7 @@ export const openVanillaLocCache = (source: VanillaLocCacheSource): VanillaLocCa
           const end = valueOffsets[rank + 1] - valueOffsets[batchStart];
           const value = textDecoder.decode(batch.subarray(start, end));
           const sourceLabel = sourceById(sourceIds[rank]);
-          if (visit(keyEntry.value, value, rank, sourceLabel, rowIndices[rank]) === false) return;
+          if (await visit(keyEntry.value, value, rank, sourceLabel, rowIndices[rank]) === false) return;
           visited++;
           if (yieldToEventLoop && visited % safeYieldEvery === 0) await yieldToEventLoop();
         }

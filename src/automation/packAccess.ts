@@ -10,6 +10,16 @@ import {
 import { AutomationError, automationErrorFromUnknown } from "./errors";
 import { normalizeInternalPackPath } from "./filesystem";
 import type { AutomationContext } from "./operations";
+import { loadPackedTable, tableRowsToJson } from "./tables";
+import type { ReadonlyTableData } from "./cacheService";
+
+const deepFreeze = <T>(value: T): T => {
+  if (value && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child);
+  }
+  return value;
+};
 
 export const readAutomationPack = async (packPath: string, context: AutomationContext): Promise<CorePack> => {
   try {
@@ -56,3 +66,29 @@ export const readAutomationPayload = async (
 
 export const getAutomationSchemaProvider = (context: AutomationContext) =>
   context.schemaProvider ?? ((game: "wh3") => getSchemaForGame(game));
+
+/** A typed, readonly view for query paths; raw ParsedDbTable data remains available to writers. */
+export const readAutomationReadonlyTable = async (
+  pack: CorePack,
+  entry: CorePackEntry,
+  context: AutomationContext,
+): Promise<ReadonlyTableData> => {
+  await context.cacheRequest?.assertPackSnapshot(pack);
+  const cached = await context.cacheRequest?.getReadonlyTable(pack.path, entry.name);
+  await context.cacheRequest?.assertPackSnapshot(pack);
+  if (cached) return cached;
+
+  const loaded = await loadPackedTable(
+    entry.name,
+    await readAutomationPayload(pack, entry, context),
+    getAutomationSchemaProvider(context),
+  );
+  const schema = deepFreeze(structuredClone(loaded.parsed.schema));
+  const rows = Object.freeze(tableRowsToJson(loaded.parsed).map((row) => deepFreeze(row)));
+  return Object.freeze({
+    packedPath: normalizeInternalPackPath(loaded.packedPath),
+    schema,
+    isLoc: loaded.isLoc,
+    rows,
+  });
+};

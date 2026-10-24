@@ -34,6 +34,51 @@ Use `--input <json-file>` for complex requests. The file contains operation fiel
 
 `pack table patch`, `pack write`, `pack create`, `pack subset`, and the `asset` commands also accept JSON operation fields. Inspect `node dist/cli/main.js --help` for all commands and flags. Outputs use copy-on-write publication, and existing destinations are rejected by default; pass `--overwrite` to replace an output atomically.
 
+## Automation caches
+
+The CLI and MCP server keep a 128 MiB retained-memory cache by default, with at most eight open cache readers. Set `--cache-memory-mib` to an integer from 1 through 1024. The reported memory limit bounds the cache's conservative retained-size estimate; it does not measure total Node.js heap use.
+
+Disk caching is opt-in. `--cache-dir` enables a managed headless namespace for typed DB tables and exact ordered vanilla localization sets. `--whmm-cache-dir` points to an existing GUI cache directory and is read-only; only proven v4 exact-source DB/LOC caches are eligible. Older v3 files, missing proof, mismatched identities/order, unsupported tables, or corrupt caches are treated as misses and rebuilt from source when possible.
+
+```sh
+node dist/cli/main.js pack table query /absolute/path/to/mod.pack db/main_units_tables/data --input query.json --format json \
+  --cache-dir /absolute/path/to/whmm-cache --cache-memory-mib 256 --cache-stats
+node dist/cli/main.js unit resolve --input unit.json --format json --whmm-cache-dir /absolute/path/to/WHMM/cache
+node dist/cli/main.js unit resolve --input unit.json --format json --no-cache
+```
+
+`--no-cache` disables memory and disk caches, even if other cache flags are present. `--cache-stats` writes a JSON snapshot to stderr at CLI completion and after each MCP request. Cache status never changes operation JSON or diagnostics. Cache directories do not grant permission to read packs or write outputs: MCP still enforces its configured roots. MCP requires `--whmm-cache-dir` under a read root; `--cache-dir` must be under a read root, and persistence also requires it to be under a write root. A cache directory outside its required read roots is a startup configuration error. If the managed cache directory is readable but has no matching write root, the server can still use memory and readonly caches and reports the disabled persistence once on stderr.
+
+For MCP, point the cache options at paths visible to the same Node runtime as the server. A Windows configuration can use:
+
+```json
+"args": [
+  "C:\\Users\\Example\\src\\whmm\\dist\\mcp\\server.js",
+  "--read-root", "D:\\SteamLibrary\\steamapps\\common\\Total War WARHAMMER III\\data",
+  "--read-root", "C:\\Users\\Example\\AppData\\Roaming\\WHMM\\cache",
+  "--read-root", "C:\\Users\\Example\\AppData\\Local\\WHMM\\headless-cache",
+  "--write-root", "C:\\Users\\Example\\Documents\\WH3ModOutput",
+  "--write-root", "C:\\Users\\Example\\AppData\\Local\\WHMM\\headless-cache",
+  "--cache-dir", "C:\\Users\\Example\\AppData\\Local\\WHMM\\headless-cache",
+  "--whmm-cache-dir", "C:\\Users\\Example\\AppData\\Roaming\\WHMM\\cache",
+  "--cache-stats"
+]
+```
+
+Under WSL, use Linux paths and keep cache roots within the configured read/write roots:
+
+```sh
+node dist/mcp/server.js \
+  --read-root "/mnt/c/Program Files (x86)/Steam/steamapps/common/Total War WARHAMMER III/data" \
+  --read-root /mnt/k/whmm-user/cache \
+  --read-root /mnt/k/wh3mods/output \
+  --write-root /mnt/k/wh3mods/output \
+  --cache-dir /mnt/k/wh3mods/output/headless-cache \
+  --whmm-cache-dir /mnt/k/whmm-user/cache --cache-stats
+```
+
+Readonly queries, unit/localization lookups, and reference traversal can use typed cached rows. Byte-sensitive operations such as patch, write, create, clone, diff, validate, and subset continue to use original pack payloads; graph results, merged winners, and rendered localization are not retained in the cache.
+
 For example, create a pack with a text file and a source file using `create.json`:
 
 ```json

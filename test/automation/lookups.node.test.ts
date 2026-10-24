@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { createAutomationContext, executeAutomationRequest } from "../../src/automation/registry";
+import { createAutomationCacheService, createAutomationContext, executeAutomationRequest } from "../../src/automation/registry";
 import { makeRowFields } from "../../src/automation/tables";
 import { classifyUnitForOptimization } from "../../src/automation/units";
 import { serializeDbTable, writeRawPack } from "../../src/packCore";
@@ -185,6 +185,114 @@ describe("localization and unit lookups", () => {
     });
   });
 
+  it("keeps keyed localization results identical while using warm vanilla and mod caches", async () => {
+    const base = path.join(root, "cached-localization-base.pack");
+    const mod = path.join(root, "cached-localization-mod.pack");
+    await writeRawPack(base, [
+      db("land_units", [land("cache_unit"), land("empty_unit"), land("missing_unit")]),
+      loc({
+        land_units_onscreen_name_cache_unit: "Vanilla",
+        land_units_onscreen_name_empty_unit: "",
+        empty_name: "",
+        "\uFEFFbom_key": "\uFEFFBOM text",
+      }),
+    ], metadata);
+    await writeRawPack(mod, [
+      loc({
+        land_units_onscreen_name_cache_unit: "{{tr:cache_title}}",
+        ui_text_replacements_localised_text_cache_title: "皇帝 🐈",
+      }),
+    ], metadata);
+    const request = {
+      operation: "localization_lookup",
+      packPaths: [mod],
+      vanillaPackPaths: [base],
+      query: "cache_unit",
+      searchBy: "dbKey",
+      tables: ["land_units_tables"],
+    };
+    const uncached = await executeAutomationRequest(request, context());
+    const textRequest = { ...request, query: "皇帝", searchBy: "text", match: "contains" };
+    const uncachedText = await executeAutomationRequest(textRequest, context());
+    const bomRequest = { ...request, query: "\uFEFFBOM", searchBy: "text", match: "contains" };
+    const uncachedBom = await executeAutomationRequest(bomRequest, context());
+    const emptyRequest = { ...request, query: "empty_unit" };
+    const uncachedEmpty = await executeAutomationRequest(emptyRequest, context());
+    const missingRequest = { ...request, query: "missing_unit" };
+    const uncachedMissing = await executeAutomationRequest(missingRequest, context());
+    expect(uncachedEmpty).toMatchObject({ ok: true, data: { items: [expect.objectContaining({ text: "", translationFound: true })] } });
+    expect(uncachedMissing).toMatchObject({ ok: true, data: { items: [expect.objectContaining({ text: "", translationFound: false })] } });
+    const cache = createAutomationCacheService({ schemaFingerprint: "lookup-fixture-v1" });
+    const cachedContext = createAutomationContext({ schemaProvider: async () => definitions, readRoots: [root], cache });
+    try {
+      expect(await executeAutomationRequest(request, cachedContext)).toEqual(uncached);
+      expect(await executeAutomationRequest(request, cachedContext)).toEqual(uncached);
+      expect(await executeAutomationRequest(textRequest, cachedContext)).toEqual(uncachedText);
+      expect(await executeAutomationRequest(bomRequest, cachedContext)).toEqual(uncachedBom);
+      expect(await executeAutomationRequest(emptyRequest, cachedContext)).toEqual(uncachedEmpty);
+      expect(await executeAutomationRequest(missingRequest, cachedContext)).toEqual(uncachedMissing);
+      expect(cache.stats().hits.typedTables).toBeGreaterThan(0);
+      expect(cache.stats().hits.locReaders).toBeGreaterThan(0);
+
+      let keyedEnumerations = 0;
+      const scope = cache.beginRequest({ policy: cachedContext.policy, schemaProvider: cachedContext.schemaProvider });
+      const getVanillaRawLoc = scope.getVanillaRawLoc.bind(scope);
+      scope.getVanillaRawLoc = async (packPaths, order) => {
+        const lease = await getVanillaRawLoc(packPaths, order);
+        if (lease) {
+          const forEachEntry = lease.lookup.forEachEntry.bind(lease.lookup);
+          lease.lookup.forEachEntry = async (visit) => {
+            keyedEnumerations++;
+            await forEachEntry(visit);
+          };
+        }
+        return lease;
+      };
+      try {
+        expect(await executeAutomationRequest(request, { ...cachedContext, cache: undefined, cacheRequest: scope })).toEqual(uncached);
+      } finally {
+        scope.close();
+      }
+      expect(keyedEnumerations).toBe(0);
+    } finally {
+      await cache.close();
+    }
+  });
+
+  it("preserves malformed LOC and DB diagnostics through the cached readonly path", async () => {
+    const pack = path.join(root, "malformed-lookup.pack");
+    await writeRawPack(pack, [
+      { name: "text\\bad.loc", buffer: Buffer.from([0, 1, 2]) },
+      { name: "db\\land_units_tables\\data", buffer: Buffer.from([0, 1, 2]) },
+    ], metadata);
+    const request = {
+      operation: "localization_lookup",
+      packPaths: [pack],
+      query: "x",
+      searchBy: "dbKey",
+      tables: ["land_units_tables"],
+    };
+    const uncached = await executeAutomationRequest(request, context());
+    const cache = createAutomationCacheService({ schemaFingerprint: "lookup-fixture-v1" });
+    try {
+      expect(await executeAutomationRequest(request, createAutomationContext({
+        schemaProvider: async () => definitions,
+        readRoots: [root],
+        cache,
+      }))).toEqual(uncached);
+    } finally {
+      await cache.close();
+    }
+    expect(uncached).toMatchObject({
+      ok: true,
+      data: { complete: false },
+      diagnostics: [
+        expect.objectContaining({ code: "INVALID_LOC_FILE", path: "text\\bad.loc" }),
+        expect.objectContaining({ code: "INVALID_DB_TABLE", path: "db\\land_units_tables\\data" }),
+      ],
+    });
+  });
+
   it("uses composite localized key ordering, returns all ambiguous matches, and pages full reports", async () => {
     const pack = path.join(root, "compound.pack");
     await writeRawPack(
@@ -256,7 +364,23 @@ describe("localization and unit lookups", () => {
       ],
       metadata,
     );
-    const result = await run({ operation: "unit_resolve", packPaths: [pack], query: "Swordsmen", searchBy: "text" });
+    const unitRequest = { operation: "unit_resolve", packPaths: [pack], query: "Swordsmen", searchBy: "text" };
+    const uncachedResponse = await executeAutomationRequest(unitRequest, context());
+    const cache = createAutomationCacheService({ schemaFingerprint: "unit-fixture-v1" });
+    try {
+      expect(await executeAutomationRequest(unitRequest, createAutomationContext({
+        schemaProvider: async () => definitions,
+        readRoots: [root],
+        cache,
+      }))).toEqual(uncachedResponse);
+    } finally {
+      await cache.close();
+    }
+    const result = (uncachedResponse.ok ? uncachedResponse.data : undefined) as {
+      total: number;
+      items: Array<Record<string, any>>;
+      complete: boolean;
+    };
     expect(result.total).toBe(1);
     const item = result.items[0];
     expect(item).toMatchObject({

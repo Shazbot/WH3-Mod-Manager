@@ -299,11 +299,11 @@ export const validateFilters = (schema: DBVersion, filters: readonly TableFilter
   });
 
 export const queryTableRows = (
-  table: ParsedDbTable,
-  rows: readonly TableRow[],
+  table: Pick<ParsedDbTable, "schema">,
+  rows: readonly Readonly<TableRow>[],
   filters: readonly TableFilter[] = [],
   sort: readonly TableSort[] = [],
-): TableRow[] => {
+): Readonly<TableRow>[] => {
   const validatedFilters = validateFilters(table.schema, filters);
   const validatedSort = sort.map((item) => {
     const fieldInfo = resolveField(table.schema, item.field);
