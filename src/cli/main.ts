@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import { inspect } from "node:util";
 import { parseArgs } from "node:util";
-import { createAutomationContext, executeAutomationRequest, getExitCodeForAutomationError, type AutomationContext } from "../automation/registry";
+import { createAutomationCacheService, createAutomationContext, executeAutomationRequest, getExitCodeForAutomationError, type AutomationContext } from "../automation/registry";
 import { AutomationError, automationErrorFromUnknown } from "../automation/errors";
 
 const rootHelp = `Usage:
@@ -42,6 +42,11 @@ Flags:
   --overwrite          Atomically replace an existing output file
   --offset <number>    Result offset (default 0)
   --limit <number>     Result page size (default 100)
+  --cache-dir <dir>    Managed headless cache directory (persistence is limited by write roots)
+  --whmm-cache-dir <dir> Readonly GUI cache directory
+  --cache-memory-mib <1..1024> Cache memory budget (default 128)
+  --no-cache           Disable all automation caches
+  --cache-stats        Write cache statistics to stderr
   --help               Show help at any command level`;
 
 const options = {
@@ -75,6 +80,11 @@ const options = {
   "include-vanilla": { type: "boolean" as const },
   "extract-to": { type: "string" as const },
   "pack-type": { type: "string" as const },
+  "cache-dir": { type: "string" as const },
+  "whmm-cache-dir": { type: "string" as const },
+  "cache-memory-mib": { type: "string" as const },
+  "no-cache": { type: "boolean" as const },
+  "cache-stats": { type: "boolean" as const },
   help: { type: "boolean" as const },
 };
 
@@ -271,17 +281,43 @@ export const main = async (argv = process.argv.slice(2), io: CliIo = defaultIo):
   const abort = () => controller.abort();
   process.once("SIGINT", abort);
   process.once("SIGTERM", abort);
-  const context = createAutomationContext({ signal: controller.signal });
+  let context: AutomationContext | undefined;
+  let cacheService: ReturnType<typeof createAutomationCacheService> | undefined;
+  let cacheStatsRequested = false;
+  let noCache = false;
   let format: string | undefined;
   try {
     const parsed = parseCliArgs([...argv]);
     const command = parsed.positionals;
     format = parsed.values.format;
+    cacheStatsRequested = Boolean(parsed.values["cache-stats"]);
+    noCache = Boolean(parsed.values["no-cache"]);
     if (parsed.values.help || command.length === 0 || command.includes("help")) {
       printHelp(io, command);
       return 0;
     }
     if (format !== "json" && format !== "text") throw new AutomationError("INVALID_ARGUMENT", `Unsupported output format: ${format}`);
+    if (!noCache) {
+      let memoryMiB = 128;
+      if (parsed.values["cache-memory-mib"] !== undefined) {
+        const value = numericOption(parsed.values["cache-memory-mib"], "cache-memory-mib");
+        if (value === undefined || value < 1 || value > 1024) {
+          throw new AutomationError("INVALID_ARGUMENT", "--cache-memory-mib must be between 1 and 1024");
+        }
+        memoryMiB = value;
+      }
+      cacheService = createAutomationCacheService({
+        cacheDir: parsed.values["cache-dir"],
+        whmmCacheDir: parsed.values["whmm-cache-dir"],
+        memoryMiB,
+        onWarning: (message) => io.stderr(`[info] ${message}\n`),
+      });
+    }
+    context = createAutomationContext({
+      signal: controller.signal,
+      ...(cacheService ? { cache: cacheService } : {}),
+    });
+    if (cacheService) await cacheService.validateConfiguredPaths(context.policy);
     const request = await buildRequest(command, parsed.values, context);
     if (parsed.values.input) {
       const inputPath = await context.policy.assertReadPath(parsed.values.input);
@@ -318,6 +354,22 @@ export const main = async (argv = process.argv.slice(2), io: CliIo = defaultIo):
     io.stderr(`${normalized.code}: ${normalized.message}\n`);
     return getExitCodeForAutomationError(normalized.code);
   } finally {
+    if (cacheStatsRequested) {
+      const snapshot = cacheService?.stats() ?? {
+        enabled: false,
+        memoryLimitBytes: 0,
+        retainedBytes: 0,
+        readerCount: 0,
+        maxReaders: 0,
+        entries: { packIndexes: 0, typedTables: 0, dbReaders: 0, locReaders: 0 },
+        hits: { packIndexes: 0, typedTables: 0, dbReaders: 0, locReaders: 0 },
+        misses: { packIndexes: 0, typedTables: 0, dbReaders: 0, locReaders: 0 },
+        sourceFallbacks: 0,
+        persistentWrites: 0,
+      };
+      io.stderr(`[cache-stats] ${JSON.stringify(snapshot)}\n`);
+    }
+    await cacheService?.close();
     process.off("SIGINT", abort);
     process.off("SIGTERM", abort);
   }

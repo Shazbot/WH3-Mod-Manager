@@ -2,14 +2,16 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Client } from "@modelcontextprotocol/client";
+import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FilesystemPolicy } from "../../src/automation/filesystem";
+import { createAutomationCacheService } from "../../src/automation/registry";
 import { AutomationError } from "../../src/automation/errors";
 import { makeRowFields } from "../../src/automation/tables";
 import { dbPreambleMarkers, serializeDbTable, writeRawPack } from "../../src/packCore";
 import { LocVersion, type DBField, type DBVersion, type Field } from "../../src/packFileTypes";
+import { createMcpServer } from "../../src/mcp/server";
 
 const projectRoot = process.cwd();
 const serverEntry = path.join(projectRoot, "dist", "mcp", "server.js");
@@ -61,11 +63,12 @@ const makeTableFile = (filePath: string): void => {
 interface TestClient {
   client: Client;
   transport: StdioClientTransport;
+  readonly stderr: string;
   close(): Promise<void>;
 }
 
 const connect = async (
-  options: { readRoots?: string[]; writeRoots?: string[]; maxResponseBytes?: number } = {},
+  options: { readRoots?: string[]; writeRoots?: string[]; maxResponseBytes?: number; cacheStats?: boolean } = {},
 ): Promise<TestClient> => {
   const readRoots = options.readRoots ?? [allowedRoot];
   const writeRoots = options.writeRoots ?? [allowedRoot];
@@ -73,6 +76,7 @@ const connect = async (
   for (const root of readRoots) args.push("--read-root", root);
   for (const root of writeRoots) args.push("--write-root", root);
   if (options.maxResponseBytes !== undefined) args.push("--max-response-bytes", String(options.maxResponseBytes));
+  if (options.cacheStats) args.push("--cache-stats");
   const transport = new StdioClientTransport({ command: process.execPath, args, cwd: projectRoot, stderr: "pipe" });
   let childStderr = "";
   transport.stderr?.on("data", (chunk: Buffer) => {
@@ -88,6 +92,7 @@ const connect = async (
   return {
     client,
     transport,
+    get stderr() { return childStderr; },
     close: async () => {
       await client.close();
       await transport.close();
@@ -148,6 +153,60 @@ describe("WH3 MCP stdio server", () => {
     }
   });
 
+  it("reuses pack indexes across MCP requests, emits per-request stats, and closes the session cleanly", async () => {
+    const packPath = path.join(allowedRoot, "cache-index-reuse.pack");
+    await writeRawPack(packPath, [{ name: "one.txt", buffer: Buffer.from("one") }], metadata());
+    const session = await connect({ cacheStats: true });
+    try {
+      for (let index = 0; index < 2; index++) {
+        const result = await session.client.callTool({ name: "pack_info", arguments: { packPath } });
+        expect(result.isError, JSON.stringify(result.structuredContent)).not.toBe(true);
+      }
+      const snapshots = session.stderr.split(/\r?\n/)
+        .filter((line) => line.startsWith("[cache-stats] "))
+        .map((line) => JSON.parse(line.slice("[cache-stats] ".length)) as { hits: { packIndexes: number } });
+      expect(snapshots).toHaveLength(2);
+      expect(snapshots[0].hits.packIndexes).toBe(0);
+      expect(snapshots[1].hits.packIndexes).toBe(1);
+    } finally {
+      let timeout: NodeJS.Timeout | undefined;
+      try {
+        await Promise.race([
+          session.close(),
+          new Promise<never>((_, reject) => { timeout = setTimeout(() => reject(new Error("MCP cache session did not close")), 3000); }),
+        ]);
+      } finally {
+        if (timeout) clearTimeout(timeout);
+      }
+    }
+  });
+
+  it("lets MCP no-cache override an injected cache service", async () => {
+    const packPath = path.join(allowedRoot, "no-cache-injected.pack");
+    await writeRawPack(packPath, [{ name: "one.txt", buffer: Buffer.from("one") }], metadata());
+    const injectedCache = createAutomationCacheService();
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createMcpServer({
+      readRoots: [allowedRoot],
+      writeRoots: [],
+      maxResponseBytes: 1024 * 1024,
+      noCache: true,
+      cacheService: injectedCache,
+    });
+    const client = new Client({ name: "whmm-no-cache-test", version: "1.0.0" });
+    try {
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      const result = await client.callTool({ name: "pack_info", arguments: { packPath } });
+      expect(result.isError).not.toBe(true);
+      expect(injectedCache.stats().misses.packIndexes).toBe(0);
+    } finally {
+      await client.close();
+      await server.close();
+      await injectedCache.close();
+    }
+  });
+
   it("creates, queries, and writes a pack; MCP and CLI return equivalent pack metadata", async () => {
     const session = await connect();
     try {
@@ -165,7 +224,7 @@ describe("WH3 MCP stdio server", () => {
           ],
         },
       });
-      expect(created.isError).not.toBe(true);
+      expect(created.isError, JSON.stringify(created.structuredContent)).not.toBe(true);
       expect(responseEnvelope<{ fileCount: number }>(created).data?.fileCount).toBe(2);
 
       const query = await session.client.callTool({

@@ -95,6 +95,25 @@ describe("vanilla loc cache", () => {
     }
   });
 
+  it("preserves leading BOMs in keys, values, and source labels", () => {
+    const { reader } = openFrom([
+      ["\uFEFFkey_alpha", "\uFEFFvalue alpha", "C:\\game\\local_en.pack\0text\\\uFEFFfirst.loc", 2],
+      ["\uFEFFkey_beta", "value \uFEFF beta", "C:\\game\\local_en.pack\0text\\second.loc", 3],
+    ]);
+
+    expect(reader.get("\uFEFFkey_alpha")).toBe("\uFEFFvalue alpha");
+    expect(reader.getEntry("\uFEFFkey_beta")).toEqual({
+      value: "value \uFEFF beta",
+      sourceLabel: "C:\\game\\local_en.pack\0text\\second.loc",
+      rowIndex: 3,
+    });
+  });
+
+  it("rejects unpaired UTF-16 surrogates rather than encoding replacement characters", () => {
+    expect(() => buildVanillaLocCacheBytes([["key", "bad\ud800"]])).toThrow(/well-formed UTF-16/);
+    expect(() => buildVanillaLocCacheBytes([["bad\udc00", "value"]])).toThrow(/well-formed UTF-16/);
+  });
+
   it("reads only the value it was asked for, not the whole blob", () => {
     const entries = Array.from(
       { length: 500 },

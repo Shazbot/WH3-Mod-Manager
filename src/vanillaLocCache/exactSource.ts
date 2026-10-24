@@ -24,6 +24,7 @@ export class VanillaLocSourceReadCanceled extends Error {
 
 export interface ExactVanillaLocSourceOptions {
   shouldCancel?: () => boolean;
+  assertSourceCurrent?: (pack: CorePack) => Promise<void>;
 }
 
 export type ExactVanillaLocFileOrder = "gui" | "packIndex";
@@ -43,12 +44,15 @@ export const indexExactVanillaLocPackSet = (
   packPaths: readonly string[],
   game: PackGame,
   order: ExactVanillaLocFileOrder,
+  getPackIndex: (packPath: string, game: PackGame) => CorePack = (packPath, selectedGame) =>
+    readPackIndex(packPath, { game: selectedGame }),
 ): ExactVanillaLocPackSet => {
   const packs: ExactVanillaLocPackSet["packs"] = [];
   const fingerprintParts: Array<[canonicalPackPath: string, locPaths: string[]]> = [];
 
   for (const packPath of packPaths) {
-    const pack = readPackIndex(packPath, { game });
+    const canonicalPackPath = canonicalizeExistingPath(packPath);
+    const pack = getPackIndex(canonicalPackPath, game);
     const locEntries = pack.entries.filter((entry) =>
       order === "gui" ? entry.name.endsWith(".loc") : entry.name.toLowerCase().endsWith(".loc"),
     );
@@ -71,7 +75,7 @@ export const indexExactVanillaLocPackSet = (
       seenLocPaths.add(pathKey);
     }
     if (order === "gui") locEntries.sort((first, second) => collator.compare(first.name, second.name));
-    fingerprintParts.push([canonicalizeExistingPath(packPath), locEntries.map((entry) => entry.name)]);
+    fingerprintParts.push([canonicalPackPath, locEntries.map((entry) => entry.name)]);
     packs.push({ pack, locEntries });
   }
 
@@ -96,7 +100,9 @@ export const readExactVanillaLocEntries = async (
   for (const { pack, locEntries } of packSet.packs) {
     checkCanceled();
     for (const entry of locEntries) {
+      await options.assertSourceCurrent?.(pack);
       const payload = await readPayload(pack, entry, { game: packSet.game });
+      await options.assertSourceCurrent?.(pack);
       checkCanceled();
       const parsed = parseLocTable(payload);
       for (let rowIndex = 0; rowIndex < parsed.rows.length; rowIndex++) {

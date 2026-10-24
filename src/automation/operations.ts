@@ -53,6 +53,7 @@ import {
   readAutomationPack as readIndex,
   readAutomationPayload as readLogical,
 } from "./packAccess";
+import type { AutomationCacheRequestScope, AutomationCacheService } from "./cacheService";
 
 const pageShape = {
   offset: z.number().int().min(0).default(0),
@@ -151,6 +152,9 @@ export type AutomationContext = {
   schemaProvider?: TableSchemaProvider;
   maxLogicalPayloadBytes?: number;
   signal?: AbortSignal;
+  cache?: AutomationCacheService;
+  /** Per-operation scope attached by executeAutomationRequest. */
+  cacheRequest?: AutomationCacheRequestScope;
 };
 export type OperationOutput<T = unknown> = { data: T; diagnostics: AutomationDiagnostic[] };
 type Request<K extends OperationName> = z.output<(typeof operationSchemas)[K]>;
@@ -791,11 +795,13 @@ export const createAutomationContext = (options: {
   schemaProvider?: TableSchemaProvider;
   maxLogicalPayloadBytes?: number;
   signal?: AbortSignal;
+  cache?: AutomationCacheService;
 } = {}): AutomationContext => ({
   policy: new FilesystemPolicy({ readRoots: options.readRoots, writeRoots: options.writeRoots, signal: options.signal }),
   ...(options.schemaProvider ? { schemaProvider: options.schemaProvider } : {}),
   ...(options.maxLogicalPayloadBytes ? { maxLogicalPayloadBytes: options.maxLogicalPayloadBytes } : {}),
   ...(options.signal ? { signal: options.signal } : {}),
+  ...(options.cache ? { cache: options.cache } : {}),
 });
 
 export const defaultAutomationContext = defaultContext;

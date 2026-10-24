@@ -88,6 +88,41 @@ const everyTypeRow = (index: number, presentByte: number): SchemaField[] => [
 ];
 
 describe("vanilla db cache reader", () => {
+  it("normalizes table path matching and rejects normalized path collisions", () => {
+    const schema: DBVersion = { version: 1, fields: [field("value", "I32")] };
+    const forwardPath = "db/sample_tables/data__";
+    const normalizedVariant = "DB\\SAMPLE_TABLES\\DATA__";
+    const { reader } = openBuilt(
+      [packedFile(forwardPath, [cell("I32", [{ type: "I32", val: 42 }])])],
+      () => schema,
+    );
+    expect(reader.getTypedTableRows(normalizedVariant)).toEqual([{ value: 42 }]);
+    expect(reader.getTableMeta(normalizedVariant)?.packedFilePath).toBe(forwardPath);
+
+    const row: Field[][][] = [[[{ type: "I32", val: 1 }]]];
+    expect(() => buildVanillaDbCacheFromTables([
+      { packedFilePath: "db\\same_tables\\data__", schema, rows: row },
+      { packedFilePath: "DB/same_tables/data__", schema, rows: row },
+    ], identity)).toThrow(/Duplicate normalized DB table path/);
+
+    const bytes = buildVanillaDbCacheFromTables([
+      { packedFilePath: "db\\same_tables\\data__", schema, rows: row },
+      { packedFilePath: "db\\other_tables\\data__", schema, rows: row },
+    ], identity).bytes;
+    const header = decodeVanillaDbCacheHeader(bytes)!;
+    const metaStart = VANILLA_DB_CACHE_HEADER_BYTES;
+    const payloadStart = metaStart + header.metaJsonLength;
+    const meta = decodeVanillaDbCacheMetaBlock(bytes.subarray(metaStart, payloadStart))!;
+    meta.tables[1].packedFilePath = "DB/same_tables/data__";
+    const metaBlock = encodeVanillaDbCacheMetaBlock(meta);
+    const newHeader = encodeVanillaDbCacheHeader(metaBlock.length);
+    const malformed = new Uint8Array(newHeader.length + metaBlock.length + bytes.length - payloadStart);
+    malformed.set(newHeader, 0);
+    malformed.set(metaBlock, newHeader.length);
+    malformed.set(bytes.subarray(payloadStart), newHeader.length + metaBlock.length);
+    expect(openVanillaDbCache(createMemorySource(malformed))).toBeUndefined();
+  });
+
   it("gives back exactly the cells that went in, for every field type", () => {
     // The whole point of the cache: a decoded cell has to be indistinguishable from a parsed one.
     const rows = [everyTypeRow(0, 1), everyTypeRow(1, 0), everyTypeRow(2, 255)];
@@ -343,6 +378,17 @@ describe("vanilla db cache reader", () => {
 
       for (const file of files) reader.getTableRows(file.name);
 
+      expect(reader.stats().decodedBytes).toBeLessThanOrEqual(capBytes);
+    });
+
+    it("does not retain a single decoded column larger than the cap", () => {
+      const { files, schemaFor } = manyTables();
+      const capBytes = 32;
+      const { reader } = openBuilt(files, schemaFor, capBytes);
+
+      expect(reader.getColumnStrings("db\\t0_tables\\data__", "key")).toHaveLength(200);
+      expect(reader.stats().decodedBytes).toBeLessThanOrEqual(capBytes);
+      expect(reader.getColumnStrings("db\\t0_tables\\data__", "key")?.[0]).toBe("t0_key_0");
       expect(reader.stats().decodedBytes).toBeLessThanOrEqual(capBytes);
     });
 

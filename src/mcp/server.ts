@@ -5,12 +5,14 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { serveStdio, type StdioServerHandle } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
 import {
+  createAutomationCacheService,
   createAutomationContext,
   executeAutomationRequest,
   operationRegistry,
   type AutomationContext,
   type AutomationRequest,
   type OperationName,
+  type AutomationCacheService,
 } from "../automation/registry";
 import { AutomationError, failedResponse, type AutomationResponse } from "../automation/errors";
 
@@ -44,6 +46,12 @@ export interface McpServerOptions {
   writeRoots: readonly string[];
   maxResponseBytes: number;
   shutdownSignal?: AbortSignal;
+  cacheDir?: string;
+  whmmCacheDir?: string;
+  cacheMemoryMiB?: number;
+  noCache?: boolean;
+  cacheStats?: boolean;
+  cacheService?: AutomationCacheService;
 }
 
 export interface McpCliOptions extends McpServerOptions {
@@ -57,6 +65,11 @@ const parseMcpArgs = (args: readonly string[]): McpCliOptions => {
       "read-root": { type: "string", multiple: true },
       "write-root": { type: "string", multiple: true },
       "max-response-bytes": { type: "string" },
+      "cache-dir": { type: "string" },
+      "whmm-cache-dir": { type: "string" },
+      "cache-memory-mib": { type: "string" },
+      "no-cache": { type: "boolean" },
+      "cache-stats": { type: "boolean" },
       help: { type: "boolean" },
     },
     allowPositionals: true,
@@ -81,7 +94,27 @@ const parseMcpArgs = (args: readonly string[]): McpCliOptions => {
       `--max-response-bytes must be between ${MIN_MAX_RESPONSE_BYTES} and ${MAX_MAX_RESPONSE_BYTES}`,
     );
   }
-  return { readRoots, writeRoots, maxResponseBytes, help: Boolean(parsed.values.help) };
+  const noCache = Boolean(parsed.values["no-cache"]);
+  let cacheMemoryMiB = 128;
+  const memoryValue = parsed.values["cache-memory-mib"];
+  if (!noCache && memoryValue !== undefined) {
+    if (!/^\d+$/.test(memoryValue)) throw new AutomationError("INVALID_ARGUMENT", "--cache-memory-mib must be an integer between 1 and 1024");
+    cacheMemoryMiB = Number(memoryValue);
+    if (!Number.isSafeInteger(cacheMemoryMiB) || cacheMemoryMiB < 1 || cacheMemoryMiB > 1024) {
+      throw new AutomationError("INVALID_ARGUMENT", "--cache-memory-mib must be between 1 and 1024");
+    }
+  }
+  return {
+    readRoots,
+    writeRoots,
+    maxResponseBytes,
+    help: Boolean(parsed.values.help),
+    cacheDir: parsed.values["cache-dir"],
+    whmmCacheDir: parsed.values["whmm-cache-dir"],
+    cacheMemoryMiB,
+    noCache,
+    cacheStats: Boolean(parsed.values["cache-stats"]),
+  };
 };
 
 const validateRoots = async (roots: readonly string[], kind: string): Promise<string[]> => {
@@ -243,22 +276,59 @@ const cancelledResponse = (): AutomationResponse =>
 
 export const createMcpServer = (options: McpServerOptions): McpServer => {
   const server = new McpServer({ name: "wh3mm-pack-tools", version: "2.31.0" });
+  const cacheService = options.noCache ? undefined : options.cacheService ?? createAutomationCacheService({
+    cacheDir: options.cacheDir,
+    whmmCacheDir: options.whmmCacheDir,
+    memoryMiB: options.cacheMemoryMiB ?? 128,
+    onWarning: (message) => process.stderr.write(`[info] ${message}\n`),
+  });
+  const shutdownController = new AbortController();
+  const shutdownSignal = options.shutdownSignal
+    ? AbortSignal.any([options.shutdownSignal, shutdownController.signal])
+    : shutdownController.signal;
+  let cacheConfigValidated = false;
   let queue: Promise<void> = Promise.resolve();
+
+  const writeCacheStats = () => {
+    if (!options.cacheStats) return;
+    const snapshot = cacheService?.stats() ?? {
+      enabled: false,
+      memoryLimitBytes: 0,
+      retainedBytes: 0,
+      readerCount: 0,
+      maxReaders: 0,
+      entries: { packIndexes: 0, typedTables: 0, dbReaders: 0, locReaders: 0 },
+      hits: { packIndexes: 0, typedTables: 0, dbReaders: 0, locReaders: 0 },
+      misses: { packIndexes: 0, typedTables: 0, dbReaders: 0, locReaders: 0 },
+      sourceFallbacks: 0,
+      persistentWrites: 0,
+    };
+    process.stderr.write(`[cache-stats] ${JSON.stringify(snapshot)}\n`);
+  };
 
   for (const name of Object.keys(operationRegistry) as OperationName[]) {
     const schema = makeInputSchema(operationRegistry[name]);
     server.registerTool(name, { description: descriptions[name], inputSchema: schema }, async (input, extra) => {
       const signal = extra.mcpReq.signal;
       const execute = async () => {
-        const requestSignal = options.shutdownSignal ? AbortSignal.any([signal, options.shutdownSignal]) : signal;
-        if (requestSignal.aborted) return cancelledResponse();
-        const context: AutomationContext = createAutomationContext({
-          readRoots: options.readRoots,
-          writeRoots: options.writeRoots,
-          signal: requestSignal,
-        });
-        const request = { ...(input as Record<string, unknown>), operation: name } as AutomationRequest;
-        return executeAutomationRequest(request, context);
+        const requestSignal = AbortSignal.any([signal, shutdownSignal]);
+        try {
+          if (requestSignal.aborted) return cancelledResponse();
+          const context: AutomationContext = createAutomationContext({
+            readRoots: options.readRoots,
+            writeRoots: options.writeRoots,
+            signal: requestSignal,
+            ...(cacheService ? { cache: cacheService } : {}),
+          });
+          if (cacheService && !cacheConfigValidated) {
+            await cacheService.validateConfiguredPaths(context.policy);
+            cacheConfigValidated = true;
+          }
+          const request = { ...(input as Record<string, unknown>), operation: name } as AutomationRequest;
+          return await executeAutomationRequest(request, context);
+        } finally {
+          writeCacheStats();
+        }
       };
       const current = queue.then(execute, execute);
       queue = current.then(
@@ -278,6 +348,19 @@ export const createMcpServer = (options: McpServerOptions): McpServer => {
       );
     });
   }
+  const priorClose = server.server.onclose;
+  let closePromise: Promise<void> | undefined;
+  server.server.onclose = () => {
+    priorClose?.();
+    if (!closePromise) {
+      shutdownController.abort();
+      closePromise = (async () => {
+        await queue;
+        await cacheService?.close();
+      })();
+    }
+    void closePromise.catch((error) => process.stderr.write(`MCP cache shutdown: ${String(error)}\n`));
+  };
   return server;
 };
 
@@ -286,6 +369,8 @@ const helpText = `WH3 Mod Manager headless MCP server
 Usage:
   node dist/mcp/server.js --read-root <directory> [--read-root <directory> ...]
     [--write-root <directory> ...] [--max-response-bytes <1024..1048576>]
+    [--cache-dir <directory>] [--whmm-cache-dir <directory>]
+    [--cache-memory-mib <1..1024>] [--no-cache] [--cache-stats]
 
 At least one existing read root is required. Writes are denied unless a write root is supplied.
 The server uses JSON-RPC over stdio; keep stdout reserved for protocol messages.
@@ -305,7 +390,10 @@ export const startMcpServer = (options: McpServerOptions): StdioServerHandle => 
     stopping = true;
     clearInterval(keepAlive);
     shutdownController.abort();
-    void handle.close().catch((error) => process.stderr.write(`MCP shutdown: ${String(error)}\n`));
+    void (async () => {
+      try { await handle.close(); } catch (error) { process.stderr.write(`MCP shutdown: ${String(error)}\n`); }
+      await options.cacheService?.close();
+    })();
   };
   process.stdin.once("end", shutdown);
   process.stdin.once("close", shutdown);
@@ -325,7 +413,17 @@ export const main = async (argv = process.argv.slice(2)): Promise<number> => {
       throw new AutomationError("INVALID_ARGUMENT", "At least one --read-root is required");
     const readRoots = await validateRoots(options.readRoots, "read");
     const writeRoots = await validateRoots(options.writeRoots, "write");
-    startMcpServer({ readRoots, writeRoots, maxResponseBytes: options.maxResponseBytes });
+    const cacheService = options.noCache ? undefined : createAutomationCacheService({
+      cacheDir: options.cacheDir,
+      whmmCacheDir: options.whmmCacheDir,
+      memoryMiB: options.cacheMemoryMiB ?? 128,
+      onWarning: (message) => process.stderr.write(`[info] ${message}\n`),
+    });
+    if (cacheService) {
+      const context = createAutomationContext({ readRoots, writeRoots });
+      await cacheService.validateConfiguredPaths(context.policy);
+    }
+    startMcpServer({ ...options, readRoots, writeRoots, cacheService });
     return 0;
   } catch (error) {
     const response = failedResponse(error);

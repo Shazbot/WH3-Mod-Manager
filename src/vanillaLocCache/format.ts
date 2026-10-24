@@ -22,7 +22,7 @@
 
 export const VANILLA_LOC_CACHE_MAGIC = "WLCC";
 export const VANILLA_LOC_CACHE_EXACT_SOURCE_FORMAT = "packCore-exact-loc";
-export const VANILLA_LOC_CACHE_DECODER_REVISION = "packCore-loc-v1";
+export const VANILLA_LOC_CACHE_DECODER_REVISION = "packCore-loc-v2";
 
 /** Bump when the layout or build-validity contract changes. A reader rejects older files. */
 export const VANILLA_LOC_CACHE_VERSION = 4;

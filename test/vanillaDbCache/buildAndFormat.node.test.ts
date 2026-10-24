@@ -348,6 +348,18 @@ describe("cache builder", () => {
     expect(result.skipped).toEqual([{ packedFilePath: "db\\unknown_tables\\data__", reason: "no schema" }]);
   });
 
+  it("skips a table with an unpaired UTF-16 surrogate instead of changing its source string", () => {
+    const stringSchema = dbVersion(1, [field("key", "StringU8")]);
+    const malformed = [cell("StringU8", [{ type: "Int16", val: 1 }, { type: "String", val: "\ud800" }])];
+    const result = buildVanillaDbCache([packedFile("db\\malformed_tables\\data__", malformed, 1)], () => stringSchema, identity);
+
+    expect(result.meta.tables).toEqual([]);
+    expect(result.skipped).toEqual([{
+      packedFilePath: "db\\malformed_tables\\data__",
+      reason: "string contains an unpaired UTF-16 surrogate",
+    }]);
+  });
+
   it("skips a packed file that was never parsed", () => {
     const unparsed = { name: "db\\x_tables\\data__", file_size: 0, start_pos: 0 } as unknown as PackedFile;
     const result = buildVanillaDbCache([unparsed], () => unitsSchema, identity);

@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import { SchemaField } from "../packFileTypes";
+import { normalizePackFilePathKey } from "../utility/packFilePathUtils";
 import { buildNumericCellFields, buildStringCellFields, isStringCellType } from "./cellFields";
 import { checksumBytes } from "./checksum";
 import {
@@ -62,6 +63,11 @@ export const createMemorySource = (bytes: Uint8Array): VanillaDbCacheSource => {
 
 export const createFileSource = (filePath: string): VanillaDbCacheSource => {
   const fileId = fs.openSync(filePath, "r");
+  return createFileSourceFromFd(fileId);
+};
+
+/** Takes ownership of an already-authorized readonly descriptor. */
+export const createFileSourceFromFd = (fileId: number): VanillaDbCacheSource => {
   const size = fs.fstatSync(fileId).size;
   let bytesRead = 0;
   return {
@@ -127,6 +133,8 @@ class SizedCache {
     const existing = this.entries.get(key);
     if (existing) this.totalBytes -= existing.bytes;
     this.entries.delete(key);
+    // One large value must not escape the byte cap just because it is the only entry.
+    if (bytes > this.maxBytes) return;
     this.entries.set(key, { value, bytes });
     this.totalBytes += bytes;
 
@@ -154,6 +162,8 @@ export interface VanillaDbCacheStats {
 
 export interface VanillaDbCacheReader {
   readonly meta: VanillaDbCacheMeta;
+  /** Decoded data currently held plus the immutable table directory. */
+  readonly residentBytes: number;
   listTablePaths(): string[];
   getTableMeta(packedFilePath: string): VanillaDbCacheTableMeta | undefined;
   /** Cells for a whole table, in the shape readPack produces: one flat array of rows of cells. */
@@ -244,7 +254,17 @@ export const openVanillaDbCache = (
   }
 
   const decoded = new SizedCache(maxDecodedBytes);
-  const tableByPath = new Map(meta.tables.map((table) => [table.packedFilePath, table]));
+  const tableByPath = new Map<string, VanillaDbCacheTableMeta>();
+  for (const table of meta.tables) {
+    const key = normalizePackFilePathKey(table.packedFilePath);
+    if (tableByPath.has(key)) {
+      decoded.clear();
+      return undefined;
+    }
+    tableByPath.set(key, table);
+  }
+  const getTable = (packedFilePath: string): VanillaDbCacheTableMeta | undefined =>
+    tableByPath.get(normalizePackFilePathKey(packedFilePath));
 
   const readPoolChunk = (chunkIndex: number): string[] => {
     const cacheKey = `pool:${chunkIndex}`;
@@ -364,30 +384,35 @@ export const openVanillaDbCache = (
   return {
     meta,
 
+    get residentBytes() {
+      return decoded.decodedBytes + JSON.stringify(meta).length * 2 + tableByPath.size * 96;
+    },
+
     listTablePaths: () => meta.tables.map((table) => table.packedFilePath),
 
-    getTableMeta: (packedFilePath) => tableByPath.get(packedFilePath),
+    getTableMeta: (packedFilePath) => getTable(packedFilePath),
 
     getColumnNumbers(packedFilePath, columnName) {
-      const table = tableByPath.get(packedFilePath);
+      const table = getTable(packedFilePath);
       const column = table && findColumn(table, columnName);
       if (!table || !column || isStringCellType(column.fieldType)) return undefined;
-      return numbersFor(packedFilePath, column);
+      return numbersFor(table.packedFilePath, column);
     },
 
     getColumnI64Strings(packedFilePath, columnName) {
-      const table = tableByPath.get(packedFilePath);
+      const table = getTable(packedFilePath);
       const column = table && findColumn(table, columnName);
       if (!table || !column || column.fieldType !== "I64") return undefined;
-      return i64StringsFor(packedFilePath, column);
+      return i64StringsFor(table.packedFilePath, column);
     },
 
     getColumnPoolIds(packedFilePath, columnName) {
-      const table = tableByPath.get(packedFilePath);
+      const table = getTable(packedFilePath);
       const column = table && findColumn(table, columnName);
       if (!table || !column || !isStringCellType(column.fieldType)) return undefined;
 
-      const cacheKey = `dict:${packedFilePath}:${columnName}`;
+      const tablePath = table.packedFilePath;
+      const cacheKey = `dict:${tablePath}:${columnName}`;
       const cached = decoded.get<Uint32Array>(cacheKey);
       if (cached) return cached;
 
@@ -399,12 +424,12 @@ export const openVanillaDbCache = (
         verifyBlock(
           source.read(payloadStart + column.offset, probeLength),
           column.probeChecksum!,
-          `${packedFilePath}:${columnName}:dictionary probe`,
+          `${tablePath}:${columnName}:dictionary probe`,
         ),
       );
       if (!ids && probeLength < column.length) {
         ids = decodeDictionaryColumnIds(
-          columnSlice(column.offset, column.length, column.checksum, `${packedFilePath}:${columnName}`),
+          columnSlice(column.offset, column.length, column.checksum, `${tablePath}:${columnName}`),
         );
       }
       if (!ids) return undefined;
@@ -414,10 +439,10 @@ export const openVanillaDbCache = (
     },
 
     getColumnPoolIdsPerRow(packedFilePath, columnName) {
-      const table = tableByPath.get(packedFilePath);
+      const table = getTable(packedFilePath);
       const column = table && findColumn(table, columnName);
       if (!table || !column || !isStringCellType(column.fieldType)) return undefined;
-      return poolIdsFor(packedFilePath, column);
+      return poolIdsFor(table.packedFilePath, column);
     },
 
     getPoolBlock() {
@@ -451,21 +476,22 @@ export const openVanillaDbCache = (
     },
 
     getColumnStrings(packedFilePath, columnName) {
-      const table = tableByPath.get(packedFilePath);
+      const table = getTable(packedFilePath);
       const column = table && findColumn(table, columnName);
       if (!table || !column || !isStringCellType(column.fieldType)) return undefined;
-      return stringsFor(packedFilePath, column);
+      return stringsFor(table.packedFilePath, column);
     },
 
     getTableRows(packedFilePath) {
-      const table = tableByPath.get(packedFilePath);
+      const table = getTable(packedFilePath);
       if (!table) return undefined;
+      const tablePath = table.packedFilePath;
 
       const columnValues = table.columns.map((column) => {
         if (!isStringCellType(column.fieldType)) {
-          return { column, numbers: numbersFor(packedFilePath, column) };
+          return { column, numbers: numbersFor(tablePath, column) };
         }
-        const ids = poolIdsFor(packedFilePath, column);
+        const ids = poolIdsFor(tablePath, column);
         const byId = new Map<number, string>();
         const strings: string[] = new Array(ids.length);
         for (let row = 0; row < ids.length; row++) {
@@ -476,7 +502,7 @@ export const openVanillaDbCache = (
           }
           strings[row] = value;
         }
-        return { column, strings, presence: presenceFor(packedFilePath, column) };
+        return { column, strings, presence: presenceFor(tablePath, column) };
       });
 
       const rows: SchemaField[][] = new Array(table.rowCount);
@@ -501,23 +527,24 @@ export const openVanillaDbCache = (
     },
 
     getTypedTableRows(packedFilePath) {
-      const table = tableByPath.get(packedFilePath);
+      const table = getTable(packedFilePath);
       if (!table) return undefined;
+      const tablePath = table.packedFilePath;
 
       const columnValues = table.columns.map((column) => {
         if (column.fieldType === "I64") {
-          const i64 = i64StringsFor(packedFilePath, column);
+          const i64 = i64StringsFor(tablePath, column);
           if (i64.length !== table.rowCount) {
             throw new Error(`I64 column ${column.name} has ${i64.length} rows; expected ${table.rowCount}`);
           }
           return { column, i64 };
         }
         if (isStringCellType(column.fieldType)) {
-          const strings = stringsFor(packedFilePath, column);
+          const strings = stringsFor(tablePath, column);
           if (strings.length !== table.rowCount) {
             throw new Error(`String column ${column.name} has ${strings.length} rows; expected ${table.rowCount}`);
           }
-          const presence = presenceFor(packedFilePath, column);
+          const presence = presenceFor(tablePath, column);
           if (column.fieldType === "OptionalStringU8" && !presence) {
             throw new Error(`Optional string column ${column.name} has no presence column`);
           }
@@ -537,7 +564,7 @@ export const openVanillaDbCache = (
             presence,
           };
         }
-        const numbers = numbersFor(packedFilePath, column);
+        const numbers = numbersFor(tablePath, column);
         if (numbers.length !== table.rowCount) {
           throw new Error(`Numeric column ${column.name} has ${numbers.length} rows; expected ${table.rowCount}`);
         }

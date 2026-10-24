@@ -29,7 +29,7 @@ import { SCHEMA_FIELD_TYPE } from "../packFileTypes";
 
 export const VANILLA_DB_CACHE_MAGIC = "WDBC";
 export const VANILLA_DB_CACHE_EXACT_SOURCE_FORMAT = "packCore-exact";
-export const VANILLA_DB_CACHE_DECODER_REVISION = "packCore-db-v1";
+export const VANILLA_DB_CACHE_DECODER_REVISION = "packCore-db-v2";
 
 /**
  * Bumped whenever the bytes stop meaning what an older reader thinks they mean. A mismatch rebuilds.

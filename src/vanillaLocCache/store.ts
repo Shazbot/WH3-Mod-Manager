@@ -3,10 +3,11 @@ import * as fs from "fs";
 import * as nodePath from "path";
 
 import { publishCacheFiles } from "../vanillaCacheFiles";
-import { getCanonicalFileIdentity } from "../vanillaCacheIdentity";
 import { VanillaLocSourceReadCanceled } from "./exactSource";
 import { buildVanillaLocCacheBytes, type VanillaLocCacheEntry } from "./build";
 import { createFileSource, openVanillaLocCache, type VanillaLocCacheReader } from "./read";
+import { getVanillaLocCacheFileName, getVanillaLocCacheIdentity, getVanillaLocCachePackSetKey } from "./identity";
+export { getVanillaLocCacheIdentity } from "./identity";
 
 /**
  * Owns the vanilla localisation cache file: deciding whether it still applies, building it when it
@@ -32,14 +33,6 @@ import { createFileSource, openVanillaLocCache, type VanillaLocCacheReader } fro
  * needed - which is just as well, since nothing here can tell another consumer's file from a stale
  * one by name.
  */
-const cacheFileName = (game: string, packSetKey: string) => `vanilla-loc-cache-${game}-${packSetKey.slice(0, 16)}.bin`;
-
-const getPackSetKey = (game: string, packPaths: readonly string[]) =>
-  crypto
-    .createHash("sha1")
-    .update(JSON.stringify([game, packPaths.map((packPath) => nodePath.resolve(packPath))]))
-    .digest("hex");
-
 /** One reader per identity, so repeated builds in a session share the resident key block. */
 const readerByIdentity = new Map<string, VanillaLocCacheReader>();
 /** In flight builds, so several callers arriving at once do not each parse the loc packs. */
@@ -58,21 +51,8 @@ const abandoned = new Set<string>();
  * so the same packs in a different order are a different cache. Sorting here would let a file built
  * when English overrode the player's language keep being served after that order was corrected.
  */
-export const getVanillaLocCacheIdentity = (game: string, packPaths: readonly string[]): string => {
-  const parts = packPaths.map((packPath) => {
-    const source = getCanonicalFileIdentity(packPath);
-    return source
-      ? [source.path, source.size, source.mtimeNs, source.ctimeNs, source.dev, source.ino].map(String).join(":")
-      : `${nodePath.resolve(packPath)}:missing`;
-  });
-  return crypto
-    .createHash("sha1")
-    .update(JSON.stringify([game, parts]))
-    .digest("hex");
-};
-
 const cacheFilePath = (userDataPath: string, game: string, packSetKey: string) =>
-  nodePath.join(userDataPath, cacheFileName(game, packSetKey));
+  nodePath.join(userDataPath, getVanillaLocCacheFileName(game, packSetKey));
 
 /** Written beside the cache so a stale file is detected without opening it. */
 const stampPath = (userDataPath: string, game: string, packSetKey: string) =>
@@ -167,7 +147,7 @@ export const openOrBuildVanillaLocCache = async (
   const inFlight = buildsInFlight.get(readerKey);
   if (inFlight) return inFlight;
 
-  const packSetKey = getPackSetKey(request.game, request.packPaths);
+  const packSetKey = getVanillaLocCachePackSetKey(request.game, request.packPaths);
 
   const build = (async (): Promise<VanillaLocCacheReader | undefined> => {
     const current = openIfCurrent(

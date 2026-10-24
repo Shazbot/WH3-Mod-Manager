@@ -81,6 +81,17 @@ export class FilesystemPolicy {
     return canonicalPath;
   }
 
+  /** Checks a path that may not exist yet, without granting access to it. */
+  async assertReadTargetPath(requestedPath: string): Promise<string> {
+    this.checkCancelled();
+    if (!requestedPath || requestedPath.includes("\0")) {
+      throw new AutomationError("INVALID_ARGUMENT", "A non-empty filesystem path is required");
+    }
+    const canonicalPath = await realpathWithExistingParent(requestedPath);
+    ensureWithinRoots(canonicalPath, await this.getRoots("read"), "Read path");
+    return canonicalPath;
+  }
+
   async readFile(requestedPath: string): Promise<{ path: string; bytes: Buffer }> {
     this.checkCancelled();
     const canonicalPath = await this.assertReadPath(requestedPath);

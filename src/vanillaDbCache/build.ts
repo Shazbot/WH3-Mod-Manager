@@ -1,5 +1,6 @@
 import { DBVersion, Field, PackedFile, SchemaField } from "../packFileTypes";
 import { parseDBTablePath } from "../utility/packFileHelpers";
+import { normalizePackFilePathKey } from "../utility/packFilePathUtils";
 import {
   isEncodableCellType,
   isStringCellType,
@@ -11,6 +12,7 @@ import {
 import { encodeDictionaryColumn, encodeI64Column, encodeNumericColumn } from "./columnCodec";
 import { buildFrontCodedBlock } from "./frontCodedBlock";
 import { checksumBytes } from "./checksum";
+import { isWellFormedUtf16 } from "../vanillaCacheText";
 import {
   VanillaDbCacheColumnMeta,
   VanillaDbCacheIdentity,
@@ -104,6 +106,14 @@ export const buildVanillaDbCacheFromTables = (
   identity: VanillaDbCacheIdentity,
 ): BuildVanillaDbCacheResult => {
   const skipped: BuildVanillaDbCacheResult["skipped"] = [];
+  const normalizedPaths = new Set<string>();
+  for (const table of inputTables) {
+    const pathKey = normalizePackFilePathKey(table.packedFilePath);
+    if (normalizedPaths.has(pathKey)) {
+      throw new Error(`Duplicate normalized DB table path: ${table.packedFilePath}`);
+    }
+    normalizedPaths.add(pathKey);
+  }
 
   // Every string is collected before any column is encoded: a column stores pool ids, an id is a rank
   // in the sorted pool, and a rank is only final once the pool holds everything.
@@ -132,12 +142,27 @@ export const buildVanillaDbCacheFromTables = (
       continue;
     }
     const rows = table.rows;
+    const tableStrings: string[] = [];
+    let malformedUtf16 = false;
     for (const row of rows) {
       for (let column = 0; column < dbVersion.fields.length; column++) {
         const fieldType = dbVersion.fields[column].field_type;
-        if (isStringCellType(fieldType)) poolValues.add(readStringCell(fieldType, [...row[column]]));
+        if (isStringCellType(fieldType)) {
+          const value = readStringCell(fieldType, [...row[column]]);
+          if (!isWellFormedUtf16(value)) {
+            malformedUtf16 = true;
+            break;
+          }
+          tableStrings.push(value);
+        }
       }
+      if (malformedUtf16) break;
     }
+    if (malformedUtf16) {
+      skipped.push({ packedFilePath: table.packedFilePath, reason: "string contains an unpaired UTF-16 surrogate" });
+      continue;
+    }
+    for (const value of tableStrings) poolValues.add(value);
     parsedTables.push({
       packedFilePath: table.packedFilePath,
       packedFileVersion: table.packedFileVersion,

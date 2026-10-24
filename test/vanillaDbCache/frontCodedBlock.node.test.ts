@@ -138,6 +138,22 @@ describe("front coded block", () => {
     for (const value of values) expect(findFrontCodedRank(block, value)).toBeGreaterThanOrEqual(0);
   });
 
+  it("preserves leading BOMs in checkpoint keys and decoded suffixes", () => {
+    const values = sorted([
+      "\uFEFFprefix_000",
+      "\uFEFFprefix_001",
+      "\uFEFFprefix_002",
+      "key_\uFEFFsuffix",
+      ...Array.from({ length: FRONT_CODED_CHECKPOINT_INTERVAL + 4 }, (_, index) => `z_${String(index).padStart(3, "0")}`),
+    ]);
+    const block = buildFrontCodedBlock(values);
+
+    expect(readAllFrontCodedEntries(block)).toEqual(values);
+    for (const value of values) {
+      expect(readFrontCodedEntry(block, findFrontCodedRank(block, value))).toBe(value);
+    }
+  });
+
   it("round trips a prefix longer than a byte can count", () => {
     const long = "x".repeat(400);
     const values = sorted([long + "a", long + "b", long + "c"]);

@@ -4,7 +4,7 @@ import {
   iterateFrontCodedEntries,
   type FrontCodedBlock,
 } from "../vanillaDbCache/frontCodedBlock";
-import { createFileSource, createMemorySource, type VanillaDbCacheSource } from "../vanillaDbCache/read";
+import { createFileSource, createFileSourceFromFd, createMemorySource, type VanillaDbCacheSource } from "../vanillaDbCache/read";
 import {
   getVanillaLocCacheSections,
   readVanillaLocCacheHeader,
@@ -12,10 +12,10 @@ import {
   VANILLA_LOC_UNKNOWN_ROW_INDEX,
 } from "./format";
 
-export { createFileSource, createMemorySource };
+export { createFileSource, createFileSourceFromFd, createMemorySource };
 export type VanillaLocCacheSource = VanillaDbCacheSource;
 
-const textDecoder = new TextDecoder();
+const textDecoder = new TextDecoder("utf-8", { ignoreBOM: true });
 
 export interface VanillaLocCacheReader {
   /** The value for a key, or undefined if this cache does not hold it. */
@@ -39,6 +39,8 @@ export interface VanillaLocCacheReader {
   readonly count: number;
   /** Bytes held resident: key/value indexes and source label/row provenance. */
   readonly residentBytes: number;
+  /** True when every winning key has a source file label and original row index. */
+  readonly hasCompleteProvenance: boolean;
   close(): void;
 }
 
@@ -119,8 +121,16 @@ export const openVanillaLocCache = (source: VanillaLocCacheSource): VanillaLocCa
   forEachFrontCodedEntry(sourceBlock, (sourceLabel, sourceId) => {
     sourceLabels[sourceId] = sourceLabel;
   });
+  const sourceLabelBytes = sourceLabels.reduce((total, label) => total + (label?.length ?? 0) * 2 + 24, 0);
   const sourceById = (sourceId: number): string | undefined =>
     sourceId === 0xffff ? undefined : sourceLabels[sourceId];
+  let hasCompleteProvenance = true;
+  for (let index = 0; index < meta.count; index++) {
+    if (sourceById(sourceIds[index]) === undefined || rowIndices[index] === VANILLA_LOC_UNKNOWN_ROW_INDEX) {
+      hasCompleteProvenance = false;
+      break;
+    }
+  }
 
   const decodeValueAt = (rank: number): string => {
     const start = valueOffsets[rank];
@@ -204,7 +214,9 @@ export const openVanillaLocCache = (source: VanillaLocCacheSource): VanillaLocCa
       sourceBytes.length +
       sourceCheckpoints.byteLength +
       sourceIds.byteLength +
-      rowIndices.byteLength,
+      rowIndices.byteLength +
+      sourceLabelBytes,
+    hasCompleteProvenance,
     close: source.close,
   };
 };

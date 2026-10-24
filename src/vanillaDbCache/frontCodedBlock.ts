@@ -28,7 +28,7 @@ export interface FrontCodedBlock {
 }
 
 const textEncoder = new TextEncoder();
-const textDecoder = new TextDecoder();
+const textDecoder = new TextDecoder("utf-8", { ignoreBOM: true });
 
 const decodeSuffix = (bytes: Uint8Array, start: number, end: number): string =>
   start === end ? "" : textDecoder.decode(bytes.subarray(start, end));

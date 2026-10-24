@@ -12,8 +12,9 @@ import { normalizeInternalPackPath } from "./filesystem";
 import type { AutomationContext } from "./operations";
 
 export const readAutomationPack = async (packPath: string, context: AutomationContext): Promise<CorePack> => {
-  const canonicalPath = await context.policy.assertReadPath(packPath);
   try {
+    if (context.cacheRequest) return await context.cacheRequest.readPackIndex(packPath);
+    const canonicalPath = await context.policy.assertReadPath(packPath);
     return readPackIndex(canonicalPath, { game: "wh3", maxLogicalPayloadBytes: context.maxLogicalPayloadBytes });
   } catch (error) {
     if (error instanceof AutomationError) throw error;
@@ -37,11 +38,15 @@ export const readAutomationPayload = async (
   context: AutomationContext,
 ): Promise<Buffer> => {
   try {
-    return await readPayload(pack, entry, {
+    await context.cacheRequest?.assertPackSnapshot(pack);
+    const payload = await readPayload(pack, entry, {
       game: "wh3",
       maxLogicalPayloadBytes: context.maxLogicalPayloadBytes ?? DEFAULT_MAX_LOGICAL_PAYLOAD_BYTES,
     });
+    await context.cacheRequest?.assertPackSnapshot(pack);
+    return payload;
   } catch (error) {
+    if (error instanceof AutomationError) throw error;
     const message = error instanceof Error ? error.message : String(error);
     const unsupportedCode = error && typeof error === "object" && "code" in error && error.code === "UNSUPPORTED_CODEC";
     const code = unsupportedCode || /not available|unsupported codec/i.test(message) ? "UNSUPPORTED" : "VALIDATION";
