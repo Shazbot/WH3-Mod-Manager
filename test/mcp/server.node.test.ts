@@ -132,7 +132,7 @@ describe("WH3 MCP stdio server", () => {
     const session = await connect();
     try {
       const listed = await session.client.listTools();
-      expect(listed.tools).toHaveLength(17);
+      expect(listed.tools).toHaveLength(18);
       const info = listed.tools.find((tool) => tool.name === "pack_info");
       expect(info?.description).toContain("pack header");
       expect(info?.inputSchema).toMatchObject({
@@ -242,6 +242,50 @@ describe("WH3 MCP stdio server", () => {
       });
     } finally {
       await session.close();
+    }
+  });
+
+  it("inspects DDS textures through CLI/MCP and retains completion status for capped preview results", async () => {
+    const dds = Buffer.alloc(136);
+    dds.write("DDS ");
+    dds.writeUInt32LE(124, 4);
+    dds.writeUInt32LE(4, 12);
+    dds.writeUInt32LE(4, 16);
+    dds.writeUInt32LE(32, 76);
+    dds.writeUInt32LE(4, 80);
+    dds.write("DXT1", 84);
+    dds.writeUInt16LE(0xf800, 128);
+    const packPath = path.join(allowedRoot, "texture.pack");
+    await writeRawPack(packPath, [{ name: "textures\\test.dds", buffer: dds }], metadata());
+    const session = await connect();
+    try {
+      const result = await session.client.callTool({
+        name: "pack_texture_inspect",
+        arguments: { packPath, filePath: "textures/test.dds" },
+      });
+      expect(result.isError, JSON.stringify(result.structuredContent)).not.toBe(true);
+      const cli = spawnSync(
+        process.execPath,
+        [cliEntry, "pack", "texture", "inspect", packPath, "textures/test.dds", "--format", "json"],
+        { cwd: projectRoot, encoding: "utf8" },
+      );
+      expect(cli.status, cli.stderr).toBe(0);
+      expect(JSON.parse(cli.stdout)).toEqual(responseEnvelope(result));
+    } finally {
+      await session.close();
+    }
+    const capped = await connect({ maxResponseBytes: 1024 });
+    try {
+      const outputPath = path.join(allowedRoot, "texture-preview.png");
+      const result = await capped.client.callTool({
+        name: "pack_texture_inspect",
+        arguments: { packPath, filePath: "textures/test.dds", outputPath },
+      });
+      expect(responseBytes(result)).toBeLessThanOrEqual(1024);
+      expect(responseEnvelope(result).error?.details).toMatchObject({ completed: true, outputPath });
+      expect(readFileSync(outputPath).subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    } finally {
+      await capped.close();
     }
   });
 

@@ -1,4 +1,5 @@
 import { deflateSync } from "node:zlib";
+import { inspectDdsLayout } from "../utility/ddsLayout";
 
 interface DdsRgbaImage {
   width: number;
@@ -494,53 +495,24 @@ const decodeDxt5 = (buffer: Buffer, width: number, height: number, dataOffset = 
   return { width, height, pixels };
 };
 
-const decodeDds = (buffer: Buffer): DdsRgbaImage => {
-  if (buffer.length < DDS_HEADER_BYTES || buffer.subarray(0, 4).toString("ascii") !== "DDS ") {
-    throw new Error("Invalid DDS file: missing header.");
-  }
-
-  const headerSize = readU32LE(buffer, 4);
-  if (headerSize !== 124) throw new Error(`Unsupported DDS header size ${headerSize}.`);
-  const height = readU32LE(buffer, 12);
-  const width = readU32LE(buffer, 16);
-  if (width === 0 || height === 0) throw new Error(`Invalid DDS dimensions ${width}x${height}.`);
-
-  const fourCc = buffer.subarray(84, 88).toString("ascii");
-  if (fourCc === "DXT1") return decodeDxt1(buffer, width, height);
-  if (fourCc === "DXT3") return decodeDxt3(buffer, width, height);
-  if (fourCc === "DXT5") return decodeDxt5(buffer, width, height);
-  if (fourCc === "DX10") {
-    const dx10HeaderBytes = 20;
-    const dx10HeaderOffset = DDS_HEADER_BYTES;
-    if (buffer.length < dx10HeaderOffset + dx10HeaderBytes) {
-      throw new Error(
-        `Truncated DDS DX10 header: need ${dx10HeaderBytes} bytes, file has ${buffer.length - dx10HeaderOffset}.`,
-      );
-    }
-    const dxgiFormat = readU32LE(buffer, dx10HeaderOffset);
-    const dataOffset = dx10HeaderOffset + dx10HeaderBytes;
-    switch (dxgiFormat) {
-      case 70:
-      case 71:
-      case 72:
-        return decodeDxt1(buffer, width, height, dataOffset);
-      case 73:
-      case 74:
-      case 75:
-        return decodeDxt3(buffer, width, height, dataOffset);
-      case 76:
-      case 77:
-      case 78:
-        return decodeDxt5(buffer, width, height, dataOffset);
-      case 97:
-      case 98:
-      case 99:
-        return decodeBc7(buffer, width, height, dataOffset);
-      default:
-        break;
-    }
-  }
-  throw new Error(`Unsupported DDS format ${fourCc || "unknown"}.`);
+const decodeDds = (buffer: Buffer, mipLevel = 0, surface = 0, maxPixels = Number.POSITIVE_INFINITY): DdsRgbaImage => {
+  const layout = inspectDdsLayout(buffer);
+  if (!Number.isInteger(mipLevel) || mipLevel < 0 || mipLevel >= layout.mipCount)
+    throw new Error(`Invalid DDS mip level ${mipLevel}`);
+  if (!Number.isInteger(surface) || surface < 0 || surface >= layout.surfaceCount)
+    throw new Error(`Invalid DDS surface ${surface}`);
+  if (!layout.previewSupported) throw new Error(layout.previewUnsupportedReason ?? "Unsupported DDS preview format");
+  const mip = layout.mips[mipLevel];
+  const offset = mip.offset + surface * layout.chainBytes!;
+  if (offset + mip.byteLength > buffer.length)
+    throw new Error(`Truncated DDS data for mip ${mipLevel}, surface ${surface}`);
+  if (mip.width * mip.height > maxPixels)
+    throw new Error("DDS preview exceeds the 16,777,216-pixel limit; select a smaller mip");
+  if (layout.format.startsWith("BC1_")) return decodeDxt1(buffer, mip.width, mip.height, offset);
+  if (layout.format.startsWith("BC2_")) return decodeDxt3(buffer, mip.width, mip.height, offset);
+  if (layout.format.startsWith("BC3_")) return decodeDxt5(buffer, mip.width, mip.height, offset);
+  if (layout.format.startsWith("BC7_")) return decodeBc7(buffer, mip.width, mip.height, offset);
+  throw new Error(`Unsupported DDS preview format ${layout.format}`);
 };
 
 const resizeRgba = (image: DdsRgbaImage, targetWidth: number, targetHeight: number): Buffer => {
@@ -630,3 +602,9 @@ export const encodeDdsAsPngImage = (buffer: Buffer, width?: number, height?: num
 
 export const encodeDdsAsPng = (buffer: Buffer, width?: number, height?: number): Buffer =>
   encodeDdsAsPngImage(buffer, width, height).png;
+
+/** Exports the actual stored mip, without resizing or generating mipmaps. */
+export const encodeDdsMipAsPng = (buffer: Buffer, mipLevel = 0, surface = 0): EncodedDdsPng => {
+  const image = decodeDds(buffer, mipLevel, surface, 16_777_216);
+  return { width: image.width, height: image.height, png: encodePng(image.pixels, image.width, image.height) };
+};

@@ -12,8 +12,11 @@ yarn build:tools
 node dist/cli/main.js --help
 node dist/cli/main.js pack info /absolute/path/to/example.pack --format json
 node dist/cli/main.js pack list /absolute/path/to/example.pack --path-prefix db/ --limit 100 --format json
+node dist/cli/main.js pack list /absolute/path/to/example.pack --glob '**/*.dds' --format json
 node dist/cli/main.js pack read /absolute/path/to/example.pack scripts/example.lua --output /absolute/path/to/example.lua
 ```
+
+Globs match complete internal paths. `*.dds` matches only root-level files; use `**/*.dds` to find DDS files in nested folders too. Quote glob patterns so your shell passes them to the CLI unchanged. Use forward slashes in patterns even when the returned pack paths contain backslashes.
 
 The CLI defaults to readable text. Use `--format json` for the full `{ ok, data, diagnostics }` or `{ ok: false, error }` envelope; result data goes to stdout and diagnostics go to stderr. Exit codes are `0` success, `1` unexpected error, `2` invalid arguments, `3` I/O or access failure, `4` unsupported operation/format, `5` validation or conflict, and `130` cancellation.
 
@@ -136,6 +139,21 @@ Point `cwd` at the project containing the built `dist` output. Build native code
 Paged operations return a preview with `offset`, `limit`, `total`, `nextOffset`, and `hasMore`. Pages default to 100 records and allow at most 1000. Use `reportPath` (CLI `--report`) to write the complete JSON result when available; reports are explicit outputs and are never created automatically. MCP responses are capped by the configured byte limit. If a report was written, an oversized result returns a bounded summary and its path. Without a report, the tool returns an actionable error; a completed write includes completion information to avoid retrying it by mistake.
 
 Writes validate staged output before atomic publication, default to no-overwrite, and reject output aliases of source files. Path policies resolve symlinks/junctions and enforce roots for pack files, source files, reports, and manifest-discovered packs. MCP calls run serially; cancellation is checked during scans and before publication, and temporary output is cleaned if a write is canceled.
+
+## DDS inspection and mip previews
+
+```sh
+node dist/cli/main.js pack texture inspect /absolute/path/to/example.pack 'textures/unit_diffuse.dds' --format json
+node dist/cli/main.js pack texture inspect /absolute/path/to/example.pack 'textures/unit_diffuse.dds' --mip 2 --output /absolute/path/to/mip2.png --format json
+```
+
+The MCP equivalent is `pack_texture_inspect` with `packPath`, `filePath`, optional `mipLevel`, optional `surface`, and optional `outputPath`. `--report` / `reportPath` writes a metadata report. Inspection alone creates no files.
+
+The result includes DDS/DXGI format, dimensions, declared/effective mip count, array/cubemap/volume information, and per-mip dimensions, offsets, byte sizes, and payload presence. Mip levels and surfaces are zero-based. Mip byte ranges describe surface zero; `selectedMip` adjusts the offset for `--surface` (default zero). A declared mip count of zero means one base level. Truncated chains are reported with `complete: false` and diagnostics; a missing selected payload cannot be exported.
+
+Preview exports decode the actual stored mip, without resizing or generating mipmaps. PNG preview supports the existing BC1/DXT1, BC2/DXT3, BC3/DXT5, and DX10 BC7 decoders. sRGB data retains its stored channel values. Other formats still report header metadata; known BC4/BC5/BC6H and tightly packed common RGB layouts also expose mip byte ranges, while unsupported decoders return an explicit error on export. Padded RGB layouts and unknown formats do not claim verified offsets or chain completeness. Volume preview is unsupported. Preview size is capped at 16,777,216 pixels; choose a smaller mip for large textures.
+
+Preview writes use the same allowed roots, source protection, atomic publication, and no-overwrite default as other outputs. Pass `--overwrite` to replace an existing PNG. `pack read` continues to extract the original DDS bytes without converting them.
 
 ## Localization and unit resolution
 

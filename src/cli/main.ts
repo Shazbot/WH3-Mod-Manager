@@ -8,6 +8,7 @@ const rootHelp = `Usage:
   whmm pack info <packPath>
   whmm pack list <packPath> [--path-prefix <path>] [--glob <pattern>]
   whmm pack read <packPath> <filePath> [--output <file>]
+  whmm pack texture inspect <packPath> <filePath> [--mip <level>] [--surface <index>] [--output <preview.png>]
   whmm pack search <packPath> <query> [--max-results <number>]
   whmm pack create <outputPath> [--input <jsonFile>]
   whmm pack write <packPath> --output <outputPath> --input <jsonFile>
@@ -27,6 +28,8 @@ Flags:
   --format text|json   Select readable or machine-readable output (default text)
   --input <file>       JSON operation fields for create, write, query, patch, subset, and asset tools
   --output <path>      Output pack or extracted file path
+  --mip <level>        Zero-based stored DDS mip level for preview (default 0)
+  --surface <index>    Zero-based DDS array/cube surface (default 0)
   --report <path>      Write the full result as a JSON report
   --include <glob>     Add a packed path glob to a subset selection (repeatable)
   --closure <mode>     Subset closure: none, direct, or transitive
@@ -45,6 +48,8 @@ const options = {
   format: { type: "string" as const, default: "text" },
   input: { type: "string" as const },
   output: { type: "string" as const },
+  mip: { type: "string" as const },
+  surface: { type: "string" as const },
   report: { type: "string" as const },
   overwrite: { type: "boolean" as const },
   offset: { type: "string" as const },
@@ -134,6 +139,13 @@ const buildRequest = async (
 
   const [group, action, first, second, third] = command;
   if (group === "pack") {
+    if (action === "texture") {
+      ensurePositionals(command, 5);
+      if (first !== "inspect") throw new AutomationError("INVALID_ARGUMENT", `Unknown texture command: ${first}`);
+      const mipLevel = numericOption(values.mip, "mip");
+      const surface = numericOption(values.surface, "surface");
+      return { ...common, operation: "pack_texture_inspect", packPath: second, filePath: third, ...(mipLevel === undefined ? {} : { mipLevel }), ...(surface === undefined ? {} : { surface }), ...(values.output === undefined ? {} : { outputPath: values.output }) };
+    }
     if (action === "info") {
       ensurePositionals(command, 3);
       return { ...common, operation: "pack_info", packPath: first };

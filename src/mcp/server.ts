@@ -36,6 +36,7 @@ const descriptions: Record<OperationName, string> = {
   pack_subset: "Create a subset pack from selected files or DB rows and a declared dependency closure.",
   localization_lookup: "Look up translated text, localization keys, and schema-verified DB keys in explicit packs.",
   unit_resolve: "Resolve unit names/keys to roster cultures, factions, campaign recruitment rules, visuals, character art, and optimizer metadata with source evidence.",
+  pack_texture_inspect: "Inspect DDS format, dimensions, surfaces, and mip payload ranges; optionally export a selected stored mip as a PNG preview.",
 };
 
 export interface McpServerOptions {
@@ -179,7 +180,7 @@ const makeResponse = (
   const completedWrite =
     response.ok &&
     Boolean(outputPath) &&
-    ["pack_create", "pack_write_files", "pack_patch_table", "pack_clone", "pack_subset", "pack_read_file"].includes(
+    ["pack_create", "pack_write_files", "pack_patch_table", "pack_clone", "pack_subset", "pack_read_file", "pack_texture_inspect"].includes(
       request.operation,
     );
 

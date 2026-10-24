@@ -45,6 +45,7 @@ import {
 import { packSubsetSchema, runPackSubset } from "./subset";
 import { localizationLookupSchema, runLocalizationLookup } from "./localization";
 import { unitResolveSchema, runUnitResolve } from "./units";
+import { packTextureInspectSchema, runPackTextureInspect } from "./textures";
 import { FilesystemPolicy, normalizeInternalPackPath } from "./filesystem";
 import {
   findAutomationPackEntry as findEntry,
@@ -141,6 +142,7 @@ export const operationSchemas = {
   pack_subset: packSubsetSchema,
   localization_lookup: localizationLookupSchema,
   unit_resolve: unitResolveSchema,
+  pack_texture_inspect: packTextureInspectSchema,
 } as const;
 
 export type OperationName = keyof typeof operationSchemas;
@@ -780,6 +782,7 @@ export const operationRegistry: OperationRegistry = {
   pack_subset: { schema: operationSchemas.pack_subset, execute: runPackSubset },
   localization_lookup: { schema: operationSchemas.localization_lookup, execute: runLocalizationLookup },
   unit_resolve: { schema: operationSchemas.unit_resolve, execute: runUnitResolve },
+  pack_texture_inspect: { schema: operationSchemas.pack_texture_inspect, execute: runPackTextureInspect },
 };
 
 export const createAutomationContext = (options: {
