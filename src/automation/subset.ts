@@ -6,7 +6,7 @@ import { z } from "zod";
 import { parseDBTablePath } from "../utility/packFileHelpers";
 import { normalizePackFilePathKey } from "../utility/packFilePathUtils";
 import { readPackIndex, rewriteDbTableRows, writeRawPack, type CorePack, type CorePackEntry, type RawPackWriteEntry } from "../packCore";
-import { AutomationError, type AutomationDiagnostic } from "./errors";
+import { AutomationError, throwIfAborted, yieldToEventLoop, type AutomationDiagnostic } from "./errors";
 import { normalizeInternalPackPath } from "./filesystem";
 import { readAutomationPayload, getAutomationSchemaProvider } from "./packAccess";
 import {
@@ -203,10 +203,14 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
   const selectedRows = new Map<string, SelectedRows>();
   const selectedReasons = new Map<string, Set<string>>();
   const graphRoots: ReferenceGraphRoot[] = [];
-  let exactPathMatches = new Set<string>();
+  const exactPathMatches = new Set<string>();
 
+  let candidateEntries = 0;
   for (const provider of environment.providers.filter((candidate) => candidate.kind === "mod" && sourceProviderPaths.has(canonicalAbsolute(candidate.pack.path)))) {
+    throwIfAborted(context.signal);
     for (const entry of provider.pack.entries) {
+      throwIfAborted(context.signal);
+      if ((candidateEntries++ & 127) === 0) await yieldToEventLoop(context.signal);
       if (!entryMatches(entry, request)) continue;
       const key = normalizePackFilePathKey(entry.name);
       exactPathMatches.add(key);
@@ -240,6 +244,7 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
   }
 
   for (const assetRoot of request.assetRoots) {
+    throwIfAborted(context.signal);
     const resolved = resolveReferenceAsset(environment, normalizeInternalPackPath(assetRoot), true);
     if (resolved.status !== "found" || !resolved.winner) throw new AutomationError(resolved.status === "ambiguous" ? "CONFLICT" : "VALIDATION", `Asset root could not be resolved: ${assetRoot}`);
     const selected = selectEffectiveSource(environment, sourceProviderPaths, resolved.path, "assetRoot", selectedFiles);
@@ -273,6 +278,7 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
   }
 
   for (const rowRoot of request.rows) {
+    throwIfAborted(context.signal);
     const filePath = normalizeInternalPackPath(rowRoot.filePath);
     const rows = await exactRowsFor(filePath);
     const loaded = rows[0]?.loaded ?? await loadDbSchema(filePath);
@@ -299,6 +305,7 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
 
   if (selectedFiles.size === 0 && selectedRows.size === 0) throw new AutomationError("VALIDATION", "Subset selection matched no packed files or DB rows");
   for (const [key, selected] of selectedFiles) {
+    throwIfAborted(context.signal);
     if (isDbPath(selected.entry.name)) continue;
     const extension = pathExt(selected.entry.name);
     if (request.closure !== "none" || ["variantmeshdefinition", "wsmodel", "xml.material", "rigid_model_v2", "dds"].includes(extension)) {
@@ -329,7 +336,10 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
     return provider.kind === "mod" || request.includeVanilla;
   };
 
+  let graphNodes = 0;
   for (const node of graph.nodes) {
+    throwIfAborted(context.signal);
+    if ((graphNodes++ & 127) === 0) await yieldToEventLoop(context.signal);
     if (node.type === "asset" && node.status === "found" && node.provider) {
       const provider = providersByPath.get(canonicalAbsolute(node.provider));
       const entry = provider?.entriesByPath.get(normalizePackFilePathKey(node.path))?.[0];
@@ -387,6 +397,7 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
 
   const graphDiagnostics = graph.diagnostics;
   for (const item of graphDiagnostics) {
+    throwIfAborted(context.signal);
     if (item.code.startsWith("UNSUPPORTED") && !unsupported.some((value) => value.path === item.path && value.code === item.code)) unsupported.push({ code: item.code, path: item.path, message: item.message });
     if (["MISSING_ASSET", "AMBIGUOUS_ASSET", "MISSING_DB_REFERENCE", "AMBIGUOUS_DB_REFERENCE"].includes(item.code)) unresolved.push({ code: item.code, path: item.path, message: item.message });
   }
@@ -403,7 +414,10 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
 
   const writeEntries: RawPackWriteEntry[] = [];
   const expected: ExpectedPayload[] = [];
+  let selectedFileCount = 0;
   for (const selected of includedFiles.values()) {
+    throwIfAborted(context.signal);
+    if ((selectedFileCount++ & 127) === 0) await yieldToEventLoop(context.signal);
     const key = normalizePackFilePathKey(selected.entry.name);
     if (selectedRows.has(key)) selectedRows.delete(key);
     writeEntries.push({
@@ -414,6 +428,7 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
     expected.push({ name: selected.entry.name, sourcePack: selected.provider.pack, sourceEntry: selected.entry });
   }
   for (const group of includedRows.values()) {
+    throwIfAborted(context.signal);
     if (!group.rows.size) continue;
     const firstRow = group.rows.values().next().value as EffectiveDbRow;
     const table = firstRow.loaded.parsed;

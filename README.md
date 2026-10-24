@@ -29,6 +29,8 @@ yarn start
 yarn make
 ```
 
+For the Node-only pack CLI and MCP server, see [Headless pack tools](docs/HEADLESS.md).
+
 On Linux, build from an x86-64 desktop with Steam installed. Steam should be running when the manager
 uses Workshop features. Native Steam, Flatpak Steam, and Snap Steam are supported for game launching;
 Protontricks is an optional fallback. The Linux build currently does not include an ARM64 Steamworks addon.

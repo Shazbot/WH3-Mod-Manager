@@ -17,7 +17,7 @@
     "build:tools:watch": "node scripts/build-tools.mjs --watch",
     "typecheck:tools": "tsc -p tsconfig.tools.json --noEmit",
     "cli": "yarn build:tools && node dist/cli/main.js",
-    "mcp": "yarn build:tools && node dist/mcp/main.js",
+    "mcp": "node dist/mcp/server.js",
     "build:sub": "tsc ./src/sub.ts --skipLibCheck --resolveJsonModule --outDir ./temp",
     "verify:asset-host": "node scripts/verify-wh3-asset-host.cjs",
     "start": "yarn build:sub && electron-forge start -- --mode development",

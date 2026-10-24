@@ -2,13 +2,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
 import { normalizePackFilePath } from "../utility/packFilePathUtils";
-import { AutomationError } from "./errors";
+import { AutomationError, throwIfAborted, yieldToEventLoop } from "./errors";
 
 export interface FilesystemPolicyOptions {
   /** Omitted means local CLI access to any readable path. */
   readRoots?: readonly string[];
   /** Omitted means local CLI access to any writable path. */
   writeRoots?: readonly string[];
+  signal?: AbortSignal;
 }
 
 const containsPath = (root: string, candidate: string): boolean => {
@@ -44,12 +45,18 @@ const ensureWithinRoots = (candidate: string, roots: readonly string[] | undefin
 export class FilesystemPolicy {
   private readonly configuredReadRoots?: readonly string[];
   private readonly configuredWriteRoots?: readonly string[];
+  private readonly signal?: AbortSignal;
   private readRootsPromise?: Promise<string[]>;
   private writeRootsPromise?: Promise<string[]>;
 
   constructor(options: FilesystemPolicyOptions = {}) {
     this.configuredReadRoots = options.readRoots;
     this.configuredWriteRoots = options.writeRoots;
+    this.signal = options.signal;
+  }
+
+  private checkCancelled(): void {
+    throwIfAborted(this.signal);
   }
 
   private async getRoots(kind: "read" | "write"): Promise<string[] | undefined> {
@@ -65,6 +72,7 @@ export class FilesystemPolicy {
   }
 
   async assertReadPath(requestedPath: string): Promise<string> {
+    this.checkCancelled();
     if (!requestedPath || requestedPath.includes("\0")) {
       throw new AutomationError("INVALID_ARGUMENT", "A non-empty filesystem path is required");
     }
@@ -74,6 +82,7 @@ export class FilesystemPolicy {
   }
 
   async readFile(requestedPath: string): Promise<{ path: string; bytes: Buffer }> {
+    this.checkCancelled();
     const canonicalPath = await this.assertReadPath(requestedPath);
     const stats = await fs.promises.stat(canonicalPath);
     if (!stats.isFile()) throw new AutomationError("IO_ACCESS", `Path is not a regular file: ${requestedPath}`);
@@ -81,6 +90,7 @@ export class FilesystemPolicy {
   }
 
   async assertWritePath(requestedPath: string): Promise<string> {
+    this.checkCancelled();
     if (!requestedPath || requestedPath.includes("\0")) {
       throw new AutomationError("INVALID_ARGUMENT", "A non-empty output path is required");
     }
@@ -101,6 +111,7 @@ export class FilesystemPolicy {
   }
 
   async assertOutputDistinctFromSources(outputPath: string, sourcePaths: readonly string[]): Promise<string> {
+    this.checkCancelled();
     const canonicalOutput = await this.assertWritePath(outputPath);
     let outputStats: fs.Stats | undefined;
     try {
@@ -128,6 +139,7 @@ export class FilesystemPolicy {
   }
 
   async assertOutputsDistinct(outputPaths: readonly string[]): Promise<void> {
+    this.checkCancelled();
     const canonicalPaths = await Promise.all(outputPaths.map((outputPath) => this.assertWritePath(outputPath)));
     for (let firstIndex = 0; firstIndex < canonicalPaths.length; firstIndex += 1) {
       const firstPath = canonicalPaths[firstIndex];
@@ -155,6 +167,7 @@ export class FilesystemPolicy {
     produce: (temporaryPath: string) => Promise<void>;
     validate?: (temporaryPath: string) => Promise<void>;
   }): Promise<{ path: string; value?: T }> {
+    this.checkCancelled();
     const overwrite = options.overwrite ?? false;
     const sourcePaths = options.sourcePaths ?? [];
     const canonicalOutput = await this.assertOutputDistinctFromSources(options.outputPath, sourcePaths);
@@ -181,15 +194,18 @@ export class FilesystemPolicy {
       temporaryCreated = true;
       await handle.close();
       await options.produce(temporaryPath);
+      await yieldToEventLoop(this.signal);
       await options.validate?.(temporaryPath);
+      await yieldToEventLoop(this.signal);
 
       await this.assertOutputDistinctFromSources(canonicalOutput, sourcePaths);
+      this.checkCancelled();
       if (overwrite) {
-        await fs.promises.rename(temporaryPath, canonicalOutput);
+        fs.renameSync(temporaryPath, canonicalOutput);
       } else {
         // Hard-link publication is atomic and fails if another process created the destination.
-        await fs.promises.link(temporaryPath, canonicalOutput);
-        await fs.promises.unlink(temporaryPath);
+        fs.linkSync(temporaryPath, canonicalOutput);
+        fs.unlinkSync(temporaryPath);
       }
       temporaryCreated = false;
       return { path: canonicalOutput };

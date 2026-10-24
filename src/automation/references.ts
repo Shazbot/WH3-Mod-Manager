@@ -9,7 +9,7 @@ import { parseDBTablePath } from "../utility/packFileHelpers";
 import { normalizePackFilePath, normalizePackFilePathKey } from "../utility/packFilePathUtils";
 import type { CorePack, CorePackEntry } from "../packCore";
 import { decodePackedTextBuffer } from "../utility/packFileViewing";
-import { AutomationError, type AutomationDiagnostic } from "./errors";
+import { AutomationError, throwIfAborted, yieldToEventLoop, type AutomationDiagnostic } from "./errors";
 import { normalizeInternalPackPath } from "./filesystem";
 import { readAutomationPack, readAutomationPayload, getAutomationSchemaProvider } from "./packAccess";
 import { loadPackedTable, queryTableRows, tableRowsToJson, type TableFilter, type TableRow, type LoadedTable } from "./tables";
@@ -148,7 +148,10 @@ export const prepareReferenceEnvironment = async (
   const modPacks: CorePack[] = [];
   const loadPaths = async (paths: readonly string[], target: CorePack[]) => {
     const seen = new Set(target.map((pack) => canonicalAbsolute(pack.path)));
+    let loadedPackCount = 0;
     for (const requestedPath of paths) {
+      throwIfAborted(context.signal);
+      if ((loadedPackCount++ & 31) === 0) await yieldToEventLoop(context.signal);
       const pack = await readAutomationPack(requestedPath, context);
       const key = canonicalAbsolute(pack.path);
       if (seen.has(key)) continue;
@@ -162,11 +165,16 @@ export const prepareReferenceEnvironment = async (
   const providers: ReferenceProvider[] = [];
   const assetCandidates = new Map<string, Array<{ provider: ReferenceProvider; entry: CorePackEntry }>>();
   const dbFiles = new Map<string, DbFileRef[]>();
-  const appendProviders = (packs: CorePack[], kind: ReferenceProvider["kind"]) => {
+  let indexedEntries = 0;
+  const appendProviders = async (packs: CorePack[], kind: ReferenceProvider["kind"]) => {
     for (const pack of packs) {
+      throwIfAborted(context.signal);
+      await yieldToEventLoop(context.signal);
       const provider: ReferenceProvider = { pack, kind, order: providers.length, entriesByPath: new Map() };
       providers.push(provider);
       for (const entry of pack.entries) {
+        throwIfAborted(context.signal);
+        if ((indexedEntries++ & 127) === 0) await yieldToEventLoop(context.signal);
         const key = normalizePackFilePathKey(entry.name);
         const group = provider.entriesByPath.get(key) ?? [];
         group.push(entry);
@@ -184,8 +192,8 @@ export const prepareReferenceEnvironment = async (
       }
     }
   };
-  appendProviders(vanillaPacks, "vanilla");
-  appendProviders(modPacks, "mod");
+  await appendProviders(vanillaPacks, "vanilla");
+  await appendProviders(modPacks, "mod");
   const sourcePaths = [
     ...providers.map((provider) => provider.pack.path),
     ...manifestPaths,
@@ -282,6 +290,7 @@ export const loadExactDbFileRows = (environment: ReferenceEnvironment, packedPat
       const values = tableRowsToJson(loaded.parsed);
       const keyFields = loaded.parsed.schema.fields.filter((field) => field.is_key);
       const rows = values.map((row, rowIndex): EffectiveDbRow => {
+        throwIfAborted(environment.context.signal);
         const completeKey = keyFields.length > 0 && keyFields.every((field) => row[field.name] !== null && row[field.name] !== undefined);
         const identity = completeKey ? JSON.stringify([logical, keyFields.map((field) => [field.name, row[field.name]])]) : undefined;
         return {
@@ -298,6 +307,7 @@ export const loadExactDbFileRows = (environment: ReferenceEnvironment, packedPat
       for (const row of rows) environment.rowById.set(row.id, row);
       return rows;
     } catch (error) {
+      if (error instanceof AutomationError && error.code === "CANCELLED") throw error;
       environment.complete = false;
       environment.diagnostics.push(diagnostic(
         error instanceof AutomationError && error.code === "UNSUPPORTED" ? "UNSUPPORTED_DB_TABLE" : "INVALID_DB_TABLE",
@@ -335,6 +345,7 @@ export const loadEffectiveDbRows = (environment: ReferenceEnvironment, logicalTa
     const winners = new Map<string, EffectiveDbRow>();
     for (const { rows: values } of parsedByFile) {
       for (const item of values) {
+        throwIfAborted(environment.context.signal);
         if (!item.identity) {
           rows.push(item);
           continue;
@@ -635,6 +646,7 @@ class ReferenceGraphBuilder {
       const bytes = await readAutomationPayload(provider.pack, entry, this.environment.context);
       extraction = getSupportedVisualReferenceDetails(decodePackedTextBuffer(bytes));
     } catch (error) {
+      if (error instanceof AutomationError && error.code === "CANCELLED") throw error;
       node.coverage = "unreadable";
       this.environment.complete = false;
       this.diagnostics.push(diagnostic("XML_READ_FAILED", error instanceof Error ? error.message : String(error), entry.name));
@@ -752,7 +764,10 @@ class ReferenceGraphBuilder {
   }
 
   async drain(): Promise<void> {
+    let drainedNodes = 0;
     while (this.queue.length && !this.hitLimit) {
+      throwIfAborted(this.environment.context.signal);
+      if ((drainedNodes++ & 63) === 0) await yieldToEventLoop(this.environment.context.signal);
       const item = this.queue.shift()!;
       if (this.processed.has(item.id)) continue;
       this.processed.add(item.id);
@@ -869,7 +884,14 @@ export const runAssetFindReferences = async (request: FindRequest, context: Auto
     maxEdges: request.maxEdges,
   });
   let xmlRootCount = 0;
+  let ddsLeafCount = 0;
+  let rigidFileCount = 0;
+  let skippedFileCount = 0;
+  const skippedFileTypes: Record<string, number> = {};
+  let scannedAssets = 0;
   for (const candidates of environment.assetCandidates.values()) {
+    throwIfAborted(context.signal);
+    if ((scannedAssets++ & 127) === 0) await yieldToEventLoop(context.signal);
     if (builder.atCapacity) {
       builder.noteCapacityReached();
       break;
@@ -887,17 +909,40 @@ export const runAssetFindReferences = async (request: FindRequest, context: Auto
       builder.addAssetRoot(entry.name, false);
       xmlRootCount += 1;
       await builder.drain();
+    } else if (ext === "dds") {
+      ddsLeafCount += 1;
+    } else if (tableLogicalName(entry.name)) {
+      // DB tables are scanned as rows below, after resolving the effective table files.
+      continue;
+    } else {
+      // Rigid-model internals and unknown formats are outside the supported reverse-scan scope.
+      skippedFileCount += 1;
+      const type = ext || "(no extension)";
+      skippedFileTypes[type] = (skippedFileTypes[type] ?? 0) + 1;
+      if (ext === "rigid_model_v2") rigidFileCount += 1;
+      environment.complete = false;
+      environment.diagnostics.push(diagnostic(
+        ext === "rigid_model_v2" ? "UNSUPPORTED_RIGID_INTERNALS" : "UNSUPPORTED_REVERSE_SCAN_TYPE",
+        ext === "rigid_model_v2"
+          ? "Reverse scanning does not inspect rigid-model internals"
+          : `Reverse scanning skipped unsupported file type ${type}`,
+        entry.name,
+      ));
     }
   }
   const targetKey = normalizePackFilePathKey(targetPath);
   const targetTable = tableLogicalName(targetPath);
   for (const logical of environment.dbFiles.keys()) {
+    throwIfAborted(context.signal);
     if (builder.atCapacity) {
       builder.noteCapacityReached();
       break;
     }
     const dbRows = await loadEffectiveDbRows(environment, logical);
+    let scannedRows = 0;
     for (const row of dbRows) {
+      throwIfAborted(context.signal);
+      if ((scannedRows++ & 127) === 0) await yieldToEventLoop(context.signal);
       if (builder.atCapacity) {
         builder.noteCapacityReached();
         break;
@@ -915,7 +960,17 @@ export const runAssetFindReferences = async (request: FindRequest, context: Auto
   const full = {
     targetPath,
     complete: graph.complete,
-    coverage: { xmlFiles: xmlRootCount, dbTables: environment.dbFiles.size, nodes: builder.nodes.size, edges: graph.edges.length },
+    coverage: {
+      scanScope: "effective XML-backed visual assets and DB rows; DDS files are fully covered leaves",
+      xmlFiles: xmlRootCount,
+      dbTables: environment.dbFiles.size,
+      ddsLeaves: ddsLeafCount,
+      rigidFilesUnsupported: rigidFileCount,
+      skippedFiles: skippedFileCount,
+      unsupportedFileTypes: skippedFileTypes,
+      nodes: builder.nodes.size,
+      edges: graph.edges.length,
+    },
     diagnostics: graph.diagnostics,
     references: allEdges,
   };

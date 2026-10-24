@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AutomationError, failedResponse, type AutomationDiagnostic, type AutomationResponse } from "./errors";
+import { AutomationError, failedResponse, throwIfAborted, type AutomationDiagnostic, type AutomationResponse } from "./errors";
 import {
   defaultAutomationContext,
   operationRegistry,
@@ -9,6 +9,7 @@ import {
 
 export { operationRegistry, operationSchemas } from "./operations";
 export type { AutomationContext, OperationName } from "./operations";
+export type AutomationRequest = { [K in OperationName]: z.input<(typeof operationRegistry)[K]["schema"]> }[OperationName];
 export * from "./errors";
 export { FilesystemPolicy, normalizeInternalPackPath } from "./filesystem";
 export { createAutomationContext, defaultAutomationContext } from "./operations";
@@ -35,6 +36,7 @@ export const executeAutomationRequest = async (
     return failedResponse(new AutomationError("INVALID_ARGUMENT", "Request validation failed", parsed.error.issues));
   }
   try {
+    throwIfAborted(context.signal);
     const data = parsed.data as Record<string, unknown>;
     const outputs = [data.outputPath, data.extractTo, data.reportPath, data.manifestPath].filter((value): value is string => typeof value === "string");
     await context.policy.assertOutputsDistinct(outputs);

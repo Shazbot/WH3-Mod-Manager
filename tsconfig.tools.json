@@ -3,6 +3,11 @@
     "allowJs": false,
     "module": "commonjs",
     "moduleResolution": "node",
+    "baseUrl": ".",
+    "paths": {
+      "@modelcontextprotocol/server": ["node_modules/@modelcontextprotocol/server/dist/index.d.cts"],
+      "@modelcontextprotocol/server/stdio": ["node_modules/@modelcontextprotocol/server/dist/stdio.d.cts"]
+    },
     "target": "es2021",
     "lib": ["es2023"],
     "types": ["node"],
@@ -16,6 +21,7 @@
   "include": [
     "src/automation/**/*.ts",
     "src/cli/**/*.ts",
+    "src/mcp/**/*.ts",
     "src/packCore/**/*.ts",
     "src/packFileTypes.ts",
     "src/schema.ts",

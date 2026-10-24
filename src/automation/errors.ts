@@ -1,4 +1,4 @@
-export type AutomationErrorCode = "INVALID_ARGUMENT" | "IO_ACCESS" | "UNSUPPORTED" | "VALIDATION" | "CONFLICT" | "INTERNAL";
+export type AutomationErrorCode = "INVALID_ARGUMENT" | "IO_ACCESS" | "UNSUPPORTED" | "VALIDATION" | "CONFLICT" | "CANCELLED" | "INTERNAL";
 
 export interface AutomationErrorData {
   code: AutomationErrorCode;
@@ -29,6 +29,15 @@ export class AutomationError extends Error {
   }
 }
 
+export const throwIfAborted = (signal?: AbortSignal): void => {
+  if (signal?.aborted) throw new AutomationError("CANCELLED", "Operation was cancelled");
+};
+
+export const yieldToEventLoop = async (signal?: AbortSignal): Promise<void> => {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  throwIfAborted(signal);
+};
+
 export const getExitCodeForAutomationError = (code: AutomationErrorCode): number => {
   switch (code) {
     case "INVALID_ARGUMENT":
@@ -40,6 +49,8 @@ export const getExitCodeForAutomationError = (code: AutomationErrorCode): number
     case "VALIDATION":
     case "CONFLICT":
       return 5;
+    case "CANCELLED":
+      return 130;
     case "INTERNAL":
       return 1;
   }
@@ -50,6 +61,9 @@ export const automationErrorFromUnknown = (error: unknown): AutomationError => {
   const code = error && typeof error === "object" && "code" in error ? String(error.code) : undefined;
   if (code?.startsWith("ERR_PARSE_ARGS_")) {
     return new AutomationError("INVALID_ARGUMENT", error instanceof Error ? error.message : code);
+  }
+  if (code === "ABORT_ERR" || (error instanceof Error && error.name === "AbortError")) {
+    return new AutomationError("CANCELLED", "Operation was cancelled");
   }
   if (error instanceof Error && "issues" in error) {
     return new AutomationError("INVALID_ARGUMENT", error.message, (error as Error & { issues?: unknown }).issues);

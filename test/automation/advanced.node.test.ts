@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { createAutomationContext, executeAutomationRequest } from "../../src/automation/registry";
 import { getSupportedVisualReferenceDetails } from "../../src/visuals/dependencies";
-import { dbPreambleMarkers, parseDbTable, parseTypeBufferExact, readPackIndex, readRawPayload, serializeDbTable, writeRawPack } from "../../src/packCore";
+import { dbPreambleMarkers, parseDbTable, parseTypeBufferExact, readPackIndex, readRawPayload, serializeDbTable, serializeSchemaFieldToBuffer, writeRawPack } from "../../src/packCore";
 import type { DBField, DBVersion, Field } from "../../src/packFileTypes";
 import { readPackedFileIndexEntry } from "../../src/utility/packFileIndex";
 
@@ -167,6 +167,22 @@ describe("advanced headless pack operations", () => {
     expect(bounded.complete).toBe(false);
     expect(bounded.coverage.nodes).toBe(1);
     expect(bounded.references.items).toEqual([]);
+
+    const unsupportedPack = path.join(tempRoot, "reverse-unsupported.pack");
+    await writeRawPack(unsupportedPack, [
+      { name: "models\\unit.rigid_model_v2", buffer: Buffer.from([1]) },
+      { name: "data\\opaque.unknown", buffer: Buffer.from([2]) },
+    ], metadata());
+    const unsupported = expectData<{
+      complete: boolean;
+      coverage: { scanScope: string; rigidFilesUnsupported: number; unsupportedFileTypes: Record<string, number> };
+    }>(await executeAutomationRequest({
+      operation: "asset_find_references", packPaths: [unsupportedPack], targetPath: target,
+    }, context));
+    expect(unsupported.complete).toBe(false);
+    expect(unsupported.coverage.scanScope).toContain("XML-backed visual assets and DB rows");
+    expect(unsupported.coverage.rigidFilesUnsupported).toBe(1);
+    expect(unsupported.coverage.unsupportedFileTypes).toMatchObject({ rigid_model_v2: 1, unknown: 1 });
   });
 
   it("uses exact DB file rows for explicit roots and strict core codecs preserve BOMs and reject invalid flags", async () => {
@@ -206,6 +222,15 @@ describe("advanced headless pack operations", () => {
 
     const encodedBOM = Buffer.from([4, 0, 0xef, 0xbb, 0xbf, 0x41]);
     expect(parseTypeBufferExact(encodedBOM, 0, "StringU8").fields[1].val).toBe("\uFEFFA");
+
+    const longLocText = "x".repeat(32768);
+    const encodedLongU16 = Buffer.alloc(2 + longLocText.length * 2);
+    encodedLongU16.writeUInt16LE(longLocText.length, 0);
+    encodedLongU16.write(longLocText, 2, "utf16le");
+    const decodedLongU16 = parseTypeBufferExact(encodedLongU16, 0, "StringU16", [], { strict: false, legacyGuiEncoding: true });
+    expect(decodedLongU16.fields[0].val).toBe(longLocText);
+    expect(decodedLongU16.nextPosition).toBe(encodedLongU16.length);
+    expect(serializeSchemaFieldToBuffer({ type: "StringU16", fields: decodedLongU16.fields })).toEqual(encodedLongU16);
 
     const malformedIndex = Buffer.concat([Buffer.alloc(4), Buffer.from([2]), Buffer.from("x\0")]);
     expect(() => readPackedFileIndexEntry(malformedIndex, 0, true, false, true)).toThrow(/compression flag 2/);

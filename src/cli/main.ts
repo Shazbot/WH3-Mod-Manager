@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import { inspect } from "node:util";
 import { parseArgs } from "node:util";
-import { executeAutomationRequest, defaultAutomationContext, getExitCodeForAutomationError } from "../automation/registry";
+import { createAutomationContext, executeAutomationRequest, getExitCodeForAutomationError, type AutomationContext } from "../automation/registry";
 import { AutomationError, automationErrorFromUnknown } from "../automation/errors";
 
 const rootHelp = `Usage:
@@ -86,7 +86,7 @@ const defaultIo: CliIo = {
 
 const readInput = async (
   filePath: string | undefined,
-  context: ReturnType<typeof defaultAutomationContext>,
+  context: AutomationContext,
 ): Promise<Record<string, unknown>> => {
   if (!filePath) return {};
   const input = await context.policy.readFile(filePath);
@@ -119,7 +119,7 @@ const ensurePositionals = (command: readonly string[], min: number, max = min): 
 const buildRequest = async (
   command: readonly string[],
   values: CliValues,
-  context: ReturnType<typeof defaultAutomationContext>,
+  context: AutomationContext,
 ): Promise<unknown> => {
   const extra = await readInput(values.input, context);
   const common: Record<string, unknown> = { ...extra };
@@ -248,7 +248,11 @@ const printHelp = (io: CliIo, command: readonly string[]): void => {
 };
 
 export const main = async (argv = process.argv.slice(2), io: CliIo = defaultIo): Promise<number> => {
-  const context = defaultAutomationContext();
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  process.once("SIGINT", abort);
+  process.once("SIGTERM", abort);
+  const context = createAutomationContext({ signal: controller.signal });
   let format: string | undefined;
   try {
     const parsed = parseCliArgs([...argv]);
@@ -294,6 +298,9 @@ export const main = async (argv = process.argv.slice(2), io: CliIo = defaultIo):
     io.stdout(`${JSON.stringify(failure)}\n`);
     io.stderr(`${normalized.code}: ${normalized.message}\n`);
     return getExitCodeForAutomationError(normalized.code);
+  } finally {
+    process.off("SIGINT", abort);
+    process.off("SIGTERM", abort);
   }
 };
 

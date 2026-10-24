@@ -1,7 +1,6 @@
 // Schema files are now loaded lazily on-demand
 import { DBFieldName, DBFileName, DBVersion } from "./packFileTypes";
 import { SupportedGames } from "./supportedGames";
-import { decompress } from "@mongodb-js/zstd";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -64,6 +63,7 @@ const loadSchemaForGame = async (game: SupportedGames): Promise<any> => {
       const schemaFileName = getSchemaFileName(game);
       const compressedBuffer = fs.readFileSync(path.join(__dirname, `../schema/${schemaFileName}`));
 
+      const { decompress } = await import("@mongodb-js/zstd");
       const decompressedBuffer = await decompress(compressedBuffer);
 
       // Parse JSON from decompressed buffer

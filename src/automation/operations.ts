@@ -34,7 +34,7 @@ import {
   type TableSchemaProvider,
   type TableSort,
 } from "./tables";
-import { AutomationError, type AutomationDiagnostic } from "./errors";
+import { AutomationError, throwIfAborted, yieldToEventLoop, type AutomationDiagnostic } from "./errors";
 import { packDiffSchema, runPackDiff } from "./diff";
 import {
   assetFindReferencesSchema,
@@ -144,6 +144,7 @@ export type AutomationContext = {
   policy: FilesystemPolicy;
   schemaProvider?: TableSchemaProvider;
   maxLogicalPayloadBytes?: number;
+  signal?: AbortSignal;
 };
 export type OperationOutput<T = unknown> = { data: T; diagnostics: AutomationDiagnostic[] };
 type Request<K extends OperationName> = z.output<(typeof operationSchemas)[K]>;
@@ -308,7 +309,10 @@ const runSearch: OperationHandler<"pack_search"> = async (request, context) => {
     if (results.length < request.maxResults) results.push(result);
     else truncated = true;
   };
+  let searchEntries = 0;
   for (const entry of pack.entries) {
+    throwIfAborted(context.signal);
+    if ((searchEntries++ & 127) === 0) await yieldToEventLoop(context.signal);
     if (request.fileGlob && !isPackedPathMatch(entry.name, undefined, request.fileGlob)) continue;
     if (matcher.test(entry.name)) addResult({ kind: "filename", filePath: entry.name });
     if (!request.content || !isTextPackedFilePath(entry.name.replace(/\//g, "\\").toLowerCase())) continue;
@@ -320,11 +324,13 @@ const runSearch: OperationHandler<"pack_search"> = async (request, context) => {
     try {
       content = await readLogical(pack, entry, context);
     } catch (error) {
+      if (error instanceof AutomationError && error.code === "CANCELLED") throw error;
       diagnostics.push(diagnostic("SKIPPED_UNREADABLE", error instanceof Error ? error.message : String(error), "warning", entry.name));
       continue;
     }
     const matches = scanTextForMatches(decodePackedTextBuffer(content), matcher, { maxMatches: 100 });
     for (const match of matches) {
+      throwIfAborted(context.signal);
       addResult({ kind: "text", filePath: entry.name, ...match });
     }
     if (matches.truncated) diagnostics.push(diagnostic("TRUNCATED_FILE_MATCHES", "Additional matches in this entry were omitted", "info", entry.name));
@@ -425,7 +431,10 @@ const parseChangedPayloads = async (
   const pack = readPackIndex(packPath, { game: "wh3" });
   const diagnostics: AutomationDiagnostic[] = [];
   const changed = new Set(changedPaths.map(normalizePackFilePathKey));
+  let changedEntries = 0;
   for (const entry of pack.entries) {
+    throwIfAborted(context.signal);
+    if ((changedEntries++ & 127) === 0) await yieldToEventLoop(context.signal);
     if (!changed.has(normalizePackFilePathKey(entry.name))) continue;
     const bytes = await readLogical(pack, entry, context);
     if (entry.name.toLowerCase().endsWith(".xml") || entry.name.toLowerCase().endsWith(".variantmeshdefinition") || entry.name.toLowerCase().endsWith(".wsmodel") || entry.name.toLowerCase().endsWith(".xml.material")) {
@@ -452,6 +461,7 @@ const runCreate: OperationHandler<"pack_create"> = async (request, context) => {
   const sources: string[] = [];
   const writeEntries: RawPackWriteEntry[] = [];
   for (const file of request.files) {
+    throwIfAborted(context.signal);
     const internalPath = normalizeInternalPackPath(file.path);
     const content = await loadSourceBytes(context, file);
     if (content.sourcePath) sources.push(content.sourcePath);
@@ -495,6 +505,7 @@ const runWriteFiles: OperationHandler<"pack_write_files"> = async (request, cont
   const changesByKey = new Map(request.files.map((file, index) => [normalizePackFilePathKey(changePaths[index]), file]));
   const sourceEntries = pack.entries.filter((entry) => changesByKey.has(normalizePackFilePathKey(entry.name)));
   for (const file of request.files) {
+    throwIfAborted(context.signal);
     const key = normalizePackFilePathKey(file.path);
     const existing = sourceEntries.filter((entry) => normalizePackFilePathKey(entry.name) === key);
     if (file.op === "add" && existing.length > 0) throw new AutomationError("CONFLICT", `Packed file already exists: ${file.path}`);
@@ -504,6 +515,7 @@ const runWriteFiles: OperationHandler<"pack_write_files"> = async (request, cont
   const additions: RawPackWriteEntry[] = [];
   const changedNames: string[] = [];
   for (const file of request.files) {
+    throwIfAborted(context.signal);
     if (file.op === "remove") continue;
     const content = await loadSourceBytes(context, file);
     if (content.sourcePath) sourcePaths.push(content.sourcePath);
@@ -682,7 +694,10 @@ const runValidate: OperationHandler<"pack_validate"> = async (request, context) 
   const pack = await readIndex(request.packPath, context);
   const diagnostics: AutomationDiagnostic[] = [];
   const seenPaths = new Set<string>();
+  let validatedEntries = 0;
   for (const entry of pack.entries) {
+    throwIfAborted(context.signal);
+    if ((validatedEntries++ & 127) === 0) await yieldToEventLoop(context.signal);
     try {
       const normalizedPath = normalizePackFilePathKey(normalizeInternalPackPath(entry.name));
       if (seenPaths.has(normalizedPath)) diagnostics.push(diagnostic("DUPLICATE_PACKED_PATH", "Packed path is duplicated after normalization", "error", entry.name));
@@ -707,6 +722,7 @@ const runValidate: OperationHandler<"pack_validate"> = async (request, context) 
         }
       }
     } catch (error) {
+      if (error instanceof AutomationError && error.code === "CANCELLED") throw error;
       const unsupported = error instanceof AutomationError && error.code === "UNSUPPORTED";
       diagnostics.push(diagnostic(unsupported ? "UNSUPPORTED_PAYLOAD" : "INVALID_PAYLOAD", error instanceof Error ? error.message : String(error), unsupported ? "warning" : "error", entry.name));
     }
@@ -765,10 +781,12 @@ export const createAutomationContext = (options: {
   writeRoots?: readonly string[];
   schemaProvider?: TableSchemaProvider;
   maxLogicalPayloadBytes?: number;
+  signal?: AbortSignal;
 } = {}): AutomationContext => ({
-  policy: new FilesystemPolicy({ readRoots: options.readRoots, writeRoots: options.writeRoots }),
+  policy: new FilesystemPolicy({ readRoots: options.readRoots, writeRoots: options.writeRoots, signal: options.signal }),
   ...(options.schemaProvider ? { schemaProvider: options.schemaProvider } : {}),
   ...(options.maxLogicalPayloadBytes ? { maxLogicalPayloadBytes: options.maxLogicalPayloadBytes } : {}),
+  ...(options.signal ? { signal: options.signal } : {}),
 });
 
 export const defaultAutomationContext = defaultContext;

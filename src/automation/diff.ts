@@ -7,7 +7,7 @@ import { normalizePackFilePathKey } from "../utility/packFilePathUtils";
 import { parseDBTablePath } from "../utility/packFileHelpers";
 import type { CorePack, CorePackEntry, ParsedDbTable } from "../packCore";
 import { decodePackedTextBuffer } from "../utility/packFileViewing";
-import { AutomationError, type AutomationDiagnostic } from "./errors";
+import { AutomationError, throwIfAborted, yieldToEventLoop, type AutomationDiagnostic } from "./errors";
 import {
   getAutomationSchemaProvider,
   readAutomationPack,
@@ -272,6 +272,7 @@ const semanticDiffForFile = async (
       if (!semantic) diagnostics.push(diagnostic("DB_SCHEMA_MISMATCH", "DB semantic comparison was skipped because table versions or field layouts differ", "warning", beforeEntry.name));
       return semantic ? { type: "db-rows" as const, ...semantic } : { type: "db-rows" as const, available: false };
     } catch (error) {
+      if (error instanceof AutomationError && error.code === "CANCELLED") throw error;
       const code = error instanceof AutomationError && error.code === "UNSUPPORTED" ? "DB_SCHEMA_UNAVAILABLE" : "DB_PARSE_FAILED";
       diagnostics.push(diagnostic(code, error instanceof Error ? error.message : String(error), "warning", beforeEntry.name));
       return { type: "db-rows" as const, available: false };
@@ -312,6 +313,7 @@ const semanticDiffForFile = async (
       } : {}),
     };
   } catch (error) {
+    if (error instanceof AutomationError && error.code === "CANCELLED") throw error;
     diagnostics.push(diagnostic("XML_PARSE_FAILED", error instanceof Error ? error.message : String(error), "warning", beforeEntry.name));
     return { type: "xml-references" as const, available: false };
   }
@@ -385,7 +387,10 @@ export const runPackDiff = async (request: DiffRequest, context: AutomationConte
   let logicalSizeDelta = 0;
   let storedSizeDelta = 0;
 
+  let comparedEntries = 0;
   for (const key of allKeys) {
+    throwIfAborted(context.signal);
+    if ((comparedEntries++ & 127) === 0) await yieldToEventLoop(context.signal);
     const beforeEntry = beforeEntries.get(key);
     const afterEntry = afterEntries.get(key);
     const beforeHash = beforeEntry ? await hashEntry(beforePack, beforeEntry, context) : undefined;

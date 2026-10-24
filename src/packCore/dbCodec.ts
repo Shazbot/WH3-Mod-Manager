@@ -59,8 +59,7 @@ export const parseTypeBufferExact = (
       return { fields, nextPosition: position + 4 };
     case "StringU16": {
       requireBytes(buffer, position, 2, "StringU16 length");
-      const length = legacyGuiEncoding ? buffer.readInt16LE(position) : buffer.readUInt16LE(position);
-      if (length < 0) throw new Error(`Invalid negative StringU16 length ${length} at ${position}`);
+      const length = buffer.readUInt16LE(position);
       const byteLength = length * 2;
       requireBytes(buffer, position + 2, byteLength, "StringU16 data");
       fields.push({ type: "String", val: buffer.toString("utf16le", position + 2, position + 2 + byteLength) });
