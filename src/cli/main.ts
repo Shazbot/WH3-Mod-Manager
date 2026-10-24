@@ -20,6 +20,8 @@ const rootHelp = `Usage:
   whmm pack table patch <packPath> <tablePath> --output <outputPath> --input <jsonFile>
   whmm asset resolve --input <jsonFile>
   whmm asset references --input <jsonFile>
+  whmm loc lookup --input <jsonFile>
+  whmm unit resolve --input <jsonFile>
 
 Flags:
   --format text|json   Select readable or machine-readable output (default text)
@@ -233,6 +235,11 @@ const buildRequest = async (
     if (!values.input) throw new AutomationError("INVALID_ARGUMENT", `asset ${action} requires --input <jsonFile>`);
     if (action === "resolve") return { ...extra, ...common, operation: "asset_resolve_references" };
     if (action === "references" || action === "find-references") return { ...extra, ...common, operation: "asset_find_references" };
+  }
+  if ((group === "loc" && action === "lookup") || (group === "unit" && action === "resolve")) {
+    ensurePositionals(command, 2);
+    if (!values.input) throw new AutomationError("INVALID_ARGUMENT", `${group} ${action} requires --input <jsonFile>`);
+    return { ...common, operation: group === "loc" ? "localization_lookup" : "unit_resolve" };
   }
   if (group === "table") {
     ensurePositionals(command, 4);

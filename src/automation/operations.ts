@@ -43,6 +43,8 @@ import {
   runAssetResolveReferences,
 } from "./references";
 import { packSubsetSchema, runPackSubset } from "./subset";
+import { localizationLookupSchema, runLocalizationLookup } from "./localization";
+import { unitResolveSchema, runUnitResolve } from "./units";
 import { FilesystemPolicy, normalizeInternalPackPath } from "./filesystem";
 import {
   findAutomationPackEntry as findEntry,
@@ -137,6 +139,8 @@ export const operationSchemas = {
   asset_resolve_references: assetResolveReferencesSchema,
   asset_find_references: assetFindReferencesSchema,
   pack_subset: packSubsetSchema,
+  localization_lookup: localizationLookupSchema,
+  unit_resolve: unitResolveSchema,
 } as const;
 
 export type OperationName = keyof typeof operationSchemas;
@@ -774,6 +778,8 @@ export const operationRegistry: OperationRegistry = {
   asset_resolve_references: { schema: operationSchemas.asset_resolve_references, execute: runAssetResolveReferences },
   asset_find_references: { schema: operationSchemas.asset_find_references, execute: runAssetFindReferences },
   pack_subset: { schema: operationSchemas.pack_subset, execute: runPackSubset },
+  localization_lookup: { schema: operationSchemas.localization_lookup, execute: runLocalizationLookup },
+  unit_resolve: { schema: operationSchemas.unit_resolve, execute: runUnitResolve },
 };
 
 export const createAutomationContext = (options: {

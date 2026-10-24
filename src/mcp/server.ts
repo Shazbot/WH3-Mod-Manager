@@ -34,6 +34,8 @@ const descriptions: Record<OperationName, string> = {
   asset_resolve_references: "Resolve asset and DB row roots into a bounded forward reference graph.",
   asset_find_references: "Scan explicit packs for reverse references to an asset or DB table.",
   pack_subset: "Create a subset pack from selected files or DB rows and a declared dependency closure.",
+  localization_lookup: "Look up translated text, localization keys, and schema-verified DB keys in explicit packs.",
+  unit_resolve: "Resolve unit names/keys to roster cultures, factions, campaign recruitment rules, visuals, character art, and optimizer metadata with source evidence.",
 };
 
 export interface McpServerOptions {

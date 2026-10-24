@@ -1,3 +1,4 @@
+import { stripGameMarkup } from "../utility/localizationText";
 import type {
   UnitViewerAbility,
   UnitViewerCatalogGroup,
@@ -344,13 +345,6 @@ export const resolveCharacterExperienceThreshold = (
   });
   return best?.threshold;
 };
-
-const stripGameMarkup = (value: string) =>
-  value
-    .replace(/\\n/g, "\n")
-    .replace(/\[\[img:.*?\]\]\[\[\/img\]\]/gi, "")
-    .replace(/\[\[\/?(?:b|i|col(?::[^\]]+)?)\]\]/gi, "")
-    .trim();
 
 const resolveGameText = (value: string, getLoc: (key: string) => string | undefined) =>
   stripGameMarkup(resolveTextReplacements(value, getLoc) || value);

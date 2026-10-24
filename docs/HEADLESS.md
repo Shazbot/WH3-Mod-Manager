@@ -137,6 +137,50 @@ Paged operations return a preview with `offset`, `limit`, `total`, `nextOffset`,
 
 Writes validate staged output before atomic publication, default to no-overwrite, and reject output aliases of source files. Path policies resolve symlinks/junctions and enforce roots for pack files, source files, reports, and manifest-discovered packs. MCP calls run serially; cancellation is checked during scans and before publication, and temporary output is cleaned if a write is canceled.
 
+## Localization and unit resolution
+
+`localization_lookup` looks up visible translated text, exact localization keys, or DB keys. It returns the effective translation, raw localization text, source pack/file/row, and verified DB references with key fields. It uses the schema's localized fields and key ordering; composite keys retain every matching row rather than guessing which row a translated name identifies. GUI text replacements and display markup handling are shared with the headless path.
+
+For example, save this as `lookup.json` (use packs for the language you want):
+
+```json
+{
+  "packPaths": ["/absolute/path/to/mod.pack"],
+  "vanillaPackPaths": ["/absolute/path/to/db.pack", "/absolute/path/to/local_en.pack"],
+  "query": "Swordsmen",
+  "searchBy": "text",
+  "match": "contains",
+  "tables": ["land_units_tables"],
+  "limit": 20
+}
+```
+
+```sh
+node dist/cli/main.js loc lookup --input lookup.json --format json
+```
+
+Set `searchBy` to `dbKey` and `query` to a DB key to get its translations, or use `locKey` to look up a localization ID. Matching defaults to case-insensitive `exact`; `contains` is optional. `tables` narrows DB correlation, while unmatched localization IDs remain visible with an empty `dbReferences` array. `translationFound: false` distinguishes missing translations from existing empty text. Per-result DB references default to 100 (`referenceLimit`, maximum 1000); counts and truncation flags remain available. Explicit reports include all matching references.
+
+`unit_resolve` accepts the same pack lists, query, matching, pagination, and report fields. `searchBy` is `key` (main-unit or land-unit key, default) or `text` (translated land-unit name). Save its input as `unit.json` and run:
+
+```sh
+node dist/cli/main.js unit resolve --input unit.json --report /absolute/path/to/unit-report.json --format json
+```
+
+The unit result includes:
+
+- Main/land unit rows and localized names, with source evidence and effective DB precedence.
+- Custom-battle faction permissions and their culture/subculture names. Faction-specific visual variants provide fallback scope only when explicit permission rows are absent; generic visuals do not widen explicit permissions.
+- Campaign building recruitment rows, building culture variants, exclusive faction allow/deny rows, mercenary groups, and matching unit-set selector rules. Conditions, disabled flags, exclusions, and source rows are retained.
+- Unit variants and VMD resolution, mounts, primary/extra engines, character subtypes and subculture overrides, faction-agent permissions, candidate character art sets, and uniforms.
+- Optimizer army category (using the host resolver's UI-group/caste/category order), raw men/mount/engine counts, missing-reference issues, table coverage, and missing table names.
+
+Campaign data is **rule evidence**, not a guarantee that a faction can recruit the unit in the current campaign. Scripts, alliances, unlocks, current buildings, and campaign state are not evaluated. Conditional character-art rows are candidates, not a claim of authoritative art selection. Native host scenario scaling, live/dead presence, rigid internals, geometry, LOD, texture, atlas, and performance checks are not run by this operation.
+
+Nested unit details default to 100 (`detailLimit`, maximum 1000) with totals and truncation flags. JSON reports retain all matching units and nested details. Supply the relevant vanilla DB and localization packs for useful coverage; missing tables or unresolved unit visuals make the report incomplete. No language or game-install discovery is performed.
+
+Both operations are also registered as MCP tools with the same typed inputs and filesystem restrictions.
+
 ## Tables, references, and subsets
 
 DB and LOC queries use the bundled schema and exact typed values. I64 values are decimal strings. Filters in one query are combined with AND. An explicit table version must match a known schema version; an unknown schema/version is reported as unsupported. Table patches reject unknown schemas, invalid field types, ambiguous row selectors, and duplicate resulting keys. LOC identity uses only its key column.

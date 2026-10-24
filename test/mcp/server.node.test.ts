@@ -7,8 +7,9 @@ import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FilesystemPolicy } from "../../src/automation/filesystem";
 import { AutomationError } from "../../src/automation/errors";
+import { makeRowFields } from "../../src/automation/tables";
 import { dbPreambleMarkers, serializeDbTable, writeRawPack } from "../../src/packCore";
-import type { DBField, DBVersion, Field } from "../../src/packFileTypes";
+import { LocVersion, type DBField, type DBVersion, type Field } from "../../src/packFileTypes";
 
 const projectRoot = process.cwd();
 const serverEntry = path.join(projectRoot, "dist", "mcp", "server.js");
@@ -131,7 +132,7 @@ describe("WH3 MCP stdio server", () => {
     const session = await connect();
     try {
       const listed = await session.client.listTools();
-      expect(listed.tools).toHaveLength(15);
+      expect(listed.tools).toHaveLength(17);
       const info = listed.tools.find((tool) => tool.name === "pack_info");
       expect(info?.description).toContain("pack header");
       expect(info?.inputSchema).toMatchObject({
@@ -200,6 +201,45 @@ describe("WH3 MCP stdio server", () => {
       });
       expect(cli.status).toBe(0);
       expect(JSON.parse(cli.stdout)).toEqual(responseEnvelope(mcpInfo));
+    } finally {
+      await session.close();
+    }
+  });
+
+  it("exposes localization/unit lookups and returns equivalent CLI localization results", async () => {
+    const packPath = path.join(allowedRoot, "names.pack");
+    const buffer = serializeDbTable(
+      LocVersion,
+      [makeRowFields(LocVersion, { key: "display_name", text: "Épées 皇", tooltip: false })],
+      { preamble: Buffer.from([255, 254, 76, 79, 67, 0, 1, 0, 0, 0]) },
+    );
+    await writeRawPack(packPath, [{ name: "text\\names.loc", buffer }], metadata());
+    const session = await connect();
+    try {
+      const args = { packPaths: [packPath], query: "Épées 皇" };
+      const result = await session.client.callTool({ name: "localization_lookup", arguments: args });
+      expect(result.isError, JSON.stringify(result.structuredContent)).not.toBe(true);
+      expect(responseEnvelope<{ total: number; items: Array<{ locKey: string }> }>(result).data).toMatchObject({
+        total: 1,
+        items: [{ locKey: "display_name" }],
+      });
+      const inputPath = path.join(allowedRoot, "lookup-input.json");
+      writeFileSync(inputPath, JSON.stringify(args));
+      const cli = spawnSync(process.execPath, [cliEntry, "loc", "lookup", "--input", inputPath, "--format", "json"], {
+        cwd: projectRoot,
+        encoding: "utf8",
+      });
+      expect(cli.status, cli.stderr).toBe(0);
+      expect(JSON.parse(cli.stdout)).toEqual(responseEnvelope(result));
+      const units = await session.client.callTool({
+        name: "unit_resolve",
+        arguments: { packPaths: [packPath], query: "unknown" },
+      });
+      expect(units.isError, JSON.stringify(units.structuredContent)).not.toBe(true);
+      expect(responseEnvelope<{ total: number; complete: boolean }>(units).data).toMatchObject({
+        total: 0,
+        complete: false,
+      });
     } finally {
       await session.close();
     }
