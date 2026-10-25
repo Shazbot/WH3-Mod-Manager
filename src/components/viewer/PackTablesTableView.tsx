@@ -40,6 +40,7 @@ import CopyIntoSubmenu from "./CopyIntoSubmenu";
 import type { CopyIntoSource, ViewerPackTarget } from "./PackTablesTreeView";
 import { getFullySelectedRowIndices, getRowsForCopy, getSelectedRowIndices } from "./copyRows";
 import localizationContext from "../../localizationContext";
+import { getGridViewport, scrollGridBy } from "./gridScrolling";
 
 const BIG_TABLE_ROW_THRESHOLD = 20000;
 const BIG_TABLE_CELL_THRESHOLD = 2000000;
@@ -701,33 +702,6 @@ const filterFullColumnSelections = (ranges: SelectionRange[], rowCount: number):
 const hasAdditiveSelectionModifier = (event?: Pick<MouseEvent, "shiftKey" | "ctrlKey" | "metaKey"> | null): boolean =>
   !!event && (event.shiftKey || event.ctrlKey || event.metaKey);
 
-/**
- * Scrolling the table sideways from outside ag-grid. The centre viewport is the one that actually
- * moves; the fake scrollbar under it is mirrored so the scrollbar thumb keeps up, which is the same
- * pair the drag-selection auto-scroll drives.
- */
-const scrollGridHorizontally = (gridRoot: HTMLElement, delta: number): void => {
-  const centerViewport = gridRoot.querySelector<HTMLElement>(".ag-center-cols-viewport");
-  if (!centerViewport || delta === 0) return;
-
-  const maxScrollLeft = Math.max(0, centerViewport.scrollWidth - centerViewport.clientWidth);
-  const nextScrollLeft = Math.min(maxScrollLeft, Math.max(0, centerViewport.scrollLeft + delta));
-  if (nextScrollLeft === centerViewport.scrollLeft) return;
-
-  centerViewport.scrollLeft = nextScrollLeft;
-  const horizontalViewport = gridRoot.querySelector<HTMLElement>(".ag-body-horizontal-scroll-viewport");
-  if (horizontalViewport) horizontalViewport.scrollLeft = nextScrollLeft;
-};
-
-const scrollGridVertically = (gridRoot: HTMLElement, delta: number): void => {
-  const bodyViewport = gridRoot.querySelector<HTMLElement>(".ag-body-viewport");
-  if (!bodyViewport || delta === 0) return;
-
-  const maxScrollTop = Math.max(0, bodyViewport.scrollHeight - bodyViewport.clientHeight);
-  const nextScrollTop = Math.min(maxScrollTop, Math.max(0, bodyViewport.scrollTop + delta));
-  if (nextScrollTop !== bodyViewport.scrollTop) bodyViewport.scrollTop = nextScrollTop;
-};
-
 /** One frame of middle-button auto-scroll: still inside the dead zone, or faster the further out. */
 const getMiddleAutoScrollStep = (distance: number): number => {
   const magnitude = Math.abs(distance) - MIDDLE_AUTO_SCROLL_DEAD_ZONE_PX;
@@ -889,16 +863,7 @@ const AgGridWrapper = memo(
       };
     }, []);
 
-    /**
-     * Horizontal wheel over a pinned column. ag-grid gives the pinned sections their own viewports
-     * and only the centre one scrolls sideways, so with the mouse over the pinned columns a
-     * horizontal wheel - or shift+wheel, which Chromium reports as one - is swallowed and the table
-     * looks stuck. The pinned section is the left edge of the grid, which is exactly where a hand
-     * ends up, so this is the common case rather than an edge one.
-     *
-     * Registered natively because React makes wheel listeners passive, and this one has to
-     * preventDefault to stop the scroll going to the page instead.
-     */
+    // Keep Shift+wheel support over pinned cells, using the shared viewport for both axes.
     useEffect(() => {
       const gridRoot = gridRootRef.current;
       if (!gridRoot) return;
@@ -908,9 +873,9 @@ const AgGridWrapper = memo(
         if (delta === 0) return;
 
         const target = event.target as Element | null;
-        if (!target?.closest(".ag-pinned-left-cols-container, .ag-pinned-right-cols-container")) return;
+        if (!target?.closest(".ag-grid-pinned-left-cells, .ag-grid-pinned-right-cells")) return;
 
-        scrollGridHorizontally(gridRoot, delta);
+        scrollGridBy(gridRoot, delta, 0);
         event.preventDefault();
       };
 
@@ -930,18 +895,8 @@ const AgGridWrapper = memo(
     /**
      * Middle-button auto-scroll, taken over for the whole grid body.
      *
-     * ag-grid splits the two axes across two elements - `.ag-body-viewport` scrolls vertically and
-     * wraps everything, `.ag-center-cols-viewport` scrolls horizontally and wraps only the unpinned
-     * columns - while the browser's auto-scroll latches onto a single scroller for the whole
-     * gesture, whichever one first matched the direction the pointer moved. Neither of them scrolls
-     * both ways, so the gesture ends up locked to the axis it started on; and over a pinned column,
-     * where the horizontal scroller is not even an ancestor, sideways does nothing at all.
-     *
-     * Driving both axes ourselves is what unlocks the diagonal. It is modelled on what the browser
-     * does so it does not feel like a different gesture: the table moves faster the further the
-     * pointer is from where the button went down, a release after an actual drag ends it, and a
-     * release without one leaves it running until the next click or Esc. The anchor marker stands
-     * in for the one the browser would have drawn.
+     * Keep the existing speed, diagonal motion, click-to-toggle and Escape behavior while
+     * driving AG Grid 36's shared viewport. The anchor replaces the browser's own marker.
      */
     const startMiddleAutoScroll = useCallback(
       (event: React.MouseEvent<HTMLDivElement>): boolean => {
@@ -956,9 +911,9 @@ const AgGridWrapper = memo(
         }
 
         // The rows, pinned and unpinned alike. Not the header, which has nothing to scroll to.
-        if (!(event.target as Element | null)?.closest(".ag-body-viewport")) return false;
+        if (!(event.target as Element | null)?.closest(".ag-grid-scrolling-rows")) return false;
 
-        // Without this the browser starts its own, axis-locked auto-scroll on top of ours.
+        // Prevent the browser from starting another auto-scroll gesture on top of ours.
         event.preventDefault();
 
         const autoScroll = {
@@ -974,8 +929,11 @@ const AgGridWrapper = memo(
         const runFrame = () => {
           if (middleAutoScrollRef.current !== autoScroll) return;
 
-          scrollGridHorizontally(gridRoot, getMiddleAutoScrollStep(autoScroll.pointerX - autoScroll.anchorX));
-          scrollGridVertically(gridRoot, getMiddleAutoScrollStep(autoScroll.pointerY - autoScroll.anchorY));
+          scrollGridBy(
+            gridRoot,
+            getMiddleAutoScrollStep(autoScroll.pointerX - autoScroll.anchorX),
+            getMiddleAutoScrollStep(autoScroll.pointerY - autoScroll.anchorY),
+          );
           autoScroll.frame = requestAnimationFrame(runFrame);
         };
 
@@ -1501,36 +1459,16 @@ const AgGridWrapper = memo(
       const root = gridRootRef.current;
       if (!dragSelection || !pointer || !root) return;
 
-      const bodyViewport = root.querySelector(".ag-body-viewport") as HTMLElement | null;
-      const centerViewport = root.querySelector(".ag-center-cols-viewport") as HTMLElement | null;
-      const horizontalViewport = root.querySelector(".ag-body-horizontal-scroll-viewport") as HTMLElement | null;
-      if (!bodyViewport) return;
+      const viewport = getGridViewport(root);
+      if (!viewport) return;
 
-      const bodyRect = bodyViewport.getBoundingClientRect();
-      const deltaY = getAutoScrollDelta(pointer.clientY, bodyRect.top, bodyRect.bottom);
-      const deltaX = centerViewport ? getAutoScrollDelta(pointer.clientX, bodyRect.left, bodyRect.right) : 0;
-
-      let didScroll = false;
-
-      if (deltaY !== 0) {
-        const nextScrollTop = Math.max(0, bodyViewport.scrollTop + deltaY);
-        if (nextScrollTop !== bodyViewport.scrollTop) {
-          bodyViewport.scrollTop = nextScrollTop;
-          didScroll = true;
-        }
-      }
-
-      if (deltaX !== 0 && centerViewport) {
-        const maxScrollLeft = Math.max(0, centerViewport.scrollWidth - centerViewport.clientWidth);
-        const nextScrollLeft = Math.min(maxScrollLeft, Math.max(0, centerViewport.scrollLeft + deltaX));
-        if (nextScrollLeft !== centerViewport.scrollLeft) {
-          centerViewport.scrollLeft = nextScrollLeft;
-          if (horizontalViewport) {
-            horizontalViewport.scrollLeft = nextScrollLeft;
-          }
-          didScroll = true;
-        }
-      }
+      const viewportRect = viewport.getBoundingClientRect();
+      // The shared viewport also contains the sticky header; selection scrolls at the row edge.
+      const headerBottom = root.querySelector(".ag-header")?.getBoundingClientRect().bottom ?? viewportRect.top;
+      const bodyTop = Math.max(viewportRect.top, headerBottom);
+      const deltaY = getAutoScrollDelta(pointer.clientY, bodyTop, viewportRect.bottom);
+      const deltaX = getAutoScrollDelta(pointer.clientX, viewportRect.left, viewportRect.right);
+      const didScroll = scrollGridBy(root, deltaX, deltaY);
 
       if (didScroll) {
         updateDragSelectionFromPoint(pointer.clientX, pointer.clientY);

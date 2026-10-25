@@ -971,29 +971,15 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
  * the whole value: the span the value is rendered into is lifted out of the cell's clipping and
  * grown to fit, and the cell is raised over the scrolled columns the span now reaches across.
  *
- * ag-grid gives the pinned section no viewport of its own - `getElementParams` in
- * rowContainerComp.ts only wraps the centre container - so `.ag-pinned-left-cols-container` does not
- * clip, and the span is free to run out over the table as far as the grid's right edge.
- *
- * Which of the two sections paints on top has to be settled on the containers, below. A `z-index` on
- * the cell cannot do it: ag-grid positions rows with `transform: translateY()` unless
- * suppressRowTransform is set, and a transform makes every row a stacking context, so a cell's
- * `z-index` only ever orders it against its own row's siblings. Left to the containers' source
- * order the centre section wins, and the overhang is painted behind it - behind the opaque
- * background of an even row, and behind the near-transparent stripe of an odd one, which is why
- * getting this wrong showed up on one kind of row and not the other.
+ * AG Grid 36 wraps each row's pinned cells in a sticky section that clips overflow by default.
+ * Allow the expanded key to cross into the scrolling cells; the shared viewport still clips it
+ * at the grid edge. The pinned section already has a higher stacking order than the centre cells.
  */
-
-/*
- * Pinned columns sit above the columns that scroll under them. The two sections are siblings, so
- * one line here outranks the centre section for everything in the pinned one, whatever stacking
- * contexts the rows inside it make.
- */
-.pack-tables-grid .ag-pinned-left-cols-container {
-  z-index: 1;
+.pack-tables-grid .ag-grid-scrolling-rows .ag-grid-pinned-left-cells {
+  overflow: visible;
 }
 
-/* z-index orders the hovered cell within its own row; the section is raised by the rule above. */
+/* Raise the hovered cell within its row. */
 .pack-tables-grid .pack-table-pinned-key-cell:hover {
   overflow: visible;
   z-index: 2;
@@ -1112,19 +1098,6 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-/*
- * The strip under the pinned columns is a spacer that lines the horizontal scrollbar up with the
- * scrollable part of the grid, and ag-grid ships it as `overflow-x: scroll`. On a platform that
- * draws scrollbar tracks - which Electron on Windows does - that paints a second, dead horizontal
- * scrollbar beneath the pinned columns. ag-grid only suppresses it when the pinned section is
- * narrower than a scrollbar, which stopped being true once a key column was pinned beside the row
- * numbers. Two classes to outrank ag-grid's own single-class rule whatever the import order.
- */
-.pack-tables-grid .ag-horizontal-left-spacer,
-.pack-tables-grid .ag-horizontal-right-spacer {
-  overflow-x: hidden;
 }
 
 /*

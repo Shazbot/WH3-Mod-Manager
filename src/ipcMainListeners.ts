@@ -201,6 +201,7 @@ import chokidar from "chokidar";
 import { format } from "date-fns";
 import electronLog from "electron-log/main";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
+import { showOpenDialog } from "./openDialog";
 import windowStateKeeper from "electron-window-state";
 import * as fs from "fs";
 import * as fsExtra from "fs-extra";
@@ -9196,7 +9197,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   ipcMain.on("selectContentFolder", async (event, requestedGame: SupportedGames | undefined) => {
     try {
       if (!mainWindow) return;
-      const dialogReturnValue = await dialog.showOpenDialog(mainWindow, {
+      const dialogReturnValue = await showOpenDialog(mainWindow, {
         properties: ["openDirectory", "showHiddenFiles"],
       });
       if (!dialogReturnValue.canceled) {
@@ -9213,7 +9214,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   ipcMain.on("selectWarhammer3Folder", async (event, requestedGame: SupportedGames | undefined) => {
     try {
       if (!mainWindow) return;
-      const dialogReturnValue = await dialog.showOpenDialog(mainWindow, {
+      const dialogReturnValue = await showOpenDialog(mainWindow, {
         properties: ["openDirectory", "showHiddenFiles"],
       });
       if (!dialogReturnValue.canceled) {
@@ -12578,7 +12579,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         }
 
         if (copyPath) {
-          clipboard.writeText(targetPath);
+          await clipboard.writeText(targetPath);
           return { success: true, path: targetPath };
         }
 
@@ -12607,8 +12608,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   ipcMain.on("openPack", (event, path: string) => {
     shell.openPath(path);
   });
-  ipcMain.on("putPathInClipboard", (event, path: string) => {
-    clipboard.writeText(path);
+  ipcMain.on("putPathInClipboard", async (event, path: string) => {
+    await clipboard.writeText(path).catch((error) => console.error("Failed to copy path:", error));
   });
   ipcMain.on("copyModToData", (event, path: string) => {
     const baseName = nodePath.basename(path);
@@ -13173,7 +13174,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     await subscribeToMods(ids);
   });
   ipcMain.on("exportModsToClipboard", async (event, mods: Mod[], availableMods: Mod[]) => {
-    clipboard.writeText(serializeSharedModList(mods, availableMods));
+    await clipboard
+      .writeText(serializeSharedModList(mods, availableMods))
+      .catch((error) => console.error("Failed to copy mod data:", error));
   });
   ipcMain.on("exportModNamesToClipboard", async (event, mods: Mod[]) => {
     const sortedMods = sortByNameAndLoadOrder(mods);
@@ -13182,7 +13185,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       .filter((mod) => mod.humanName != "")
       .map((mod) => mod.humanName)
       .join("\n");
-    clipboard.writeText(exportedMods);
+    await clipboard.writeText(exportedMods).catch((error) => console.error("Failed to copy mod data:", error));
   });
   ipcMain.on("createSteamCollection", async (event, mods: Mod[]) => {
     const workshopIDs = mods.map((mod) => mod.workshopId);
@@ -13190,7 +13193,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       "var workshopIds = []",
       "var workshopIds = [" + workshopIDs.map((wID) => `"${wID}"`).join(",") + "]",
     );
-    clipboard.writeText(scriptWithIDs);
+    await clipboard.writeText(scriptWithIDs).catch((error) => console.error("Failed to copy mod data:", error));
   });
   const appendToSearchInsidePacks = async (
     mods: Mod[],
@@ -14826,7 +14829,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       try {
         const defaultDirectory =
           appData.gamesToGameFolderPaths[appData.currentGame]?.gamePath || app.getPath("documents");
-        const result = await dialog.showOpenDialog(requestingWindow || mainWindow || new BrowserWindow(), {
+        const result = await showOpenDialog(requestingWindow || mainWindow || new BrowserWindow(), {
           properties: ["openFile"],
           defaultPath: defaultDirectory,
           filters: [{ name: "JSON", extensions: ["json"] }],
@@ -14848,7 +14851,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     // moves focus to that window, and the caller is left behind when the dialog closes.
     const requestingWindow = BrowserWindow.fromWebContents(event.sender);
     try {
-      const result = await dialog.showOpenDialog(requestingWindow || mainWindow || new BrowserWindow(), {
+      const result = await showOpenDialog(requestingWindow || mainWindow || new BrowserWindow(), {
         properties: ["openDirectory"],
         ...(defaultPath ? { defaultPath } : {}),
       });
@@ -14867,7 +14870,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   ipcMain.handle("selectImportFiles", async (event): Promise<string[]> => {
     const requestingWindow = BrowserWindow.fromWebContents(event.sender);
     try {
-      const result = await dialog.showOpenDialog(requestingWindow || mainWindow || new BrowserWindow(), {
+      const result = await showOpenDialog(requestingWindow || mainWindow || new BrowserWindow(), {
         properties: ["openFile", "multiSelections"],
       });
       return result.canceled ? [] : result.filePaths;
@@ -14881,7 +14884,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   ipcMain.handle("selectImportFolders", async (event): Promise<string[]> => {
     const requestingWindow = BrowserWindow.fromWebContents(event.sender);
     try {
-      const result = await dialog.showOpenDialog(requestingWindow || mainWindow || new BrowserWindow(), {
+      const result = await showOpenDialog(requestingWindow || mainWindow || new BrowserWindow(), {
         properties: ["openDirectory", "multiSelections"],
       });
       return result.canceled ? [] : result.filePaths;
@@ -15483,7 +15486,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   ipcMain.handle("selectFlowPackFile", async (event) => {
     const requestingWindow = BrowserWindow.fromWebContents(event.sender);
     try {
-      const result = await dialog.showOpenDialog(requestingWindow || mainWindow || new BrowserWindow(), {
+      const result = await showOpenDialog(requestingWindow || mainWindow || new BrowserWindow(), {
         properties: ["openFile"],
         filters: [{ name: "Pack files", extensions: ["pack"] }],
       });

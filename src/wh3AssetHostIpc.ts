@@ -18,6 +18,7 @@ import {
   type Wh3AssetHostDecisionRequest,
 } from "./wh3AssetHostClient";
 import { windows } from "./ipcMainListeners";
+import { showOpenDialog } from "./openDialog";
 import {
   Wh3AssetHostPackInitializer,
   getWh3AssetHostPackPathsForMods,
@@ -1525,9 +1526,7 @@ const openUnitPainterProjectNow = async (packPathValue: unknown) => {
       properties: ["openFile"],
       filters: [{ name: "Total War pack", extensions: ["pack"] }],
     };
-    const selection = ownerWindow
-      ? await dialog.showOpenDialog(ownerWindow, options)
-      : await dialog.showOpenDialog(options);
+    const selection = await showOpenDialog(ownerWindow, options);
     if (selection.canceled || selection.filePaths.length === 0) {
       return { success: false as const, canceled: true };
     }
