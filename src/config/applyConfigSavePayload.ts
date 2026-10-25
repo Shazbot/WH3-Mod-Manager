@@ -30,6 +30,7 @@ export function applyConfigSavePayloadToAppData(payload: ConfigSavePayload) {
   appData.compressModsOnUpload = config.compressModsOnUpload ?? appData.compressModsOnUpload;
   appData.isShowingSkillNodeSetNames = config.isShowingSkillNodeSetNames ?? appData.isShowingSkillNodeSetNames;
   appData.isShowingSkillsRankPanel = config.isShowingSkillsRankPanel ?? appData.isShowingSkillsRankPanel;
+  appData.isShowingSkillDbKeys = config.isShowingSkillDbKeys ?? appData.isShowingSkillDbKeys;
   appData.hideRepeatedKeyPrefixes = config.hideRepeatedKeyPrefixes ?? appData.hideRepeatedKeyPrefixes;
   appData.recentPackPaths = sanitizeRecentPackPaths(
     [...(appData.recentPackPaths ?? []), ...(config.recentPackPaths ?? [])],

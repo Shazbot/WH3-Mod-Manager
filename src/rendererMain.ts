@@ -191,6 +191,7 @@ const syncSkillsViewOptions = (appState: AppState) => {
   const nextSkillsViewOptions: SkillsViewOptions = {
     isShowingSkillNodeSetNames: appState.isShowingSkillNodeSetNames,
     isShowingSkillsRankPanel: appState.isShowingSkillsRankPanel,
+    isShowingSkillDbKeys: appState.isShowingSkillDbKeys,
     hideRepeatedKeyPrefixes: appState.hideRepeatedKeyPrefixes,
     isShowingHiddenSkills: appState.isShowingHiddenSkills,
     isShowingHiddenModifiersInsideSkills: appState.isShowingHiddenModifiersInsideSkills,
@@ -200,6 +201,7 @@ const syncSkillsViewOptions = (appState: AppState) => {
   if (
     lastSentSkillsViewOptions?.isShowingSkillNodeSetNames === nextSkillsViewOptions.isShowingSkillNodeSetNames &&
     lastSentSkillsViewOptions?.isShowingSkillsRankPanel === nextSkillsViewOptions.isShowingSkillsRankPanel &&
+    lastSentSkillsViewOptions?.isShowingSkillDbKeys === nextSkillsViewOptions.isShowingSkillDbKeys &&
     lastSentSkillsViewOptions?.hideRepeatedKeyPrefixes === nextSkillsViewOptions.hideRepeatedKeyPrefixes &&
     lastSentSkillsViewOptions?.isShowingHiddenSkills === nextSkillsViewOptions.isShowingHiddenSkills &&
     lastSentSkillsViewOptions?.isShowingHiddenModifiersInsideSkills ===

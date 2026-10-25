@@ -409,6 +409,7 @@ declare global {
     isLocalizingSubtypes: boolean;
     isShowingSkillNodeSetNames: boolean;
     isShowingSkillsRankPanel: boolean;
+    isShowingSkillDbKeys: boolean;
     hideRepeatedKeyPrefixes: boolean;
     isShowingHiddenSkills: boolean;
     isShowingHiddenModifiersInsideSkills: boolean;
@@ -438,6 +439,7 @@ declare global {
     AppState,
     | "isShowingSkillNodeSetNames"
     | "isShowingSkillsRankPanel"
+    | "isShowingSkillDbKeys"
     | "hideRepeatedKeyPrefixes"
     | "isShowingHiddenSkills"
     | "isShowingHiddenModifiersInsideSkills"
@@ -488,6 +490,7 @@ declare global {
     | "nodeEditorFavorites"
     | "isShowingSkillNodeSetNames"
     | "isShowingSkillsRankPanel"
+    | "isShowingSkillDbKeys"
     | "hideRepeatedKeyPrefixes"
     | "isShowingHiddenSkills"
     | "isShowingHiddenModifiersInsideSkills"

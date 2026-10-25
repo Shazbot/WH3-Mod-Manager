@@ -38,6 +38,7 @@ describe("applyConfigSavePayloadToAppData", () => {
     appData.enabledMods = [];
     appData.isShowingSkillNodeSetNames = false;
     appData.isShowingSkillsRankPanel = false;
+    appData.isShowingSkillDbKeys = false;
     appData.hideRepeatedKeyPrefixes = true;
   });
 
@@ -77,6 +78,7 @@ describe("applyConfigSavePayloadToAppData", () => {
       ...initialState,
       isShowingSkillNodeSetNames: true,
       isShowingSkillsRankPanel: true,
+      isShowingSkillDbKeys: true,
       hideRepeatedKeyPrefixes: false,
     } as AppState;
 
@@ -84,6 +86,7 @@ describe("applyConfigSavePayloadToAppData", () => {
 
     expect(appData.isShowingSkillNodeSetNames).toBe(true);
     expect(appData.isShowingSkillsRankPanel).toBe(true);
+    expect(appData.isShowingSkillDbKeys).toBe(true);
     expect(appData.hideRepeatedKeyPrefixes).toBe(false);
   });
 

@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -12,6 +13,7 @@ import { Handle, NodeToolbar, Position } from "@xyflow/react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import { setSkillNodeLevel } from "@/src/appSlice";
 import { useLocalizations } from "@/src/localizationContext";
+import DbKey from "./DbKey";
 import GameText, { textTagColours } from "./GameText";
 import SkillSpellTooltip from "./SkillSpellTooltip";
 import { pickRowAbility } from "./pickRowAbility";
@@ -38,10 +40,12 @@ import {
 // The game's default tooltip Appear, Stick and Hide delays. A tooltip sticks once it has been up for the stick delay,
 // so the mouse can move into it, and the hide delay gives the mouse time to cross the gap.
 const tooltipAppearDelayMs = 250;
-const tooltipStickDelayMs = 350;
+const tooltipStickDelayMs = 700;
 const tooltipHideDelayMs = 150;
 // A locked tooltip waits longer after the mouse leaves its card, so a slow or crooked move into it does not close it.
 const tooltipLockedHideDelayMs = 300;
+// The least room kept between the tooltip and the skills panel's top or bottom edge.
+const tooltipPanelMargin = 8;
 // Closes the open tooltip, so another card's tooltip appearing closes it.
 let closeOpenTooltip: (() => void) | undefined;
 // The nodes the hovered skill would lock out, which preview the lock chains. Cards subscribe to it, so only the cards
@@ -251,6 +255,10 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
   const skillNodesToLevel = useAppSelector((state) => state.app.skillNodesToLevel);
   const skillsData = useContext(SkillsDataContext);
   const currentRank = useAppSelector((state) => state.app.currentRank);
+  const isShowingSkillDbKeys = useAppSelector((state) => state.app.isShowingSkillDbKeys);
+  const isShowingHiddenModifiersInsideSkills = useAppSelector(
+    (state) => state.app.isShowingHiddenModifiersInsideSkills,
+  );
 
   const [isCardHovered, setIsCardHovered] = useState(false);
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
@@ -349,6 +357,38 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
     hideTooltip(tooltipLockedHideDelayMs);
   }, [hideTooltip]);
   useEffect(() => closeTooltip, [closeTooltip]);
+
+  // Like the game, the tooltip's top border sits on the card's middle line so it hangs below, or its bottom border
+  // does when only the space above fits it. The skills panel clips the tooltip, so the room is measured inside the
+  // panel, and a tooltip that fits neither way is moved to stay inside it, its scroll area capped to the panel. It
+  // runs after every render while open, since hovering a level or effect changes the tooltip's height, and only sets
+  // state when a value moves.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const tooltipScrollRef = useRef<HTMLDivElement>(null);
+  const [tooltipOffsetY, setTooltipOffsetY] = useState(0);
+  const [tooltipScrollMaxHeight, setTooltipScrollMaxHeight] = useState<number>();
+  useLayoutEffect(() => {
+    if (!isTooltipOpen || !cardRef.current || !tooltipRef.current || !tooltipScrollRef.current) return;
+    const cardRect = cardRef.current.getBoundingClientRect();
+    const panel = cardRef.current.closest(".react-flow") ?? document.documentElement;
+    const panelRect = panel.getBoundingClientRect();
+    const top = panelRect.top + tooltipPanelMargin;
+    const bottom = panelRect.bottom - tooltipPanelMargin;
+    const tooltipHeight = tooltipRef.current.offsetHeight;
+    // The frame and lock bar around the scroll area keep their height, so only the scroll area shrinks.
+    const scrollMaxHeight = Math.max(0, bottom - top - (tooltipHeight - tooltipScrollRef.current.offsetHeight));
+    setTooltipScrollMaxHeight((current) => (current == scrollMaxHeight ? current : scrollMaxHeight));
+
+    const middleY = cardRect.top + cardRect.height / 2;
+    const spaceBelow = bottom - middleY;
+    const spaceAbove = middleY - top;
+    const isBelow = tooltipHeight <= spaceBelow || (tooltipHeight > spaceAbove && spaceBelow >= spaceAbove);
+    const tooltipTop = Math.max(top, Math.min(isBelow ? middleY : middleY - tooltipHeight, bottom - tooltipHeight));
+    // The toolbar is aligned to the card's top.
+    const offsetY = tooltipTop - cardRect.top;
+    setTooltipOffsetY((current) => (current == offsetY ? current : offsetY));
+  });
 
   const lockedSkills = useMemo(
     () => (skillsData ? getSkillsLockedBy(skillsData, data.id, currentLevel + 1) : []),
@@ -491,13 +531,17 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
   // An effect row links to the spell its text names, see pickRowAbility.
   const getRowAbility = (effect: Effect) =>
     pickRowAbility(effect.localizedKey, getEffectAbilities(effect), hiddenEffectAbilities);
-  // The game hides effects with priority 0 and lists the rest by priority, keeping the table's order on ties. A closed
-  // tooltip lists nothing, so the many closed cards skip the per-row work.
+  // The game hides effects with priority 0 and lists the rest by priority, keeping the table's order on ties. The hidden
+  // ones are listed after them, dimmed, when the option to show hidden modifiers is on. A closed tooltip lists
+  // nothing, so the many closed cards skip the per-row work.
   const shownEffects = !isTooltipOpen
     ? []
     : effectsAtShownLevel
         .filter((effect) => effect.priority != "0")
-        .sort((first, second) => Number(first.priority) - Number(second.priority));
+        .sort((first, second) => Number(first.priority) - Number(second.priority))
+        .concat(
+          isShowingHiddenModifiersInsideSkills ? effectsAtShownLevel.filter((effect) => effect.priority == "0") : [],
+        );
   const hoveredAbility = hoveredEffect && getRowAbility(hoveredEffect);
   const hoveredAttributes = hoveredEffect && skillsData.effectAttributes[hoveredEffect.effectKey];
 
@@ -507,10 +551,13 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
         style={{ fontFamily: '"Libre Baskerville", serif' }}
         isVisible={isTooltipOpen}
         position={Position.Right}
+        align="start"
       >
         <div
+          ref={tooltipRef}
           className="relative"
           style={{
+            transform: `translateY(${tooltipOffsetY}px)`,
             width: skillTooltip.width,
             borderStyle: "solid",
             borderWidth: `${skillTooltip.frameSliceY}px ${skillTooltip.frameSliceX}px`,
@@ -557,6 +604,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
             >
               <SkillSpellTooltip
                 ability={hoveredAbility}
+                dbKey={isShowingSkillDbKeys ? hoveredAbility.key : undefined}
                 compareAbility={Object.values(skillsData.abilityTooltipsByKey).find(
                   (ability) => ability.overpowerOption === hoveredAbility.key,
                 )}
@@ -572,11 +620,21 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
               />
             </div>
           )}
-          <div className="nowheel max-h-[calc(92vh-50px)] overflow-y-auto">
+          <div
+            ref={tooltipScrollRef}
+            className="nowheel max-h-[calc(92vh-50px)] overflow-y-auto"
+            style={{ maxHeight: tooltipScrollMaxHeight }}
+          >
             <div>
               <div className="font-bold text-center" style={titleStyle}>
                 {label}
               </div>
+              {isShowingSkillDbKeys && (
+                <div className="text-center">
+                  <DbKey className="block" value={data.id} />
+                  <DbKey className="block" value={data.nodeId} />
+                </div>
+              )}
               {data.subculture && <div className="font-bold text-center">{data.subculture}</div>}
               {data.faction && <div className="font-bold text-center">{data.faction}</div>}
               {data.numLevels > 3 && (
@@ -624,7 +682,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
                     <div
                       key={effect.key + i}
                       id={effect.key + i}
-                      className="flex items-center"
+                      className={`flex items-center ${effect.priority == "0" ? "opacity-60" : ""}`}
                       onMouseEnter={hasTooltip ? () => showEffectTooltip(effect, isSpell) : undefined}
                       onMouseLeave={hasTooltip ? () => hideEffectTooltip(tooltipLockedHideDelayMs) : undefined}
                       style={{
@@ -653,6 +711,17 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
                             alt="tooltipAvailable"
                           />
                         )}
+                        {isShowingSkillDbKeys && (
+                          <span className="block" style={{ fontSize: 10, color: skillText.descriptionColour }}>
+                            <DbKey value={effect.effectKey} />
+                            {effect.effectScope && (
+                              <>
+                                {" · "}
+                                <DbKey value={effect.effectScope} />
+                              </>
+                            )}
+                          </span>
+                        )}
                       </span>
                     </div>
                   );
@@ -664,6 +733,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
         </div>
       </NodeToolbar>
       <div
+        ref={cardRef}
         onMouseEnter={() => onMouseEnter()}
         onMouseLeave={() => onMouseLeave()}
         onClick={() => {

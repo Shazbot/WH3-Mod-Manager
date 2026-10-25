@@ -655,6 +655,7 @@ exec ${quoteForShell(process.execPath)}
       windows.mainWindow?.webContents.send("setSkillsViewOptions", {
         isShowingSkillNodeSetNames: appData.isShowingSkillNodeSetNames,
         isShowingSkillsRankPanel: appData.isShowingSkillsRankPanel,
+        isShowingSkillDbKeys: appData.isShowingSkillDbKeys,
         hideRepeatedKeyPrefixes: appData.hideRepeatedKeyPrefixes,
         isShowingHiddenSkills: appData.isShowingHiddenSkills,
         isShowingHiddenModifiersInsideSkills: appData.isShowingHiddenModifiersInsideSkills,

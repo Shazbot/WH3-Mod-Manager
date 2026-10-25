@@ -7,12 +7,7 @@ import SkillsView, { SkillsViewHandle, SkillsViewSnapshot } from "./SkillsView";
 import { SkillsDataContext } from "./skillsDataContext";
 import { Resizable } from "re-resizable";
 import debounce from "just-debounce-it";
-import {
-  setHideRepeatedKeyPrefixes,
-  setIsShowingSkillNodeSetNames,
-  setIsShowingSkillsRankPanel,
-  setSkillsData,
-} from "../../appSlice";
+import { setHideRepeatedKeyPrefixes, setIsShowingSkillNodeSetNames, setSkillsData } from "../../appSlice";
 
 type SkillTab = {
   id: string;
@@ -91,7 +86,6 @@ const SkillsViewer = memo(() => {
   const skillsData = useAppSelector((state) => state.app.skillsData);
   const localized = useAppSelector((state) => state.app.currentLocalization);
   const isShowingSkillNodeSetNames = useAppSelector((state) => state.app.isShowingSkillNodeSetNames);
-  const isShowingSkillsRankPanel = useAppSelector((state) => state.app.isShowingSkillsRankPanel);
   const hideRepeatedKeyPrefixes = useAppSelector((state) => state.app.hideRepeatedKeyPrefixes);
   const isLocalizingSubtypes = useAppSelector((state) => state.app.isLocalizingSubtypes);
 
@@ -484,15 +478,6 @@ const SkillsViewer = memo(() => {
             onChange={() => dispatch(setIsShowingSkillNodeSetNames(!isShowingSkillNodeSetNames))}
           ></input>
           <span className="ml-2">{localized.showSkillNodeSetNames || "Show Skill Node Set Names"}</span>
-        </label>
-        <label htmlFor="isShowingSkillsRankPanelCheckbox" className="ml-4 flex items-center text-sm">
-          <input
-            id="isShowingSkillsRankPanelCheckbox"
-            type="checkbox"
-            checked={!!isShowingSkillsRankPanel}
-            onChange={() => dispatch(setIsShowingSkillsRankPanel(!isShowingSkillsRankPanel))}
-          ></input>
-          <span className="ml-2">{localized.showSkillsRankPanel || "Show rank"}</span>
         </label>
         <label htmlFor="hideRepeatedSkillKeyPrefixesCheckbox" className="ml-4 flex items-center text-sm">
           <input

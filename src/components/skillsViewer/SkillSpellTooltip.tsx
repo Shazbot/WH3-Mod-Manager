@@ -1,5 +1,6 @@
 import React from "react";
 import AbilityTooltipCard from "./AbilityTooltipCard";
+import DbKey from "./DbKey";
 import { skillArt, skillText, skillTooltip, spellTooltip } from "./skillPanelLayout";
 
 /** Props for SkillSpellTooltip. */
@@ -9,6 +10,8 @@ type SkillSpellTooltipProps = {
   icons: Record<string, string>;
   tooltipFrame: string;
   lockBar?: React.ReactNode;
+  /** The spell's unit_ability key, shown under the header when the DB keys option is on. */
+  dbKey?: string;
 };
 
 /**
@@ -18,9 +21,17 @@ type SkillSpellTooltipProps = {
  * @param props.icons Icon URLs keyed by path.
  * @param props.tooltipFrame The tooltip_frame art.
  * @param props.lockBar The stick bar drawn on the tooltip's bottom edge.
+ * @param props.dbKey The spell's key, shown under the header when set.
  * @returns The tooltip.
  */
-const SkillSpellTooltip = ({ ability, compareAbility, icons, tooltipFrame, lockBar }: SkillSpellTooltipProps) => (
+const SkillSpellTooltip = ({
+  ability,
+  compareAbility,
+  icons,
+  tooltipFrame,
+  lockBar,
+  dbKey,
+}: SkillSpellTooltipProps) => (
   <div
     style={{
       width: spellTooltip.width,
@@ -62,6 +73,11 @@ const SkillSpellTooltip = ({ ability, compareAbility, icons, tooltipFrame, lockB
         </div>
       )}
     </div>
+    {dbKey && (
+      <div className="text-center">
+        <DbKey value={dbKey} />
+      </div>
+    )}
     <AbilityTooltipCard ability={ability} compareAbility={compareAbility} icons={icons} isFramed />
     {lockBar}
   </div>

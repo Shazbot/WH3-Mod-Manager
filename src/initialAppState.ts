@@ -136,6 +136,7 @@ const initialState = {
   isLocalizingSubtypes: false,
   isShowingSkillNodeSetNames: false,
   isShowingSkillsRankPanel: false,
+  isShowingSkillDbKeys: false,
   hideRepeatedKeyPrefixes: true,
   isShowingHiddenSkills: true,
   isShowingHiddenModifiersInsideSkills: true,

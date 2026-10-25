@@ -12,6 +12,8 @@ import React, {
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import {
   setIsCheckingSkillRequirements,
+  setIsShowingSkillsRankPanel,
+  setIsShowingSkillDbKeys,
   setIsShowingHiddenModifiersInsideSkills,
   setIsShowingHiddenSkills,
   setSkillNodeLevel,
@@ -526,6 +528,7 @@ const SkillsView = memo(
 
     const currentRank = useAppSelector((state) => state.app.currentRank);
     const isShowingSkillsRankPanel = useAppSelector((state) => state.app.isShowingSkillsRankPanel);
+    const isShowingSkillDbKeys = useAppSelector((state) => state.app.isShowingSkillDbKeys);
     const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
     const moddersPrefix = useAppSelector((state) => state.app.moddersPrefix);
 
@@ -883,9 +886,8 @@ const SkillsView = memo(
         style: { zIndex: "1" },
       };
 
-      if (!isEditMode && !isShowingHiddenModifiersInsideSkills) {
-        node.data.effects = node.data.effects.filter((effect) => effect.priority != "0");
-      }
+      // Every effect is passed on: the tooltip hides the priority 0 ones itself, but still reads them for the spells
+      // they grant.
       skillNodes.push(node);
     });
 
@@ -4151,9 +4153,7 @@ const SkillsView = memo(
           .map((node) => {
             if (isSkillNode(node)) {
               const data = node.data as SkillData;
-              const effects = !isShowingHiddenModifiersInsideSkills
-                ? data.effects.filter((effect) => effect.priority != "0")
-                : data.effects;
+              const effects = data.effects;
               const parent = node.parentId ? nodes.find((candidate) => candidate.id === node.parentId) : undefined;
               const leavesGroup = !!node.parentId && !visibleGroupIds.has(node.parentId);
               if (!node.parentId || leavesGroup) {
@@ -4694,6 +4694,8 @@ const SkillsView = memo(
               : undefined
           }
           multiSelectionKeyCode="Shift"
+          // Quick clicks that add ranks to a skill read as a double-click, which would zoom in.
+          zoomOnDoubleClick={false}
         >
           {isShowingSkillsRankPanel && (
             <Panel position="top-right">
@@ -4759,6 +4761,36 @@ const SkillsView = memo(
                           }}
                         ></input>
                         <span className="ml-2">{localized.checkSkillRequirements}</span>
+                      </label>
+                    </div>
+                  </Dropdown.Item>
+                  <Dropdown.Item>
+                    <div className="flex items-center">
+                      <label htmlFor="isShowingSkillsRankPanelCheckbox">
+                        <input
+                          id="isShowingSkillsRankPanelCheckbox"
+                          type="checkbox"
+                          checked={!!isShowingSkillsRankPanel}
+                          onChange={() => {
+                            dispatch(setIsShowingSkillsRankPanel(!isShowingSkillsRankPanel));
+                          }}
+                        ></input>
+                        <span className="ml-2">{localized.showSkillsRankPanel || "Show rank"}</span>
+                      </label>
+                    </div>
+                  </Dropdown.Item>
+                  <Dropdown.Item>
+                    <div className="flex items-center">
+                      <label htmlFor="isShowingSkillDbKeysCheckbox">
+                        <input
+                          id="isShowingSkillDbKeysCheckbox"
+                          type="checkbox"
+                          checked={!!isShowingSkillDbKeys}
+                          onChange={() => {
+                            dispatch(setIsShowingSkillDbKeys(!isShowingSkillDbKeys));
+                          }}
+                        ></input>
+                        <span className="ml-2">{localized.showSkillDbKeys || "Show DB keys in tooltips"}</span>
                       </label>
                     </div>
                   </Dropdown.Item>

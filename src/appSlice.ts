@@ -1271,6 +1271,7 @@ const appSlice = createSlice({
       state.isShowingSkillNodeSetNames =
         fromConfigAppState.isShowingSkillNodeSetNames ?? state.isShowingSkillNodeSetNames;
       state.isShowingSkillsRankPanel = fromConfigAppState.isShowingSkillsRankPanel ?? state.isShowingSkillsRankPanel;
+      state.isShowingSkillDbKeys = fromConfigAppState.isShowingSkillDbKeys ?? state.isShowingSkillDbKeys;
       state.hideRepeatedKeyPrefixes = fromConfigAppState.hideRepeatedKeyPrefixes ?? state.hideRepeatedKeyPrefixes;
       state.isShowingHiddenSkills = fromConfigAppState.isShowingHiddenSkills ?? state.isShowingHiddenSkills;
       state.isShowingHiddenModifiersInsideSkills =
@@ -2021,6 +2022,9 @@ const appSlice = createSlice({
     setIsShowingSkillsRankPanel: (state: AppState, action: PayloadAction<boolean>) => {
       state.isShowingSkillsRankPanel = action.payload;
     },
+    setIsShowingSkillDbKeys: (state: AppState, action: PayloadAction<boolean>) => {
+      state.isShowingSkillDbKeys = action.payload;
+    },
     setHideRepeatedKeyPrefixes: (state: AppState, action: PayloadAction<boolean>) => {
       state.hideRepeatedKeyPrefixes = action.payload;
     },
@@ -2036,6 +2040,7 @@ const appSlice = createSlice({
     setSkillsViewOptions: (state: AppState, action: PayloadAction<SkillsViewOptions>) => {
       state.isShowingSkillNodeSetNames = action.payload.isShowingSkillNodeSetNames;
       state.isShowingSkillsRankPanel = action.payload.isShowingSkillsRankPanel;
+      state.isShowingSkillDbKeys = action.payload.isShowingSkillDbKeys;
       state.hideRepeatedKeyPrefixes = action.payload.hideRepeatedKeyPrefixes;
       state.isShowingHiddenSkills = action.payload.isShowingHiddenSkills;
       state.isShowingHiddenModifiersInsideSkills = action.payload.isShowingHiddenModifiersInsideSkills;
@@ -2243,6 +2248,7 @@ export const {
   setIsLocalizingSubtypes,
   setIsShowingSkillNodeSetNames,
   setIsShowingSkillsRankPanel,
+  setIsShowingSkillDbKeys,
   setHideRepeatedKeyPrefixes,
   setIsShowingHiddenSkills,
   setIsShowingHiddenModifiersInsideSkills,

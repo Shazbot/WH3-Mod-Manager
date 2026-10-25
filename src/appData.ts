@@ -174,6 +174,7 @@ interface AppData {
   compressModsOnUpload: boolean;
   isShowingSkillNodeSetNames: boolean;
   isShowingSkillsRankPanel: boolean;
+  isShowingSkillDbKeys: boolean;
   hideRepeatedKeyPrefixes: boolean;
   isShowingHiddenSkills: boolean;
   isShowingHiddenModifiersInsideSkills: boolean;
@@ -257,6 +258,7 @@ const appData = {
   compressModsOnUpload: true,
   isShowingSkillNodeSetNames: false,
   isShowingSkillsRankPanel: false,
+  isShowingSkillDbKeys: false,
   hideRepeatedKeyPrefixes: true,
   isShowingHiddenSkills: true,
   isShowingHiddenModifiersInsideSkills: true,

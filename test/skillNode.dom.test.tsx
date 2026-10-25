@@ -1,5 +1,5 @@
 import React from "react";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
 import { describe, expect, it, vi } from "vitest";
@@ -211,7 +211,7 @@ describe("Skill", () => {
       fireEvent.mouseEnter(card);
       act(() => void vi.advanceTimersByTime(250));
       expect(isBarFilling()).toBe(true);
-      act(() => void vi.advanceTimersByTime(350));
+      act(() => void vi.advanceTimersByTime(700));
       expect(isBarFilling()).toBe(false);
       // A stuck tooltip waits longer after leaving the card, so a slow move into it keeps it.
       fireEvent.mouseLeave(card);
@@ -236,7 +236,7 @@ describe("Skill", () => {
 
       // Stuck, but the mouse never reaches the tooltip.
       fireEvent.mouseEnter(card);
-      act(() => void vi.advanceTimersByTime(600));
+      act(() => void vi.advanceTimersByTime(950));
       fireEvent.mouseLeave(card);
       act(() => void vi.advanceTimersByTime(1000));
       expect(tooltip()).toBeFalsy();
@@ -254,7 +254,7 @@ describe("Skill", () => {
         .firstElementChild!;
 
       fireEvent.mouseEnter(first);
-      act(() => void vi.advanceTimersByTime(600));
+      act(() => void vi.advanceTimersByTime(950));
       fireEvent.mouseLeave(first);
       // Crossing another card on the way to the tooltip leaves it open.
       fireEvent.mouseEnter(second);
@@ -272,10 +272,13 @@ describe("Skill", () => {
     try {
       const effect = (name: string, priority: string) =>
         ({ key: name, effectKey: name, localizedKey: name, level: 1, priority }) as Effect;
-      const { container } = renderSkill({
-        ...skillData,
-        effects: [effect("Shown effect", "51"), effect("Hidden effect", "0")],
-      });
+      const { container } = renderSkill(
+        {
+          ...skillData,
+          effects: [effect("Shown effect", "51"), effect("Hidden effect", "0")],
+        },
+        { isShowingHiddenModifiersInsideSkills: false },
+      );
 
       fireEvent.mouseEnter(container.firstElementChild!);
       act(() => void vi.advanceTimersByTime(250));
@@ -335,7 +338,7 @@ describe("Skill", () => {
 
       // The skill's tooltip sticks first, so the mouse can reach its rows.
       fireEvent.mouseEnter(container.firstElementChild!);
-      act(() => void vi.advanceTimersByTime(600));
+      act(() => void vi.advanceTimersByTime(950));
       expect(screen.queryByText("Leech Upgraded")).toBeNull();
 
       const row = container.querySelector('img[alt="tooltipAvailable"]')!.closest("[id]")!;
@@ -350,7 +353,7 @@ describe("Skill", () => {
       const isSpellLockFilling = () =>
         spellTooltip().querySelector('img[alt="lockBar"]')!.parentElement!.classList.contains("skillTooltipLockFill");
       expect(isSpellLockFilling()).toBe(true);
-      act(() => void vi.advanceTimersByTime(350));
+      act(() => void vi.advanceTimersByTime(700));
       expect(isSpellLockFilling()).toBe(false);
       // Crossing another spell's row on the way does not swap it out.
       const cooldownRow = container.querySelectorAll('img[alt="tooltipAvailable"]')[1].closest("[id]")!;
@@ -369,7 +372,7 @@ describe("Skill", () => {
 
       // Resting on another row does.
       fireEvent.mouseEnter(row);
-      act(() => void vi.advanceTimersByTime(350));
+      act(() => void vi.advanceTimersByTime(700));
       fireEvent.mouseLeave(row);
       fireEvent.mouseEnter(cooldownRow);
       act(() => void vi.advanceTimersByTime(250));
@@ -491,5 +494,125 @@ describe("Skill", () => {
     expect(
       renderSkill(autoSkill, { ...app, currentRank: 11 }).container.querySelector('img[alt="autoUnlockRank"]'),
     ).toBeNull();
+  });
+
+  it("shows the skill, node and effect keys only when the DB keys option is on", () => {
+    vi.useFakeTimers();
+    try {
+      const effect = {
+        key: "row",
+        effectKey: "wh_effect_armour",
+        effectScope: "character_to_character_own",
+        localizedKey: "Armour: +7",
+        level: 1,
+        priority: "1",
+      } as Effect;
+      const openTooltip = (app: Partial<AppState>) => {
+        const { container } = renderSkill({ ...skillData, effects: [effect] }, app);
+        fireEvent.mouseEnter(container.firstElementChild!);
+        act(() => void vi.advanceTimersByTime(250));
+        return container;
+      };
+
+      openTooltip({ isShowingSkillDbKeys: true });
+      expect(screen.getByText("skill_child")).not.toBeNull();
+      expect(screen.getByText("node_child")).not.toBeNull();
+      expect(screen.getByText("wh_effect_armour")).not.toBeNull();
+      expect(screen.getByText("character_to_character_own")).not.toBeNull();
+      cleanup();
+
+      openTooltip({ isShowingSkillDbKeys: false });
+      expect(screen.getByText("Armour: +7")).not.toBeNull();
+      expect(screen.queryByText("skill_child")).toBeNull();
+      expect(screen.queryByText(/wh_effect_armour/)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("lists hidden effects after the shown ones only when hidden modifiers are shown", () => {
+    vi.useFakeTimers();
+    try {
+      const effects = [
+        { key: "hidden", effectKey: "hidden", localizedKey: "Hidden effect", level: 1, priority: "0" },
+        { key: "shown", effectKey: "shown", localizedKey: "Shown effect", level: 1, priority: "1" },
+      ] as Effect[];
+      const openTooltip = (app: Partial<AppState>) => {
+        const { container } = renderSkill({ ...skillData, effects }, app);
+        fireEvent.mouseEnter(container.firstElementChild!);
+        act(() => void vi.advanceTimersByTime(250));
+      };
+
+      openTooltip({ isShowingHiddenModifiersInsideSkills: false });
+      expect(screen.getByText("Shown effect")).not.toBeNull();
+      expect(screen.queryByText("Hidden effect")).toBeNull();
+      cleanup();
+
+      openTooltip({ isShowingHiddenModifiersInsideSkills: true });
+      const shown = screen.getByText("Shown effect");
+      const hidden = screen.getByText("Hidden effect");
+      expect(shown.compareDocumentPosition(hidden) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(hidden.closest("[id]")!.className).toContain("opacity-60");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("copies a DB key to the clipboard when it is clicked", async () => {
+    vi.useFakeTimers();
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    try {
+      const { container } = renderSkill(skillData, { isShowingSkillDbKeys: true });
+      fireEvent.mouseEnter(container.firstElementChild!);
+      act(() => void vi.advanceTimersByTime(250));
+
+      await act(async () => void fireEvent.click(screen.getByText("node_child")));
+      expect(writeText).toHaveBeenCalledWith("node_child");
+      expect(screen.getByText(/node_child ✓/)).not.toBeNull();
+      act(() => void vi.advanceTimersByTime(1000));
+      expect(screen.queryByText(/✓/)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+      Reflect.deleteProperty(navigator, "clipboard");
+    }
+  });
+
+  it("shows the spell's key in its tooltip when the DB keys option is on", () => {
+    vi.useFakeTimers();
+    try {
+      const spell = {
+        key: "wh_spell_leech",
+        name: "Leech",
+        description: "",
+        sourceTypeName: "",
+        loreGroupName: "",
+        abilityTypeName: "",
+        stats: {},
+        bonuses: [],
+        additionalUiEffects: [],
+      } as unknown as AbilityTooltipData;
+      const effect = {
+        key: "row",
+        effectKey: "grant",
+        localizedKey: 'Spell: "Leech"',
+        level: 1,
+        priority: "1",
+      } as Effect;
+      const { container } = renderSkill(
+        { ...skillData, effects: [effect] },
+        { isShowingSkillDbKeys: true },
+        {
+          abilityTooltipsByKey: { wh_spell_leech: spell },
+          effectToUnitAbilityEnables: { grant: [{ unitAbilityKey: "wh_spell_leech", bonusValueId: "enable" }] },
+        },
+      );
+      fireEvent.mouseEnter(container.firstElementChild!);
+      act(() => void vi.advanceTimersByTime(250));
+      fireEvent.mouseEnter(container.querySelector('img[alt="tooltipAvailable"]')!.closest("[id]")!);
+      expect(screen.getByText("wh_spell_leech")).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

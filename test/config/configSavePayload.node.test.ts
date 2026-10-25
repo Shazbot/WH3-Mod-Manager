@@ -65,11 +65,13 @@ describe("selectConfigSavePayload", () => {
       ...initialState,
       isShowingSkillNodeSetNames: true,
       isShowingSkillsRankPanel: true,
+      isShowingSkillDbKeys: true,
       hideRepeatedKeyPrefixes: false,
     } as AppState);
 
     expect(payload.config.isShowingSkillNodeSetNames).toBe(true);
     expect(payload.config.isShowingSkillsRankPanel).toBe(true);
+    expect(payload.config.isShowingSkillDbKeys).toBe(true);
     expect(payload.config.hideRepeatedKeyPrefixes).toBe(false);
   });
 

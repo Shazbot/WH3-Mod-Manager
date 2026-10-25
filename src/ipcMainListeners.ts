@@ -6233,6 +6233,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       appData.compressModsOnUpload = appState.compressModsOnUpload ?? appData.compressModsOnUpload;
       appData.isShowingSkillNodeSetNames = appState.isShowingSkillNodeSetNames ?? appData.isShowingSkillNodeSetNames;
       appData.isShowingSkillsRankPanel = appState.isShowingSkillsRankPanel ?? appData.isShowingSkillsRankPanel;
+      appData.isShowingSkillDbKeys = appState.isShowingSkillDbKeys ?? appData.isShowingSkillDbKeys;
       appData.hideRepeatedKeyPrefixes = appState.hideRepeatedKeyPrefixes ?? appData.hideRepeatedKeyPrefixes;
       appData.isShowingHiddenSkills = appState.isShowingHiddenSkills ?? appData.isShowingHiddenSkills;
       appData.isShowingHiddenModifiersInsideSkills =
@@ -12012,6 +12013,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   ipcMain.on("setSkillsViewOptions", (event, skillsViewOptions: SkillsViewOptions) => {
     appData.isShowingSkillNodeSetNames = skillsViewOptions.isShowingSkillNodeSetNames;
     appData.isShowingSkillsRankPanel = skillsViewOptions.isShowingSkillsRankPanel;
+    appData.isShowingSkillDbKeys = skillsViewOptions.isShowingSkillDbKeys;
     appData.hideRepeatedKeyPrefixes = skillsViewOptions.hideRepeatedKeyPrefixes;
     appData.isShowingHiddenSkills = skillsViewOptions.isShowingHiddenSkills;
     appData.isShowingHiddenModifiersInsideSkills = skillsViewOptions.isShowingHiddenModifiersInsideSkills;
@@ -12506,6 +12508,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     windows.skillsWindow?.webContents.send("setSkillsViewOptions", {
       isShowingSkillNodeSetNames: appData.isShowingSkillNodeSetNames,
       isShowingSkillsRankPanel: appData.isShowingSkillsRankPanel,
+      isShowingSkillDbKeys: appData.isShowingSkillDbKeys,
       hideRepeatedKeyPrefixes: appData.hideRepeatedKeyPrefixes,
       isShowingHiddenSkills: appData.isShowingHiddenSkills,
       isShowingHiddenModifiersInsideSkills: appData.isShowingHiddenModifiersInsideSkills,

@@ -53,6 +53,7 @@ store.subscribe(() => {
   const skillsViewOptions: SkillsViewOptions = {
     isShowingSkillNodeSetNames: state.isShowingSkillNodeSetNames,
     isShowingSkillsRankPanel: state.isShowingSkillsRankPanel,
+    isShowingSkillDbKeys: state.isShowingSkillDbKeys,
     hideRepeatedKeyPrefixes: state.hideRepeatedKeyPrefixes,
     isShowingHiddenSkills: state.isShowingHiddenSkills,
     isShowingHiddenModifiersInsideSkills: state.isShowingHiddenModifiersInsideSkills,
@@ -62,6 +63,7 @@ store.subscribe(() => {
     lastSentSkillsViewOptions &&
     lastSentSkillsViewOptions.isShowingSkillNodeSetNames === skillsViewOptions.isShowingSkillNodeSetNames &&
     lastSentSkillsViewOptions.isShowingSkillsRankPanel === skillsViewOptions.isShowingSkillsRankPanel &&
+    lastSentSkillsViewOptions.isShowingSkillDbKeys === skillsViewOptions.isShowingSkillDbKeys &&
     lastSentSkillsViewOptions.hideRepeatedKeyPrefixes === skillsViewOptions.hideRepeatedKeyPrefixes &&
     lastSentSkillsViewOptions.isShowingHiddenSkills === skillsViewOptions.isShowingHiddenSkills &&
     lastSentSkillsViewOptions.isShowingHiddenModifiersInsideSkills ===
