@@ -496,6 +496,8 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
   }
   const isRankLocked = isCheckingSkillRequirements && data.unlockRank > currentRank;
   const isLocked = !areRequirementsValid || isRankLocked;
+  // The rank sets an automatic skill's level, so clicks do not change it.
+  const isAutomatic = !!data.autoUnlocks?.length;
   const nextAutoUnlock = data.autoUnlocks?.find((unlock) => unlock.skillLevel > currentLevel);
   const isAutoUnlockPending = !!nextAutoUnlock && nextAutoUnlock.rank > currentRank;
   // The game adds why a skill is locked to its description, in red after a blank line.
@@ -738,12 +740,12 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
         onMouseLeave={() => onMouseLeave()}
         onClick={() => {
           if (data.isEditMode) return;
-          if (!isLocked) onClick(currentLevel, data.numLevels);
+          if (!isLocked && !isAutomatic) onClick(currentLevel, data.numLevels);
         }}
         onContextMenu={(e) => {
           e.preventDefault();
           if (data.isEditMode) return;
-          if (isRankLocked) return;
+          if (isRankLocked || isAutomatic) return;
           onRightClick(currentLevel);
         }}
         className={`relative ${data.editGroupColor ? "ring-2 ring-offset-1 ring-offset-transparent" : ""} ${

@@ -17,6 +17,7 @@ import {
   setIsShowingHiddenModifiersInsideSkills,
   setIsShowingHiddenSkills,
   setSkillNodeLevel,
+  setAutoSkillNodeLevels,
 } from "../../appSlice";
 import deepClone from "clone-deep";
 import "@silevis/reactgrid/styles.css";
@@ -51,7 +52,7 @@ import {
 import { Dropdown } from "flowbite-react";
 import AddNodeModal from "./AddNodeModal";
 import { Modal } from "../../flowbite/components/Modal/index";
-import { normalizeSkillIconPath, skillIconAssetPath } from "../../skills";
+import { getAutoUnlockedLevel, normalizeSkillIconPath, skillIconAssetPath } from "../../skills";
 
 const edgeType = "straight";
 const normalizeGeneratedPrefix = (prefix: string) => prefix.trim().replace(/_+$/, "");
@@ -1463,6 +1464,22 @@ const SkillsView = memo(
     );
 
     const skillNodesToLevel = useAppSelector((state) => state.app.skillNodesToLevel);
+    const autoSkillNodeIds = useAppSelector((state) => state.app.autoSkillNodeIds);
+
+    // Skills the game grants at a rank follow the rank, gaining or losing levels as it changes. Only levels that
+    // differ are sent, so the store settles after one update.
+    useEffect(() => {
+      if (isEditMode) return;
+      const changedLevels: Record<string, number> = {};
+      for (const skill of skillsData.currentSkills) {
+        if (!skill.autoUnlocks?.length) continue;
+        const level = getAutoUnlockedLevel(skill.autoUnlocks, currentRank, skill.maxLevel);
+        if (skillNodesToLevel[skill.nodeId] !== level || !autoSkillNodeIds[skill.nodeId]) {
+          changedLevels[skill.nodeId] = level;
+        }
+      }
+      if (Object.keys(changedLevels).length > 0) dispatch(setAutoSkillNodeLevels(changedLevels));
+    }, [isEditMode, skillsData.currentSkills, currentRank, skillNodesToLevel, autoSkillNodeIds, dispatch]);
 
     // Handle clicking nodes: edit mode placeholders or normal mode skill rank changes
     const onNodeClick = useCallback(

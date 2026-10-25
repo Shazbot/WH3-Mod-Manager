@@ -358,6 +358,22 @@ export const normalizeTaggedImagePath = (imagePath: string) => imagePath.replace
  * @param skillLevel The skill level it upgrades to.
  * @param replace Whether an entry for the same skill level is overwritten, as a mod does, rather than keeping the lower rank.
  */
+/**
+ * Gets the level a skill is automatically granted at a rank.
+ * @param autoUnlocks The skill's auto unlocks, whose ranks are the raw DB `character_level` values.
+ * @param currentRank The rank as the viewer shows it, which is the DB value plus one.
+ * @param maxLevel The skill's highest level.
+ * @returns The highest level granted by that rank, or 0 when none is.
+ */
+export const getAutoUnlockedLevel = (autoUnlocks: SkillAutoUnlock[], currentRank: number, maxLevel: number) =>
+  Math.min(
+    maxLevel,
+    autoUnlocks.reduce(
+      (level, unlock) => (unlock.rank + 1 <= currentRank ? Math.max(level, unlock.skillLevel) : level),
+      0,
+    ),
+  );
+
 export function addSkillAutoUnlock(
   skillsToAutoUnlocks: Record<string, SkillAutoUnlock[]>,
   skill: string,

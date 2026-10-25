@@ -148,6 +148,7 @@ const initialState = {
 
   // skills
   skillNodesToLevel: {},
+  autoSkillNodeIds: {},
   currentRank: 1,
 } as AppState;
 

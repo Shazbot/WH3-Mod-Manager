@@ -417,6 +417,8 @@ declare global {
     skillTreesDisplayMode: TreeDisplayMode;
     technologyTreesDisplayMode: TreeDisplayMode;
     skillNodesToLevel: Record<string, number>;
+    /** The skill nodes whose level the rank sets, which cost no skill points. */
+    autoSkillNodeIds: Record<string, true>;
     currentRank: number;
   }
 

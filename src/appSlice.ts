@@ -691,6 +691,17 @@ const createBisectedModListPresetsInternal = (
   }
 };
 
+/**
+ * Gets the rank from the skill points spent: one point per level, except levels the rank grants automatically.
+ * @param state The app state.
+ * @returns The rank.
+ */
+const getRankFromSpentSkillPoints = (state: AppState) =>
+  Object.entries(state.skillNodesToLevel).reduce(
+    (rank, [skillNodeId, level]) => (state.autoSkillNodeIds[skillNodeId] ? rank : rank + level),
+    1,
+  );
+
 const appSlice = createSlice({
   name: "app",
   initialState: initialState,
@@ -1073,11 +1084,13 @@ const appSlice = createSlice({
     setSkillsData: (state: AppState, action: PayloadAction<SkillsData>) => {
       state.skillsData = action.payload;
       state.skillNodesToLevel = {};
+      state.autoSkillNodeIds = {};
       state.currentRank = 1;
     },
     clearSkillsData: (state: AppState) => {
       state.skillsData = undefined;
       state.skillNodesToLevel = {};
+      state.autoSkillNodeIds = {};
       state.currentRank = 1;
     },
     setPacksData: (state: AppState, action: PayloadAction<PackViewData[]>) => {
@@ -2051,6 +2064,7 @@ const appSlice = createSlice({
       if (action.payload !== "tab") {
         state.skillsData = undefined;
         state.skillNodesToLevel = {};
+        state.autoSkillNodeIds = {};
         state.currentRank = 1;
       }
       ensureValidCurrentTab(state);
@@ -2073,10 +2087,15 @@ const appSlice = createSlice({
     },
     setSkillNodeLevel: (state: AppState, action: PayloadAction<{ skillNodeId: string; level: number }>) => {
       state.skillNodesToLevel[action.payload.skillNodeId] = action.payload.level;
-
-      state.currentRank = Object.values(state.skillNodesToLevel).reduce((acc, curr) => {
-        return acc + curr;
-      }, 1);
+      state.currentRank = getRankFromSpentSkillPoints(state);
+    },
+    /** Sets the levels the rank grants automatically. They cost no skill points, so the rank does not change. */
+    setAutoSkillNodeLevels: (state: AppState, action: PayloadAction<Record<string, number>>) => {
+      for (const [skillNodeId, level] of Object.entries(action.payload)) {
+        state.skillNodesToLevel[skillNodeId] = level;
+        state.autoSkillNodeIds[skillNodeId] = true;
+      }
+      state.currentRank = getRankFromSpentSkillPoints(state);
     },
     setDeepCloneTarget: (state: AppState, action: PayloadAction<DeepCloneTarget | undefined>) => {
       state.deepCloneTarget = action.payload;
@@ -2266,6 +2285,7 @@ export const {
 
   // for skills
   setSkillNodeLevel,
+  setAutoSkillNodeLevels,
 } = appSlice.actions;
 
 export default appSlice.reducer;
