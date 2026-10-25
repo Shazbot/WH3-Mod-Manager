@@ -557,7 +557,7 @@
   "mainShogun2Folder": "Der Hauptordner von Shogun 2, der shogun2.exe enthält, z. B. C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War SHOGUN 2",
   "shogun2Folder": "Shogun-2-Ordner:",
   "selectShogun2Folder": "Shogun-2-Ordner auswählen",
-  "shogun2ContentFolder": "Der Shogun-2-Steam-Workshop-Ordner namens 201270 (die Steam-ID von Shogun 2), der Mods enthält, z. B. C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\201270",
+  "shogun2ContentFolder": "Der Shogun 2 Steam Workshop-Inhaltsordner mit dem Namen 201270 (die Steam-ID für Shogun 2), der Mods enthält, zum Beispiel C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\201270",
   "copyModToData": "Mod in den Data-Ordner kopieren",
   "version": "Version",
   "columns": "Spalten",

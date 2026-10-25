@@ -557,7 +557,7 @@
   "mainShogun2Folder": "shogun2.exe가 포함된 Shogun 2 메인 폴더, 예: C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War SHOGUN 2",
   "shogun2Folder": "Shogun 2 폴더:",
   "selectShogun2Folder": "Shogun 2 폴더 선택",
-  "shogun2ContentFolder": "Shogun 2의 Steam 워크숍 콘텐츠 폴더 201270 (Shogun 2의 Steam ID)로, 모드가 포함되어 있습니다. 예: C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\201270",
+  "shogun2ContentFolder": "모드가 포함된 201270(Shogun 2의 Steam ID)이라는 Shogun 2 Steam 창작마당 콘텐츠 폴더(예: C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\201270)",
   "copyModToData": "모드를 data 폴더에 복사",
   "version": "버전",
   "columns": "컬럼",

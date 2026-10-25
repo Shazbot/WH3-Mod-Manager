@@ -557,7 +557,7 @@
   "mainShogun2Folder": "shogun2.exe を含む Shogun 2 のメインフォルダ。例: C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War SHOGUN 2",
   "shogun2Folder": "Shogun 2 フォルダ:",
   "selectShogun2Folder": "Shogun 2 フォルダを選択",
-  "shogun2ContentFolder": "Shogun 2 の Steam ワークショップ コンテンツフォルダ 201270 (Shogun 2 の Steam ID) に含まれる Mod。例: C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\201270",
+  "shogun2ContentFolder": "MOD が含まれる 201270 (Shogun 2 の Steam ID) という名前の Shogun 2 Steam Workshop コンテンツ フォルダー (例: C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\201270)",
   "copyModToData": "Mod を data フォルダにコピー",
   "version": "バージョン",
   "columns": "カラム",
