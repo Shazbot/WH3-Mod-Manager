@@ -2,6 +2,11 @@ import groupBy from "object.groupby";
 import { resolveTextReplacements } from "./utility/localizationText";
 export { resolveTextReplacements } from "./utility/localizationText";
 
+// Game-wide lookups that are the same for every tree, kept per skills-data build so a tree switch does not redo them.
+// Each build makes new `nodeLinks` and `locs` objects and does not change them after, so those are the keys.
+const nodeRequirementsCache = new WeakMap<NodeLinks, ReturnType<typeof getNodeRequirements>>();
+const localizedSubtypeNamesCache = new WeakMap<object, Map<string, string | undefined>>();
+
 export type NodeSkill = {
   node: string;
   skill: string;
@@ -51,6 +56,77 @@ export const skillIconAssetPath = (iconPath?: string) => {
   if (/^ui\\(?:campaign ui\\skills|battle ui\\ability_icons)\\/i.test(normalized)) return normalized;
   return `ui\\campaign ui\\skills\\${normalizeSkillIconPath(normalized)}`;
 };
+
+/**
+ * Picks the entries of a game-wide record keyed by skill node that belong to one tree.
+ * @param record - The record covering every skill node in the game.
+ * @param nodeIds - The node keys of the tree being sent.
+ * @returns A new record holding only those nodes' entries.
+ */
+export function pickTreeNodeEntries<T>(record: Record<string, T>, nodeIds: Iterable<string>) {
+  const picked: Record<string, T> = {};
+  for (const nodeId of nodeIds) {
+    if (Object.hasOwn(record, nodeId)) picked[nodeId] = record[nodeId];
+  }
+  return picked;
+}
+
+/**
+ * Picks one tree's entries from the game-wide node links, requirements and locks. Together they are ~14 MB, and
+ * the tree only looks up its own nodes.
+ * @param nodes - The node keys of the tree being sent.
+ * @param skills - The tree's skills, which can include parent nodes missing from `nodes`.
+ * @param nodeLinks - The links of every skill node in the game.
+ * @param nodeToSkill - The skill of every skill node in the game.
+ * @param nodeToSkillLocks - The skill locks of every skill node in the game.
+ * @returns The tree's `nodeLinks`, `nodeRequirements` and `nodeToSkillLocks`.
+ */
+export function pickTreeNodeData<T>(
+  nodes: string[],
+  skills: { nodeId: string }[],
+  nodeLinks: NodeLinks,
+  nodeToSkill: Record<string, NodeSkill>,
+  nodeToSkillLocks: Record<string, T>,
+) {
+  const treeNodeIds = new Set([...nodes, ...skills.map((skill) => skill.nodeId)]);
+  let nodeRequirements = nodeRequirementsCache.get(nodeLinks);
+  if (!nodeRequirements) {
+    nodeRequirements = getNodeRequirements(nodeLinks, nodeToSkill);
+    nodeRequirementsCache.set(nodeLinks, nodeRequirements);
+  }
+  return {
+    nodeLinks: pickTreeNodeEntries(nodeLinks, treeNodeIds),
+    nodeRequirements: pickTreeNodeEntries(nodeRequirements, treeNodeIds),
+    nodeToSkillLocks: pickTreeNodeEntries(nodeToSkillLocks, treeNodeIds),
+  };
+}
+
+/**
+ * Gets the on-screen names of the agent subtypes. Each name is looked up once per `locs`, since the lookup walks
+ * every loc pack.
+ * @param subtypes - The agent subtype keys.
+ * @param locs - The loc packs `getLoc` reads, used as the cache key.
+ * @param getLoc - Looks up one loc key.
+ * @returns The localized name of each subtype that has one.
+ */
+export function getSubtypesToLocalizedNames(
+  subtypes: string[],
+  locs: object,
+  getLoc: (locId: string) => string | undefined,
+) {
+  let names = localizedSubtypeNamesCache.get(locs);
+  if (!names) {
+    names = new Map();
+    localizedSubtypeNamesCache.set(locs, names);
+  }
+  const subtypesToLocalizedNames = {} as Record<string, string>;
+  for (const subtype of subtypes) {
+    if (!names.has(subtype)) names.set(subtype, getLoc(`agent_subtypes_onscreen_name_override_${subtype}`));
+    const localized = names.get(subtype);
+    if (localized) subtypesToLocalizedNames[subtype] = localized;
+  }
+  return subtypesToLocalizedNames;
+}
 
 export function getNodesToParents(
   nodes: string[],
@@ -108,6 +184,7 @@ export function getSkills(
   nodesToParents: NodesToParents,
   skillsToEffects: SkillsToEffects,
   skillAndIcons: SkillAndIcons,
+  skillsToAutoUnlockRank: Record<string, number>,
 ) {
   const skills = nodes.map((node) => {
     const skill = nodeToSkill[node];
@@ -162,6 +239,7 @@ export function getSkills(
       faction: skill.factionKey,
       subculture: skill.subculture,
       unlockRank: skillAndIcon?.unlockRank ?? 0,
+      autoUnlockRank: skillsToAutoUnlockRank[skill.skill],
     } as Skill;
   });
 
@@ -265,7 +343,81 @@ export function stripLocImgTags(localizedText: string | undefined) {
   return localizedText.replaceAll(/\[\[img:.*?\]\]\[\[\/img\]\]/gi, "");
 }
 
-export function appendLocalizationsToSkills(skills: Skill[], getLoc: (locId: string) => string | undefined) {
+/**
+ * Gets a `ui_tagged_images_tables` image path in the form icon paths are kept in.
+ * @param imagePath The path as the table has it, such as `UI/Campaign UI/Effect_bundles/magic.png`.
+ * @returns The lower case path with backslashes.
+ */
+export const normalizeTaggedImagePath = (imagePath: string) => imagePath.replaceAll("/", "\\").toLowerCase();
+
+/**
+ * Gets the tagged images that skill texts draw inline with `[[img:tag]]`.
+ * @param skills The skills whose descriptions and effects are searched.
+ * @param uiTaggedImages Image paths keyed by tag.
+ * @param effectAttributes The attributes the skills' effects grant, whose descriptions are searched too.
+ * @returns The image paths of the tags the texts use, keyed by tag.
+ */
+export function pickTaggedImagesForSkills(
+  skills: Skill[],
+  uiTaggedImages: Record<string, string>,
+  effectAttributes: Record<string, UnitAttributeText[]> = {},
+) {
+  const picked: Record<string, string> = {};
+  const texts = skills
+    .flatMap((skill) => [skill.localizedDescription, ...skill.effects.map((effect) => effect.localizedKey)])
+    .concat(
+      Object.values(effectAttributes).flatMap((attributes) => attributes.map((attribute) => attribute.description)),
+    );
+  for (const text of texts) {
+    for (const [, tag] of (text || "").matchAll(/\[\[img:(.*?)\]\]/gi)) {
+      if (uiTaggedImages[tag]) picked[tag] = uiTaggedImages[tag];
+    }
+  }
+  return picked;
+}
+
+/**
+ * Gets the unit attributes that a tree's effects grant, which the skill tooltip lists under its effects.
+ * @param skills The tree's skills.
+ * @param effectToUnitAttributes The attribute keys each effect grants.
+ * @param getLoc Looks up a localised string.
+ * @returns The attributes' names and descriptions, keyed by effect key.
+ */
+export function pickEffectAttributesForSkills(
+  skills: Skill[],
+  effectToUnitAttributes: Record<string, string[]>,
+  getLoc: (locId: string) => string | undefined,
+) {
+  const picked: Record<string, UnitAttributeText[]> = {};
+  for (const effectKey of new Set(skills.flatMap((skill) => skill.effects.map((effect) => effect.effectKey)))) {
+    const attributes = (effectToUnitAttributes[effectKey] || []).flatMap((attribute) => {
+      const bulletText = getLoc(`unit_attributes_bullet_text_${attribute}`);
+      if (!bulletText) return [];
+      const [name, description = ""] = (resolveTextReplacements(bulletText, getLoc) || bulletText).split("||");
+      return [{ name: name.trim(), description: description.trim() }];
+    });
+    if (attributes.length > 0) picked[effectKey] = attributes;
+  }
+  return picked;
+}
+
+/**
+ * Gets the game's texts for why a skill is locked.
+ * @param getLoc Looks up a localised string.
+ * @returns The rank, auto unlock and parent skill texts.
+ */
+export const getSkillLockTexts = (getLoc: (locId: string) => string | undefined): SkillLockTexts => ({
+  rank: getLoc("random_localisation_strings_string_skill_locked_rank"),
+  autoUnlock: getLoc("random_localisation_strings_string_skill_locked_auto_unlock"),
+  singleParent: getLoc("random_localisation_strings_string_skill_locked_single_parent"),
+  multipleParents: getLoc("random_localisation_strings_string_skill_locked_multi_parent"),
+});
+
+export function appendLocalizationsToSkills(
+  skills: Skill[],
+  getLoc: (locId: string) => string | undefined,
+  effectsToEffectData: Record<string, EffectData> = {},
+) {
   for (const skill of skills) {
     const titleLocId = `character_skills_localised_name_${skill.id}`;
     const descriptionLocId = `character_skills_localised_description_${skill.id}`;
@@ -277,7 +429,16 @@ export function appendLocalizationsToSkills(skills: Skill[], getLoc: (locId: str
 
     // console.log("translate:", titleLocId, skill.localizedTitle);
     for (const effect of skill.effects) {
-      effect.localizedKey = formatEffectLocalization(effect.effectKey, effect.value, getLoc);
+      // The skill tooltip draws inline icons, so their tags are kept.
+      effect.localizedKey = formatEffectLocalization(effect.effectKey, effect.value, getLoc, true);
+      // The game adds what the effect applies to, such as "(all armies)", after the effect text.
+      const scopeText = getLoc(`campaign_effect_scopes_localised_text_${effect.effectScope}`);
+      if (scopeText) effect.localizedKey += resolveTextReplacements(scopeText, getLoc) || scopeText;
+      const isPositiveGood = effectsToEffectData[effect.effectKey]?.isPositive;
+      if (isPositiveGood != undefined) {
+        const value = Number(effect.value) || 0;
+        effect.isGood = value == 0 || value > 0 == (isPositiveGood == "true" || isPositiveGood == "1");
+      }
       // const effectData = effectsToEffectData[effect.effectKey];
       // if (effectData && effectData.icon) {
       //   effect.icon = effectData.icon;
@@ -286,12 +447,16 @@ export function appendLocalizationsToSkills(skills: Skill[], getLoc: (locId: str
   }
 }
 
-export function getRawEffectLocalization(effectKey: string, getLoc: (locId: string) => string | undefined): string {
+export function getRawEffectLocalization(
+  effectKey: string,
+  getLoc: (locId: string) => string | undefined,
+  keepImgTags = false,
+): string {
   const locId = `effects_description_${effectKey}`;
   let localized = getLoc(locId);
   if (!localized) return effectKey;
   localized = resolveTextReplacements(localized, getLoc) || localized;
-  localized = stripLocImgTags(localized) || localized;
+  if (!keepImgTags) localized = stripLocImgTags(localized) || localized;
   return localized;
 }
 
@@ -299,8 +464,9 @@ export function formatEffectLocalization(
   effectKey: string,
   effectValue: string | number | undefined,
   getLoc: (locId: string) => string | undefined,
+  keepImgTags = false,
 ): string {
-  let localized = getRawEffectLocalization(effectKey, getLoc);
+  let localized = getRawEffectLocalization(effectKey, getLoc, keepImgTags);
   if (effectValue == null || `${effectValue}`.trim() === "") return localized;
 
   const value = Number(effectValue);

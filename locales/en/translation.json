@@ -723,6 +723,7 @@
   "checkSkillRequirements": "Check Skill Requirements",
   "holdCtrlToTerminateGame": "Hold Ctrl and click to terminate game.",
   "skillUnlockRank": "Available at rank UNLOCK_RANK",
+  "skillAutoUnlockRank": "Automatically granted at rank UNLOCK_RANK.",
   "rank": "Rank",
   "setFolderPathsManuallyRome2": "The mod manager tried to get Rome 2 folder locations from Windows Registry, but it couldn't find them! You'll have to set them manually!",
   "setFolderPathsManuallyOptionallyRome2": "The mod manager automatically found Rome 2 folder paths from the Windows Registry, but you can set them manually here.",

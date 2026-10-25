@@ -298,13 +298,18 @@ import {
 import {
   appendLocalizationsToSkills,
   formatEffectLocalization,
-  getNodeRequirements,
   getNodesToParents,
   getRawEffectLocalization,
+  getSkillLockTexts,
   getSkills,
+  getSubtypesToLocalizedNames,
   NodeLinks,
   NodeSkill,
   normalizeSkillIconPath,
+  normalizeTaggedImagePath,
+  pickEffectAttributesForSkills,
+  pickTaggedImagesForSkills,
+  pickTreeNodeData,
   resolveTextReplacements,
   SkillAndIcons,
 } from "./skills";
@@ -1126,7 +1131,6 @@ const isLiveDBPackedFileName = (packedFileName: string) => parseLiveDBTablePath(
 const appendPacksData = (newPack: Pack, mod?: Mod, emitToMainWindow = true) => {
   const existingPack = appData.packsData.find((pack) => pack.path == newPack.path);
   console.log("appendPacksData: appending", newPack.name);
-  console.log("appendPacksData: is existingPack:", !!existingPack);
   if (!existingPack) {
     appData.packsData.push(newPack);
     if (emitToMainWindow) {
@@ -1179,7 +1183,6 @@ const appendPacksData = (newPack: Pack, mod?: Mod, emitToMainWindow = true) => {
           }, outdatedPackFiles);
       }
     }
-    console.log("outdatedPackFiles", outdatedPackFiles);
     if (outdatedPackFiles.size > 0) {
       appData.outdatedPackFiles[newPack.name] = Array.from(outdatedPackFiles);
       if (emitToMainWindow) {
@@ -1389,7 +1392,6 @@ export const getVanillaLocLookup = async (vanillaPackPaths: string[]): Promise<R
 };
 
 export const getLocsTrie = (pack: Pack) => {
-  console.log("getLocsTrie:", pack.name);
   const trie = new Trie<string>("_");
   const locPFs = Object.values(pack.packedFiles).filter((pF) => pF.name.endsWith(".loc"));
   const packViewData = getPackViewData(pack, undefined, true);
@@ -1857,6 +1859,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     for (const skillLocksTable of skillLocksTablesToRead) {
       if (!tablesToRead.includes(skillLocksTable)) tablesToRead.push(skillLocksTable);
     }
+    const skillTooltipTablesToRead = [
+      "character_skills_to_level_reached_criterias_tables",
+      "ui_tagged_images_tables",
+      "effect_bonus_value_unit_attribute_junctions_tables",
+    ]
+      .flatMap((tableName) => resolveTable(tableName))
+      .map((table) => `db\\${table}\\`);
+    for (const table of skillTooltipTablesToRead) {
+      if (!tablesToRead.includes(table)) tablesToRead.push(table);
+    }
     const effectBonusValueIdsUnitSetsTablesToRead = resolveTable("effect_bonus_value_ids_unit_sets_tables").map(
       (table) => `db\\${table}\\`,
     );
@@ -2005,10 +2017,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       const icon = schemaFieldRow.find((sF) => sF.name == "icon")?.resolvedKeyValue;
       const isPositive = schemaFieldRow.find((sF) => sF.name == "is_positive_value_good")?.resolvedKeyValue;
       const priority = schemaFieldRow.find((sF) => sF.name == "priority")?.resolvedKeyValue;
-      if (key != undefined && icon != undefined && isPositive != undefined && priority != undefined) {
+      // Hidden effects often have no icon, but their priority still marks them as hidden.
+      if (key != undefined && isPositive != undefined && priority != undefined) {
         const newEffect = {
           key,
-          icon,
+          icon: icon ?? "",
           isPositive,
           priority,
         };
@@ -2193,6 +2206,28 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         } else skills.push(newSkill);
       }
     });
+    const skillsToAutoUnlockRank: Record<string, number> = {};
+    getTableRowData(packsTableData, "character_skills_to_level_reached_criterias_tables", (schemaFieldRow) => {
+      const skill = schemaFieldRow.find((sF) => sF.name == "character_skill")?.resolvedKeyValue;
+      const level = schemaFieldRow.find((sF) => sF.name == "character_level")?.resolvedKeyValue;
+      if (skill != undefined && level != undefined) {
+        skillsToAutoUnlockRank[skill] = Math.min(skillsToAutoUnlockRank[skill] ?? Infinity, Number(level));
+      }
+    });
+    const uiTaggedImages: Record<string, string> = {};
+    getTableRowData(packsTableData, "ui_tagged_images_tables", (schemaFieldRow) => {
+      const key = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
+      const imagePath = schemaFieldRow.find((sF) => sF.name == "image_path")?.resolvedKeyValue;
+      if (key && imagePath) uiTaggedImages[key] = normalizeTaggedImagePath(imagePath);
+    });
+    const effectToUnitAttributes: Record<string, string[]> = {};
+    getTableRowData(packsTableData, "effect_bonus_value_unit_attribute_junctions_tables", (schemaFieldRow) => {
+      const effect = schemaFieldRow.find((sF) => sF.name == "effect")?.resolvedKeyValue;
+      const attribute = schemaFieldRow.find((sF) => sF.name == "unit_attribute")?.resolvedKeyValue;
+      if (!effect || !attribute) return;
+      effectToUnitAttributes[effect] = effectToUnitAttributes[effect] || [];
+      if (!effectToUnitAttributes[effect].includes(attribute)) effectToUnitAttributes[effect].push(attribute);
+    });
     const nodeToSkillLocks = {} as NodeToSkillLocks;
     getTableRowData(packsTableData, "character_skill_nodes_skill_locks_tables", (schemaFieldRow) => {
       const skill = schemaFieldRow.find((sF) => sF.name == "character_skill")?.resolvedKeyValue;
@@ -2273,7 +2308,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       const bonusValueId = schemaFieldRow.find((sF) => sF.name == "bonus_value_id")?.resolvedKeyValue;
       const unitAbilityKey = schemaFieldRow.find((sF) => sF.name == "unit_ability")?.resolvedKeyValue;
       if (!effect || !bonusValueId || !unitAbilityKey) return;
-      if (!bonusValueId.startsWith("enable")) return;
       effectToUnitAbilityEnables[effect] = effectToUnitAbilityEnables[effect] || [];
       if (
         !effectToUnitAbilityEnables[effect].some(
@@ -2551,7 +2585,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       abilityToGroupKeys[ability] = abilityToGroupKeys[ability] || [];
       if (!abilityToGroupKeys[ability].includes(group)) abilityToGroupKeys[ability].push(group);
     });
-    const specialAbilityGroupsByKey = {} as Record<string, { key: string; iconPath: string }>;
+    const specialAbilityGroupsByKey = {} as Record<string, { key: string; iconPath: string; isComposite?: boolean }>;
     getTableRowData(packsTableData, "special_ability_groups_tables", (schemaFieldRow) => {
       const key = schemaFieldRow.find((sF) => sF.name == "ability_group")?.resolvedKeyValue;
       const iconPath = schemaFieldRow.find((sF) => sF.name == "icon_path")?.resolvedKeyValue;
@@ -2559,6 +2593,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       specialAbilityGroupsByKey[key] = {
         key,
         iconPath,
+        isComposite: parseBool(schemaFieldRow.find((sF) => sF.name == "is_composite_group")?.resolvedKeyValue),
       };
     });
     // const set = subtypeToSet["wh_main_emp_karl_franz"];
@@ -2644,6 +2679,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       skillsToEffects,
       nodeToSkillLocks,
       skills,
+      skillsToAutoUnlockRank,
+      uiTaggedImages,
+      effectToUnitAttributes,
       locs,
       icons,
       iconGeneration: registerIconAssets(icons),
@@ -2706,7 +2744,15 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     // fs.writeFileSync("dumps/nodesKF.json", JSON.stringify(nodesKF));
     const nodesToParents = getNodesToParents(nodesKF, nodeLinks, nodeToSkill, skillsToEffects);
     // fs.writeFileSync("dumps/nodesToParents.json", JSON.stringify(nodesToParents));
-    const kfSkills = getSkills(nodesKF, nodeLinks, nodeToSkill, nodesToParents, skillsToEffects, skills);
+    const kfSkills = getSkills(
+      nodesKF,
+      nodeLinks,
+      nodeToSkill,
+      nodesToParents,
+      skillsToEffects,
+      skills,
+      skillsToAutoUnlockRank,
+    );
     // const nodeToSkillsKF = nodesKF.reduce((acc, current) => {
     //   acc[current] = nodeToSkill[current];
     //   return acc;
@@ -2719,7 +2765,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         if (localized) return localized;
       }
     };
-    appendLocalizationsToSkills(kfSkills, getLoc);
+    appendLocalizationsToSkills(kfSkills, getLoc, effectsToEffectData);
     const effectKeysForCurrentSkills = Array.from(
       new Set(kfSkills.flatMap((skill) => skill.effects.map((effect) => effect.effectKey))),
     );
@@ -2749,9 +2795,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       specialAbilityGroupsByKey,
       getLoc,
     });
+    const kfEffectAttributes = pickEffectAttributesForSkills(kfSkills, effectToUnitAttributes, getLoc);
+    const kfTaggedImages = pickTaggedImagesForSkills(kfSkills, uiTaggedImages, kfEffectAttributes);
+    const kfTooltipIconPaths = kfAbilityIconPaths.concat(Object.values(kfTaggedImages));
     // Same as on the subtype switch below: the tooltip icons are not part of the sweep the vanilla
     // icon packs were chosen for, so whichever are still missing get their own packs looked up.
-    const missingAbilityIconPaths = kfAbilityIconPaths.filter((iconPath) => !icons[iconPath]);
+    const missingAbilityIconPaths = kfTooltipIconPaths.filter((iconPath) => !icons[iconPath]);
     const abilityIconPacks =
       missingAbilityIconPaths.length > 0
         ? await getIconPacks((await findVanillaPacksHoldingIcons(missingAbilityIconPaths)) ?? [])
@@ -2761,7 +2810,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       vanillaIconPacks
         .concat(abilityIconPacks.filter((pack) => !vanillaIconPacks.includes(pack)))
         .concat(enabledModPacks),
-      kfAbilityIconPaths,
+      kfTooltipIconPaths,
     );
     if (addedIconGeneration) appData.skillsData.iconGeneration = addedIconGeneration;
     const subtypes = Object.keys(subtypesToSet);
@@ -2772,7 +2821,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       },
       {} as Record<string, number>,
     );
-    const nodeRequirements = getNodeRequirements(nodeLinks, nodeToSkill);
+    const treeNodeData = pickTreeNodeData(nodesKF, kfSkills, nodeLinks, nodeToSkill, nodeToSkillLocks);
     appData.queuedSkillsData = {
       // subtypeToSkills: { wh_main_emp_karl_franz: kfSkills },
       currentSubtype: "wh_main_emp_karl_franz",
@@ -2781,21 +2830,15 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       subtypesToSet,
       subtypeAndSets,
       currentSkills: kfSkills,
-      nodeLinks,
-      nodeRequirements,
-      icons: pickIconsForSkills(icons, appData.skillsData.iconGeneration, kfSkills, kfAbilityIconPaths),
+      ...treeNodeData,
+      icons: pickIconsForSkills(icons, appData.skillsData.iconGeneration, kfSkills, kfTooltipIconPaths),
       subtypes,
-      nodeToSkillLocks,
       abilityTooltipsByKey: kfAbilityTooltipsByKey,
       effectToUnitAbilityEnables: kfEffectToUnitAbilityEnables,
-      subtypesToLocalizedNames: subtypes.reduce(
-        (acc, curr) => {
-          const localized = getLoc(`agent_subtypes_onscreen_name_override_${curr}`);
-          if (localized) acc[curr] = localized;
-          return acc;
-        },
-        {} as Record<string, string>,
-      ),
+      taggedImages: kfTaggedImages,
+      effectAttributes: kfEffectAttributes,
+      skillLockTexts: getSkillLockTexts(getLoc),
+      subtypesToLocalizedNames: getSubtypesToLocalizedNames(subtypes, locs, getLoc),
     };
     appData.lastSkillsDataSignature = skillsDataSignature;
     if (appData.queuedSkillsData) {
@@ -2821,28 +2864,63 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       currentSubtype: subtype,
       currentSubtypeIndex: subtypeIndex,
     };
+    const skillsForSubtype = await buildSkillsForSubtype(cachedSkillsData, subtype, subtypeIndex);
+    if (!skillsForSubtype) return;
+    appData.queuedSkillsData = { requestId, ...skillsForSubtype };
+    if (appData.queuedSkillsData) {
+      if (appData.skillTreesDisplayMode === "tab") {
+        pushSkillsDataToMainWindow();
+      }
+      if (windows.skillsWindow) {
+        sendQueuedDataToSkills();
+      }
+    }
+  };
+  // Builds one tree's payload without sending it or changing the last selection, so a prefetch can use it too.
+  const buildSkillsForSubtype = async (
+    cachedSkillsData: NonNullable<typeof appData.skillsData>,
+    subtype: string,
+    subtypeIndex: number,
+  ): Promise<SkillsData | undefined> => {
     const setKF = cachedSkillsData.subtypesToSet[subtype];
     console.log("sets for subtype:", setKF);
     if (!setKF?.[subtypeIndex]) return;
     const nodesKF = cachedSkillsData.setToNodes[setKF[subtypeIndex]];
-    const { nodeLinks, nodeToSkill, skillsToEffects, skills, locs, icons, subtypesToSet, nodeToSkillLocks } =
-      cachedSkillsData;
+    const {
+      nodeLinks,
+      nodeToSkill,
+      skillsToEffects,
+      skills,
+      skillsToAutoUnlockRank,
+      locs,
+      icons,
+      subtypesToSet,
+      nodeToSkillLocks,
+    } = cachedSkillsData;
     const nodesToParents = getNodesToParents(nodesKF, nodeLinks, nodeToSkill, skillsToEffects);
-    const kfSkills = getSkills(nodesKF, nodeLinks, nodeToSkill, nodesToParents, skillsToEffects, skills);
+    const kfSkills = getSkills(
+      nodesKF,
+      nodeLinks,
+      nodeToSkill,
+      nodesToParents,
+      skillsToEffects,
+      skills,
+      skillsToAutoUnlockRank,
+    );
     const getLoc = (locId: string) => {
       for (const locsInPack of Object.values(locs)) {
         const localized = locsInPack.get(locId);
         if (localized) return localized;
       }
     };
-    appendLocalizationsToSkills(kfSkills, getLoc);
+    appendLocalizationsToSkills(kfSkills, getLoc, cachedSkillsData.effectsToEffectData);
     const effectKeysForCurrentSkills = Array.from(
       new Set(kfSkills.flatMap((skill) => skill.effects.map((effect) => effect.effectKey))),
     );
     const {
       abilityTooltipsByKey,
       reducedEffectToUnitAbilityEnables,
-      iconPathsToLoad: tooltipIconPaths,
+      iconPathsToLoad: abilityIconPaths,
     } = buildAbilityTooltipDataForEffects({
       effectKeys: effectKeysForCurrentSkills,
       effectToUnitAbilityEnables: cachedSkillsData.effectToUnitAbilityEnables,
@@ -2865,6 +2943,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       specialAbilityGroupsByKey: cachedSkillsData.specialAbilityGroupsByKey,
       getLoc,
     });
+    const effectAttributes = pickEffectAttributesForSkills(kfSkills, cachedSkillsData.effectToUnitAttributes, getLoc);
+    const taggedImages = pickTaggedImagesForSkills(kfSkills, cachedSkillsData.uiTaggedImages, effectAttributes);
+    const tooltipIconPaths = abilityIconPaths.concat(Object.values(taggedImages));
     // The tree's own icons were resolved when the data was built, so the build only had to index the
     // vanilla packs holding those. A tooltip's icons are not known until a subtype is opened and can
     // sit in a pack that set never included, so the ones still missing are looked up here rather than
@@ -2890,40 +2971,25 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       },
       {} as Record<string, number>,
     );
-    const nodeRequirements = getNodeRequirements(nodeLinks, nodeToSkill);
-    appData.queuedSkillsData = {
+    const treeNodeData = pickTreeNodeData(nodesKF, kfSkills, nodeLinks, nodeToSkill, nodeToSkillLocks);
+    return {
       // subtypeToSkills: { [subtype]: kfSkills },
-      requestId,
       currentSubtype: subtype,
       currentSubtypeIndex: subtypeIndex,
       currentSkills: kfSkills,
       subtypeToNumSets,
       subtypesToSet,
       subtypeAndSets: cachedSkillsData.subtypeAndSets,
-      nodeLinks,
-      nodeRequirements,
-      nodeToSkillLocks,
+      ...treeNodeData,
       icons: pickIconsForSkills(icons, cachedSkillsData.iconGeneration, kfSkills, tooltipIconPaths),
       abilityTooltipsByKey,
       effectToUnitAbilityEnables: reducedEffectToUnitAbilityEnables,
+      taggedImages,
+      effectAttributes,
+      skillLockTexts: getSkillLockTexts(getLoc),
       subtypes,
-      subtypesToLocalizedNames: subtypes.reduce(
-        (acc, curr) => {
-          const localized = getLoc(`agent_subtypes_onscreen_name_override_${curr}`);
-          if (localized) acc[curr] = localized;
-          return acc;
-        },
-        {} as Record<string, string>,
-      ),
+      subtypesToLocalizedNames: getSubtypesToLocalizedNames(subtypes, locs, getLoc),
     };
-    if (appData.queuedSkillsData) {
-      if (appData.skillTreesDisplayMode === "tab") {
-        pushSkillsDataToMainWindow();
-      }
-      if (windows.skillsWindow) {
-        sendQueuedDataToSkills();
-      }
-    }
   };
   /**
    * Everything the skill tree editor's pickers offer: every skill, every character effect, and the
@@ -4740,10 +4806,19 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       }
       return undefined;
     };
+    // An ancillary shows the abilities its effects grant, not the ones they only modify.
+    const effectToUnitAbilityEnables = Object.fromEntries(
+      effectKeys.map((effectKey) => [
+        effectKey,
+        (skillsData.effectToUnitAbilityEnables[effectKey] || []).filter((mapping) =>
+          mapping.bonusValueId.startsWith("enable"),
+        ),
+      ]),
+    );
     const { abilityTooltipsByKey, reducedEffectToUnitAbilityEnables, iconPathsToLoad } =
       buildAbilityTooltipDataForEffects({
         effectKeys: [...new Set(effectKeys)],
-        effectToUnitAbilityEnables: skillsData.effectToUnitAbilityEnables,
+        effectToUnitAbilityEnables,
         unitAbilitiesByKey: skillsData.unitAbilitiesByKey,
         unitSpecialAbilitiesByKey: skillsData.unitSpecialAbilitiesByKey,
         bombardmentsByKey: skillsData.bombardmentsByKey,
@@ -9664,6 +9739,18 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   });
   ipcMain.on("getSkillsForSubtype", async (event, subtype: string, subtypeIndex: number, requestId?: string) => {
     getSkillsForSubtype(subtype, subtypeIndex, requestId);
+  });
+  ipcMain.handle("prefetchSkillsForSubtype", async (event, subtype: string, subtypeIndex: number) => {
+    const cachedSkillsData = appData.skillsData;
+    if (!cachedSkillsData) return undefined;
+    return buildSkillsForSubtype(cachedSkillsData, subtype, subtypeIndex);
+  });
+  // A tree served from the renderer's prefetch cache still has to be remembered for the next rebuild.
+  ipcMain.on("setSkillsSelection", (event, subtype: string, subtypeIndex: number) => {
+    appData.lastSkillsSelection = {
+      currentSubtype: subtype,
+      currentSubtypeIndex: subtypeIndex,
+    };
   });
   ipcMain.on("createNewSkillTree", async (event, subtype: string) => {
     const cachedSkillsData = appData.skillsData;

@@ -1,11 +1,11 @@
-import React, { memo, useEffect, useMemo, useState } from "react";
+import React, { memo, useContext, useEffect, useMemo, useState } from "react";
 import { Modal } from "../../flowbite/components/Modal/index";
-import { useAppSelector } from "../../hooks";
 import { useLocalizations } from "@/src/localizationContext";
 import Select, { createFilter } from "react-select";
 import WindowedSelect from "react-windowed-select";
 import selectStyle from "@/src/styles/selectStyle";
 import { normalizeSkillIconPath, skillIconAssetPath } from "@/src/skills";
+import { SkillsDataContext } from "./skillsDataContext";
 
 /**
  * The modal body scrolls, so a menu opened low in the panel is clipped by it. Portalling to the body
@@ -81,7 +81,7 @@ const inputClass =
 const AddNodeModal = memo((props: AddNodeModalProps) => {
   const { isOpen, onClose, onAdd, editorData, initialRow, initialColumn, editingData } = props;
   const localized = useLocalizations();
-  const skillsData = useAppSelector((state) => state.app.skillsData);
+  const skillsData = useContext(SkillsDataContext);
   // The tree is sent with only the icons it draws, so anything the pickers offer is resolved against
   // the editor's full record first.
   const icons = editorData?.icons ?? skillsData?.icons ?? noIcons;
