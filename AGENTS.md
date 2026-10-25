@@ -96,6 +96,24 @@ ls.exe "$WIN_DIR"
 
 Avoid recursive Linux `find`, `ls`, and `grep` on Windows mounts. Use normal Linux tools for WSL-native paths. Fall back when Windows tools are unavailable. Everything results may include ignored files and depend on its index being current.
 
+## Shell output efficiency
+
+Minimize unnecessary tool output to conserve context tokens.
+
+- Keep exploratory shell output under ~100 lines by default.
+- Prefer targeted `rg -n` searches with scoped paths and file globs.
+- Use `rg --files` for file discovery instead of recursive directory listings.
+- Avoid dumping large files; use targeted line ranges instead.
+- For large logs, search for errors/warnings and inspect summaries.
+- Use `git diff --stat` before inspecting targeted diffs.
+- Save verbose command output to a temporary file when needed, then inspect relevant sections.
+- Avoid repeating searches or rereading unchanged content.
+- Increase output limits when completeness is necessary.
+- Never hide failures or lose command exit codes through output filtering.
+
 ## Vanilla game files
 
 If you need to reference vanilla game files you can find them extracted in K:/projects/wh3dump/ , the shaders branch in the folder has material shaders the game uses.
+
+asset editor that builds the WH3AssetHost.exe is located in K:\projects\assedFork
+Warhammer 3 is located in K:\SteamLibrary\steamapps\common\Total War WARHAMMER III
