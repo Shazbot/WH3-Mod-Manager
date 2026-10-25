@@ -10,6 +10,8 @@ import { createSearchMatcher } from "../globalSearch/matcher";
 import { scanTextForMatches } from "../globalSearch/textScan";
 import {
   DEFAULT_MAX_LOGICAL_PAYLOAD_BYTES,
+  parseRmv2,
+  Rmv2CodecError,
   readPackIndex,
   rewriteDbTableRows,
   serializeSchemaFieldToBuffer,
@@ -39,6 +41,7 @@ import { packDiffSchema, runPackDiff } from "./diff";
 import {
   assetFindReferencesSchema,
   assetResolveReferencesSchema,
+  findRigidLoaderEdges,
   runAssetFindReferences,
   runAssetResolveReferences,
 } from "./references";
@@ -46,6 +49,10 @@ import { packSubsetSchema, runPackSubset } from "./subset";
 import { localizationLookupSchema, runLocalizationLookup } from "./localization";
 import { unitResolveSchema, runUnitResolve } from "./units";
 import { packTextureInspectSchema, runPackTextureInspect } from "./textures";
+import { rigidInspectSchema, runRigidInspect } from "./rigid";
+import { assetMaterialsSchema, inspectWsModelBindings, runAssetMaterials } from "./materials";
+import { rigidPatchSchema, runRigidPatch } from "./rigidPatch";
+import { prepareReferenceEnvironment, resolveReferenceAsset } from "./references";
 import { FilesystemPolicy, normalizeInternalPackPath } from "./filesystem";
 import {
   findAutomationPackEntry as findEntry,
@@ -132,6 +139,8 @@ export const operationSchemas = {
   }).strict(),
   pack_validate: z.object({
     operation: z.literal("pack_validate"), packPath: z.string().min(1), fullPayloads: z.boolean().default(false),
+    packPaths: z.array(z.string().min(1)).max(512).optional(),
+    vanillaPackPaths: z.array(z.string().min(1)).max(512).optional(),
     reportPath: z.string().min(1).optional(),
   }).strict(),
   pack_clone: z.object({
@@ -145,6 +154,9 @@ export const operationSchemas = {
   localization_lookup: localizationLookupSchema,
   unit_resolve: unitResolveSchema,
   pack_texture_inspect: packTextureInspectSchema,
+  rigid_inspect: rigidInspectSchema,
+  asset_materials: assetMaterialsSchema,
+  rigid_patch: rigidPatchSchema,
 } as const;
 
 export type OperationName = keyof typeof operationSchemas;
@@ -185,6 +197,7 @@ const parseTablePath = (inputPath: string) => {
   }
 };
 const isDbTablePath = (inputPath: string): boolean => Boolean(parseTablePath(inputPath));
+const isModelInternalPath = (inputPath: string): boolean => inputPath.toLowerCase().endsWith(".rigid_model_v2");
 
 const page = <T>(values: readonly T[], offset: number, limit: number) => ({
   total: values.length,
@@ -700,9 +713,33 @@ const runPatchTable: OperationHandler<"pack_patch_table"> = async (request, cont
 
 const runValidate: OperationHandler<"pack_validate"> = async (request, context) => {
   const pack = await readIndex(request.packPath, context);
+  const canonicalPath = (value: string) => {
+    const resolved = path.resolve(value);
+    return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  };
+  const targetKey = canonicalPath(pack.path);
+  const requestedProviders: Array<{ path: string; kind: "vanilla" | "mod" }> = [];
+  for (const [paths, kind] of [[request.vanillaPackPaths, "vanilla"], [request.packPaths, "mod"]] as const) {
+    for (const sourcePath of paths ?? []) {
+      throwIfAborted(context.signal);
+      const supportingPack = await readIndex(sourcePath, context);
+      requestedProviders.push({ path: supportingPack.path, kind });
+    }
+  }
+  const lastProviderIndex = new Map(requestedProviders.map((provider, index) => [canonicalPath(provider.path), index]));
+  const uniqueProviders = requestedProviders.filter((provider, index) =>
+    canonicalPath(provider.path) !== targetKey && lastProviderIndex.get(canonicalPath(provider.path)) === index,
+  );
+  const vanillaPackPaths = uniqueProviders.filter((provider) => provider.kind === "vanilla").map((provider) => provider.path);
+  const supportingPackPaths = uniqueProviders.filter((provider) => provider.kind === "mod").map((provider) => provider.path);
+  const referenceEnvironment = await prepareReferenceEnvironment(context, [...supportingPackPaths, pack.path], vanillaPackPaths);
   const diagnostics: AutomationDiagnostic[] = [];
   const seenPaths = new Set<string>();
   let validatedEntries = 0;
+  let rigidModelCount = 0;
+  let unsupportedRigidPartCount = 0;
+  let unresolvedRigidTextureCount = 0;
+  const parsedRigidModels = new Map<string, { path: string; model: ReturnType<typeof parseRmv2> }>();
   for (const entry of pack.entries) {
     throwIfAborted(context.signal);
     if ((validatedEntries++ & 127) === 0) await yieldToEventLoop(context.signal);
@@ -713,9 +750,49 @@ const runValidate: OperationHandler<"pack_validate"> = async (request, context) 
     } catch (error) {
       diagnostics.push(diagnostic("INVALID_PACKED_PATH", error instanceof Error ? error.message : String(error), "error", entry.name));
     }
-    if (!request.fullPayloads && !entry.name.toLowerCase().endsWith(".loc") && !isDbTablePath(entry.name)) continue;
+    const isRmv = isModelInternalPath(entry.name);
+    if (!request.fullPayloads && !entry.name.toLowerCase().endsWith(".loc") && !isDbTablePath(entry.name) && !isRmv) continue;
     try {
       const bytes = await readLogical(pack, entry, context);
+      if (isRmv) {
+        rigidModelCount += 1;
+        let model;
+        try {
+          model = parseRmv2(bytes);
+        } catch (error) {
+          if (error instanceof Rmv2CodecError && error.code === "UNSUPPORTED") {
+            diagnostics.push(diagnostic("UNSUPPORTED_RMV2_MODEL", error.message, "warning", entry.name));
+          } else if (error instanceof Rmv2CodecError) {
+            diagnostics.push(diagnostic("INVALID_RMV2_MODEL", error.message, "error", entry.name));
+          } else throw error;
+          continue;
+        }
+        parsedRigidModels.set(normalizePackFilePathKey(normalizeInternalPackPath(entry.name)), { path: entry.name, model });
+        for (const lod of model.lods) {
+          throwIfAborted(context.signal);
+          for (const part of lod.parts) {
+            if (!part.complete || !part.textures) {
+              unsupportedRigidPartCount += 1;
+              diagnostics.push(diagnostic("UNSUPPORTED_RMV2_PART", `LOD ${lod.lodIndex} part ${part.partIndex}: ${part.unsupportedReason ?? "unsupported layout"}`, "warning", entry.name));
+              continue;
+            }
+            for (let textureIndex = 0; textureIndex < part.textures.length; textureIndex++) {
+              const texture = part.textures[textureIndex];
+              if (!texture.path.trim()) continue;
+              const resolved = resolveReferenceAsset(referenceEnvironment, texture.path, false);
+              if (resolved.status === "found") continue;
+              unresolvedRigidTextureCount += 1;
+              diagnostics.push(diagnostic(
+                resolved.status === "missing" ? "MISSING_RMV2_TEXTURE" : "AMBIGUOUS_RMV2_TEXTURE",
+                `${resolved.status} embedded texture at LOD ${lod.lodIndex} part ${part.partIndex} slot ${textureIndex}: ${texture.path}`,
+                "warning",
+                entry.name,
+              ));
+            }
+          }
+        }
+        continue;
+      }
       if (entry.name.toLowerCase().endsWith(".xml") || entry.name.toLowerCase().endsWith(".variantmeshdefinition") || entry.name.toLowerCase().endsWith(".wsmodel") || entry.name.toLowerCase().endsWith(".xml.material")) {
         const result = XMLValidator.validate(decodePackedTextBuffer(bytes));
         if (result !== true) diagnostics.push(diagnostic("INVALID_XML", JSON.stringify(result), "error", entry.name));
@@ -730,18 +807,78 @@ const runValidate: OperationHandler<"pack_validate"> = async (request, context) 
         }
       }
     } catch (error) {
-      if (error instanceof AutomationError && error.code === "CANCELLED") throw error;
+      if (error instanceof AutomationError && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code)) throw error;
       const unsupported = error instanceof AutomationError && error.code === "UNSUPPORTED";
       diagnostics.push(diagnostic(unsupported ? "UNSUPPORTED_PAYLOAD" : "INVALID_PAYLOAD", error instanceof Error ? error.message : String(error), unsupported ? "warning" : "error", entry.name));
     }
   }
+  const hasWsmodelCandidate = [...referenceEnvironment.assetCandidates.values()].some((candidates) => {
+    const highestOrder = candidates[candidates.length - 1]?.provider.order;
+    return highestOrder !== undefined && candidates.some((candidate) =>
+      candidate.provider.order === highestOrder && candidate.entry.name.toLowerCase().endsWith(".wsmodel"),
+    );
+  });
+  if (parsedRigidModels.size && hasWsmodelCandidate) {
+    const loaderScan = await findRigidLoaderEdges(referenceEnvironment, [...parsedRigidModels.values()].map(({ path: modelPath }) => modelPath));
+    const loaderEdges = loaderScan.edges;
+    if (loaderScan.hitLimit) {
+      diagnostics.push(diagnostic("RIGID_LOADER_SCAN_LIMIT", "The bounded RMV2 loader scan reached its node or edge limit", "warning"));
+    }
+    for (const [modelKey, { path: modelPath, model }] of parsedRigidModels) {
+      throwIfAborted(context.signal);
+      const matching = loaderEdges.filter((item) => normalizePackFilePathKey(item.targetPath) === modelKey);
+      const direct = matching.filter((item) => item.edge.loadMode === "direct");
+      const wsmodel = matching.filter((item) => item.edge.loadMode === "wsmodel");
+      if (!direct.length || !wsmodel.length) continue;
+      const validWsBindings: Array<{ path: string; pair: string }> = [];
+      for (const wsPath of new Set(wsmodel.map((item) => item.sourcePath))) {
+        throwIfAborted(context.signal);
+        try {
+          const resolvedWs = resolveReferenceAsset(referenceEnvironment, wsPath, false);
+          if (resolvedWs.status !== "found" || !resolvedWs.winner) continue;
+          const wsBytes = await readLogical(resolvedWs.winner.provider.pack, resolvedWs.winner.entry, context);
+          const document = inspectWsModelBindings(decodePackedTextBuffer(wsBytes), resolvedWs.winner.entry.name);
+          if (!document.geometryPath || normalizePackFilePathKey(normalizeInternalPackPath(document.geometryPath)) !== modelKey) continue;
+          const counts = new Map<string, number>();
+          for (const binding of document.bindings) {
+            if (binding.lodIndex === null || binding.partIndex === null) continue;
+            const key = `${binding.lodIndex}:${binding.partIndex}`;
+            counts.set(key, (counts.get(key) ?? 0) + 1);
+          }
+          for (const binding of document.bindings) {
+            if (binding.invalidReason || binding.lodIndex === null || binding.partIndex === null) continue;
+            const pair = `${binding.lodIndex}:${binding.partIndex}`;
+            if ((counts.get(pair) ?? 0) !== 1 || binding.lodIndex >= model.lods.length || binding.partIndex >= (model.lods[binding.lodIndex]?.meshCount ?? 0)) continue;
+            const material = resolveReferenceAsset(referenceEnvironment, binding.materialPath, false);
+            if (material.status === "found") validWsBindings.push({ path: resolvedWs.winner.entry.name, pair });
+          }
+        } catch (error) {
+          if (error instanceof AutomationError && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code)) throw error;
+        }
+      }
+      if (!validWsBindings.length) continue;
+      const directSources = [...new Set(direct.map((item) => item.sourcePath))].slice(0, 3).join(", ");
+      const wsEvidence = [...new Map(validWsBindings.map((item) => [`${item.path}\0${item.pair}`, item])).values()]
+        .slice(0, 3).map((item) => `${item.path} lod/part ${item.pair}`).join(", ");
+      diagnostics.push(diagnostic(
+        "IGNORED_WSMODEL_BINDING",
+        `This model is loaded directly by ${directSources} and also has WS material bindings ${wsEvidence}; WS materials do not apply in the direct load context`,
+        "warning",
+        modelPath,
+      ));
+    }
+  }
   const data = {
     ...packMetadata(pack),
+    rigidModelCount,
+    unsupportedRigidPartCount,
+    unresolvedRigidTextureCount,
+    textureResolutionPacks: referenceEnvironment.providers.map((provider) => ({ path: provider.pack.path, kind: provider.kind })),
     valid: diagnostics.every((item) => item.severity !== "error"),
-    validationComplete: !diagnostics.some((item) => item.code === "UNSUPPORTED_PAYLOAD" || item.code === "UNSUPPORTED_TABLE_SCHEMA"),
+    validationComplete: !diagnostics.some((item) => ["UNSUPPORTED_PAYLOAD", "UNSUPPORTED_TABLE_SCHEMA", "UNSUPPORTED_RMV2_MODEL", "UNSUPPORTED_RMV2_PART", "RIGID_LOADER_SCAN_LIMIT"].includes(item.code)),
     diagnostics,
   };
-  const reportPath = await withReport(context, request.reportPath, [pack.path], data);
+  const reportPath = await withReport(context, request.reportPath, referenceEnvironment.sourcePaths, data);
   return { data: { ...data, ...(reportPath ? { reportPath } : {}) }, diagnostics };
 };
 
@@ -785,6 +922,9 @@ export const operationRegistry: OperationRegistry = {
   localization_lookup: { schema: operationSchemas.localization_lookup, execute: runLocalizationLookup },
   unit_resolve: { schema: operationSchemas.unit_resolve, execute: runUnitResolve },
   pack_texture_inspect: { schema: operationSchemas.pack_texture_inspect, execute: runPackTextureInspect },
+  rigid_inspect: { schema: operationSchemas.rigid_inspect, execute: runRigidInspect },
+  asset_materials: { schema: operationSchemas.asset_materials, execute: runAssetMaterials },
+  rigid_patch: { schema: operationSchemas.rigid_patch, execute: runRigidPatch },
 };
 
 export const createAutomationContext = (options: {

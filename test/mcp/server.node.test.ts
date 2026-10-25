@@ -137,7 +137,7 @@ describe("WH3 MCP stdio server", () => {
     const session = await connect();
     try {
       const listed = await session.client.listTools();
-      expect(listed.tools).toHaveLength(18);
+      expect(listed.tools).toHaveLength(21);
       const info = listed.tools.find((tool) => tool.name === "pack_info");
       expect(info?.description).toContain("pack header");
       expect(info?.inputSchema).toMatchObject({
@@ -148,6 +148,21 @@ describe("WH3 MCP stdio server", () => {
       expect(listed.tools.find((tool) => tool.name === "pack_subset")?.inputSchema).toMatchObject({
         properties: { sourcePackPaths: { type: "array" }, outputPath: { type: "string" } },
       });
+      expect(listed.tools.find((tool) => tool.name === "pack_validate")?.inputSchema).toMatchObject({
+        properties: { packPaths: { type: "array" }, vanillaPackPaths: { type: "array" } },
+      });
+      expect(listed.tools.find((tool) => tool.name === "rigid_inspect")?.inputSchema).toMatchObject({
+        properties: { packPath: { type: "string" }, filePath: { type: "string" }, textureSlotsOnly: { type: "boolean" } },
+      });
+      expect(listed.tools.find((tool) => tool.name === "asset_materials")?.inputSchema).toMatchObject({
+        required: ["packPaths"],
+        properties: { packPaths: { type: "array" }, assetPaths: { type: "array" }, unitKey: { type: "string" } },
+      });
+      expect(listed.tools.find((tool) => tool.name === "rigid_patch")?.inputSchema).toMatchObject({
+        required: ["packPath", "filePath", "outputPath", "edits"],
+        properties: { edits: { type: "array" }, overwrite: { type: "boolean" } },
+      });
+      expect(listed.tools.find((tool) => tool.name === "rigid_patch")?.description).toContain("single-model MOD pack");
     } finally {
       await session.close();
     }

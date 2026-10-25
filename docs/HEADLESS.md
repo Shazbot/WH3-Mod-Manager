@@ -1,6 +1,6 @@
 # Headless pack tools
 
-The headless tools read and write WH3 pack files without starting Electron. The shared core owns the existing pack index, payload and DB/LOC codecs, and supported visual-reference extraction. Automation operations add explicit filesystem policy, schema context, and atomic publication; CLI and MCP are thin adapters over the same validated operation registry. The GUI serializer and index APIs remain compatibility wrappers around the extracted logic. The headless path does not import Electron, React, IPC, or GUI application data, and native codecs load only when needed. Host-specific rigid-model parsing stays outside the Node-only core; v1 reports its reference coverage as unsupported instead of importing host-coupled code or claiming complete closure.
+The headless tools read and write WH3 pack files without starting Electron. The shared core owns the existing pack index, payload and DB/LOC codecs, supported visual-reference extraction, and a Node-only RMV2 codec for versions 6–8 and registered layouts. Automation operations add explicit filesystem policy, schema context, and atomic publication; CLI and MCP are thin adapters over the same validated operation registry. The GUI serializer and index APIs remain compatibility wrappers around the extracted logic. The headless path does not import Electron, React, IPC, or GUI application data, and native codecs load only when needed. Unknown RMV2 versions or layouts remain explicitly unsupported rather than guessed.
 
 Requires Node.js `>=24.14.0 <25`.
 
@@ -20,7 +20,7 @@ Globs match complete internal paths. `*.dds` matches only root-level files; use 
 
 The CLI defaults to readable text. Use `--format json` for the full `{ ok, data, diagnostics }` or `{ ok: false, error }` envelope; result data goes to stdout and diagnostics go to stderr. Exit codes are `0` success, `1` unexpected error, `2` invalid arguments, `3` I/O or access failure, `4` unsupported operation/format, `5` validation or conflict, and `130` cancellation.
 
-Use `--input <json-file>` for complex requests. The file contains operation fields; the command supplies the operation name and positional pack/table paths. For example, `pack table query` accepts:
+Use `--input <json-file>` for complex requests. The file contains operation fields; the command supplies the operation name and positional pack/table paths. Use it with `pack validate` to supply supporting `packPaths` and `vanillaPackPaths`. For example, `pack table query` accepts:
 
 ```json
 {
@@ -185,6 +185,72 @@ Paged operations return a preview with `offset`, `limit`, `total`, `nextOffset`,
 
 Writes validate staged output before atomic publication, default to no-overwrite, and reject output aliases of source files. Path policies resolve symlinks/junctions and enforce roots for pack files, source files, reports, and manifest-discovered packs. MCP calls run serially; cancellation is checked during scans and before publication, and temporary output is cleaned if a write is canceled.
 
+## RMV2 inspection, comparison, validation, and patching
+
+`rigid inspect` reads RMV2 versions 6, 7, and 8 using registered material and vertex layouts. It reports the skeleton, LOD distances, part counts and formats, bounding boxes, UV channel ranges, material and alpha metadata, texture slots, and supported parameters. Unknown versions are unsupported; unknown material or vertex layouts remain visible with incomplete coverage. `--texture-slots-only` skips UV, geometry, index, and parameter inspection while preserving material and texture-slot evidence.
+
+```sh
+node dist/cli/main.js rigid inspect /absolute/path/to/models.pack 'variantmeshes/models/unit.rigid_model_v2' --format json
+node dist/cli/main.js rigid inspect /absolute/path/to/models.pack 'variantmeshes/models/unit.rigid_model_v2' --texture-slots-only --format json
+```
+
+`asset materials --input materials.json` reports declared material bindings per loading context and LOD/part. Supply ordered `packPaths` and optional `vanillaPackPaths`, plus exactly one of `assetPaths` (RMV2, WSModel, or VMD paths) or `unitKey` (an exact unit key). For example:
+
+```json
+{
+  "packPaths": ["/absolute/path/to/mod.pack"],
+  "vanillaPackPaths": ["/absolute/path/to/variants.pack", "/absolute/path/to/textures.pack"],
+  "assetPaths": ["variantmeshes/models/unit.variantmeshdefinition"]
+}
+```
+
+Direct loads use embedded RMV2 materials; WSModel loads use their explicit LOD/part XML material bindings. A same-named WSModel is never selected implicitly. `effectiveTextures` contains the selected material's declared slots; `embeddedTextures` remains separate evidence on WSModel loads. Shader sampling and implicit engine defaults are not inferred. Conditional branches and unit/engine provenance are retained, and unresolved or ambiguous bindings make coverage incomplete. Results support `--offset`, `--limit`, and `--report`.
+
+`asset resolve` traverses supported embedded texture slots and labels incoming RMV2 edges with `loadMode: direct` or `wsmodel`. Engine references include the animation-to-LOD row chain. `asset references` groups direct loaders before WSModel bindings and reports target-specific loader counts. Supported rigid dependencies also participate in subset closure.
+
+`pack diff --details` includes bounded RMV2 semantic records for LODs, parts, material types, geometry, textures, and parameters. The geometry counters report changed vertices, positions, UV vertex/channel pairs, and indices. Texture records pair by numeric slot ID and occurrence, with before/after array indexes retained as evidence; additions and removals are paged with the other semantic records. Use `--semantic-offset`, `--semantic-limit`, or `--report` for additional records.
+
+`pack validate` always parses RMV2 structure, even when `--full-payloads` is omitted. Malformed structure is an error; unsupported models or parts are warnings and make `validationComplete` false. `unresolvedRigidTextureCount` counts missing or ambiguous embedded texture paths. To resolve those paths in a declared load order, pass a JSON input containing `vanillaPackPaths` and `packPaths`; each list is ordered from lower to higher priority, supporting packs take priority over vanilla packs, and the validated target pack is highest. Duplicate provider paths retain their last occurrence and highest role. A warning that WS material bindings are unused is emitted only when a direct loader and a valid explicit WS geometry/LOD/part/material binding both point to the same RMV2 model; matching filenames alone do not establish a binding.
+
+```json
+{
+  "vanillaPackPaths": ["/absolute/path/to/data.pack", "/absolute/path/to/variantmeshes.pack"],
+  "packPaths": ["/absolute/path/to/base_mod.pack", "/absolute/path/to/texture_override.pack"]
+}
+```
+
+```sh
+node dist/cli/main.js pack validate /absolute/path/to/edited.pack --input validate.json --format json
+node dist/cli/main.js pack diff /absolute/path/to/base.pack /absolute/path/to/edited.pack --details --semantic-limit 100 --format json
+```
+
+Missing or ambiguous embedded textures are warnings and are counted in `unresolvedRigidTextureCount`; `valid` describes structural validity. Require that counter to be zero when checking complete texture resolution. A bounded loader scan that cannot finish makes `validationComplete` false.
+
+`rigid patch` accepts an `edits` array. A selector may specify `lodIndex` and `partIndex`; omitted selectors apply to all matching parts. Texture `type` accepts a registered name or numeric ID, and `path: null` removes an existing slot. Custom terrain exposes its dedicated path as `TerrainTexturePath`; clearing it stores an empty path. Material changes must stay within the same registered layout family. `alphaMode` (`opaque` or `transparent`) edits or adds weighted-material integer parameter `0`; duplicate alpha records and layouts without encoded alpha are rejected. Paths must be valid UTF-8, contain no NUL, and fit within 255 encoded bytes. Overlapping edits are rejected. Every change is reparsed and checked before publication, with geometry and untouched bytes preserved. The output is a new single-model MOD pack at the source model's internal path; referenced textures remain external.
+
+```json
+{
+  "edits": [
+    {
+      "lodIndex": 0,
+      "partIndex": 1,
+      "textures": [
+        { "type": "Gloss", "path": null },
+        { "type": "BaseColour", "path": "textures/unit_base_colour.dds" }
+      ],
+      "materialType": "weighted_skin",
+      "alphaMode": "transparent"
+    }
+  ]
+}
+```
+
+```sh
+node dist/cli/main.js rigid patch /absolute/path/to/source.pack 'variantmeshes/models/unit.rigid_model_v2' --output /absolute/path/to/unit-patch.pack --input rigid-patch.json --format json
+```
+
+The MCP tools are `rigid_inspect`, `asset_materials`, `pack_validate`, `pack_diff`, and `rigid_patch` with the same operation fields. `rigid_patch` requires an allowed write root and creates no output when validation or cancellation fails.
+
 ## DDS inspection and mip previews
 
 ```sh
@@ -260,7 +326,7 @@ Subset requests select files and/or DB rows from `sourcePackPaths`. Optional `pa
 
 - Logical payloads are limited to 256 MiB and pack indexes to 128 MiB. Table queries and supported text reads are paginated; a text preview is at most 64 KiB.
 - Search defaults to at most 1,000 results. Diff semantic previews default to 100 rows and cap at 1,000.
-- Visual-reference parsing covers the supported WSModel, VMD, material, and texture relationships. Rigid model internals and unknown file types remain unsupported for dependency closure; they do not establish a complete/self-contained graph.
+- Visual-reference parsing covers supported WSModel, VMD, material, texture, and registered RMV2 relationships. Unknown rigid versions/layouts and unknown file types leave dependency closure incomplete; they do not establish a complete/self-contained graph. UV image preview/export is not implemented.
 - DB/LOC operations need a matching bundled schema. Unknown table schemas can be retained as opaque data by unrelated pack copies, but cannot be queried or patched as typed rows.
 - ZSTD decoding uses Node's bounded decoder. LZ4 decoding requires the native `lz4-napi` binding for the current platform; the available binding does not expose a pre-decode output-size cap, so the core applies its logical payload cap after decoding.
 

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { getSupportedVisualReferenceDetails, type VisualReferenceDetail, type UnsupportedVisualReferenceDetail } from "../visuals/dependencies";
 import { normalizePackFilePathKey } from "../utility/packFilePathUtils";
 import { parseDBTablePath } from "../utility/packFileHelpers";
-import type { CorePack, CorePackEntry, ParsedDbTable } from "../packCore";
+import { compareRmv2PartGeometry, parseRmv2, Rmv2CodecError, type CorePack, type CorePackEntry, type ParsedDbTable, type Rmv2Part } from "../packCore";
 import { decodePackedTextBuffer } from "../utility/packFileViewing";
 import { AutomationError, throwIfAborted, yieldToEventLoop, type AutomationDiagnostic } from "./errors";
 import {
@@ -249,6 +249,198 @@ const detailMultisetDiff = <T extends VisualReferenceDetail | UnsupportedVisualR
   return { added, removed, addedCount, removedCount };
 };
 
+const normalizedParameters = (part: Rmv2Part) => [
+  ["string", part.stringParams ?? []],
+  ["float", part.floatParams ?? []],
+  ["int", part.intParams ?? []],
+  ["vec4", part.vec4Params ?? []],
+] as const;
+
+const semanticRmv2Diff = (
+  beforeModel: ReturnType<typeof parseRmv2>,
+  afterModel: ReturnType<typeof parseRmv2>,
+  beforePath: string,
+  includeDetails: boolean,
+  diagnostics: AutomationDiagnostic[],
+) => {
+  const added: Array<Record<string, unknown>> = [];
+  const deleted: Array<Record<string, unknown>> = [];
+  const modified: Array<Record<string, unknown>> = [];
+  let lodAddedCount = 0;
+  let lodRemovedCount = 0;
+  let partAddedCount = 0;
+  let partRemovedCount = 0;
+  let vertexChangedCount = 0;
+  let positionChangedCount = 0;
+  let uvChangedCount = 0;
+  let indexChangedCount = 0;
+  let materialChangedCount = 0;
+  let textureSlotChangedCount = 0;
+  let textureSlotAddedCount = 0;
+  let textureSlotRemovedCount = 0;
+  let parameterChangedCount = 0;
+  let modifiedRecordCount = 0;
+  let complete = beforeModel.validationComplete && afterModel.validationComplete;
+  const addRecord = (group: "added" | "deleted" | "modified", record: Record<string, unknown>) => {
+    if (group === "modified") modifiedRecordCount += 1;
+    if (includeDetails) (group === "added" ? added : group === "deleted" ? deleted : modified).push(record);
+  };
+  if (beforeModel.version !== afterModel.version || beforeModel.skeletonName !== afterModel.skeletonName) {
+    addRecord("modified", { kind: "model", version: { before: beforeModel.version, after: afterModel.version }, skeletonName: { before: beforeModel.skeletonName, after: afterModel.skeletonName } });
+  }
+  const beforeLods = new Map(beforeModel.lods.map((lod) => [lod.lodIndex, lod]));
+  const afterLods = new Map(afterModel.lods.map((lod) => [lod.lodIndex, lod]));
+  for (const lodIndex of [...new Set([...beforeLods.keys(), ...afterLods.keys()])].sort((left, right) => left - right)) {
+    const beforeLod = beforeLods.get(lodIndex);
+    const afterLod = afterLods.get(lodIndex);
+    if (!beforeLod) {
+      lodAddedCount += 1;
+      addRecord("added", { kind: "lod", lodIndex, distance: afterLod!.distance, partCount: afterLod!.meshCount });
+      continue;
+    }
+    if (!afterLod) {
+      lodRemovedCount += 1;
+      addRecord("deleted", { kind: "lod", lodIndex, distance: beforeLod.distance, partCount: beforeLod.meshCount });
+      continue;
+    }
+    if (beforeLod.distance !== afterLod.distance || beforeLod.authoredLodIndex !== afterLod.authoredLodIndex || beforeLod.qualityLevel !== afterLod.qualityLevel) {
+      addRecord("modified", {
+        kind: "lod",
+        lodIndex,
+        before: { distance: beforeLod.distance, authoredLodIndex: beforeLod.authoredLodIndex, qualityLevel: beforeLod.qualityLevel },
+        after: { distance: afterLod.distance, authoredLodIndex: afterLod.authoredLodIndex, qualityLevel: afterLod.qualityLevel },
+      });
+    }
+    const beforeParts = new Map(beforeLod.parts.map((part) => [part.partIndex, part]));
+    const afterParts = new Map(afterLod.parts.map((part) => [part.partIndex, part]));
+    for (const partIndex of [...new Set([...beforeParts.keys(), ...afterParts.keys()])].sort((left, right) => left - right)) {
+      const beforePart = beforeParts.get(partIndex);
+      const afterPart = afterParts.get(partIndex);
+      if (!beforePart) {
+        partAddedCount += 1;
+        addRecord("added", { kind: "part", lodIndex, partIndex, name: afterPart!.name, materialTypeId: afterPart!.materialTypeId, materialTypeName: afterPart!.materialTypeName, vertexCount: afterPart!.vertexCount, indexCount: afterPart!.indexCount });
+        continue;
+      }
+      if (!afterPart) {
+        partRemovedCount += 1;
+        addRecord("deleted", { kind: "part", lodIndex, partIndex, name: beforePart.name, materialTypeId: beforePart.materialTypeId, materialTypeName: beforePart.materialTypeName, vertexCount: beforePart.vertexCount, indexCount: beforePart.indexCount });
+        continue;
+      }
+      if (!beforePart.complete || !afterPart.complete) {
+        complete = false;
+        diagnostics.push(diagnostic("UNSUPPORTED_RMV2_DIFF_PART", `LOD ${lodIndex} part ${partIndex} has an unsupported material or vertex layout; semantic comparison is incomplete`, "warning", beforePath));
+        continue;
+      }
+      const materialChanged = beforePart.materialTypeId !== afterPart.materialTypeId || beforePart.vertexFormatId !== afterPart.vertexFormatId || beforePart.renderFlags !== afterPart.renderFlags;
+      if (materialChanged) {
+        materialChangedCount += 1;
+        addRecord("modified", {
+          kind: "material",
+          lodIndex,
+          partIndex,
+          name: { before: beforePart.name, after: afterPart.name },
+          materialType: { before: { id: beforePart.materialTypeId, name: beforePart.materialTypeName }, after: { id: afterPart.materialTypeId, name: afterPart.materialTypeName } },
+          vertexFormat: { before: { id: beforePart.vertexFormatId, name: beforePart.vertexFormatName }, after: { id: afterPart.vertexFormatId, name: afterPart.vertexFormatName } },
+          renderFlags: { before: beforePart.renderFlags, after: afterPart.renderFlags },
+        });
+      } else if (beforePart.name !== afterPart.name) {
+        addRecord("modified", { kind: "part", lodIndex, partIndex, name: { before: beforePart.name, after: afterPart.name } });
+      }
+      const textureOccurrences = (textures: Rmv2Part["textures"] | undefined) => {
+        const byType = new Map<string, Array<{ texture: NonNullable<Rmv2Part["textures"]>[number]; index: number }>>();
+        for (const [index, texture] of (textures ?? []).entries()) {
+          const typeKey = texture.source === "terrainTexturePath" ? "terrain-path" : `texture:${texture.typeId}`;
+          const values = byType.get(typeKey) ?? [];
+          values.push({ texture, index });
+          byType.set(typeKey, values);
+        }
+        return byType;
+      };
+      const beforeTextureTypes = textureOccurrences(beforePart.textures);
+      const afterTextureTypes = textureOccurrences(afterPart.textures);
+      const textureTypeKeys = [...new Set([...beforeTextureTypes.keys(), ...afterTextureTypes.keys()])].sort();
+      for (const textureTypeKey of textureTypeKeys) {
+        const beforeValues = beforeTextureTypes.get(textureTypeKey) ?? [];
+        const afterValues = afterTextureTypes.get(textureTypeKey) ?? [];
+        for (let occurrence = 0; occurrence < Math.max(beforeValues.length, afterValues.length); occurrence++) {
+          const beforeItem = beforeValues[occurrence];
+          const afterItem = afterValues[occurrence];
+          const beforeTexture = beforeItem?.texture;
+          const afterTexture = afterItem?.texture;
+          if (JSON.stringify(beforeTexture ?? null) === JSON.stringify(afterTexture ?? null)) continue;
+          textureSlotChangedCount += 1;
+          const record = {
+            kind: "textureSlot",
+            lodIndex,
+            partIndex,
+            typeId: beforeTexture?.typeId ?? afterTexture?.typeId ?? null,
+            typeName: beforeTexture?.typeName ?? afterTexture?.typeName ?? "TerrainTexturePath",
+            occurrence,
+            beforeIndex: beforeItem?.index ?? null,
+            afterIndex: afterItem?.index ?? null,
+            before: beforeTexture ?? null,
+            after: afterTexture ?? null,
+          };
+          if (!beforeTexture) {
+            textureSlotAddedCount += 1;
+            addRecord("added", record);
+          } else if (!afterTexture) {
+            textureSlotRemovedCount += 1;
+            addRecord("deleted", record);
+          } else {
+            addRecord("modified", record);
+          }
+        }
+      }
+      for (const [parameterType, beforeValues] of normalizedParameters(beforePart)) {
+        const afterValues = normalizedParameters(afterPart).find(([type]) => type === parameterType)![1];
+        const count = Math.max(beforeValues.length, afterValues.length);
+        for (let parameterIndex = 0; parameterIndex < count; parameterIndex++) {
+          const beforeValue = beforeValues[parameterIndex];
+          const afterValue = afterValues[parameterIndex];
+          if (JSON.stringify(beforeValue ?? null) === JSON.stringify(afterValue ?? null)) continue;
+          parameterChangedCount += 1;
+          addRecord("modified", { kind: "parameter", parameterType, lodIndex, partIndex, parameterIndex, before: beforeValue ?? null, after: afterValue ?? null });
+        }
+      }
+      const geometry = compareRmv2PartGeometry(beforeModel.version, beforePart, afterModel.version, afterPart);
+      vertexChangedCount += geometry.vertexChangedCount;
+      positionChangedCount += geometry.positionChangedCount;
+      uvChangedCount += geometry.uvChangedCount;
+      indexChangedCount += geometry.indexChangedCount;
+      if (geometry.vertexChangedCount || geometry.positionChangedCount || geometry.uvChangedCount || geometry.indexChangedCount || !geometry.layoutComparable) {
+        addRecord("modified", { kind: "geometry", lodIndex, partIndex, ...geometry });
+      }
+    }
+  }
+  const addedCount = lodAddedCount + partAddedCount + textureSlotAddedCount;
+  const deletedCount = lodRemovedCount + partRemovedCount + textureSlotRemovedCount;
+  const modifiedCount = modifiedRecordCount;
+  return {
+    type: "rmv2" as const,
+    semanticScope: "registeredRmv2Layouts" as const,
+    available: true,
+    complete,
+    addedCount,
+    deletedCount,
+    modifiedCount,
+    lodAddedCount,
+    lodRemovedCount,
+    partAddedCount,
+    partRemovedCount,
+    vertexChangedCount,
+    positionChangedCount,
+    uvChangedCount,
+    indexChangedCount,
+    materialChangedCount,
+    textureSlotChangedCount,
+    textureSlotAddedCount,
+    textureSlotRemovedCount,
+    parameterChangedCount,
+    ...(includeDetails ? { added, deleted, modified } : {}),
+  };
+};
+
 const semanticDiffForFile = async (
   beforePack: CorePack,
   beforeEntry: CorePackEntry,
@@ -279,6 +471,34 @@ const semanticDiffForFile = async (
     }
   }
   const extension = beforeEntry.name.toLowerCase();
+  if (extension.endsWith(".rigid_model_v2")) {
+    try {
+      const [beforeBytes, afterBytes] = await Promise.all([
+        readAutomationPayload(beforePack, beforeEntry, context),
+        readAutomationPayload(afterPack, afterEntry, context),
+      ]);
+      let beforeModel;
+      let afterModel;
+      try {
+        beforeModel = parseRmv2(beforeBytes);
+        afterModel = parseRmv2(afterBytes);
+      } catch (error) {
+        const unsupported = error instanceof Rmv2CodecError && error.code === "UNSUPPORTED";
+        diagnostics.push(diagnostic(
+          unsupported ? "UNSUPPORTED_RMV2_DIFF" : "INVALID_RMV2_DIFF",
+          error instanceof Error ? error.message : String(error),
+          "warning",
+          beforeEntry.name,
+        ));
+        return { type: "rmv2" as const, available: false, complete: false };
+      }
+      return semanticRmv2Diff(beforeModel, afterModel, beforeEntry.name, includeDetails, diagnostics);
+    } catch (error) {
+      if (error instanceof AutomationError && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code)) throw error;
+      diagnostics.push(diagnostic("INVALID_RMV2_DIFF", error instanceof Error ? error.message : String(error), "warning", beforeEntry.name));
+      return { type: "rmv2" as const, available: false, complete: false };
+    }
+  }
   if (!extension.endsWith(".variantmeshdefinition") && !extension.endsWith(".wsmodel") && !extension.endsWith(".xml.material")) return undefined;
   try {
     const [beforeBytes, afterBytes] = await Promise.all([
@@ -351,12 +571,26 @@ const semanticRecordPreview = (semantic: Record<string, unknown>, offset: number
     mode: semantic.mode,
     semanticScope: semantic.semanticScope,
     available: semantic.available,
+    complete: semantic.complete,
     addedCount: semantic.addedCount,
     deletedCount: semantic.deletedCount,
     removedCount: semantic.removedCount,
     modifiedCount: semantic.modifiedCount,
     unsupportedAddedCount: semantic.unsupportedAddedCount,
     unsupportedRemovedCount: semantic.unsupportedRemovedCount,
+    lodAddedCount: semantic.lodAddedCount,
+    lodRemovedCount: semantic.lodRemovedCount,
+    partAddedCount: semantic.partAddedCount,
+    partRemovedCount: semantic.partRemovedCount,
+    vertexChangedCount: semantic.vertexChangedCount,
+    positionChangedCount: semantic.positionChangedCount,
+    uvChangedCount: semantic.uvChangedCount,
+    indexChangedCount: semantic.indexChangedCount,
+    materialChangedCount: semantic.materialChangedCount,
+    textureSlotChangedCount: semantic.textureSlotChangedCount,
+    textureSlotAddedCount: semantic.textureSlotAddedCount,
+    textureSlotRemovedCount: semantic.textureSlotRemovedCount,
+    parameterChangedCount: semantic.parameterChangedCount,
     duplicateKeys: semantic.duplicateKeys,
     totalRecords,
     semanticOffset: offset,

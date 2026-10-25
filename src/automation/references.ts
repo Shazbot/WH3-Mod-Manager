@@ -7,7 +7,7 @@ import { getFilenameRelativePathMatch, parseFilenameRelativePaths } from "../uti
 import { getCanonicalLogicalTableName, shouldReplaceEffectiveDbRowWinner } from "../utility/effectiveDbRow";
 import { parseDBTablePath } from "../utility/packFileHelpers";
 import { normalizePackFilePath, normalizePackFilePathKey } from "../utility/packFilePathUtils";
-import type { CorePack, CorePackEntry } from "../packCore";
+import { parseRmv2, Rmv2CodecError, type CorePack, type CorePackEntry } from "../packCore";
 import { decodePackedTextBuffer } from "../utility/packFileViewing";
 import { AutomationError, throwIfAborted, yieldToEventLoop, type AutomationDiagnostic } from "./errors";
 import { normalizeInternalPackPath } from "./filesystem";
@@ -368,7 +368,8 @@ export interface ReferenceGraphNode {
   path: string;
   type: "asset" | "db-row";
   status: "found" | "missing" | "ambiguous" | "unsupported";
-  coverage?: "pending" | "supportedReferences" | "supportedFields" | "opaqueLeaf" | "unsupportedInternals" | "unsupportedType" | "unreadable";
+  coverage?: "pending" | "supportedReferences" | "supportedFields" | "opaqueLeaf" | "supportedRigidInternals" | "unsupportedInternals" | "unsupportedType" | "unreadable";
+  loadModes?: Array<"direct" | "wsmodel">;
   provider?: string;
   providerKind?: "mod" | "vanilla";
   extension?: string;
@@ -386,6 +387,16 @@ export interface ReferenceGraphEdge {
   sourceField?: string;
   location?: string;
   conditional?: VisualReferenceDetail["conditional"];
+  loadMode?: "direct" | "wsmodel";
+  lodIndex?: number;
+  partIndex?: number;
+  textureSlotIndex?: number;
+  textureTypeId?: number | null;
+  textureTypeName?: string | null;
+  legacy?: boolean;
+  materialTypeId?: number;
+  materialTypeName?: string;
+  targetField?: string;
   status?: "found" | "missing" | "ambiguous" | "unsupported";
 }
 
@@ -403,6 +414,10 @@ export interface ReferenceGraphOptions {
   maxDepth: number;
   maxNodes: number;
   maxEdges: number;
+  /** Set false for consumers that inspect RMV materials in a loader-aware pass. */
+  traverseRigidInternals?: boolean;
+  /** Set false when WS materials are resolved through exact LOD/part bindings. */
+  traverseWsmodelMaterials?: boolean;
 }
 
 export type ReferenceGraphRoot = {
@@ -491,6 +506,7 @@ class ReferenceGraphBuilder {
     const id = resolved.status === "found" && resolved.winner
       ? assetNodeId(resolved.winner.provider, resolved.key)
       : missingAssetNodeId(resolved.key);
+    const ext = resolved.winner ? pathExtension(resolved.winner.entry.name) : "";
     const node: ReferenceGraphNode = {
       id,
       path: resolved.path,
@@ -501,22 +517,19 @@ class ReferenceGraphBuilder {
         providerKind: resolved.winner.provider.kind,
         extension: pathExtension(resolved.winner.entry.name),
         coverage: pathExtension(resolved.winner.entry.name) === "dds" ? "opaqueLeaf" :
-          pathExtension(resolved.winner.entry.name) === "rigid_model_v2" ? "unsupportedInternals" :
+          pathExtension(resolved.winner.entry.name) === "rigid_model_v2" ? "pending" :
             ["variantmeshdefinition", "wsmodel", "xml.material"].includes(pathExtension(resolved.winner.entry.name)) ? "pending" : "unsupportedType",
         shadowedCandidates: resolved.shadowed?.map(({ provider, entry }) => ({ packPath: provider.pack.path, entryPath: entry.name, kind: provider.kind })),
       } : {}),
       ...(resolved.status === "ambiguous" ? { candidates: resolved.candidates.map(({ provider, entry }) => ({ packPath: provider.pack.path, entryPath: entry.name })) } : {}),
     };
+    if (ext === "rigid_model_v2") node.loadModes = ["direct"];
     this.addNode(node);
     if (this.nodes.has(id)) this.roots.push(id);
-    const ext = resolved.winner ? pathExtension(resolved.winner.entry.name) : "";
-    if (resolved.status === "found" && resolved.winner && ["variantmeshdefinition", "wsmodel", "xml.material"].includes(ext) && this.nodes.has(id)) {
+    if (resolved.status === "found" && resolved.winner && ["variantmeshdefinition", "wsmodel", "xml.material", "rigid_model_v2"].includes(ext) && this.nodes.has(id)) {
       this.queueNode("asset", id, 0);
     } else if (resolved.status === "found" && ext === "dds") {
       // DDS is a fully covered leaf.
-    } else if (resolved.status === "found" && ext === "rigid_model_v2") {
-      this.environment.complete = false;
-      this.diagnostics.push(diagnostic("UNSUPPORTED_RIGID_INTERNALS", "Rigid model internals are not traversed by this resolver", resolved.path));
     } else if (resolved.status === "found") {
       this.environment.complete = false;
       node.status = "unsupported";
@@ -584,8 +597,26 @@ class ReferenceGraphBuilder {
     return row.id;
   }
 
-  private addAssetReference(source: string, requestedPath: string, relation: string, details: { sourceField?: string; location?: string; conditional?: VisualReferenceDetail["conditional"] }, depth: number): void {
+  private addAssetReference(source: string, requestedPath: string, relation: string, details: {
+    sourceField?: string;
+    location?: string;
+    conditional?: VisualReferenceDetail["conditional"];
+    lodIndex?: number;
+    partIndex?: number;
+    textureSlotIndex?: number;
+    textureTypeId?: number | null;
+    textureTypeName?: string | null;
+    legacy?: boolean;
+    materialTypeId?: number;
+    materialTypeName?: string;
+    targetField?: string;
+  }, depth: number): void {
     const resolved = resolveReferenceAsset(this.environment, requestedPath);
+    const extension = resolved.winner ? pathExtension(resolved.winner.entry.name) : pathExtension(resolved.path);
+    const sourceNode = this.nodes.get(source);
+    const loadMode = extension === "rigid_model_v2"
+      ? sourceNode?.extension === "wsmodel" ? "wsmodel" as const : "direct" as const
+      : undefined;
     const id = resolved.status === "found" && resolved.winner
       ? assetNodeId(resolved.winner.provider, resolved.key)
       : missingAssetNodeId(resolved.key);
@@ -599,28 +630,27 @@ class ReferenceGraphBuilder {
         providerKind: resolved.winner.provider.kind,
         extension: pathExtension(resolved.winner.entry.name),
         coverage: pathExtension(resolved.winner.entry.name) === "dds" ? "opaqueLeaf" :
-          pathExtension(resolved.winner.entry.name) === "rigid_model_v2" ? "unsupportedInternals" :
+          pathExtension(resolved.winner.entry.name) === "rigid_model_v2" ? "pending" :
             ["variantmeshdefinition", "wsmodel", "xml.material"].includes(pathExtension(resolved.winner.entry.name)) ? "pending" : "unsupportedType",
         shadowedCandidates: resolved.shadowed?.map(({ provider, entry }) => ({ packPath: provider.pack.path, entryPath: entry.name, kind: provider.kind })),
       } : {}),
       ...(resolved.status === "ambiguous" ? { candidates: resolved.candidates.map(({ provider, entry }) => ({ packPath: provider.pack.path, entryPath: entry.name })) } : {}),
     };
     this.addNode(node);
+    if (loadMode && resolved.status === "found") {
+      const targetNode = this.nodes.get(id);
+      if (targetNode) targetNode.loadModes = [...new Set([...(targetNode.loadModes ?? []), loadMode])];
+    }
     if (!this.nodes.has(id)) return;
-    this.addEdge({ source, target: id, relationship: relation, ...details, status: resolved.status });
+    this.addEdge({ source, target: id, relationship: relation, ...details, ...(loadMode ? { loadMode } : {}), status: resolved.status });
     if (resolved.status !== "found" || !resolved.winner) {
       this.environment.complete = false;
       this.diagnostics.push(diagnostic(resolved.status === "missing" ? "MISSING_ASSET" : "AMBIGUOUS_ASSET", `${resolved.status === "missing" ? "No provider contains" : "Multiple entries provide"} ${resolved.path}`, resolved.path));
       return;
     }
-    const extension = pathExtension(resolved.winner.entry.name);
-    if (extension === "rigid_model_v2") {
-      this.environment.complete = false;
-      this.diagnostics.push(diagnostic("UNSUPPORTED_RIGID_INTERNALS", "Rigid model internals are not traversed by this resolver", resolved.path));
-    }
-    if (["variantmeshdefinition", "wsmodel", "xml.material"].includes(extension)) {
+    if (["variantmeshdefinition", "wsmodel", "xml.material", "rigid_model_v2"].includes(extension)) {
       this.queueNode("asset", id, depth);
-    } else if (extension !== "dds" && extension !== "rigid_model_v2") {
+    } else if (extension !== "dds") {
       const node = this.nodes.get(id);
       if (node) {
         node.status = "unsupported";
@@ -635,17 +665,22 @@ class ReferenceGraphBuilder {
     const node = this.nodes.get(id);
     if (!node || node.status !== "found" || !node.provider) return;
     const ext = node.extension;
-    if (ext === "dds" || ext === "rigid_model_v2") return;
-    if (ext !== "variantmeshdefinition" && ext !== "wsmodel" && ext !== "xml.material") return;
+    if (ext === "dds") return;
+    if (ext !== "variantmeshdefinition" && ext !== "wsmodel" && ext !== "xml.material" && ext !== "rigid_model_v2") return;
+    if (ext === "rigid_model_v2" && this.options.traverseRigidInternals === false) return;
     const provider = this.environment.providers.find((candidate) => candidate.pack.path === node.provider);
     const entry = provider?.entriesByPath.get(normalizePackFilePathKey(node.path))?.[0];
     if (!provider || !entry) return;
+    if (ext === "rigid_model_v2") {
+      await this.processRigidModel(id, depth, provider, entry);
+      return;
+    }
     let extraction;
     try {
       const bytes = await readAutomationPayload(provider.pack, entry, this.environment.context);
       extraction = getSupportedVisualReferenceDetails(decodePackedTextBuffer(bytes));
     } catch (error) {
-      if (error instanceof AutomationError && error.code === "CANCELLED") throw error;
+      if (error instanceof AutomationError && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code)) throw error;
       node.coverage = "unreadable";
       this.environment.complete = false;
       this.diagnostics.push(diagnostic("XML_READ_FAILED", error instanceof Error ? error.message : String(error), entry.name));
@@ -660,6 +695,7 @@ class ReferenceGraphBuilder {
     node.coverage = "supportedReferences";
     for (const reference of extraction.references) {
       if (this.hitLimit) break;
+      if (ext === "wsmodel" && this.options.traverseWsmodelMaterials === false && reference.extension === "xml.material") continue;
       this.addAssetReference(id, reference.path, reference.relationship, {
         sourceField: reference.sourceField,
         location: reference.location,
@@ -676,6 +712,59 @@ class ReferenceGraphBuilder {
     }
   }
 
+  private async processRigidModel(id: string, depth: number, provider: ReferenceProvider, entry: CorePackEntry): Promise<void> {
+    const node = this.nodes.get(id);
+    if (!node) return;
+    let model;
+    try {
+      const bytes = await readAutomationPayload(provider.pack, entry, this.environment.context);
+      model = parseRmv2(bytes);
+    } catch (error) {
+      if (error instanceof AutomationError && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code)) throw error;
+      this.environment.complete = false;
+      if (error instanceof Rmv2CodecError && error.code === "UNSUPPORTED") {
+        node.coverage = "unsupportedInternals";
+        this.diagnostics.push(diagnostic("UNSUPPORTED_RMV2_MODEL", error.message, entry.name));
+      } else {
+        node.coverage = "unreadable";
+        this.diagnostics.push(diagnostic("INVALID_RMV2_MODEL", error instanceof Error ? error.message : String(error), entry.name));
+      }
+      return;
+    }
+    const unsupportedParts = model.lods.flatMap((lod) => lod.parts.filter((part) => !part.complete));
+    node.coverage = unsupportedParts.length ? "unsupportedInternals" : "supportedRigidInternals";
+    if (unsupportedParts.length) this.environment.complete = false;
+    for (const part of unsupportedParts) {
+      this.diagnostics.push(diagnostic(
+        "UNSUPPORTED_RMV2_PART",
+        `LOD ${part.lodIndex} part ${part.partIndex}: ${part.unsupportedReason ?? "unsupported layout"}`,
+        entry.name,
+      ));
+    }
+    for (const lod of model.lods) {
+      throwIfAborted(this.environment.context.signal);
+      for (const part of lod.parts) {
+        if (!part.complete || !part.textures) continue;
+        for (let textureSlotIndex = 0; textureSlotIndex < part.textures.length; textureSlotIndex++) {
+          const texture = part.textures[textureSlotIndex];
+          if (!texture.path.trim()) continue;
+          this.addAssetReference(id, texture.path, "embedded-texture", {
+            sourceField: texture.typeName ?? "texturePath",
+            location: `lod[${lod.lodIndex}]/part[${part.partIndex}]/texture[${textureSlotIndex}]`,
+            lodIndex: lod.lodIndex,
+            partIndex: part.partIndex,
+            textureSlotIndex,
+            textureTypeId: texture.typeId,
+            textureTypeName: texture.typeName,
+            legacy: texture.legacy,
+            materialTypeId: part.materialTypeId,
+            materialTypeName: part.materialTypeName,
+          }, depth + 1);
+        }
+      }
+    }
+  }
+
   private async processDbRow(id: string, depth: number): Promise<void> {
     const source = this.environment.rowById.get(id);
     if (!source) return;
@@ -685,6 +774,12 @@ class ReferenceGraphBuilder {
       if (this.hitLimit) break;
       const value = source.row[field.name];
       if (value === null || value === undefined || (typeof value === "string" && value.trim() === "")) continue;
+      const directEngineModel = source.logicalTable === "db\\battlefield_engines_tables" && field.name === "model" &&
+        typeof value === "string" && ["rigid_model_v2", "wsmodel", "variantmeshdefinition"].includes(getAssetExtension(value));
+      if (directEngineModel) {
+        this.addAssetReference(id, value as string, "db-filename", { sourceField: field.name }, depth + 1);
+        continue;
+      }
       if (field.is_reference && field.is_reference.length > 0) {
         if (field.is_reference.length < 2 || !field.is_reference[1]) {
           this.environment.complete = false;
@@ -760,6 +855,36 @@ class ReferenceGraphBuilder {
         }
       }
     }
+    if (source.logicalTable === "db\\warscape_animated_tables") {
+      const animatedKey = source.row.key;
+      if (animatedKey !== null && animatedKey !== undefined && String(animatedKey).trim()) {
+        const lodRows = (await loadEffectiveDbRows(this.environment, "db\\warscape_animated_lod_tables"))
+          .filter((row) => row.row.animated === animatedKey);
+        if (lodRows.length === 0) {
+          this.environment.complete = false;
+          this.diagnostics.push(diagnostic(
+            "MISSING_ANIMATED_LOD",
+            `No warscape_animated_lod row references warscape_animated.key=${String(animatedKey)}`,
+            source.entry.name,
+          ));
+        }
+        for (const target of lodRows) {
+          this.addNode({
+            id: target.id,
+            path: target.entry.name,
+            type: "db-row",
+            status: "found",
+            provider: target.provider.pack.path,
+            providerKind: target.provider.kind,
+            rowIndex: target.rowIndex,
+            table: target.logicalTable,
+            key: Object.fromEntries(target.loaded.schema.fields.filter((item) => item.is_key).map((item) => [item.name, target.row[item.name]])),
+          });
+          this.addEdge({ source: id, target: target.id, relationship: "animated-lod", sourceField: "key", targetField: "animated", status: "found" });
+          if (this.nodes.has(target.id)) this.queueNode("db", target.id, depth + 1);
+        }
+      }
+    }
   }
 
   async drain(): Promise<void> {
@@ -819,6 +944,70 @@ export const buildReferenceGraph = async (
   roots: readonly ReferenceGraphRoot[],
   options: ReferenceGraphOptions,
 ): Promise<ReferenceGraphResult> => new ReferenceGraphBuilder(environment, options).run(roots);
+
+export const findRigidLoaderEdges = async (
+  environment: ReferenceEnvironment,
+  targetPaths: readonly string[],
+  limits: { maxNodes?: number; maxEdges?: number } = {},
+): Promise<{ edges: Array<{ targetPath: string; sourcePath: string; edge: ReferenceGraphEdge }>; hitLimit: boolean }> => {
+  const targetKeys = new Set(targetPaths.map((target) => normalizePackFilePathKey(normalizeInternalPackPath(target))));
+  if (!targetKeys.size) return { edges: [], hitLimit: false };
+  const builder = new ReferenceGraphBuilder(environment, {
+    traversal: "direct",
+    maxDepth: 32,
+    maxNodes: limits.maxNodes ?? 25_000,
+    maxEdges: limits.maxEdges ?? 50_000,
+    traverseRigidInternals: false,
+    traverseWsmodelMaterials: false,
+  });
+  let scannedAssets = 0;
+  for (const candidates of environment.assetCandidates.values()) {
+    throwIfAborted(environment.context.signal);
+    if ((scannedAssets++ & 127) === 0) await yieldToEventLoop(environment.context.signal);
+    if (builder.atCapacity) {
+      builder.noteCapacityReached();
+      break;
+    }
+    const highestOrder = candidates[candidates.length - 1].provider.order;
+    const top = candidates.filter((candidate) => candidate.provider.order === highestOrder);
+    if (top.length !== 1) continue;
+    const entry = top[0].entry;
+    const extension = pathExtension(entry.name);
+    if (extension !== "variantmeshdefinition" && extension !== "wsmodel") continue;
+    builder.addAssetRoot(entry.name, false);
+    await builder.drain();
+  }
+  for (const logical of environment.dbFiles.keys()) {
+    throwIfAborted(environment.context.signal);
+    if (builder.atCapacity) {
+      builder.noteCapacityReached();
+      break;
+    }
+    const rows = await loadEffectiveDbRows(environment, logical);
+    let scannedRows = 0;
+    for (const row of rows) {
+      throwIfAborted(environment.context.signal);
+      if ((scannedRows++ & 127) === 0) await yieldToEventLoop(environment.context.signal);
+      if (builder.atCapacity) {
+        builder.noteCapacityReached();
+        break;
+      }
+      builder.addDbRowRoot(row);
+      await builder.drain();
+    }
+  }
+  const graph = await builder.run([]);
+  const nodes = new Map(graph.nodes.map((node) => [node.id, node]));
+  const edges = graph.edges.flatMap((edge) => {
+    if (!edge.loadMode || edge.status !== "found") return [];
+    const target = nodes.get(edge.target);
+    const source = nodes.get(edge.source);
+    if (!target || !source) return [];
+    const key = normalizePackFilePathKey(target.path);
+    return targetKeys.has(key) ? [{ targetPath: target.path, sourcePath: source.path, edge }] : [];
+  });
+  return { edges, hitLimit: graph.coverage.hitLimit };
+};
 
 const writeFullReport = async (
   context: AutomationContext,
@@ -913,20 +1102,16 @@ export const runAssetFindReferences = async (request: FindRequest, context: Auto
     } else if (tableLogicalName(entry.name)) {
       // DB tables are scanned as rows below, after resolving the effective table files.
       continue;
+    } else if (ext === "rigid_model_v2") {
+      builder.addAssetRoot(entry.name, false);
+      rigidFileCount += 1;
+      await builder.drain();
     } else {
-      // Rigid-model internals and unknown formats are outside the supported reverse-scan scope.
       skippedFileCount += 1;
       const type = ext || "(no extension)";
       skippedFileTypes[type] = (skippedFileTypes[type] ?? 0) + 1;
-      if (ext === "rigid_model_v2") rigidFileCount += 1;
       environment.complete = false;
-      environment.diagnostics.push(diagnostic(
-        ext === "rigid_model_v2" ? "UNSUPPORTED_RIGID_INTERNALS" : "UNSUPPORTED_REVERSE_SCAN_TYPE",
-        ext === "rigid_model_v2"
-          ? "Reverse scanning does not inspect rigid-model internals"
-          : `Reverse scanning skipped unsupported file type ${type}`,
-        entry.name,
-      ));
+      environment.diagnostics.push(diagnostic("UNSUPPORTED_REVERSE_SCAN_TYPE", `Reverse scanning skipped unsupported file type ${type}`, entry.name));
     }
   }
   const targetKey = normalizePackFilePathKey(targetPath);
@@ -951,20 +1136,43 @@ export const runAssetFindReferences = async (request: FindRequest, context: Auto
     }
   }
   const graph = await builder.run([]);
+  const unsupportedRigidFileCount = graph.nodes.filter((node) => node.extension === "rigid_model_v2" && node.coverage !== "supportedRigidInternals").length;
+  if (unsupportedRigidFileCount > 0) {
+    skippedFileTypes.rigid_model_v2 = unsupportedRigidFileCount;
+    skippedFileCount += unsupportedRigidFileCount;
+  }
   const matchingEdges = graph.edges.filter((edge) => {
     const target = builder.nodes.get(edge.target);
     return target && (normalizePackFilePathKey(target.path) === targetKey || (targetTable && target.table === targetTable));
   });
-  const allEdges = matchingEdges;
+  const targetNode = graph.nodes.find((node) => node.type === "asset" && normalizePackFilePathKey(node.path) === targetKey);
+  const isRigidTarget = targetNode?.extension === "rigid_model_v2";
+  const modelBindingEdges = graph.edges.filter((edge) => edge.loadMode);
+  const targetBindingEdges = matchingEdges.filter((edge) => edge.loadMode);
+  const allEdges = isRigidTarget
+    ? matchingEdges.map((edge, index) => ({ edge, index })).sort((left, right) => {
+        const rank = (mode: ReferenceGraphEdge["loadMode"]) => mode === "direct" ? 0 : mode === "wsmodel" ? 1 : 2;
+        return rank(left.edge.loadMode) - rank(right.edge.loadMode) || left.index - right.index;
+      }).map(({ edge }) => edge)
+    : matchingEdges;
+  const embeddedTextureEdges = graph.edges.filter((edge) => edge.relationship === "embedded-texture");
   const full = {
     targetPath,
     complete: graph.complete,
     coverage: {
-      scanScope: "effective XML-backed visual assets and DB rows; DDS files are fully covered leaves",
+      scanScope: "effective XML-backed visual assets and DB rows plus supported RMV2 material textures; DDS files are fully covered leaves",
       xmlFiles: xmlRootCount,
       dbTables: environment.dbFiles.size,
       ddsLeaves: ddsLeafCount,
-      rigidFilesUnsupported: rigidFileCount,
+      rigidFilesScanned: rigidFileCount,
+      rigidFilesUnsupported: unsupportedRigidFileCount,
+      directRigidBindings: modelBindingEdges.filter((edge) => edge.loadMode === "direct").length,
+      wsModelGeometryBindings: modelBindingEdges.filter((edge) => edge.loadMode === "wsmodel").length,
+      ...(isRigidTarget ? { loaderCounts: {
+        direct: targetBindingEdges.filter((edge) => edge.loadMode === "direct").length,
+        wsmodel: targetBindingEdges.filter((edge) => edge.loadMode === "wsmodel").length,
+      } } : {}),
+      embeddedTextureBindings: embeddedTextureEdges.length,
       skippedFiles: skippedFileCount,
       unsupportedFileTypes: skippedFileTypes,
       nodes: builder.nodes.size,

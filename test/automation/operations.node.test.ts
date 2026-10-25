@@ -221,6 +221,8 @@ describe("built CLI smoke test", () => {
     const help = spawnSync(process.execPath, [cliPath, "--help"], { cwd: projectRoot, encoding: "utf8" });
     expect(help.status, help.stderr).toBe(0);
     expect(help.stdout).toContain("Usage:");
+    expect(help.stdout).toContain("rigid patch <packPath> <filePath>");
+    expect(help.stdout).toContain("pack validate <packPath> [--full-payloads] [--input <jsonFile>]");
 
     const probe = spawnSync(process.execPath, ["-e", `require(${JSON.stringify(cliPath)}); if (Object.keys(require.cache).some((p) => /[\\\\/]electron([\\\\/]|$)/i.test(p))) process.exit(7);`], {
       cwd: projectRoot,

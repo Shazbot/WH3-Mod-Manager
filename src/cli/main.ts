@@ -9,10 +9,12 @@ const rootHelp = `Usage:
   whmm pack list <packPath> [--path-prefix <path>] [--glob <pattern>]
   whmm pack read <packPath> <filePath> [--output <file>]
   whmm pack texture inspect <packPath> <filePath> [--mip <level>] [--surface <index>] [--output <preview.png>]
+  whmm rigid inspect <packPath> <filePath> [--texture-slots-only]
+  whmm rigid patch <packPath> <filePath> --output <packPath> --input <jsonFile>
   whmm pack search <packPath> <query> [--max-results <number>]
   whmm pack create <outputPath> [--input <jsonFile>]
   whmm pack write <packPath> --output <outputPath> --input <jsonFile>
-  whmm pack validate <packPath> [--full-payloads]
+  whmm pack validate <packPath> [--full-payloads] [--input <jsonFile>]
   whmm pack clone <packPath> --output <outputPath>
   whmm pack diff <beforePath> <afterPath> [--details]
   whmm pack subset <sourcePackPath> --include <glob> --output <outputPath> [--input <jsonFile>]
@@ -21,15 +23,17 @@ const rootHelp = `Usage:
   whmm pack table patch <packPath> <tablePath> --output <outputPath> --input <jsonFile>
   whmm asset resolve --input <jsonFile>
   whmm asset references --input <jsonFile>
+  whmm asset materials --input <jsonFile>
   whmm loc lookup --input <jsonFile>
   whmm unit resolve --input <jsonFile>
 
 Flags:
   --format text|json   Select readable or machine-readable output (default text)
-  --input <file>       JSON operation fields for create, write, query, patch, subset, and asset tools
+  --input <file>       JSON operation fields for create, write, query, patch, subset, validate, and asset tools
   --output <path>      Output pack or extracted file path
   --mip <level>        Zero-based stored DDS mip level for preview (default 0)
   --surface <index>    Zero-based DDS array/cube surface (default 0)
+  --texture-slots-only Skip RMV2 geometry, UV, and parameter inspection
   --report <path>      Write the full result as a JSON report
   --include <glob>     Add a packed path glob to a subset selection (repeatable)
   --closure <mode>     Subset closure: none, direct, or transitive
@@ -55,6 +59,7 @@ const options = {
   output: { type: "string" as const },
   mip: { type: "string" as const },
   surface: { type: "string" as const },
+  "texture-slots-only": { type: "boolean" as const },
   report: { type: "string" as const },
   overwrite: { type: "boolean" as const },
   offset: { type: "string" as const },
@@ -148,6 +153,22 @@ const buildRequest = async (
   if (limit !== undefined) common.limit = limit;
 
   const [group, action, first, second, third] = command;
+  if (group === "rigid" && action === "inspect") {
+    ensurePositionals(command, 4);
+    return {
+      ...common,
+      operation: "rigid_inspect",
+      packPath: first,
+      filePath: second,
+      ...(values["texture-slots-only"] ? { textureSlotsOnly: true } : {}),
+    };
+  }
+  if (group === "rigid" && action === "patch") {
+    ensurePositionals(command, 4);
+    const outputPath = values.output ?? extra.outputPath;
+    if (typeof outputPath !== "string") throw new AutomationError("INVALID_ARGUMENT", "rigid patch requires --output <packPath>");
+    return { ...common, operation: "rigid_patch", packPath: first, filePath: second, outputPath };
+  }
   if (group === "pack") {
     if (action === "texture") {
       ensurePositionals(command, 5);
@@ -257,6 +278,7 @@ const buildRequest = async (
     if (!values.input) throw new AutomationError("INVALID_ARGUMENT", `asset ${action} requires --input <jsonFile>`);
     if (action === "resolve") return { ...extra, ...common, operation: "asset_resolve_references" };
     if (action === "references" || action === "find-references") return { ...extra, ...common, operation: "asset_find_references" };
+    if (action === "materials") return { ...extra, ...common, operation: "asset_materials" };
   }
   if ((group === "loc" && action === "lookup") || (group === "unit" && action === "resolve")) {
     ensurePositionals(command, 2);

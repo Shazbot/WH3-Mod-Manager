@@ -25,6 +25,7 @@ const bypassAutomationCaches = new Set<OperationName>([
   "pack_clone",
   "pack_diff",
   "pack_validate",
+  "rigid_patch",
 ]);
 
 /** Shared validated operation entry point used by the CLI now and MCP in the next stage. */
