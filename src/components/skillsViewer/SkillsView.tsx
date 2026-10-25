@@ -278,17 +278,24 @@ const editModeNodeHeight = 160; // Larger spacing for edit/requirements mode
  * @param groupedSkills The skills of each group, sorted by column.
  * @returns The x of each column, by row and then column.
  */
-const getChainColumnXs = (skills: Skill[], groupedSkills: Record<string, Skill[]>) => {
+export const getChainColumnXs = (skills: Skill[], groupedSkills: Record<string, Skill[]>) => {
   const groupsByStart: Record<string, Skill[]> = {};
   for (const members of Object.values(groupedSkills)) groupsByStart[`${members[0].x}|${members[0].y}`] = members;
   const rowsToMaxColumn: Record<number, number> = {};
-  for (const skill of skills) rowsToMaxColumn[skill.x] = Math.max(rowsToMaxColumn[skill.x] ?? 0, skill.y);
+  const skillsByCell: Record<string, Skill[]> = {};
+  for (const skill of skills) {
+    rowsToMaxColumn[skill.x] = Math.max(rowsToMaxColumn[skill.x] ?? 0, skill.y);
+    (skillsByCell[`${skill.x}|${skill.y}`] ??= []).push(skill);
+  }
 
   const columnXs: Record<number, Record<number, number>> = {};
   for (const [row, maxColumn] of Object.entries(rowsToMaxColumn)) {
     const xs: Record<number, number> = {};
+    // Columns whose every skill is a member of a group already placed in this row, which that group draws.
+    const absorbed = new Set<number>();
     let x = 0;
     for (let column = 0; column <= maxColumn; column++) {
+      if (absorbed.has(column)) continue;
       xs[column] = x;
       const group = groupsByStart[`${row}|${column}`];
       if (!group) {
@@ -296,7 +303,12 @@ const getChainColumnXs = (skills: Skill[], groupedSkills: Record<string, Skill[]
         continue;
       }
       x += skillGroupWidth(group.length) + nodeWidth - skillEntry.width;
-      column = group[group.length - 1].y;
+      const members = new Set(group);
+      for (const member of group) {
+        if (member.x !== Number(row) || member.y === column) continue;
+        const cell = skillsByCell[`${row}|${member.y}`] ?? [];
+        if (cell.every((cellSkill) => members.has(cellSkill))) absorbed.add(member.y);
+      }
     }
     columnXs[Number(row)] = xs;
   }
@@ -513,6 +525,7 @@ const SkillsView = memo(
     }, [editGroups]);
 
     const currentRank = useAppSelector((state) => state.app.currentRank);
+    const isShowingSkillsRankPanel = useAppSelector((state) => state.app.isShowingSkillsRankPanel);
     const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
     const moddersPrefix = useAppSelector((state) => state.app.moddersPrefix);
 
@@ -685,7 +698,7 @@ const SkillsView = memo(
           },
           position: {
             y: rowYs[lowest.x] + skillGroup.artY,
-            x: columnXs[lowest.x][lowest.y],
+            x: columnXs[lowest.x]?.[lowest.y] ?? lowest.y * nodeWidth,
           },
           sourcePosition: Position.Right,
           targetPosition: Position.Left,
@@ -791,7 +804,7 @@ const SkillsView = memo(
       } else {
         position = {
           y: rowYs[skill.x] + indexInSameCoords * skillVariantStackY,
-          x: columnXs[skill.x][skill.y],
+          x: columnXs[skill.x]?.[skill.y] ?? skill.y * nodeWidth,
         };
         if (skill.group) {
           const skillsInGroup = groupedSkills[skill.group];
@@ -851,7 +864,7 @@ const SkillsView = memo(
           requiredNumParents: skillsData.nodeRequirements?.[skill.nodeId]?.numMultiple || 0,
           isCheckingSkillRequirements,
           unlockRank: skill.unlockRank + 1,
-          autoUnlockRank: skill.autoUnlockRank != undefined ? skill.autoUnlockRank + 1 : undefined,
+          autoUnlocks: skill.autoUnlocks?.map((unlock) => ({ ...unlock, rank: unlock.rank + 1 })),
           isEditMode,
           editGroupColor: isEditMode ? groupIdToColor[editGroups[skill.nodeId]] : undefined,
           existingSkillKey: skill.id,
@@ -4682,6 +4695,12 @@ const SkillsView = memo(
           }
           multiSelectionKeyCode="Shift"
         >
+          {isShowingSkillsRankPanel && (
+            <Panel position="top-right">
+              <div className="text-slate-200 text-xl opacity-80">{subtype}</div>
+              <div className="text-slate-200 text-xl opacity-80">{`${localized.rank} ${currentRank}`}</div>
+            </Panel>
+          )}
           {notification && (
             <Panel position="bottom-center">
               <div

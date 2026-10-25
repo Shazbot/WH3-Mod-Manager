@@ -1,6 +1,6 @@
 import { AmendedSchemaField } from "../packFileTypes";
 import { SkillsDataCacheCore } from "./cache";
-import { normalizeSkillIconPath, normalizeTaggedImagePath } from "../skills";
+import { addSkillAutoUnlock, normalizeSkillIconPath, normalizeTaggedImagePath } from "../skills";
 
 export type GetTableRowDataFn = (
   packsTableData: PackViewData[],
@@ -168,7 +168,8 @@ export const applyModOverlayToSkillsDataCore = (
     const skill = schemaFieldRow.find((sF) => sF.name == "character_skill")?.resolvedKeyValue;
     const level = schemaFieldRow.find((sF) => sF.name == "character_level")?.resolvedKeyValue;
     if (!skill || level == undefined) return;
-    core.skillsToAutoUnlockRank[skill] = Math.min(core.skillsToAutoUnlockRank[skill] ?? Infinity, Number(level));
+    const upgrade = schemaFieldRow.find((sF) => sF.name == "upgrade_to_skill_level")?.resolvedKeyValue;
+    addSkillAutoUnlock(core.skillsToAutoUnlocks, skill, Number(level), Number(upgrade) || 1, true);
   });
 
   getTableRowDataFn(modPacksTableData, "ui_tagged_images_tables", (schemaFieldRow) => {

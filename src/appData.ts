@@ -23,7 +23,7 @@ interface AppData {
     nodeToSkill: Record<string, NodeSkill>;
     skillsToEffects: Record<string, Effect[]>;
     skills: SkillAndIcons;
-    skillsToAutoUnlockRank: Record<string, number>;
+    skillsToAutoUnlocks: Record<string, SkillAutoUnlock[]>;
     /** Image paths keyed by the tag `[[img:tag]]` draws, from `ui_tagged_images_tables`. */
     uiTaggedImages: Record<string, string>;
     /** The unit attribute keys each effect grants, from `effect_bonus_value_unit_attribute_junctions_tables`. */
@@ -173,6 +173,7 @@ interface AppData {
   /** Compress mod packs in place before updating them on the Steam Workshop. */
   compressModsOnUpload: boolean;
   isShowingSkillNodeSetNames: boolean;
+  isShowingSkillsRankPanel: boolean;
   hideRepeatedKeyPrefixes: boolean;
   isShowingHiddenSkills: boolean;
   isShowingHiddenModifiersInsideSkills: boolean;
@@ -255,6 +256,7 @@ const appData = {
   isRigidModelV2CompressionEnabled: true,
   compressModsOnUpload: true,
   isShowingSkillNodeSetNames: false,
+  isShowingSkillsRankPanel: false,
   hideRepeatedKeyPrefixes: true,
   isShowingHiddenSkills: true,
   isShowingHiddenModifiersInsideSkills: true,

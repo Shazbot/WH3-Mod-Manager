@@ -408,6 +408,7 @@ declare global {
     //skills view
     isLocalizingSubtypes: boolean;
     isShowingSkillNodeSetNames: boolean;
+    isShowingSkillsRankPanel: boolean;
     hideRepeatedKeyPrefixes: boolean;
     isShowingHiddenSkills: boolean;
     isShowingHiddenModifiersInsideSkills: boolean;
@@ -436,6 +437,7 @@ declare global {
   type SkillsViewOptions = Pick<
     AppState,
     | "isShowingSkillNodeSetNames"
+    | "isShowingSkillsRankPanel"
     | "hideRepeatedKeyPrefixes"
     | "isShowingHiddenSkills"
     | "isShowingHiddenModifiersInsideSkills"
@@ -485,6 +487,7 @@ declare global {
     | "userFlowOptions"
     | "nodeEditorFavorites"
     | "isShowingSkillNodeSetNames"
+    | "isShowingSkillsRankPanel"
     | "hideRepeatedKeyPrefixes"
     | "isShowingHiddenSkills"
     | "isShowingHiddenModifiersInsideSkills"
@@ -829,7 +832,14 @@ declare global {
     faction?: string;
     subculture?: string;
     unlockRank: number;
-    autoUnlockRank?: number;
+    autoUnlocks?: SkillAutoUnlock[];
+  }
+  /** A skill level that a character reaching a rank grants automatically. */
+  interface SkillAutoUnlock {
+    /** The character_level (raw DB value) it is granted at. */
+    rank: number;
+    /** The skill level it upgrades the skill to. */
+    skillLevel: number;
   }
 
   interface AbilityEnableMapping {
@@ -1015,6 +1025,8 @@ declare global {
     allSkillIcons: { path: string; name: string }[];
     /** Every skill and effect icon in the game, as asset protocol URLs keyed by pack path. */
     icons: Record<string, string>;
+    /** Image paths keyed by the `[[img:tag]]` tags that effect texts draw inline. */
+    taggedImages: Record<string, string>;
   }
   interface SaveSkillsPackPayload {
     subtype: string;

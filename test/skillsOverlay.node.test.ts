@@ -13,8 +13,10 @@ import type { AmendedSchemaField } from "../src/packFileTypes";
 const row = (values: Record<string, string>): AmendedSchemaField[] =>
   Object.entries(values).map(([name, resolvedKeyValue]) => ({ name, resolvedKeyValue }) as AmendedSchemaField);
 
-const applyRows = (rows: Record<string, AmendedSchemaField[][]>) => {
-  const core = createEmptySkillsDataCore();
+const applyRows = (
+  rows: Record<string, AmendedSchemaField[][]>,
+  core: ReturnType<typeof createEmptySkillsDataCore> = createEmptySkillsDataCore(),
+) => {
   const getTableRowData = (
     _packs: PackViewData[],
     tableName: string,
@@ -166,7 +168,32 @@ describe("skill data mod overlays", () => {
     });
   });
 
-  it("keeps the lowest rank a skill is automatically granted at", () => {
+  it("lets a mod row replace the rank of a vanilla auto-unlock level", () => {
+    const vanilla = createEmptySkillsDataCore();
+    vanilla.skillsToAutoUnlocks = {
+      skill_mount: [
+        { rank: 0, skillLevel: 1 },
+        { rank: 10, skillLevel: 2 },
+      ],
+    };
+    const core = applyRows(
+      {
+        character_skills_to_level_reached_criterias_tables: [
+          row({ character_skill: "skill_mount", character_level: "15", upgrade_to_skill_level: "2" }),
+        ],
+      },
+      vanilla,
+    );
+
+    expect(core.skillsToAutoUnlocks).toEqual({
+      skill_mount: [
+        { rank: 0, skillLevel: 1 },
+        { rank: 15, skillLevel: 2 },
+      ],
+    });
+  });
+
+  it("keeps every level a skill is automatically granted at", () => {
     const core = applyRows({
       character_skills_to_level_reached_criterias_tables: [
         row({ character_skill: "skill_mount", character_level: "7", upgrade_to_skill_level: "2" }),
@@ -174,7 +201,12 @@ describe("skill data mod overlays", () => {
       ],
     });
 
-    expect(core.skillsToAutoUnlockRank).toEqual({ skill_mount: 4 });
+    expect(core.skillsToAutoUnlocks).toEqual({
+      skill_mount: [
+        { rank: 4, skillLevel: 1 },
+        { rank: 7, skillLevel: 2 },
+      ],
+    });
   });
 
   it("keeps ability links that change a spell, not only ones that grant it", () => {

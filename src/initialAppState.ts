@@ -135,6 +135,7 @@ const initialState = {
   currentModToUpload: undefined,
   isLocalizingSubtypes: false,
   isShowingSkillNodeSetNames: false,
+  isShowingSkillsRankPanel: false,
   hideRepeatedKeyPrefixes: true,
   isShowingHiddenSkills: true,
   isShowingHiddenModifiersInsideSkills: true,

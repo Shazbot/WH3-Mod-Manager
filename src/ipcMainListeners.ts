@@ -296,6 +296,7 @@ import {
   initializeAllSchemaForGame,
 } from "./schema";
 import {
+  addSkillAutoUnlock,
   appendLocalizationsToSkills,
   formatEffectLocalization,
   getNodesToParents,
@@ -309,6 +310,7 @@ import {
   normalizeTaggedImagePath,
   pickEffectAttributesForSkills,
   pickTaggedImagesForSkills,
+  pickTaggedImagesForTexts,
   pickTreeNodeData,
   resolveTextReplacements,
   SkillAndIcons,
@@ -456,6 +458,7 @@ import {
 import hash from "object-hash";
 import { Md10K } from "react-icons/md";
 import { join } from "path";
+import { createLatestWinsQueue } from "./utility/latestWinsQueue";
 
 declare const VIEWER_WEBPACK_ENTRY: string;
 declare const VIEWER_PRELOAD_WEBPACK_ENTRY: string;
@@ -1555,6 +1558,14 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     mainWindow?.webContents.send("handleLog", msg);
     console.log(msg);
   };
+  // Hover prefetches build whole trees on the main thread, so only the newest waits behind the one running.
+  const prefetchSkillsQueue = createLatestWinsQueue(
+    async ({ subtype, subtypeIndex }: { subtype: string; subtypeIndex: number }) => {
+      const cachedSkillsData = appData.skillsData;
+      if (!cachedSkillsData) return undefined;
+      return buildSkillsForSubtype(cachedSkillsData, subtype, subtypeIndex);
+    },
+  );
   let vanillaCompressionCsv: string | undefined;
   let vanillaCompressionCsvLoaded = false;
   const getVanillaCompressionCsv = (): string | undefined => {
@@ -2206,12 +2217,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         } else skills.push(newSkill);
       }
     });
-    const skillsToAutoUnlockRank: Record<string, number> = {};
+    const skillsToAutoUnlocks: Record<string, SkillAutoUnlock[]> = {};
     getTableRowData(packsTableData, "character_skills_to_level_reached_criterias_tables", (schemaFieldRow) => {
       const skill = schemaFieldRow.find((sF) => sF.name == "character_skill")?.resolvedKeyValue;
       const level = schemaFieldRow.find((sF) => sF.name == "character_level")?.resolvedKeyValue;
       if (skill != undefined && level != undefined) {
-        skillsToAutoUnlockRank[skill] = Math.min(skillsToAutoUnlockRank[skill] ?? Infinity, Number(level));
+        const upgrade = schemaFieldRow.find((sF) => sF.name == "upgrade_to_skill_level")?.resolvedKeyValue;
+        addSkillAutoUnlock(skillsToAutoUnlocks, skill, Number(level), Number(upgrade) || 1, false);
       }
     });
     const uiTaggedImages: Record<string, string> = {};
@@ -2679,7 +2691,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       skillsToEffects,
       nodeToSkillLocks,
       skills,
-      skillsToAutoUnlockRank,
+      skillsToAutoUnlocks,
       uiTaggedImages,
       effectToUnitAttributes,
       locs,
@@ -2751,7 +2763,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       nodesToParents,
       skillsToEffects,
       skills,
-      skillsToAutoUnlockRank,
+      skillsToAutoUnlocks,
     );
     // const nodeToSkillsKF = nodesKF.reduce((acc, current) => {
     //   acc[current] = nodeToSkill[current];
@@ -2891,7 +2903,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       nodeToSkill,
       skillsToEffects,
       skills,
-      skillsToAutoUnlockRank,
+      skillsToAutoUnlocks,
       locs,
       icons,
       subtypesToSet,
@@ -2905,7 +2917,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       nodesToParents,
       skillsToEffects,
       skills,
-      skillsToAutoUnlockRank,
+      skillsToAutoUnlocks,
     );
     const getLoc = (locId: string) => {
       for (const locsInPack of Object.values(locs)) {
@@ -3021,10 +3033,29 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       .filter((ed) => characterEffectKeys.has(ed.key))
       .map((ed) => ({
         effectKey: ed.key,
-        localizedKey: getRawEffectLocalization(ed.key, getLoc),
+        localizedKey: getRawEffectLocalization(ed.key, getLoc, true),
         icon: ed.icon,
         priority: ed.priority,
       }));
+    const taggedImages = pickTaggedImagesForTexts(
+      allEffects.map((e) => e.localizedKey),
+      cachedSkillsData.uiTaggedImages,
+    );
+    // Effect texts can draw inline icons that the tree data never loaded, so look up the missing ones.
+    const taggedIconPaths = Object.values(taggedImages);
+    const missingTaggedIconPaths = taggedIconPaths.filter((iconPath) => !cachedSkillsData.icons[iconPath]);
+    if (missingTaggedIconPaths.length > 0) {
+      const taggedIconPackPaths = (await findVanillaPacksHoldingIcons(missingTaggedIconPaths)) ?? [];
+      const addedIconGeneration = await loadMissingIconsInto(
+        cachedSkillsData.icons,
+        await getIconPacks([
+          ...cachedSkillsData.skillsDataPackPaths,
+          ...taggedIconPackPaths.filter((packPath) => !cachedSkillsData.skillsDataPackPaths.includes(packPath)),
+        ]),
+        taggedIconPaths,
+      );
+      if (addedIconGeneration) cachedSkillsData.iconGeneration = addedIconGeneration;
+    }
     const allSkills = cachedSkillsData.skills.map((skill) => ({
       key: skill.key,
       localizedName: getLoc(`character_skills_localised_name_${skill.key}`) || skill.key,
@@ -3054,7 +3085,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         iconAssetUrl(cachedSkillsData.iconGeneration, iconPath),
       ]),
     );
-    return { allEffects, allSkills, allSkillIcons, icons };
+    return { allEffects, allSkills, allSkillIcons, icons, taggedImages };
   });
   const getTableRowData = (
     packsTableData: PackViewData[],
@@ -6201,6 +6232,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         appState.isRigidModelV2CompressionEnabled ?? appData.isRigidModelV2CompressionEnabled;
       appData.compressModsOnUpload = appState.compressModsOnUpload ?? appData.compressModsOnUpload;
       appData.isShowingSkillNodeSetNames = appState.isShowingSkillNodeSetNames ?? appData.isShowingSkillNodeSetNames;
+      appData.isShowingSkillsRankPanel = appState.isShowingSkillsRankPanel ?? appData.isShowingSkillsRankPanel;
       appData.hideRepeatedKeyPrefixes = appState.hideRepeatedKeyPrefixes ?? appData.hideRepeatedKeyPrefixes;
       appData.isShowingHiddenSkills = appState.isShowingHiddenSkills ?? appData.isShowingHiddenSkills;
       appData.isShowingHiddenModifiersInsideSkills =
@@ -9738,13 +9770,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     writeAppConfig(payload);
   });
   ipcMain.on("getSkillsForSubtype", async (event, subtype: string, subtypeIndex: number, requestId?: string) => {
+    // A click should not wait behind stale hover builds. The renderer asks again for any it dropped.
+    prefetchSkillsQueue.dropQueued();
     getSkillsForSubtype(subtype, subtypeIndex, requestId);
   });
-  ipcMain.handle("prefetchSkillsForSubtype", async (event, subtype: string, subtypeIndex: number) => {
-    const cachedSkillsData = appData.skillsData;
-    if (!cachedSkillsData) return undefined;
-    return buildSkillsForSubtype(cachedSkillsData, subtype, subtypeIndex);
-  });
+  ipcMain.handle("prefetchSkillsForSubtype", (event, subtype: string, subtypeIndex: number) =>
+    prefetchSkillsQueue.request({ subtype, subtypeIndex }),
+  );
   // A tree served from the renderer's prefetch cache still has to be remembered for the next rebuild.
   ipcMain.on("setSkillsSelection", (event, subtype: string, subtypeIndex: number) => {
     appData.lastSkillsSelection = {
@@ -11979,6 +12011,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   });
   ipcMain.on("setSkillsViewOptions", (event, skillsViewOptions: SkillsViewOptions) => {
     appData.isShowingSkillNodeSetNames = skillsViewOptions.isShowingSkillNodeSetNames;
+    appData.isShowingSkillsRankPanel = skillsViewOptions.isShowingSkillsRankPanel;
     appData.hideRepeatedKeyPrefixes = skillsViewOptions.hideRepeatedKeyPrefixes;
     appData.isShowingHiddenSkills = skillsViewOptions.isShowingHiddenSkills;
     appData.isShowingHiddenModifiersInsideSkills = skillsViewOptions.isShowingHiddenModifiersInsideSkills;
@@ -12472,6 +12505,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     windows.skillsWindow?.webContents.send("setModdersPrefix", appData.moddersPrefix);
     windows.skillsWindow?.webContents.send("setSkillsViewOptions", {
       isShowingSkillNodeSetNames: appData.isShowingSkillNodeSetNames,
+      isShowingSkillsRankPanel: appData.isShowingSkillsRankPanel,
       hideRepeatedKeyPrefixes: appData.hideRepeatedKeyPrefixes,
       isShowingHiddenSkills: appData.isShowingHiddenSkills,
       isShowingHiddenModifiersInsideSkills: appData.isShowingHiddenModifiersInsideSkills,

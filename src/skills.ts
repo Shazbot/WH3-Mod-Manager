@@ -184,7 +184,7 @@ export function getSkills(
   nodesToParents: NodesToParents,
   skillsToEffects: SkillsToEffects,
   skillAndIcons: SkillAndIcons,
-  skillsToAutoUnlockRank: Record<string, number>,
+  skillsToAutoUnlocks: Record<string, SkillAutoUnlock[]>,
 ) {
   const skills = nodes.map((node) => {
     const skill = nodeToSkill[node];
@@ -239,7 +239,7 @@ export function getSkills(
       faction: skill.factionKey,
       subculture: skill.subculture,
       unlockRank: skillAndIcon?.unlockRank ?? 0,
-      autoUnlockRank: skillsToAutoUnlockRank[skill.skill],
+      autoUnlocks: skillsToAutoUnlocks[skill.skill],
     } as Skill;
   });
 
@@ -351,6 +351,47 @@ export function stripLocImgTags(localizedText: string | undefined) {
 export const normalizeTaggedImagePath = (imagePath: string) => imagePath.replaceAll("/", "\\").toLowerCase();
 
 /**
+ * Records a rank at which a skill is automatically upgraded, keeping each skill's entries sorted by skill level.
+ * @param skillsToAutoUnlocks The entries of each skill, changed in place.
+ * @param skill The skill key.
+ * @param rank The character_level it is granted at.
+ * @param skillLevel The skill level it upgrades to.
+ * @param replace Whether an entry for the same skill level is overwritten, as a mod does, rather than keeping the lower rank.
+ */
+export function addSkillAutoUnlock(
+  skillsToAutoUnlocks: Record<string, SkillAutoUnlock[]>,
+  skill: string,
+  rank: number,
+  skillLevel: number,
+  replace: boolean,
+) {
+  const unlocks = (skillsToAutoUnlocks[skill] ??= []);
+  const existing = unlocks.find((unlock) => unlock.skillLevel === skillLevel);
+  if (existing) {
+    if (replace || rank < existing.rank) existing.rank = rank;
+  } else {
+    unlocks.push({ rank, skillLevel });
+    unlocks.sort((a, b) => a.skillLevel - b.skillLevel);
+  }
+}
+
+/**
+ * Gets the tagged images that texts draw inline with `[[img:tag]]`.
+ * @param texts The texts to search, which may be missing.
+ * @param uiTaggedImages Image paths keyed by tag.
+ * @returns The image paths of the tags the texts use, keyed by tag. Tags absent from the map are skipped.
+ */
+export function pickTaggedImagesForTexts(texts: (string | undefined)[], uiTaggedImages: Record<string, string>) {
+  const picked: Record<string, string> = {};
+  for (const text of texts) {
+    for (const [, tag] of (text || "").matchAll(/\[\[img:(.*?)\]\]/gi)) {
+      if (uiTaggedImages[tag]) picked[tag] = uiTaggedImages[tag];
+    }
+  }
+  return picked;
+}
+
+/**
  * Gets the tagged images that skill texts draw inline with `[[img:tag]]`.
  * @param skills The skills whose descriptions and effects are searched.
  * @param uiTaggedImages Image paths keyed by tag.
@@ -362,18 +403,12 @@ export function pickTaggedImagesForSkills(
   uiTaggedImages: Record<string, string>,
   effectAttributes: Record<string, UnitAttributeText[]> = {},
 ) {
-  const picked: Record<string, string> = {};
   const texts = skills
     .flatMap((skill) => [skill.localizedDescription, ...skill.effects.map((effect) => effect.localizedKey)])
     .concat(
       Object.values(effectAttributes).flatMap((attributes) => attributes.map((attribute) => attribute.description)),
     );
-  for (const text of texts) {
-    for (const [, tag] of (text || "").matchAll(/\[\[img:(.*?)\]\]/gi)) {
-      if (uiTaggedImages[tag]) picked[tag] = uiTaggedImages[tag];
-    }
-  }
-  return picked;
+  return pickTaggedImagesForTexts(texts, uiTaggedImages);
 }
 
 /**

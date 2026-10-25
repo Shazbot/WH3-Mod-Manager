@@ -654,6 +654,7 @@ exec ${quoteForShell(process.execPath)}
       windows.mainWindow?.webContents.send("setCanCreateSymbolicLinks", appData.canCreateSymbolicLinks);
       windows.mainWindow?.webContents.send("setSkillsViewOptions", {
         isShowingSkillNodeSetNames: appData.isShowingSkillNodeSetNames,
+        isShowingSkillsRankPanel: appData.isShowingSkillsRankPanel,
         hideRepeatedKeyPrefixes: appData.hideRepeatedKeyPrefixes,
         isShowingHiddenSkills: appData.isShowingHiddenSkills,
         isShowingHiddenModifiersInsideSkills: appData.isShowingHiddenModifiersInsideSkills,

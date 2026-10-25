@@ -704,6 +704,7 @@
   "showHiddenSkills": "Show Hidden Skills",
   "showHiddenModifiersInsideSkills": "Show Hidden Modifiers Inside Skills",
   "showSkillNodeSetNames": "Show Skill Node Set Names",
+  "showSkillsRankPanel": "Show rank",
   "hideRepeatedKeyPrefixes": "Hide Repeated Key Prefixes",
   "options": "Options",
   "relaunchingGame": "Auto-relaunching game (click to cancel)...",

@@ -4,8 +4,9 @@ import { useLocalizations } from "@/src/localizationContext";
 import Select, { createFilter } from "react-select";
 import WindowedSelect from "react-windowed-select";
 import selectStyle from "@/src/styles/selectStyle";
-import { normalizeSkillIconPath, skillIconAssetPath } from "@/src/skills";
+import { normalizeSkillIconPath, skillIconAssetPath, stripLocImgTags } from "@/src/skills";
 import { SkillsDataContext } from "./skillsDataContext";
+import GameText from "./GameText";
 
 /**
  * The modal body scrolls, so a menu opened low in the panel is clipped by it. Portalling to the body
@@ -85,6 +86,10 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
   // The tree is sent with only the icons it draws, so anything the pickers offer is resolved against
   // the editor's full record first.
   const icons = editorData?.icons ?? skillsData?.icons ?? noIcons;
+  const taggedImages = useMemo(
+    () => ({ ...skillsData?.taggedImages, ...editorData?.taggedImages }),
+    [skillsData?.taggedImages, editorData?.taggedImages],
+  );
 
   const [mode, setMode] = useState<"custom" | "existing">(editingData?.existingSkillKey ? "existing" : "custom");
   const [name, setName] = useState(editingData?.name ?? "");
@@ -104,7 +109,7 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
       if (!byLevel[lvl]) byLevel[lvl] = [];
       byLevel[lvl].push({
         value: e.effectKey,
-        label: e.localizedKey || e.effectKey,
+        label: stripLocImgTags(e.localizedKey) || e.effectKey,
         effect: e,
       });
     }
@@ -149,7 +154,7 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
     return editorData.allEffects
       .map((e) => ({
         value: e.effectKey,
-        label: e.localizedKey || e.effectKey,
+        label: stripLocImgTags(e.localizedKey) || e.effectKey,
         effect: {
           key: "",
           effectKey: e.effectKey,
@@ -577,7 +582,13 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-2">
                         {option.effect.iconData && <img className="h-5 w-5" src={option.effect.iconData} alt="" />}
-                        <span>{option.label}</span>
+                        <span>
+                          <GameText
+                            text={option.effect.localizedKey || option.label}
+                            taggedImages={taggedImages}
+                            icons={icons}
+                          />
+                        </span>
                       </div>
                       <span>{option.value}</span>
                     </div>
@@ -588,7 +599,13 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
                     {(levelEffects[activeLevel] || []).map((opt) => (
                       <div key={opt.value} className="flex items-center gap-2">
                         {opt.effect.iconData && <img className="h-5 w-5" src={opt.effect.iconData} alt="" />}
-                        <span className="text-sm text-gray-300 flex-1 truncate">{opt.label}</span>
+                        <span className="text-sm text-gray-300 flex-1 truncate">
+                          <GameText
+                            text={opt.effect.localizedKey || opt.label}
+                            taggedImages={taggedImages}
+                            icons={icons}
+                          />
+                        </span>
                         <input
                           type="number"
                           value={effectValues[`${activeLevel}_${opt.value}`] ?? "0"}

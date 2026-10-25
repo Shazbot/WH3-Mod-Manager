@@ -1270,6 +1270,7 @@ const appSlice = createSlice({
       state.userFlowOptions = fromConfigAppState.userFlowOptions || {};
       state.isShowingSkillNodeSetNames =
         fromConfigAppState.isShowingSkillNodeSetNames ?? state.isShowingSkillNodeSetNames;
+      state.isShowingSkillsRankPanel = fromConfigAppState.isShowingSkillsRankPanel ?? state.isShowingSkillsRankPanel;
       state.hideRepeatedKeyPrefixes = fromConfigAppState.hideRepeatedKeyPrefixes ?? state.hideRepeatedKeyPrefixes;
       state.isShowingHiddenSkills = fromConfigAppState.isShowingHiddenSkills ?? state.isShowingHiddenSkills;
       state.isShowingHiddenModifiersInsideSkills =
@@ -2017,6 +2018,9 @@ const appSlice = createSlice({
     setIsShowingSkillNodeSetNames: (state: AppState, action: PayloadAction<boolean>) => {
       state.isShowingSkillNodeSetNames = action.payload;
     },
+    setIsShowingSkillsRankPanel: (state: AppState, action: PayloadAction<boolean>) => {
+      state.isShowingSkillsRankPanel = action.payload;
+    },
     setHideRepeatedKeyPrefixes: (state: AppState, action: PayloadAction<boolean>) => {
       state.hideRepeatedKeyPrefixes = action.payload;
     },
@@ -2031,6 +2035,7 @@ const appSlice = createSlice({
     },
     setSkillsViewOptions: (state: AppState, action: PayloadAction<SkillsViewOptions>) => {
       state.isShowingSkillNodeSetNames = action.payload.isShowingSkillNodeSetNames;
+      state.isShowingSkillsRankPanel = action.payload.isShowingSkillsRankPanel;
       state.hideRepeatedKeyPrefixes = action.payload.hideRepeatedKeyPrefixes;
       state.isShowingHiddenSkills = action.payload.isShowingHiddenSkills;
       state.isShowingHiddenModifiersInsideSkills = action.payload.isShowingHiddenModifiersInsideSkills;
@@ -2237,6 +2242,7 @@ export const {
   setPackSearchResults,
   setIsLocalizingSubtypes,
   setIsShowingSkillNodeSetNames,
+  setIsShowingSkillsRankPanel,
   setHideRepeatedKeyPrefixes,
   setIsShowingHiddenSkills,
   setIsShowingHiddenModifiersInsideSkills,

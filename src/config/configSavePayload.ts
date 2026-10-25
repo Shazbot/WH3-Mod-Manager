@@ -129,6 +129,7 @@ export function selectConfigSavePayload(appState: AppState): ConfigSavePayload {
       userFlowOptions: appState.userFlowOptions,
       nodeEditorFavorites: appState.nodeEditorFavorites,
       isShowingSkillNodeSetNames: appState.isShowingSkillNodeSetNames,
+      isShowingSkillsRankPanel: appState.isShowingSkillsRankPanel,
       hideRepeatedKeyPrefixes: appState.hideRepeatedKeyPrefixes,
       isShowingHiddenSkills: appState.isShowingHiddenSkills,
       isShowingHiddenModifiersInsideSkills: appState.isShowingHiddenModifiersInsideSkills,

@@ -470,9 +470,26 @@ describe("Skill", () => {
   });
 
   it("draws the auto-grant badge until the rank that grants the skill", () => {
-    const autoSkill = { ...skillData, autoUnlockRank: 4 };
+    const autoSkill = { ...skillData, autoUnlocks: [{ rank: 4, skillLevel: 1 }] };
 
     expect(renderSkill(autoSkill).container.querySelector('img[alt="autoUnlockRank"]')).not.toBeNull();
     expect(renderSkill(autoSkill, { currentRank: 4 }).container.querySelector('img[alt="autoUnlockRank"]')).toBeNull();
+  });
+
+  it("keeps the badge for a later upgrade once an earlier level is held", () => {
+    const autoSkill = {
+      ...skillData,
+      numLevels: 3,
+      autoUnlocks: [
+        { rank: 1, skillLevel: 1 },
+        { rank: 11, skillLevel: 2 },
+      ],
+    };
+    const app = { currentRank: 5, skillNodesToLevel: { node_parent: 1, node_child: 1 } };
+
+    expect(renderSkill(autoSkill, app).container.querySelector('img[alt="autoUnlockRank"]')).not.toBeNull();
+    expect(
+      renderSkill(autoSkill, { ...app, currentRank: 11 }).container.querySelector('img[alt="autoUnlockRank"]'),
+    ).toBeNull();
   });
 });

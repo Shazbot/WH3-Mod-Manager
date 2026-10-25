@@ -275,6 +275,8 @@ const resolveEnabledIfText = (
   return localizedFlags.join(", ");
 };
 
+const upgradeToBaseAbilityKeyCache = new WeakMap<object, Record<string, string>>();
+
 export const buildAbilityTooltipDataForEffects = (params: AbilityTooltipBuildParams) => {
   const reducedEffectMappings: Record<string, AbilityEnableMapping[]> = {};
   const relevantAbilityKeys = new Set<string>();
@@ -355,9 +357,13 @@ export const buildAbilityTooltipDataForEffects = (params: AbilityTooltipBuildPar
   };
 
   // An upgraded spell sits only in composite groups, so it also looks at the groups of the spell it upgrades.
-  const upgradeToBaseAbilityKey: Record<string, string> = {};
-  for (const ability of Object.values(params.unitAbilitiesByKey)) {
-    if (ability.overpowerOption) upgradeToBaseAbilityKey[ability.overpowerOption] ??= ability.key;
+  let upgradeToBaseAbilityKey = upgradeToBaseAbilityKeyCache.get(params.unitAbilitiesByKey);
+  if (!upgradeToBaseAbilityKey) {
+    upgradeToBaseAbilityKey = {};
+    for (const ability of Object.values(params.unitAbilitiesByKey)) {
+      if (ability.overpowerOption) upgradeToBaseAbilityKey[ability.overpowerOption] ??= ability.key;
+    }
+    upgradeToBaseAbilityKeyCache.set(params.unitAbilitiesByKey, upgradeToBaseAbilityKey);
   }
 
   for (const abilityKey of relevantAbilityKeys) {

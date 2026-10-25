@@ -14,6 +14,7 @@ import { setSkillNodeLevel } from "@/src/appSlice";
 import { useLocalizations } from "@/src/localizationContext";
 import GameText, { textTagColours } from "./GameText";
 import SkillSpellTooltip from "./SkillSpellTooltip";
+import { pickRowAbility } from "./pickRowAbility";
 import { SkillsDataContext } from "./skillsDataContext";
 import {
   skillAbilityIconBox,
@@ -238,7 +239,7 @@ export type SkillData = {
   subculture?: string;
   isCheckingSkillRequirements: boolean;
   unlockRank: number;
-  autoUnlockRank?: number;
+  autoUnlocks?: SkillAutoUnlock[];
   isEditMode?: boolean;
   editGroupColor?: string;
   existingSkillKey?: string;
@@ -455,16 +456,16 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
   }
   const isRankLocked = isCheckingSkillRequirements && data.unlockRank > currentRank;
   const isLocked = !areRequirementsValid || isRankLocked;
-  const isAutoUnlockPending =
-    data.autoUnlockRank != undefined && data.autoUnlockRank > currentRank && currentLevel == 0;
+  const nextAutoUnlock = data.autoUnlocks?.find((unlock) => unlock.skillLevel > currentLevel);
+  const isAutoUnlockPending = !!nextAutoUnlock && nextAutoUnlock.rank > currentRank;
   // The game adds why a skill is locked to its description, in red after a blank line.
   let lockText = "";
   if (isAutoUnlockPending) {
     lockText = getLockText(
       skillsData.skillLockTexts.autoUnlock,
       "%d",
-      data.autoUnlockRank!,
-      localized.skillAutoUnlockRank?.replace("UNLOCK_RANK", data.autoUnlockRank!.toString()),
+      nextAutoUnlock.rank,
+      localized.skillAutoUnlockRank?.replace("UNLOCK_RANK", nextAutoUnlock.rank.toString()),
     );
   } else if (data.unlockRank > 0 && data.unlockRank > currentRank) {
     lockText = getLockText(
@@ -487,14 +488,9 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
   const hiddenEffectAbilities = effectsAtShownLevel
     .filter((effect) => effect.priority == "0")
     .flatMap(getEffectAbilities);
-  // An effect row links to the spell its text names, the longest name winning so an upgraded spell beats its base.
-  const getRowAbility = (effect: Effect) => {
-    const abilities = getEffectAbilities(effect);
-    const named = (abilities.length > 0 ? abilities : hiddenEffectAbilities)
-      .filter((ability) => effect.localizedKey?.includes(ability.name))
-      .sort((first, second) => second.name.length - first.name.length);
-    return named[0] || abilities[0];
-  };
+  // An effect row links to the spell its text names, see pickRowAbility.
+  const getRowAbility = (effect: Effect) =>
+    pickRowAbility(effect.localizedKey, getEffectAbilities(effect), hiddenEffectAbilities);
   // The game hides effects with priority 0 and lists the rest by priority, keeping the table's order on ties. A closed
   // tooltip lists nothing, so the many closed cards skip the per-row work.
   const shownEffects = !isTooltipOpen
