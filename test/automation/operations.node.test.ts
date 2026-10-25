@@ -1,9 +1,22 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  mkdirSync,
+  writeFileSync,
+} from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createAutomationCacheService, createAutomationContext, executeAutomationRequest } from "../../src/automation/registry";
+import {
+  createAutomationCacheService,
+  createAutomationContext,
+  executeAutomationRequest,
+} from "../../src/automation/registry";
 import { AutomationError } from "../../src/automation/errors";
 import { FilesystemPolicy } from "../../src/automation/filesystem";
 import { parseDbTable, readPackIndex, readRawPayload, serializeDbTable, writeRawPack } from "../../src/packCore";
@@ -16,10 +29,54 @@ const tablePath = "DB\\SAMPLE_TABLES\\DATA";
 const schema: DBVersion = {
   version: 3,
   fields: [
-    { name: "key", field_type: "StringU8", is_key: true, default_value: "", is_filename: false, is_reference: [], description: "", ca_order: 0, is_bitwise: 0, enum_values: {} },
-    { name: "enabled", field_type: "Boolean", is_key: false, default_value: "false", is_filename: false, is_reference: [], description: "", ca_order: 1, is_bitwise: 0, enum_values: {} },
-    { name: "balance", field_type: "I64", is_key: false, default_value: "0", is_filename: false, is_reference: [], description: "", ca_order: 2, is_bitwise: 0, enum_values: {} },
-    { name: "label", field_type: "StringU8", is_key: false, default_value: "", is_filename: false, is_reference: [], description: "", ca_order: 3, is_bitwise: 0, enum_values: {} },
+    {
+      name: "key",
+      field_type: "StringU8",
+      is_key: true,
+      default_value: "",
+      is_filename: false,
+      is_reference: [],
+      description: "",
+      ca_order: 0,
+      is_bitwise: 0,
+      enum_values: {},
+    },
+    {
+      name: "enabled",
+      field_type: "Boolean",
+      is_key: false,
+      default_value: "false",
+      is_filename: false,
+      is_reference: [],
+      description: "",
+      ca_order: 1,
+      is_bitwise: 0,
+      enum_values: {},
+    },
+    {
+      name: "balance",
+      field_type: "I64",
+      is_key: false,
+      default_value: "0",
+      is_filename: false,
+      is_reference: [],
+      description: "",
+      ca_order: 2,
+      is_bitwise: 0,
+      enum_values: {},
+    },
+    {
+      name: "label",
+      field_type: "StringU8",
+      is_key: false,
+      default_value: "",
+      is_filename: false,
+      is_reference: [],
+      description: "",
+      ca_order: 3,
+      is_bitwise: 0,
+      enum_values: {},
+    },
   ],
 };
 const schemaProvider = async (): Promise<Record<string, DBVersion[]>> => ({ [tableName]: [schema] });
@@ -52,7 +109,12 @@ const tablePayload = (): Buffer => {
     Buffer.from([1]),
   ]);
   const rows = [
-    [stringFields("alpha"), [{ type: "UInt8", val: 1 }], [{ type: "I64", val: "9223372036854775807" }], stringFields("café 🐈")],
+    [
+      stringFields("alpha"),
+      [{ type: "UInt8", val: 1 }],
+      [{ type: "I64", val: "9223372036854775807" }],
+      stringFields("café 🐈"),
+    ],
     [stringFields("beta"), [{ type: "UInt8", val: 0 }], [{ type: "I64", val: "9" }], stringFields("second")],
   ];
   return Buffer.concat([serializeDbTable(schema, rows, { preamble }), Buffer.from([0xde, 0xad])]);
@@ -69,22 +131,32 @@ describe("headless pack automation", () => {
   const storedCompressedPayload = Buffer.from([0xfa, 0xce, 0xb0, 0x0c, 0x01]);
 
   beforeAll(async () => {
-    await writeRawPack(sourcePack, [
-      { name: tablePath, buffer: tablePayload() },
-      { name: "asset\\opaque.bin", buffer: storedCompressedPayload, is_compressed: true },
-    ], defaultMetadata);
+    await writeRawPack(
+      sourcePack,
+      [
+        { name: tablePath, buffer: tablePayload() },
+        { name: "asset\\opaque.bin", buffer: storedCompressedPayload, is_compressed: true },
+      ],
+      defaultMetadata,
+    );
   });
 
   it("queries typed values with exact I64, Boolean, Unicode, and schema column metadata", async () => {
-    const data = expectSuccess<{ rows: Record<string, unknown>[]; columns: { name: string; type: string; isKey: boolean }[] }>(
-      await executeAutomationRequest({
-        operation: "pack_query_table",
-        packPath: sourcePack,
-        tablePath,
-        filters: [{ field: "balance", op: "gt", value: "9007199254740992" }],
-        sort: [{ field: "balance", direction: "desc" }],
-        columns: ["key", "enabled", "balance", "label"],
-      }, context),
+    const data = expectSuccess<{
+      rows: Record<string, unknown>[];
+      columns: { name: string; type: string; isKey: boolean }[];
+    }>(
+      await executeAutomationRequest(
+        {
+          operation: "pack_query_table",
+          packPath: sourcePack,
+          tablePath,
+          filters: [{ field: "balance", op: "gt", value: "9007199254740992" }],
+          sort: [{ field: "balance", direction: "desc" }],
+          columns: ["key", "enabled", "balance", "label"],
+        },
+        context,
+      ),
     );
     expect(data.rows).toEqual([{ key: "alpha", enabled: true, balance: "9223372036854775807", label: "café 🐈" }]);
     expect(data.columns).toEqual([
@@ -124,26 +196,48 @@ describe("headless pack automation", () => {
     const originalTableEntry = original.entries.find((entry) => entry.name.toLowerCase() === tablePath.toLowerCase())!;
     const originalTable = parseDbTable(readRawPayload(original, originalTableEntry), schema);
 
-    expectSuccess(await executeAutomationRequest({
-      operation: "pack_patch_table",
-      packPath: sourcePack,
-      outputPath: patchedPack,
-      tablePath,
-      patches: [{ op: "update", where: [{ field: "key", op: "eq", value: "alpha" }], set: { label: "更新済み 🐈" } }],
-    }, context));
+    expectSuccess(
+      await executeAutomationRequest(
+        {
+          operation: "pack_patch_table",
+          packPath: sourcePack,
+          outputPath: patchedPack,
+          tablePath,
+          patches: [
+            { op: "update", where: [{ field: "key", op: "eq", value: "alpha" }], set: { label: "更新済み 🐈" } },
+          ],
+        },
+        context,
+      ),
+    );
 
-    const readback = expectSuccess<{ rows: Record<string, unknown>[] }>(await executeAutomationRequest({
-      operation: "pack_read_table", packPath: patchedPack, tablePath,
-    }, context));
-    expect(readback.rows[0]).toEqual({ key: "alpha", enabled: true, balance: "9223372036854775807", label: "更新済み 🐈" });
+    const readback = expectSuccess<{ rows: Record<string, unknown>[] }>(
+      await executeAutomationRequest(
+        {
+          operation: "pack_read_table",
+          packPath: patchedPack,
+          tablePath,
+        },
+        context,
+      ),
+    );
+    expect(readback.rows[0]).toEqual({
+      key: "alpha",
+      enabled: true,
+      balance: "9223372036854775807",
+      label: "更新済み 🐈",
+    });
 
     const updated = readPackIndex(patchedPack, { game: "wh3" });
     const updatedTableEntry = updated.entries.find((entry) => entry.name.toLowerCase() === tablePath.toLowerCase())!;
     const updatedTable = parseDbTable(readRawPayload(updated, updatedTableEntry), schema);
     expect(updatedTable.preamble.bytes).toEqual(originalTable.preamble.bytes);
     expect(updatedTable.trailingBytes).toEqual(originalTable.trailingBytes);
-    for (const fieldIndex of [0, 1, 2]) expect(updatedTable.rows[0].cells[fieldIndex].bytes).toEqual(originalTable.rows[0].cells[fieldIndex].bytes);
-    expect(updatedTable.rows[1].cells.map((cell) => cell.bytes)).toEqual(originalTable.rows[1].cells.map((cell) => cell.bytes));
+    for (const fieldIndex of [0, 1, 2])
+      expect(updatedTable.rows[0].cells[fieldIndex].bytes).toEqual(originalTable.rows[0].cells[fieldIndex].bytes);
+    expect(updatedTable.rows[1].cells.map((cell) => cell.bytes)).toEqual(
+      originalTable.rows[1].cells.map((cell) => cell.bytes),
+    );
     const originalOpaque = original.entries.find((entry) => entry.name === "asset\\opaque.bin")!;
     const updatedOpaque = updated.entries.find((entry) => entry.name === "asset\\opaque.bin")!;
     expect(updatedOpaque.is_compressed).toBe(true);
@@ -153,37 +247,51 @@ describe("headless pack automation", () => {
 
   it("rejects ambiguous selectors and duplicate resulting keys without publishing output", async () => {
     const ambiguousPath = path.join(tempRoot, "ambiguous.pack");
-    const ambiguous = await executeAutomationRequest({
-      operation: "pack_patch_table",
-      packPath: sourcePack,
-      outputPath: ambiguousPath,
-      tablePath,
-      patches: [{ op: "delete", where: [] }],
-    }, context);
+    const ambiguous = await executeAutomationRequest(
+      {
+        operation: "pack_patch_table",
+        packPath: sourcePack,
+        outputPath: ambiguousPath,
+        tablePath,
+        patches: [{ op: "delete", where: [] }],
+      },
+      context,
+    );
     expect(ambiguous).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
     expect(existsSync(ambiguousPath)).toBe(false);
 
     const duplicatePath = path.join(tempRoot, "duplicate-key.pack");
-    const duplicate = await executeAutomationRequest({
-      operation: "pack_patch_table",
-      packPath: sourcePack,
-      outputPath: duplicatePath,
-      tablePath,
-      patches: [{ op: "update", where: [{ field: "key", op: "eq", value: "alpha" }], set: { key: "beta" } }],
-    }, context);
+    const duplicate = await executeAutomationRequest(
+      {
+        operation: "pack_patch_table",
+        packPath: sourcePack,
+        outputPath: duplicatePath,
+        tablePath,
+        patches: [{ op: "update", where: [{ field: "key", op: "eq", value: "alpha" }], set: { key: "beta" } }],
+      },
+      context,
+    );
     expect(duplicate).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
     expect(existsSync(duplicatePath)).toBe(false);
   });
 
   it("creates an empty mod pack and rejects source/output aliases", async () => {
     const emptyPath = path.join(tempRoot, "empty.pack");
-    expectSuccess(await executeAutomationRequest({ operation: "pack_create", outputPath: emptyPath, files: [] }, context));
+    expectSuccess(
+      await executeAutomationRequest({ operation: "pack_create", outputPath: emptyPath, files: [] }, context),
+    );
     expect(readPackIndex(emptyPath, { game: "wh3" }).entries).toEqual([]);
 
     const sourceBefore = readFileSync(sourcePack);
-    const alias = await executeAutomationRequest({
-      operation: "pack_clone", packPath: sourcePack, outputPath: sourcePack, overwrite: true,
-    }, context);
+    const alias = await executeAutomationRequest(
+      {
+        operation: "pack_clone",
+        packPath: sourcePack,
+        outputPath: sourcePack,
+        overwrite: true,
+      },
+      context,
+    );
     expect(alias).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
     expect(readFileSync(sourcePack)).toEqual(sourceBefore);
   });
@@ -191,12 +299,16 @@ describe("headless pack automation", () => {
   it("keeps existing output on validation failure and blocks symlink escapes from scoped roots", async () => {
     const output = path.join(tempRoot, "existing.bin");
     writeFileSync(output, "old");
-    await expect(context.policy.withAtomicOutput({
-      outputPath: output,
-      overwrite: true,
-      produce: async (temporaryPath) => writeFileSync(temporaryPath, "new"),
-      validate: async () => { throw new AutomationError("VALIDATION", "reject output"); },
-    })).rejects.toMatchObject({ code: "VALIDATION" });
+    await expect(
+      context.policy.withAtomicOutput({
+        outputPath: output,
+        overwrite: true,
+        produce: async (temporaryPath) => writeFileSync(temporaryPath, "new"),
+        validate: async () => {
+          throw new AutomationError("VALIDATION", "reject output");
+        },
+      }),
+    ).rejects.toMatchObject({ code: "VALIDATION" });
     expect(readFileSync(output, "utf8")).toBe("old");
     expect(readdirSync(tempRoot).some((name) => name.endsWith(".tmp"))).toBe(false);
 
@@ -208,8 +320,12 @@ describe("headless pack automation", () => {
       writeFileSync(path.join(outside, "secret.txt"), "secret");
       symlinkSync(outside, path.join(allowed, "linked"), "dir");
       const scoped = new FilesystemPolicy({ readRoots: [allowed], writeRoots: [allowed] });
-      await expect(scoped.assertReadPath(path.join(allowed, "linked", "secret.txt"))).rejects.toMatchObject({ code: "IO_ACCESS" });
-      await expect(scoped.assertWritePath(path.join(allowed, "linked", "new.txt"))).rejects.toMatchObject({ code: "IO_ACCESS" });
+      await expect(scoped.assertReadPath(path.join(allowed, "linked", "secret.txt"))).rejects.toMatchObject({
+        code: "IO_ACCESS",
+      });
+      await expect(scoped.assertWritePath(path.join(allowed, "linked", "new.txt"))).rejects.toMatchObject({
+        code: "IO_ACCESS",
+      });
     }
   });
 });
@@ -224,10 +340,17 @@ describe("built CLI smoke test", () => {
     expect(help.stdout).toContain("rigid patch <packPath> <filePath>");
     expect(help.stdout).toContain("pack validate <packPath> [--full-payloads] [--input <jsonFile>]");
 
-    const probe = spawnSync(process.execPath, ["-e", `require(${JSON.stringify(cliPath)}); if (Object.keys(require.cache).some((p) => /[\\\\/]electron([\\\\/]|$)/i.test(p))) process.exit(7);`], {
-      cwd: projectRoot,
-      encoding: "utf8",
-    });
+    const probe = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        `require(${JSON.stringify(cliPath)}); if (Object.keys(require.cache).some((p) => /[\\\\/]electron([\\\\/]|$)/i.test(p))) process.exit(7);`,
+      ],
+      {
+        cwd: projectRoot,
+        encoding: "utf8",
+      },
+    );
     expect(probe.status, probe.stderr).toBe(0);
   });
 });

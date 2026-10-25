@@ -92,23 +92,28 @@ describe("vanilla db cache reader", () => {
     const schema: DBVersion = { version: 1, fields: [field("value", "I32")] };
     const forwardPath = "db/sample_tables/data__";
     const normalizedVariant = "DB\\SAMPLE_TABLES\\DATA__";
-    const { reader } = openBuilt(
-      [packedFile(forwardPath, [cell("I32", [{ type: "I32", val: 42 }])])],
-      () => schema,
-    );
+    const { reader } = openBuilt([packedFile(forwardPath, [cell("I32", [{ type: "I32", val: 42 }])])], () => schema);
     expect(reader.getTypedTableRows(normalizedVariant)).toEqual([{ value: 42 }]);
     expect(reader.getTableMeta(normalizedVariant)?.packedFilePath).toBe(forwardPath);
 
     const row: Field[][][] = [[[{ type: "I32", val: 1 }]]];
-    expect(() => buildVanillaDbCacheFromTables([
-      { packedFilePath: "db\\same_tables\\data__", schema, rows: row },
-      { packedFilePath: "DB/same_tables/data__", schema, rows: row },
-    ], identity)).toThrow(/Duplicate normalized DB table path/);
+    expect(() =>
+      buildVanillaDbCacheFromTables(
+        [
+          { packedFilePath: "db\\same_tables\\data__", schema, rows: row },
+          { packedFilePath: "DB/same_tables/data__", schema, rows: row },
+        ],
+        identity,
+      ),
+    ).toThrow(/Duplicate normalized DB table path/);
 
-    const bytes = buildVanillaDbCacheFromTables([
-      { packedFilePath: "db\\same_tables\\data__", schema, rows: row },
-      { packedFilePath: "db\\other_tables\\data__", schema, rows: row },
-    ], identity).bytes;
+    const bytes = buildVanillaDbCacheFromTables(
+      [
+        { packedFilePath: "db\\same_tables\\data__", schema, rows: row },
+        { packedFilePath: "db\\other_tables\\data__", schema, rows: row },
+      ],
+      identity,
+    ).bytes;
     const header = decodeVanillaDbCacheHeader(bytes)!;
     const metaStart = VANILLA_DB_CACHE_HEADER_BYTES;
     const payloadStart = metaStart + header.metaJsonLength;
@@ -185,10 +190,7 @@ describe("vanilla db cache reader", () => {
     const reader = openVanillaDbCache(createMemorySource(bytes), exactIdentity)!;
     if (!reader) throw new Error("expected the exact cache to open");
 
-    expect(reader.getColumnI64Strings(tablePath, "big")).toEqual([
-      "-9223372036854775808",
-      "9223372036854775807",
-    ]);
+    expect(reader.getColumnI64Strings(tablePath, "big")).toEqual(["-9223372036854775808", "9223372036854775807"]);
     expect(reader.meta).toMatchObject({
       dbPackMtimeNs: "456000000000",
       dbPackCtimeNs: "123000000000",
@@ -209,7 +211,9 @@ describe("vanilla db cache reader", () => {
 
   it("rejects unsafe legacy Number inputs for an I64 column", () => {
     const schema: DBVersion = { version: 1, fields: [field("big", "I64")] };
-    const packed = packedFile("db\\unsafe_tables\\data__", [cell("I64", [{ type: "I64", val: Number.MAX_SAFE_INTEGER + 1 }])]);
+    const packed = packedFile("db\\unsafe_tables\\data__", [
+      cell("I64", [{ type: "I64", val: Number.MAX_SAFE_INTEGER + 1 }]),
+    ]);
 
     expect(() => buildVanillaDbCache([packed], () => schema, identity)).toThrow(/safe integer/);
   });
@@ -229,7 +233,10 @@ describe("vanilla db cache reader", () => {
 
     const schema: DBVersion = { version: 1, fields: [field("value", "I32")] };
     const tablePath = "db\\row_count_drift_tables\\data__";
-    const packed = packedFile(tablePath, [cell("I32", [{ type: "I32", val: 1 }]), cell("I32", [{ type: "I32", val: 2 }])]);
+    const packed = packedFile(tablePath, [
+      cell("I32", [{ type: "I32", val: 1 }]),
+      cell("I32", [{ type: "I32", val: 2 }]),
+    ]);
     const bytes = buildVanillaDbCache([packed], () => schema, identity).bytes;
     const header = decodeVanillaDbCacheHeader(bytes)!;
     const metaBlockStart = VANILLA_DB_CACHE_HEADER_BYTES;

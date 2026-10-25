@@ -21,7 +21,11 @@ export type VanillaLocCacheEntry = readonly [key: string, value: string, sourceL
 export const buildVanillaLocCacheBytes = (entriesInPackOrder: Iterable<VanillaLocCacheEntry>) => {
   const byKey = new Map<string, { value: string; sourceLabel?: string; rowIndex?: number }>();
   for (const [key, value, sourceLabel, rowIndex] of entriesInPackOrder) {
-    if (!isWellFormedUtf16(key) || !isWellFormedUtf16(value) || (sourceLabel !== undefined && !isWellFormedUtf16(sourceLabel))) {
+    if (
+      !isWellFormedUtf16(key) ||
+      !isWellFormedUtf16(value) ||
+      (sourceLabel !== undefined && !isWellFormedUtf16(sourceLabel))
+    ) {
       throw new TypeError("Vanilla loc cache strings must contain well-formed UTF-16");
     }
     if (key !== "") byKey.set(key, { value, sourceLabel, rowIndex });

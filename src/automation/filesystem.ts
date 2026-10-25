@@ -38,7 +38,9 @@ const realpathWithExistingParent = async (requestedPath: string): Promise<string
 const ensureWithinRoots = (candidate: string, roots: readonly string[] | undefined, description: string): void => {
   if (!roots) return;
   if (!roots.some((root) => containsPath(root, candidate))) {
-    throw new AutomationError("IO_ACCESS", `${description} is outside the allowed filesystem roots`, { path: candidate });
+    throw new AutomationError("IO_ACCESS", `${description} is outside the allowed filesystem roots`, {
+      path: candidate,
+    });
   }
 };
 
@@ -156,16 +158,27 @@ export class FilesystemPolicy {
       const firstPath = canonicalPaths[firstIndex];
       for (let secondIndex = firstIndex + 1; secondIndex < canonicalPaths.length; secondIndex += 1) {
         const secondPath = canonicalPaths[secondIndex];
-        const samePath = process.platform === "win32" ? firstPath.toLowerCase() === secondPath.toLowerCase() : firstPath === secondPath;
+        const samePath =
+          process.platform === "win32"
+            ? firstPath.toLowerCase() === secondPath.toLowerCase()
+            : firstPath === secondPath;
         if (samePath) {
-          throw new AutomationError("CONFLICT", "Output paths must be distinct", { paths: [outputPaths[firstIndex], outputPaths[secondIndex]] });
+          throw new AutomationError("CONFLICT", "Output paths must be distinct", {
+            paths: [outputPaths[firstIndex], outputPaths[secondIndex]],
+          });
         }
         const [firstStats, secondStats] = await Promise.all([
-          fs.promises.stat(firstPath).catch((error: NodeJS.ErrnoException) => (error.code === "ENOENT" ? undefined : Promise.reject(error))),
-          fs.promises.stat(secondPath).catch((error: NodeJS.ErrnoException) => (error.code === "ENOENT" ? undefined : Promise.reject(error))),
+          fs.promises
+            .stat(firstPath)
+            .catch((error: NodeJS.ErrnoException) => (error.code === "ENOENT" ? undefined : Promise.reject(error))),
+          fs.promises
+            .stat(secondPath)
+            .catch((error: NodeJS.ErrnoException) => (error.code === "ENOENT" ? undefined : Promise.reject(error))),
         ]);
         if (firstStats && secondStats && firstStats.dev === secondStats.dev && firstStats.ino === secondStats.ino) {
-          throw new AutomationError("CONFLICT", "Output paths are hard-link aliases", { paths: [outputPaths[firstIndex], outputPaths[secondIndex]] });
+          throw new AutomationError("CONFLICT", "Output paths are hard-link aliases", {
+            paths: [outputPaths[firstIndex], outputPaths[secondIndex]],
+          });
         }
       }
     }
@@ -189,7 +202,9 @@ export class FilesystemPolicy {
       throw error;
     });
     if (outputStats && !overwrite) {
-      throw new AutomationError("CONFLICT", `Output already exists: ${options.outputPath}`, { path: options.outputPath });
+      throw new AutomationError("CONFLICT", `Output already exists: ${options.outputPath}`, {
+        path: options.outputPath,
+      });
     }
     if (outputStats && !outputStats.isFile()) {
       throw new AutomationError("IO_ACCESS", `Output is not a regular file: ${options.outputPath}`);
@@ -228,7 +243,13 @@ export class FilesystemPolicy {
 
 /** Validates and canonicalizes a packed-file path, independent of the host OS separator. */
 export const normalizeInternalPackPath = (value: string): string => {
-  if (!value || value.includes("\0") || path.posix.isAbsolute(value) || path.win32.isAbsolute(value) || /^[a-zA-Z]:/.test(value)) {
+  if (
+    !value ||
+    value.includes("\0") ||
+    path.posix.isAbsolute(value) ||
+    path.win32.isAbsolute(value) ||
+    /^[a-zA-Z]:/.test(value)
+  ) {
     throw new AutomationError("INVALID_ARGUMENT", `Invalid packed-file path: ${JSON.stringify(value)}`);
   }
   const normalized = normalizePackFilePath(value);

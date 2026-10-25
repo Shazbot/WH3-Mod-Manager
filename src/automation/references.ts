@@ -17,12 +17,20 @@ import { queryTableRows, type TableFilter, type TableRow } from "./tables";
 import type { ReadonlyTableData } from "./cacheService";
 import type { AutomationContext } from "./operations";
 
-const filterValueSchema = z.union([z.string(), z.number().finite(), z.boolean(), z.null(), z.array(z.union([z.string(), z.number().finite(), z.boolean(), z.null()]))]);
-const filterSchema = z.object({
-  field: z.string().min(1),
-  op: z.enum(["eq", "ne", "lt", "lte", "gt", "gte", "in", "contains"]),
-  value: filterValueSchema,
-}).strict();
+const filterValueSchema = z.union([
+  z.string(),
+  z.number().finite(),
+  z.boolean(),
+  z.null(),
+  z.array(z.union([z.string(), z.number().finite(), z.boolean(), z.null()])),
+]);
+const filterSchema = z
+  .object({
+    field: z.string().min(1),
+    op: z.enum(["eq", "ne", "lt", "lte", "gt", "gte", "in", "contains"]),
+    value: filterValueSchema,
+  })
+  .strict();
 const dbRootSchema = z.object({ filePath: z.string().min(1), where: z.array(filterSchema).max(1000) }).strict();
 
 const referenceBounds = {
@@ -34,26 +42,33 @@ const referenceBounds = {
   reportPath: z.string().min(1).optional(),
 };
 
-export const assetResolveReferencesSchema = z.object({
-  operation: z.literal("asset_resolve_references"),
-  packPaths: z.array(z.string().min(1)).min(1).max(512),
-  ...vanillaInputs,
-  roots: z.array(z.union([z.string().min(1), dbRootSchema])).min(1).max(1000),
-  traversal: z.enum(["direct", "recursive"]).default("recursive"),
-  ...referenceBounds,
-}).strict();
+export const assetResolveReferencesSchema = z
+  .object({
+    operation: z.literal("asset_resolve_references"),
+    packPaths: z.array(z.string().min(1)).min(1).max(512),
+    ...vanillaInputs,
+    roots: z
+      .array(z.union([z.string().min(1), dbRootSchema]))
+      .min(1)
+      .max(1000),
+    traversal: z.enum(["direct", "recursive"]).default("recursive"),
+    ...referenceBounds,
+  })
+  .strict();
 
-export const assetFindReferencesSchema = z.object({
-  operation: z.literal("asset_find_references"),
-  packPaths: z.array(z.string().min(1)).min(1).max(512),
-  ...vanillaInputs,
-  targetPath: z.string().min(1),
-  maxNodes: z.number().int().min(1).max(10000).default(10000),
-  maxEdges: z.number().int().min(1).max(50000).default(50000),
-  offset: z.number().int().min(0).default(0),
-  limit: z.number().int().min(1).max(1000).default(100),
-  reportPath: z.string().min(1).optional(),
-}).strict();
+export const assetFindReferencesSchema = z
+  .object({
+    operation: z.literal("asset_find_references"),
+    packPaths: z.array(z.string().min(1)).min(1).max(512),
+    ...vanillaInputs,
+    targetPath: z.string().min(1),
+    maxNodes: z.number().int().min(1).max(10000).default(10000),
+    maxEdges: z.number().int().min(1).max(50000).default(50000),
+    offset: z.number().int().min(0).default(0),
+    limit: z.number().int().min(1).max(1000).default(100),
+    reportPath: z.string().min(1).optional(),
+  })
+  .strict();
 
 type ResolveRequest = z.output<typeof assetResolveReferencesSchema>;
 type FindRequest = z.output<typeof assetFindReferencesSchema>;
@@ -96,7 +111,12 @@ export interface ReferenceEnvironment {
   rowById: Map<string, EffectiveDbRow>;
 }
 
-const diagnostic = (code: string, message: string, pathValue?: string, severity: AutomationDiagnostic["severity"] = "warning"): AutomationDiagnostic => ({
+const diagnostic = (
+  code: string,
+  message: string,
+  pathValue?: string,
+  severity: AutomationDiagnostic["severity"] = "warning",
+): AutomationDiagnostic => ({
   code,
   message,
   severity,
@@ -105,12 +125,20 @@ const diagnostic = (code: string, message: string, pathValue?: string, severity:
 
 const canonicalAbsolute = (value: string) => (process.platform === "win32" ? value.toLowerCase() : value);
 
-const parseManifestPackNames = (text: string): string[] => text.split(/\r?\n/)
-  .map((line) => line.match(/([^\s]+)/)?.[1])
-  .filter((value): value is string => Boolean(value && value.toLowerCase().endsWith(".pack")));
+const parseManifestPackNames = (text: string): string[] =>
+  text
+    .split(/\r?\n/)
+    .map((line) => line.match(/([^\s]+)/)?.[1])
+    .filter((value): value is string => Boolean(value && value.toLowerCase().endsWith(".pack")));
 
 const validateManifestPackName = (name: string): string => {
-  if (!name || name.includes("\0") || path.posix.isAbsolute(name) || path.win32.isAbsolute(name) || /^[a-zA-Z]:/.test(name)) {
+  if (
+    !name ||
+    name.includes("\0") ||
+    path.posix.isAbsolute(name) ||
+    path.win32.isAbsolute(name) ||
+    /^[a-zA-Z]:/.test(name)
+  ) {
     throw new AutomationError("VALIDATION", `Invalid pack name in manifest: ${JSON.stringify(name)}`);
   }
   const segments = name.replace(/\\/g, "/").split("/");
@@ -141,7 +169,10 @@ export const prepareReferenceEnvironment = async (
       const resolved = path.resolve(dataPath, safeName);
       const relative = path.relative(dataPath, resolved);
       if (path.isAbsolute(relative) || relative === ".." || relative.startsWith(`..${path.sep}`)) {
-        throw new AutomationError("VALIDATION", `Manifest pack name escapes the game data folder: ${JSON.stringify(name)}`);
+        throw new AutomationError(
+          "VALIDATION",
+          `Manifest pack name escapes the game data folder: ${JSON.stringify(name)}`,
+        );
       }
       vanillaPaths.push(resolved);
       manifestPaths.push(resolved);
@@ -203,7 +234,19 @@ export const prepareReferenceEnvironment = async (
     ...manifestPaths,
     ...(gameDataPath ? [path.join(await context.policy.assertReadPath(gameDataPath), "manifest.txt")] : []),
   ];
-  return { context, sourcePaths: [...new Set(sourcePaths)], providers, diagnostics, complete: true, assetCandidates, dbFiles, dbEffectiveFilesCache: new Map(), dbRowsCache: new Map(), dbExactRowsCache: new Map(), rowById: new Map() };
+  return {
+    context,
+    sourcePaths: [...new Set(sourcePaths)],
+    providers,
+    diagnostics,
+    complete: true,
+    assetCandidates,
+    dbFiles,
+    dbEffectiveFilesCache: new Map(),
+    dbRowsCache: new Map(),
+    dbExactRowsCache: new Map(),
+    rowById: new Map(),
+  };
 };
 
 const assetNodeId = (provider: ReferenceProvider, key: string) => `asset:${provider.pack.path}::${key}`;
@@ -211,7 +254,11 @@ const missingAssetNodeId = (key: string) => `asset:unresolved::${key}`;
 const rowNodeId = (provider: ReferenceProvider, entry: CorePackEntry, rowIndex: number) =>
   `dbrow:${provider.pack.path}::${normalizePackFilePathKey(entry.name)}::${rowIndex}`;
 
-export const resolveReferenceAsset = (environment: ReferenceEnvironment, requestedPath: string, allowVmdFallback = false) => {
+export const resolveReferenceAsset = (
+  environment: ReferenceEnvironment,
+  requestedPath: string,
+  allowVmdFallback = false,
+) => {
   let safePath = normalizeInternalPackPath(requestedPath);
   let key = normalizePackFilePathKey(safePath);
   let candidates = environment.assetCandidates.get(key) ?? [];
@@ -222,14 +269,21 @@ export const resolveReferenceAsset = (environment: ReferenceEnvironment, request
     key = normalizePackFilePathKey(safePath);
     candidates = environment.assetCandidates.get(key) ?? [];
   }
-  if (!candidates.length) return { path: safePath, key, status: "missing" as const, candidates: [] as typeof candidates, shadowed: [] as typeof candidates };
+  if (!candidates.length)
+    return {
+      path: safePath,
+      key,
+      status: "missing" as const,
+      candidates: [] as typeof candidates,
+      shadowed: [] as typeof candidates,
+    };
   const highestOrder = candidates[candidates.length - 1].provider.order;
   const top = candidates.filter((candidate) => candidate.provider.order === highestOrder);
   const winner = top[0];
   return {
     path: safePath,
     key,
-    status: top.length > 1 ? "ambiguous" as const : "found" as const,
+    status: top.length > 1 ? ("ambiguous" as const) : ("found" as const),
     winner,
     candidates,
     shadowed: candidates.filter((candidate) => candidate.provider.order < highestOrder),
@@ -237,8 +291,10 @@ export const resolveReferenceAsset = (environment: ReferenceEnvironment, request
 };
 
 const loadedSchemaCompatible = (first: ReadonlyTableData, next: ReadonlyTableData) =>
-  first.isLoc === next.isLoc && first.schema.version === next.schema.version &&
-  first.schema.fields.length === next.schema.fields.length && first.schema.fields.every((field, index) => {
+  first.isLoc === next.isLoc &&
+  first.schema.version === next.schema.version &&
+  first.schema.fields.length === next.schema.fields.length &&
+  first.schema.fields.every((field, index) => {
     const other = next.schema.fields[index];
     return field.name === other.name && field.field_type === other.field_type && field.is_key === other.is_key;
   });
@@ -264,11 +320,19 @@ const getEffectiveDbFileRefs = (environment: ReferenceEnvironment, canonical: st
     const highestOrder = refs[refs.length - 1].provider.order;
     const top = refs.filter((ref) => ref.provider.order === highestOrder);
     if (refs.length > top.length) {
-      environment.diagnostics.push(diagnostic("SHADOWED_DB_FILE", "A higher-priority pack supplies this DB file path", top[0].entry.name, "info"));
+      environment.diagnostics.push(
+        diagnostic("SHADOWED_DB_FILE", "A higher-priority pack supplies this DB file path", top[0].entry.name, "info"),
+      );
     }
     if (top.length !== 1) {
       environment.complete = false;
-      environment.diagnostics.push(diagnostic("AMBIGUOUS_DB_FILE", "DB path occurs more than once in the winning pack and was excluded from row resolution", top[0].entry.name));
+      environment.diagnostics.push(
+        diagnostic(
+          "AMBIGUOUS_DB_FILE",
+          "DB path occurs more than once in the winning pack and was excluded from row resolution",
+          top[0].entry.name,
+        ),
+      );
       continue;
     }
     fileRefs.push(top[0]);
@@ -278,14 +342,19 @@ const getEffectiveDbFileRefs = (environment: ReferenceEnvironment, canonical: st
 };
 
 /** Loads the rows from the winning provider of one exact packed DB file path. */
-export const loadExactDbFileRows = (environment: ReferenceEnvironment, packedPath: string): Promise<EffectiveDbRow[]> => {
+export const loadExactDbFileRows = (
+  environment: ReferenceEnvironment,
+  packedPath: string,
+): Promise<EffectiveDbRow[]> => {
   const canonicalPath = normalizePackFilePathKey(normalizeInternalPackPath(packedPath));
   const cached = environment.dbExactRowsCache.get(canonicalPath);
   if (cached) return cached;
   const logical = tableLogicalName(canonicalPath);
   const promise = (async () => {
     if (!logical) return [];
-    const ref = getEffectiveDbFileRefs(environment, logical).find((candidate) => normalizePackFilePathKey(candidate.entry.name) === canonicalPath);
+    const ref = getEffectiveDbFileRefs(environment, logical).find(
+      (candidate) => normalizePackFilePathKey(candidate.entry.name) === canonicalPath,
+    );
     if (!ref) return [];
     try {
       const loaded = await readAutomationReadonlyTable(ref.provider.pack, ref.entry, environment.context);
@@ -294,8 +363,11 @@ export const loadExactDbFileRows = (environment: ReferenceEnvironment, packedPat
       const keyFields = loaded.schema.fields.filter((field) => field.is_key);
       const rows = values.map((row, rowIndex): EffectiveDbRow => {
         throwIfAborted(environment.context.signal);
-        const completeKey = keyFields.length > 0 && keyFields.every((field) => row[field.name] !== null && row[field.name] !== undefined);
-        const identity = completeKey ? JSON.stringify([logical, keyFields.map((field) => [field.name, row[field.name]])]) : undefined;
+        const completeKey =
+          keyFields.length > 0 && keyFields.every((field) => row[field.name] !== null && row[field.name] !== undefined);
+        const identity = completeKey
+          ? JSON.stringify([logical, keyFields.map((field) => [field.name, row[field.name]])])
+          : undefined;
         return {
           id: rowNodeId(ref.provider, ref.entry, rowIndex),
           provider: ref.provider,
@@ -312,11 +384,15 @@ export const loadExactDbFileRows = (environment: ReferenceEnvironment, packedPat
     } catch (error) {
       if (error instanceof AutomationError && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code)) throw error;
       environment.complete = false;
-      environment.diagnostics.push(diagnostic(
-        error instanceof AutomationError && error.code === "UNSUPPORTED" ? "UNSUPPORTED_DB_TABLE" : "INVALID_DB_TABLE",
-        error instanceof Error ? error.message : String(error),
-        ref.entry.name,
-      ));
+      environment.diagnostics.push(
+        diagnostic(
+          error instanceof AutomationError && error.code === "UNSUPPORTED"
+            ? "UNSUPPORTED_DB_TABLE"
+            : "INVALID_DB_TABLE",
+          error instanceof Error ? error.message : String(error),
+          ref.entry.name,
+        ),
+      );
       return [];
     }
   })();
@@ -324,7 +400,10 @@ export const loadExactDbFileRows = (environment: ReferenceEnvironment, packedPat
   return promise;
 };
 
-export const loadEffectiveDbRows = (environment: ReferenceEnvironment, logicalTable: string): Promise<EffectiveDbRow[]> => {
+export const loadEffectiveDbRows = (
+  environment: ReferenceEnvironment,
+  logicalTable: string,
+): Promise<EffectiveDbRow[]> => {
   const canonical = getCanonicalLogicalTableName(logicalTable);
   const cached = environment.dbRowsCache.get(canonical);
   if (cached) return cached;
@@ -340,7 +419,13 @@ export const loadEffectiveDbRows = (environment: ReferenceEnvironment, logicalTa
     for (let index = 1; index < parsedByFile.length; index += 1) {
       if (!loadedSchemaCompatible(parsedByFile[0].loaded, parsedByFile[index].loaded)) {
         environment.complete = false;
-        environment.diagnostics.push(diagnostic("DB_SCHEMA_MISMATCH", `DB table files for ${canonical} use different schemas`, parsedByFile[index].ref.entry.name));
+        environment.diagnostics.push(
+          diagnostic(
+            "DB_SCHEMA_MISMATCH",
+            `DB table files for ${canonical} use different schemas`,
+            parsedByFile[index].ref.entry.name,
+          ),
+        );
       }
     }
 
@@ -354,11 +439,17 @@ export const loadEffectiveDbRows = (environment: ReferenceEnvironment, logicalTa
           continue;
         }
         const current = winners.get(item.identity);
-        if (!current || shouldReplaceEffectiveDbRowWinner(item.entry.name, current.entry.name)) winners.set(item.identity, item);
+        if (!current || shouldReplaceEffectiveDbRowWinner(item.entry.name, current.entry.name))
+          winners.set(item.identity, item);
       }
     }
     rows.push(...winners.values());
-    rows.sort((left, right) => left.provider.order - right.provider.order || left.entry.name.localeCompare(right.entry.name) || left.rowIndex - right.rowIndex);
+    rows.sort(
+      (left, right) =>
+        left.provider.order - right.provider.order ||
+        left.entry.name.localeCompare(right.entry.name) ||
+        left.rowIndex - right.rowIndex,
+    );
     for (const row of rows) environment.rowById.set(row.id, row);
     return rows;
   })();
@@ -371,7 +462,15 @@ export interface ReferenceGraphNode {
   path: string;
   type: "asset" | "db-row";
   status: "found" | "missing" | "ambiguous" | "unsupported";
-  coverage?: "pending" | "supportedReferences" | "supportedFields" | "opaqueLeaf" | "supportedRigidInternals" | "unsupportedInternals" | "unsupportedType" | "unreadable";
+  coverage?:
+    | "pending"
+    | "supportedReferences"
+    | "supportedFields"
+    | "opaqueLeaf"
+    | "supportedRigidInternals"
+    | "unsupportedInternals"
+    | "unsupportedType"
+    | "unreadable";
   loadModes?: Array<"direct" | "wsmodel">;
   provider?: string;
   providerKind?: "mod" | "vanilla";
@@ -423,17 +522,20 @@ export interface ReferenceGraphOptions {
   traverseWsmodelMaterials?: boolean;
 }
 
-export type ReferenceGraphRoot = {
-  type: "asset";
-  path: string;
-} | {
-  type: "db";
-  path: string;
-  where?: TableFilter[];
-} | {
-  type: "db-row";
-  row: EffectiveDbRow;
-};
+export type ReferenceGraphRoot =
+  | {
+      type: "asset";
+      path: string;
+    }
+  | {
+      type: "db";
+      path: string;
+      where?: TableFilter[];
+    }
+  | {
+      type: "db-row";
+      row: EffectiveDbRow;
+    };
 
 class ReferenceGraphBuilder {
   readonly nodes = new Map<string, ReferenceGraphNode>();
@@ -460,7 +562,11 @@ class ReferenceGraphBuilder {
   }
 
   noteCapacityReached(): void {
-    this.markLimit(this.edges.length >= this.options.maxEdges ? "Reference graph reached maxEdges" : "Reference graph reached maxNodes");
+    this.markLimit(
+      this.edges.length >= this.options.maxEdges
+        ? "Reference graph reached maxEdges"
+        : "Reference graph reached maxNodes",
+    );
   }
 
   private addNode(node: ReferenceGraphNode): string {
@@ -506,30 +612,56 @@ class ReferenceGraphBuilder {
 
   addAssetRoot(inputPath: string, allowVmdFallback = true): string {
     const resolved = resolveReferenceAsset(this.environment, inputPath, allowVmdFallback);
-    const id = resolved.status === "found" && resolved.winner
-      ? assetNodeId(resolved.winner.provider, resolved.key)
-      : missingAssetNodeId(resolved.key);
+    const id =
+      resolved.status === "found" && resolved.winner
+        ? assetNodeId(resolved.winner.provider, resolved.key)
+        : missingAssetNodeId(resolved.key);
     const ext = resolved.winner ? pathExtension(resolved.winner.entry.name) : "";
     const node: ReferenceGraphNode = {
       id,
       path: resolved.path,
       type: "asset",
       status: resolved.status,
-      ...(resolved.status === "found" && resolved.winner ? {
-        provider: resolved.winner.provider.pack.path,
-        providerKind: resolved.winner.provider.kind,
-        extension: pathExtension(resolved.winner.entry.name),
-        coverage: pathExtension(resolved.winner.entry.name) === "dds" ? "opaqueLeaf" :
-          pathExtension(resolved.winner.entry.name) === "rigid_model_v2" ? "pending" :
-            ["variantmeshdefinition", "wsmodel", "xml.material"].includes(pathExtension(resolved.winner.entry.name)) ? "pending" : "unsupportedType",
-        shadowedCandidates: resolved.shadowed?.map(({ provider, entry }) => ({ packPath: provider.pack.path, entryPath: entry.name, kind: provider.kind })),
-      } : {}),
-      ...(resolved.status === "ambiguous" ? { candidates: resolved.candidates.map(({ provider, entry }) => ({ packPath: provider.pack.path, entryPath: entry.name })) } : {}),
+      ...(resolved.status === "found" && resolved.winner
+        ? {
+            provider: resolved.winner.provider.pack.path,
+            providerKind: resolved.winner.provider.kind,
+            extension: pathExtension(resolved.winner.entry.name),
+            coverage:
+              pathExtension(resolved.winner.entry.name) === "dds"
+                ? "opaqueLeaf"
+                : pathExtension(resolved.winner.entry.name) === "rigid_model_v2"
+                  ? "pending"
+                  : ["variantmeshdefinition", "wsmodel", "xml.material"].includes(
+                        pathExtension(resolved.winner.entry.name),
+                      )
+                    ? "pending"
+                    : "unsupportedType",
+            shadowedCandidates: resolved.shadowed?.map(({ provider, entry }) => ({
+              packPath: provider.pack.path,
+              entryPath: entry.name,
+              kind: provider.kind,
+            })),
+          }
+        : {}),
+      ...(resolved.status === "ambiguous"
+        ? {
+            candidates: resolved.candidates.map(({ provider, entry }) => ({
+              packPath: provider.pack.path,
+              entryPath: entry.name,
+            })),
+          }
+        : {}),
     };
     if (ext === "rigid_model_v2") node.loadModes = ["direct"];
     this.addNode(node);
     if (this.nodes.has(id)) this.roots.push(id);
-    if (resolved.status === "found" && resolved.winner && ["variantmeshdefinition", "wsmodel", "xml.material", "rigid_model_v2"].includes(ext) && this.nodes.has(id)) {
+    if (
+      resolved.status === "found" &&
+      resolved.winner &&
+      ["variantmeshdefinition", "wsmodel", "xml.material", "rigid_model_v2"].includes(ext) &&
+      this.nodes.has(id)
+    ) {
       this.queueNode("asset", id, 0);
     } else if (resolved.status === "found" && ext === "dds") {
       // DDS is a fully covered leaf.
@@ -537,11 +669,18 @@ class ReferenceGraphBuilder {
       this.environment.complete = false;
       node.status = "unsupported";
       node.coverage = "unsupportedType";
-      this.diagnostics.push(diagnostic("UNSUPPORTED_ASSET_TYPE", `Reference traversal does not support ${resolved.path}`, resolved.path));
-    }
-    else {
+      this.diagnostics.push(
+        diagnostic("UNSUPPORTED_ASSET_TYPE", `Reference traversal does not support ${resolved.path}`, resolved.path),
+      );
+    } else {
       this.environment.complete = false;
-      this.diagnostics.push(diagnostic(resolved.status === "missing" ? "MISSING_ASSET" : "AMBIGUOUS_ASSET", `${resolved.status === "missing" ? "No provider contains" : "Multiple entries provide"} ${resolved.path}`, resolved.path));
+      this.diagnostics.push(
+        diagnostic(
+          resolved.status === "missing" ? "MISSING_ASSET" : "AMBIGUOUS_ASSET",
+          `${resolved.status === "missing" ? "No provider contains" : "Multiple entries provide"} ${resolved.path}`,
+          resolved.path,
+        ),
+      );
     }
     return id;
   }
@@ -549,20 +688,37 @@ class ReferenceGraphBuilder {
   async addDbRoot(filePath: string, where: TableFilter[]): Promise<string[]> {
     const normalizedPath = normalizeInternalPackPath(filePath);
     const logical = tableLogicalName(normalizedPath);
-    if (!logical) throw new AutomationError("INVALID_ARGUMENT", `DB row root must name a live DB table file: ${filePath}`);
-    const exactFiles = (this.environment.dbFiles.get(logical) ?? [])
-      .filter((ref) => normalizePackFilePathKey(ref.entry.name) === normalizePackFilePathKey(normalizedPath));
-    if (exactFiles.length === 0) throw new AutomationError("INVALID_ARGUMENT", `DB table file is not present in the supplied packs: ${normalizedPath}`);
+    if (!logical)
+      throw new AutomationError("INVALID_ARGUMENT", `DB row root must name a live DB table file: ${filePath}`);
+    const exactFiles = (this.environment.dbFiles.get(logical) ?? []).filter(
+      (ref) => normalizePackFilePathKey(ref.entry.name) === normalizePackFilePathKey(normalizedPath),
+    );
+    if (exactFiles.length === 0)
+      throw new AutomationError(
+        "INVALID_ARGUMENT",
+        `DB table file is not present in the supplied packs: ${normalizedPath}`,
+      );
     const highestOrder = Math.max(...exactFiles.map((ref) => ref.provider.order));
     const topFiles = exactFiles.filter((ref) => ref.provider.order === highestOrder);
-    if (topFiles.length !== 1) throw new AutomationError("CONFLICT", `DB table path is duplicated in the winning pack: ${normalizedPath}`);
+    if (topFiles.length !== 1)
+      throw new AutomationError("CONFLICT", `DB table path is duplicated in the winning pack: ${normalizedPath}`);
     const schemaRef = topFiles[0];
     try {
-      const schemaTable = await readAutomationReadonlyTable(schemaRef.provider.pack, schemaRef.entry, this.environment.context);
+      const schemaTable = await readAutomationReadonlyTable(
+        schemaRef.provider.pack,
+        schemaRef.entry,
+        this.environment.context,
+      );
       queryTableRows(schemaTable, [], where);
     } catch (error) {
-      if (error instanceof AutomationError && ["UNSUPPORTED", "CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code)) throw error;
-      throw new AutomationError("INVALID_ARGUMENT", error instanceof Error ? error.message : String(error), { filePath: normalizedPath });
+      if (
+        error instanceof AutomationError &&
+        ["UNSUPPORTED", "CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code)
+      )
+        throw error;
+      throw new AutomationError("INVALID_ARGUMENT", error instanceof Error ? error.message : String(error), {
+        filePath: normalizedPath,
+      });
     }
     const rows = await loadExactDbFileRows(this.environment, normalizedPath);
     const matches: EffectiveDbRow[] = [];
@@ -571,7 +727,9 @@ class ReferenceGraphBuilder {
     }
     if (matches.length === 0) {
       this.environment.complete = false;
-      this.diagnostics.push(diagnostic("DB_ROOT_NOT_FOUND", `No effective row matches the selector in ${normalizedPath}`, normalizedPath));
+      this.diagnostics.push(
+        diagnostic("DB_ROOT_NOT_FOUND", `No effective row matches the selector in ${normalizedPath}`, normalizedPath),
+      );
     }
     const ids: string[] = [];
     for (const row of matches) ids.push(this.addDbRowRoot(row));
@@ -590,7 +748,9 @@ class ReferenceGraphBuilder {
       providerKind: row.provider.kind,
       rowIndex: row.rowIndex,
       table: row.logicalTable,
-      ...(keyFields.length ? { key: Object.fromEntries(keyFields.map((field) => [field.name, row.row[field.name]])) } : {}),
+      ...(keyFields.length
+        ? { key: Object.fromEntries(keyFields.map((field) => [field.name, row.row[field.name]])) }
+        : {}),
     };
     this.addNode(node);
     if (this.nodes.has(row.id)) {
@@ -600,20 +760,26 @@ class ReferenceGraphBuilder {
     return row.id;
   }
 
-  private addAssetReference(source: string, requestedPath: string, relation: string, details: {
-    sourceField?: string;
-    location?: string;
-    conditional?: VisualReferenceDetail["conditional"];
-    lodIndex?: number;
-    partIndex?: number;
-    textureSlotIndex?: number;
-    textureTypeId?: number | null;
-    textureTypeName?: string | null;
-    legacy?: boolean;
-    materialTypeId?: number;
-    materialTypeName?: string;
-    targetField?: string;
-  }, depth: number): void {
+  private addAssetReference(
+    source: string,
+    requestedPath: string,
+    relation: string,
+    details: {
+      sourceField?: string;
+      location?: string;
+      conditional?: VisualReferenceDetail["conditional"];
+      lodIndex?: number;
+      partIndex?: number;
+      textureSlotIndex?: number;
+      textureTypeId?: number | null;
+      textureTypeName?: string | null;
+      legacy?: boolean;
+      materialTypeId?: number;
+      materialTypeName?: string;
+      targetField?: string;
+    },
+    depth: number,
+  ): void {
     let resolved: ReturnType<typeof resolveReferenceAsset>;
     try {
       resolved = resolveReferenceAsset(this.environment, requestedPath);
@@ -623,34 +789,65 @@ class ReferenceGraphBuilder {
       // reference as unsupported evidence without resolving it on the host.
       const id = `asset:invalid::${requestedPath}`;
       this.addNode({ id, path: requestedPath, type: "asset", status: "unsupported" });
-      if (this.nodes.has(id)) this.addEdge({ source, target: id, relationship: relation, ...details, status: "unsupported" });
+      if (this.nodes.has(id))
+        this.addEdge({ source, target: id, relationship: relation, ...details, status: "unsupported" });
       this.environment.complete = false;
-      this.diagnostics.push(diagnostic("INVALID_ASSET_REFERENCE", `Invalid embedded asset reference: ${error.message}`, this.nodes.get(source)?.path));
+      this.diagnostics.push(
+        diagnostic(
+          "INVALID_ASSET_REFERENCE",
+          `Invalid embedded asset reference: ${error.message}`,
+          this.nodes.get(source)?.path,
+        ),
+      );
       return;
     }
     const extension = resolved.winner ? pathExtension(resolved.winner.entry.name) : pathExtension(resolved.path);
     const sourceNode = this.nodes.get(source);
-    const loadMode = extension === "rigid_model_v2"
-      ? sourceNode?.extension === "wsmodel" ? "wsmodel" as const : "direct" as const
-      : undefined;
-    const id = resolved.status === "found" && resolved.winner
-      ? assetNodeId(resolved.winner.provider, resolved.key)
-      : missingAssetNodeId(resolved.key);
+    const loadMode =
+      extension === "rigid_model_v2"
+        ? sourceNode?.extension === "wsmodel"
+          ? ("wsmodel" as const)
+          : ("direct" as const)
+        : undefined;
+    const id =
+      resolved.status === "found" && resolved.winner
+        ? assetNodeId(resolved.winner.provider, resolved.key)
+        : missingAssetNodeId(resolved.key);
     const node: ReferenceGraphNode = {
       id,
       path: resolved.path,
       type: "asset",
       status: resolved.status,
-      ...(resolved.status === "found" && resolved.winner ? {
-        provider: resolved.winner.provider.pack.path,
-        providerKind: resolved.winner.provider.kind,
-        extension: pathExtension(resolved.winner.entry.name),
-        coverage: pathExtension(resolved.winner.entry.name) === "dds" ? "opaqueLeaf" :
-          pathExtension(resolved.winner.entry.name) === "rigid_model_v2" ? "pending" :
-            ["variantmeshdefinition", "wsmodel", "xml.material"].includes(pathExtension(resolved.winner.entry.name)) ? "pending" : "unsupportedType",
-        shadowedCandidates: resolved.shadowed?.map(({ provider, entry }) => ({ packPath: provider.pack.path, entryPath: entry.name, kind: provider.kind })),
-      } : {}),
-      ...(resolved.status === "ambiguous" ? { candidates: resolved.candidates.map(({ provider, entry }) => ({ packPath: provider.pack.path, entryPath: entry.name })) } : {}),
+      ...(resolved.status === "found" && resolved.winner
+        ? {
+            provider: resolved.winner.provider.pack.path,
+            providerKind: resolved.winner.provider.kind,
+            extension: pathExtension(resolved.winner.entry.name),
+            coverage:
+              pathExtension(resolved.winner.entry.name) === "dds"
+                ? "opaqueLeaf"
+                : pathExtension(resolved.winner.entry.name) === "rigid_model_v2"
+                  ? "pending"
+                  : ["variantmeshdefinition", "wsmodel", "xml.material"].includes(
+                        pathExtension(resolved.winner.entry.name),
+                      )
+                    ? "pending"
+                    : "unsupportedType",
+            shadowedCandidates: resolved.shadowed?.map(({ provider, entry }) => ({
+              packPath: provider.pack.path,
+              entryPath: entry.name,
+              kind: provider.kind,
+            })),
+          }
+        : {}),
+      ...(resolved.status === "ambiguous"
+        ? {
+            candidates: resolved.candidates.map(({ provider, entry }) => ({
+              packPath: provider.pack.path,
+              entryPath: entry.name,
+            })),
+          }
+        : {}),
     };
     this.addNode(node);
     if (loadMode && resolved.status === "found") {
@@ -658,10 +855,23 @@ class ReferenceGraphBuilder {
       if (targetNode) targetNode.loadModes = [...new Set([...(targetNode.loadModes ?? []), loadMode])];
     }
     if (!this.nodes.has(id)) return;
-    this.addEdge({ source, target: id, relationship: relation, ...details, ...(loadMode ? { loadMode } : {}), status: resolved.status });
+    this.addEdge({
+      source,
+      target: id,
+      relationship: relation,
+      ...details,
+      ...(loadMode ? { loadMode } : {}),
+      status: resolved.status,
+    });
     if (resolved.status !== "found" || !resolved.winner) {
       this.environment.complete = false;
-      this.diagnostics.push(diagnostic(resolved.status === "missing" ? "MISSING_ASSET" : "AMBIGUOUS_ASSET", `${resolved.status === "missing" ? "No provider contains" : "Multiple entries provide"} ${resolved.path}`, resolved.path));
+      this.diagnostics.push(
+        diagnostic(
+          resolved.status === "missing" ? "MISSING_ASSET" : "AMBIGUOUS_ASSET",
+          `${resolved.status === "missing" ? "No provider contains" : "Multiple entries provide"} ${resolved.path}`,
+          resolved.path,
+        ),
+      );
       return;
     }
     if (["variantmeshdefinition", "wsmodel", "xml.material", "rigid_model_v2"].includes(extension)) {
@@ -673,7 +883,9 @@ class ReferenceGraphBuilder {
         node.coverage = "unsupportedType";
       }
       this.environment.complete = false;
-      this.diagnostics.push(diagnostic("UNSUPPORTED_ASSET_TYPE", `Reference traversal does not support ${resolved.path}`, resolved.path));
+      this.diagnostics.push(
+        diagnostic("UNSUPPORTED_ASSET_TYPE", `Reference traversal does not support ${resolved.path}`, resolved.path),
+      );
     }
   }
 
@@ -682,7 +894,8 @@ class ReferenceGraphBuilder {
     if (!node || node.status !== "found" || !node.provider) return;
     const ext = node.extension;
     if (ext === "dds") return;
-    if (ext !== "variantmeshdefinition" && ext !== "wsmodel" && ext !== "xml.material" && ext !== "rigid_model_v2") return;
+    if (ext !== "variantmeshdefinition" && ext !== "wsmodel" && ext !== "xml.material" && ext !== "rigid_model_v2")
+      return;
     if (ext === "rigid_model_v2" && this.options.traverseRigidInternals === false) return;
     const provider = this.environment.providers.find((candidate) => candidate.pack.path === node.provider);
     const entry = provider?.entriesByPath.get(normalizePackFilePathKey(node.path))?.[0];
@@ -699,36 +912,75 @@ class ReferenceGraphBuilder {
       if (error instanceof AutomationError && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code)) throw error;
       node.coverage = "unreadable";
       this.environment.complete = false;
-      this.diagnostics.push(diagnostic("XML_READ_FAILED", error instanceof Error ? error.message : String(error), entry.name));
+      this.diagnostics.push(
+        diagnostic("XML_READ_FAILED", error instanceof Error ? error.message : String(error), entry.name),
+      );
       return;
     }
     if (!extraction.valid) {
       node.coverage = "unreadable";
       this.environment.complete = false;
-      this.diagnostics.push(diagnostic("XML_PARSE_FAILED", extraction.error ?? "XML document is malformed", entry.name));
+      this.diagnostics.push(
+        diagnostic("XML_PARSE_FAILED", extraction.error ?? "XML document is malformed", entry.name),
+      );
       return;
     }
     node.coverage = "supportedReferences";
     for (const reference of extraction.references) {
       if (this.hitLimit) break;
-      if (ext === "wsmodel" && this.options.traverseWsmodelMaterials === false && reference.extension === "xml.material") continue;
-      this.addAssetReference(id, reference.path, reference.relationship, {
-        sourceField: reference.sourceField,
-        location: reference.location,
-        ...(reference.conditional ? { conditional: reference.conditional } : {}),
-      }, depth + 1);
+      if (
+        ext === "wsmodel" &&
+        this.options.traverseWsmodelMaterials === false &&
+        reference.extension === "xml.material"
+      )
+        continue;
+      this.addAssetReference(
+        id,
+        reference.path,
+        reference.relationship,
+        {
+          sourceField: reference.sourceField,
+          location: reference.location,
+          ...(reference.conditional ? { conditional: reference.conditional } : {}),
+        },
+        depth + 1,
+      );
     }
     for (const reference of extraction.unsupportedReferences) {
       if (this.hitLimit) break;
       const key = normalizePackFilePathKey(reference.path);
-      const target = this.addNode({ id: `asset:unsupported::${key}`, path: reference.path, type: "asset", status: "unsupported" });
-      this.addEdge({ source: id, target, relationship: "unsupported-reference", sourceField: reference.sourceField, location: reference.location, ...(reference.conditional ? { conditional: reference.conditional } : {}), status: "unsupported" });
+      const target = this.addNode({
+        id: `asset:unsupported::${key}`,
+        path: reference.path,
+        type: "asset",
+        status: "unsupported",
+      });
+      this.addEdge({
+        source: id,
+        target,
+        relationship: "unsupported-reference",
+        sourceField: reference.sourceField,
+        location: reference.location,
+        ...(reference.conditional ? { conditional: reference.conditional } : {}),
+        status: "unsupported",
+      });
       this.environment.complete = false;
-      this.diagnostics.push(diagnostic("UNSUPPORTED_ASSET_REFERENCE", `Unsupported referenced asset extension: ${reference.path}`, reference.path));
+      this.diagnostics.push(
+        diagnostic(
+          "UNSUPPORTED_ASSET_REFERENCE",
+          `Unsupported referenced asset extension: ${reference.path}`,
+          reference.path,
+        ),
+      );
     }
   }
 
-  private async processRigidModel(id: string, depth: number, provider: ReferenceProvider, entry: CorePackEntry): Promise<void> {
+  private async processRigidModel(
+    id: string,
+    depth: number,
+    provider: ReferenceProvider,
+    entry: CorePackEntry,
+  ): Promise<void> {
     const node = this.nodes.get(id);
     if (!node) return;
     let model;
@@ -743,7 +995,9 @@ class ReferenceGraphBuilder {
         this.diagnostics.push(diagnostic("UNSUPPORTED_RMV2_MODEL", error.message, entry.name));
       } else {
         node.coverage = "unreadable";
-        this.diagnostics.push(diagnostic("INVALID_RMV2_MODEL", error instanceof Error ? error.message : String(error), entry.name));
+        this.diagnostics.push(
+          diagnostic("INVALID_RMV2_MODEL", error instanceof Error ? error.message : String(error), entry.name),
+        );
       }
       return;
     }
@@ -751,11 +1005,13 @@ class ReferenceGraphBuilder {
     node.coverage = unsupportedParts.length ? "unsupportedInternals" : "supportedRigidInternals";
     if (unsupportedParts.length) this.environment.complete = false;
     for (const part of unsupportedParts) {
-      this.diagnostics.push(diagnostic(
-        "UNSUPPORTED_RMV2_PART",
-        `LOD ${part.lodIndex} part ${part.partIndex}: ${part.unsupportedReason ?? "unsupported layout"}`,
-        entry.name,
-      ));
+      this.diagnostics.push(
+        diagnostic(
+          "UNSUPPORTED_RMV2_PART",
+          `LOD ${part.lodIndex} part ${part.partIndex}: ${part.unsupportedReason ?? "unsupported layout"}`,
+          entry.name,
+        ),
+      );
     }
     for (const lod of model.lods) {
       throwIfAborted(this.environment.context.signal);
@@ -764,18 +1020,24 @@ class ReferenceGraphBuilder {
         for (let textureSlotIndex = 0; textureSlotIndex < part.textures.length; textureSlotIndex++) {
           const texture = part.textures[textureSlotIndex];
           if (!texture.path.trim()) continue;
-          this.addAssetReference(id, texture.path, "embedded-texture", {
-            sourceField: texture.typeName ?? "texturePath",
-            location: `lod[${lod.lodIndex}]/part[${part.partIndex}]/texture[${textureSlotIndex}]`,
-            lodIndex: lod.lodIndex,
-            partIndex: part.partIndex,
-            textureSlotIndex,
-            textureTypeId: texture.typeId,
-            textureTypeName: texture.typeName,
-            legacy: texture.legacy,
-            materialTypeId: part.materialTypeId,
-            materialTypeName: part.materialTypeName,
-          }, depth + 1);
+          this.addAssetReference(
+            id,
+            texture.path,
+            "embedded-texture",
+            {
+              sourceField: texture.typeName ?? "texturePath",
+              location: `lod[${lod.lodIndex}]/part[${part.partIndex}]/texture[${textureSlotIndex}]`,
+              lodIndex: lod.lodIndex,
+              partIndex: part.partIndex,
+              textureSlotIndex,
+              textureTypeId: texture.typeId,
+              textureTypeName: texture.typeName,
+              legacy: texture.legacy,
+              materialTypeId: part.materialTypeId,
+              materialTypeName: part.materialTypeName,
+            },
+            depth + 1,
+          );
         }
       }
     }
@@ -790,8 +1052,11 @@ class ReferenceGraphBuilder {
       if (this.hitLimit) break;
       const value = source.row[field.name];
       if (value === null || value === undefined || (typeof value === "string" && value.trim() === "")) continue;
-      const directEngineModel = source.logicalTable === "db\\battlefield_engines_tables" && field.name === "model" &&
-        typeof value === "string" && ["rigid_model_v2", "wsmodel", "variantmeshdefinition"].includes(getAssetExtension(value));
+      const directEngineModel =
+        source.logicalTable === "db\\battlefield_engines_tables" &&
+        field.name === "model" &&
+        typeof value === "string" &&
+        ["rigid_model_v2", "wsmodel", "variantmeshdefinition"].includes(getAssetExtension(value));
       if (directEngineModel) {
         this.addAssetReference(id, value as string, "db-filename", { sourceField: field.name }, depth + 1);
         continue;
@@ -799,13 +1064,21 @@ class ReferenceGraphBuilder {
       if (field.is_reference && field.is_reference.length > 0) {
         if (field.is_reference.length < 2 || !field.is_reference[1]) {
           this.environment.complete = false;
-          this.diagnostics.push(diagnostic("UNSUPPORTED_DB_REFERENCE_SCHEMA", `Reference field ${field.name} has no target-field mapping`, source.entry.name));
+          this.diagnostics.push(
+            diagnostic(
+              "UNSUPPORTED_DB_REFERENCE_SCHEMA",
+              `Reference field ${field.name} has no target-field mapping`,
+              source.entry.name,
+            ),
+          );
           continue;
         }
         const targetTableName = field.is_reference[0].toLowerCase();
         const logical = getCanonicalLogicalTableName(`db\\${targetTableName.replace(/^db\\/, "")}`);
         const targetField = field.is_reference[1];
-        const candidates = (await loadEffectiveDbRows(this.environment, logical)).filter((row) => row.row[targetField] === value);
+        const candidates = (await loadEffectiveDbRows(this.environment, logical)).filter(
+          (row) => row.row[targetField] === value,
+        );
         if (candidates.length === 1) {
           const target = candidates[0];
           this.addNode({
@@ -817,9 +1090,19 @@ class ReferenceGraphBuilder {
             providerKind: target.provider.kind,
             rowIndex: target.rowIndex,
             table: target.logicalTable,
-            key: Object.fromEntries(target.loaded.schema.fields.filter((item) => item.is_key).map((item) => [item.name, target.row[item.name]])),
+            key: Object.fromEntries(
+              target.loaded.schema.fields
+                .filter((item) => item.is_key)
+                .map((item) => [item.name, target.row[item.name]]),
+            ),
           });
-          this.addEdge({ source: id, target: target.id, relationship: "db-reference", sourceField: field.name, status: "found" });
+          this.addEdge({
+            source: id,
+            target: target.id,
+            relationship: "db-reference",
+            sourceField: field.name,
+            status: "found",
+          });
           if (this.nodes.has(target.id)) this.queueNode("db", target.id, depth + 1);
         } else {
           const targetId = `dbrow:${candidates.length ? "ambiguous" : "missing"}::${logical}::${targetField}::${JSON.stringify(value)}`;
@@ -829,11 +1112,30 @@ class ReferenceGraphBuilder {
             table: logical,
             type: "db-row",
             status: candidates.length ? "ambiguous" : "missing",
-            ...(candidates.length ? { candidates: candidates.map((row) => ({ packPath: row.provider.pack.path, entryPath: row.entry.name })) } : {}),
+            ...(candidates.length
+              ? {
+                  candidates: candidates.map((row) => ({
+                    packPath: row.provider.pack.path,
+                    entryPath: row.entry.name,
+                  })),
+                }
+              : {}),
           });
-          this.addEdge({ source: id, target: targetId, relationship: "db-reference", sourceField: field.name, status: candidates.length ? "ambiguous" : "missing" });
+          this.addEdge({
+            source: id,
+            target: targetId,
+            relationship: "db-reference",
+            sourceField: field.name,
+            status: candidates.length ? "ambiguous" : "missing",
+          });
           this.environment.complete = false;
-          this.diagnostics.push(diagnostic(candidates.length ? "AMBIGUOUS_DB_REFERENCE" : "MISSING_DB_REFERENCE", `${candidates.length ? "Multiple rows match" : "No row matches"} ${logical}.${targetField}=${String(value)}`, source.entry.name));
+          this.diagnostics.push(
+            diagnostic(
+              candidates.length ? "AMBIGUOUS_DB_REFERENCE" : "MISSING_DB_REFERENCE",
+              `${candidates.length ? "Multiple rows match" : "No row matches"} ${logical}.${targetField}=${String(value)}`,
+              source.entry.name,
+            ),
+          );
         }
       }
 
@@ -842,7 +1144,13 @@ class ReferenceGraphBuilder {
         const direct = field.is_filename && patterns.length === 0 && getAssetExtension(value);
         if (field.is_filename && patterns.length === 0 && !direct) {
           this.environment.complete = false;
-          this.diagnostics.push(diagnostic("UNSUPPORTED_FILENAME_MAPPING", `Filename field ${field.name} has no packed path mapping`, source.entry.name));
+          this.diagnostics.push(
+            diagnostic(
+              "UNSUPPORTED_FILENAME_MAPPING",
+              `Filename field ${field.name} has no packed path mapping`,
+              source.entry.name,
+            ),
+          );
           continue;
         }
         if (patterns.length === 0 && !direct) continue;
@@ -856,14 +1164,24 @@ class ReferenceGraphBuilder {
               for (const [key, candidates] of this.environment.assetCandidates) {
                 if (this.hitLimit) break;
                 const candidateName = candidates[0]?.entry.name;
-                if (candidateName && normalizePackFilePathKey(candidateName).startsWith(normalizePackFilePathKey(match.prefix))) matchedPaths.add(candidateName);
+                if (
+                  candidateName &&
+                  normalizePackFilePathKey(candidateName).startsWith(normalizePackFilePathKey(match.prefix))
+                )
+                  matchedPaths.add(candidateName);
               }
             }
           }
         } else if (direct) matchedPaths.add(normalizePackFilePath(value));
         if (matchedPaths.size === 0) {
           this.environment.complete = false;
-          this.diagnostics.push(diagnostic("MISSING_FILENAME_REFERENCE", `No packed asset matches ${field.name}=${value}`, source.entry.name));
+          this.diagnostics.push(
+            diagnostic(
+              "MISSING_FILENAME_REFERENCE",
+              `No packed asset matches ${field.name}=${value}`,
+              source.entry.name,
+            ),
+          );
         }
         for (const matchedPath of matchedPaths) {
           if (this.hitLimit) break;
@@ -874,15 +1192,18 @@ class ReferenceGraphBuilder {
     if (source.logicalTable === "db\\warscape_animated_tables") {
       const animatedKey = source.row.key;
       if (animatedKey !== null && animatedKey !== undefined && String(animatedKey).trim()) {
-        const lodRows = (await loadEffectiveDbRows(this.environment, "db\\warscape_animated_lod_tables"))
-          .filter((row) => row.row.animated === animatedKey);
+        const lodRows = (await loadEffectiveDbRows(this.environment, "db\\warscape_animated_lod_tables")).filter(
+          (row) => row.row.animated === animatedKey,
+        );
         if (lodRows.length === 0) {
           this.environment.complete = false;
-          this.diagnostics.push(diagnostic(
-            "MISSING_ANIMATED_LOD",
-            `No warscape_animated_lod row references warscape_animated.key=${String(animatedKey)}`,
-            source.entry.name,
-          ));
+          this.diagnostics.push(
+            diagnostic(
+              "MISSING_ANIMATED_LOD",
+              `No warscape_animated_lod row references warscape_animated.key=${String(animatedKey)}`,
+              source.entry.name,
+            ),
+          );
         }
         for (const target of lodRows) {
           this.addNode({
@@ -894,9 +1215,20 @@ class ReferenceGraphBuilder {
             providerKind: target.provider.kind,
             rowIndex: target.rowIndex,
             table: target.logicalTable,
-            key: Object.fromEntries(target.loaded.schema.fields.filter((item) => item.is_key).map((item) => [item.name, target.row[item.name]])),
+            key: Object.fromEntries(
+              target.loaded.schema.fields
+                .filter((item) => item.is_key)
+                .map((item) => [item.name, target.row[item.name]]),
+            ),
           });
-          this.addEdge({ source: id, target: target.id, relationship: "animated-lod", sourceField: "key", targetField: "animated", status: "found" });
+          this.addEdge({
+            source: id,
+            target: target.id,
+            relationship: "animated-lod",
+            sourceField: "key",
+            targetField: "animated",
+            status: "found",
+          });
           if (this.nodes.has(target.id)) this.queueNode("db", target.id, depth + 1);
         }
       }
@@ -951,7 +1283,12 @@ const pathExtension = (filePath: string): string => {
   if (lower.endsWith(".xml.material")) return "xml.material";
   if (lower.endsWith(".variantmeshdefinition")) return "variantmeshdefinition";
   if (lower.endsWith(".rigid_model_v2")) return "rigid_model_v2";
-  return lower.split("\\").at(-1)?.match(/\.([a-z0-9_]+)$/)?.[1] ?? "";
+  return (
+    lower
+      .split("\\")
+      .at(-1)
+      ?.match(/\.([a-z0-9_]+)$/)?.[1] ?? ""
+  );
 };
 const getAssetExtension = (filePath: string) => pathExtension(normalizePackFilePath(filePath));
 
@@ -965,7 +1302,11 @@ export const findRigidLoaderEdges = async (
   environment: ReferenceEnvironment,
   targetPaths: readonly string[],
   limits: { maxNodes?: number; maxEdges?: number } = {},
-): Promise<{ edges: Array<{ targetPath: string; sourcePath: string; edge: ReferenceGraphEdge }>; hitLimit: boolean; diagnostics: AutomationDiagnostic[] }> => {
+): Promise<{
+  edges: Array<{ targetPath: string; sourcePath: string; edge: ReferenceGraphEdge }>;
+  hitLimit: boolean;
+  diagnostics: AutomationDiagnostic[];
+}> => {
   const targetKeys = new Set(targetPaths.map((target) => normalizePackFilePathKey(normalizeInternalPackPath(target))));
   if (!targetKeys.size) return { edges: [], hitLimit: false, diagnostics: [] };
   const builder = new ReferenceGraphBuilder(environment, {
@@ -1022,7 +1363,11 @@ export const findRigidLoaderEdges = async (
     const key = normalizePackFilePathKey(target.path);
     return targetKeys.has(key) ? [{ targetPath: target.path, sourcePath: source.path, edge }] : [];
   });
-  return { edges, hitLimit: graph.coverage.hitLimit, diagnostics: graph.diagnostics.filter((item) => item.code === "INVALID_ASSET_REFERENCE") };
+  return {
+    edges,
+    hitLimit: graph.coverage.hitLimit,
+    diagnostics: graph.diagnostics.filter((item) => item.code === "INVALID_ASSET_REFERENCE"),
+  };
 };
 
 const writeFullReport = async (
@@ -1041,23 +1386,34 @@ const writeFullReport = async (
 };
 
 const previewPage = <T>(items: readonly T[], offset: number, limit: number) => ({
-    total: items.length,
-    offset,
-    limit,
-    items: items.slice(offset, offset + limit),
-    nextOffset: offset + limit < items.length ? offset + limit : null,
-    hasMore: offset + limit < items.length,
+  total: items.length,
+  offset,
+  limit,
+  items: items.slice(offset, offset + limit),
+  nextOffset: offset + limit < items.length ? offset + limit : null,
+  hasMore: offset + limit < items.length,
 });
 
 export const runAssetResolveReferences = async (request: ResolveRequest, context: AutomationContext) => {
-  const environment = await prepareReferenceEnvironment(context, request.packPaths, request.vanillaPackPaths, request.gameDataPath, request.withVanilla);
-  const roots: ReferenceGraphRoot[] = request.roots.map((root) => typeof root === "string"
-    ? (() => {
-        const normalized = normalizeInternalPackPath(root);
-        if (tableLogicalName(normalized)) throw new AutomationError("INVALID_ARGUMENT", "DB row roots must include filePath and where filters", { filePath: normalized });
-        return { type: "asset" as const, path: normalized };
-      })()
-    : { type: "db", path: normalizeInternalPackPath(root.filePath), where: root.where as TableFilter[] });
+  const environment = await prepareReferenceEnvironment(
+    context,
+    request.packPaths,
+    request.vanillaPackPaths,
+    request.gameDataPath,
+    request.withVanilla,
+  );
+  const roots: ReferenceGraphRoot[] = request.roots.map((root) =>
+    typeof root === "string"
+      ? (() => {
+          const normalized = normalizeInternalPackPath(root);
+          if (tableLogicalName(normalized))
+            throw new AutomationError("INVALID_ARGUMENT", "DB row roots must include filePath and where filters", {
+              filePath: normalized,
+            });
+          return { type: "asset" as const, path: normalized };
+        })()
+      : { type: "db", path: normalizeInternalPackPath(root.filePath), where: root.where as TableFilter[] },
+  );
   const graph = await buildReferenceGraph(environment, roots, {
     traversal: request.traversal,
     maxDepth: request.maxDepth,
@@ -1079,7 +1435,13 @@ export const runAssetResolveReferences = async (request: ResolveRequest, context
 };
 
 export const runAssetFindReferences = async (request: FindRequest, context: AutomationContext) => {
-  const environment = await prepareReferenceEnvironment(context, request.packPaths, request.vanillaPackPaths, request.gameDataPath, request.withVanilla);
+  const environment = await prepareReferenceEnvironment(
+    context,
+    request.packPaths,
+    request.vanillaPackPaths,
+    request.gameDataPath,
+    request.withVanilla,
+  );
   const targetPath = normalizeInternalPackPath(request.targetPath);
   const builder = new ReferenceGraphBuilder(environment, {
     traversal: "direct",
@@ -1104,7 +1466,13 @@ export const runAssetFindReferences = async (request: FindRequest, context: Auto
     const top = candidates.filter((candidate) => candidate.provider.order === highest);
     if (top.length !== 1) {
       environment.complete = false;
-      environment.diagnostics.push(diagnostic("AMBIGUOUS_ASSET", `Effective file path is ambiguous: ${top[0]?.entry.name ?? ""}`, top[0]?.entry.name));
+      environment.diagnostics.push(
+        diagnostic(
+          "AMBIGUOUS_ASSET",
+          `Effective file path is ambiguous: ${top[0]?.entry.name ?? ""}`,
+          top[0]?.entry.name,
+        ),
+      );
       continue;
     }
     const entry = top[0].entry;
@@ -1127,7 +1495,13 @@ export const runAssetFindReferences = async (request: FindRequest, context: Auto
       const type = ext || "(no extension)";
       skippedFileTypes[type] = (skippedFileTypes[type] ?? 0) + 1;
       environment.complete = false;
-      environment.diagnostics.push(diagnostic("UNSUPPORTED_REVERSE_SCAN_TYPE", `Reverse scanning skipped unsupported file type ${type}`, entry.name));
+      environment.diagnostics.push(
+        diagnostic(
+          "UNSUPPORTED_REVERSE_SCAN_TYPE",
+          `Reverse scanning skipped unsupported file type ${type}`,
+          entry.name,
+        ),
+      );
     }
   }
   const targetKey = normalizePackFilePathKey(targetPath);
@@ -1152,31 +1526,41 @@ export const runAssetFindReferences = async (request: FindRequest, context: Auto
     }
   }
   const graph = await builder.run([]);
-  const unsupportedRigidFileCount = graph.nodes.filter((node) => node.extension === "rigid_model_v2" && node.coverage !== "supportedRigidInternals").length;
+  const unsupportedRigidFileCount = graph.nodes.filter(
+    (node) => node.extension === "rigid_model_v2" && node.coverage !== "supportedRigidInternals",
+  ).length;
   if (unsupportedRigidFileCount > 0) {
     skippedFileTypes.rigid_model_v2 = unsupportedRigidFileCount;
     skippedFileCount += unsupportedRigidFileCount;
   }
   const matchingEdges = graph.edges.filter((edge) => {
     const target = builder.nodes.get(edge.target);
-    return target && (normalizePackFilePathKey(target.path) === targetKey || (targetTable && target.table === targetTable));
+    return (
+      target && (normalizePackFilePathKey(target.path) === targetKey || (targetTable && target.table === targetTable))
+    );
   });
-  const targetNode = graph.nodes.find((node) => node.type === "asset" && normalizePackFilePathKey(node.path) === targetKey);
+  const targetNode = graph.nodes.find(
+    (node) => node.type === "asset" && normalizePackFilePathKey(node.path) === targetKey,
+  );
   const isRigidTarget = targetNode?.extension === "rigid_model_v2";
   const modelBindingEdges = graph.edges.filter((edge) => edge.loadMode);
   const targetBindingEdges = matchingEdges.filter((edge) => edge.loadMode);
   const allEdges = isRigidTarget
-    ? matchingEdges.map((edge, index) => ({ edge, index })).sort((left, right) => {
-        const rank = (mode: ReferenceGraphEdge["loadMode"]) => mode === "direct" ? 0 : mode === "wsmodel" ? 1 : 2;
-        return rank(left.edge.loadMode) - rank(right.edge.loadMode) || left.index - right.index;
-      }).map(({ edge }) => edge)
+    ? matchingEdges
+        .map((edge, index) => ({ edge, index }))
+        .sort((left, right) => {
+          const rank = (mode: ReferenceGraphEdge["loadMode"]) => (mode === "direct" ? 0 : mode === "wsmodel" ? 1 : 2);
+          return rank(left.edge.loadMode) - rank(right.edge.loadMode) || left.index - right.index;
+        })
+        .map(({ edge }) => edge)
     : matchingEdges;
   const embeddedTextureEdges = graph.edges.filter((edge) => edge.relationship === "embedded-texture");
   const full = {
     targetPath,
     complete: graph.complete,
     coverage: {
-      scanScope: "effective XML-backed visual assets and DB rows plus supported RMV2 material textures; DDS files are fully covered leaves",
+      scanScope:
+        "effective XML-backed visual assets and DB rows plus supported RMV2 material textures; DDS files are fully covered leaves",
       xmlFiles: xmlRootCount,
       dbTables: environment.dbFiles.size,
       ddsLeaves: ddsLeafCount,
@@ -1184,10 +1568,14 @@ export const runAssetFindReferences = async (request: FindRequest, context: Auto
       rigidFilesUnsupported: unsupportedRigidFileCount,
       directRigidBindings: modelBindingEdges.filter((edge) => edge.loadMode === "direct").length,
       wsModelGeometryBindings: modelBindingEdges.filter((edge) => edge.loadMode === "wsmodel").length,
-      ...(isRigidTarget ? { loaderCounts: {
-        direct: targetBindingEdges.filter((edge) => edge.loadMode === "direct").length,
-        wsmodel: targetBindingEdges.filter((edge) => edge.loadMode === "wsmodel").length,
-      } } : {}),
+      ...(isRigidTarget
+        ? {
+            loaderCounts: {
+              direct: targetBindingEdges.filter((edge) => edge.loadMode === "direct").length,
+              wsmodel: targetBindingEdges.filter((edge) => edge.loadMode === "wsmodel").length,
+            },
+          }
+        : {}),
       embeddedTextureBindings: embeddedTextureEdges.length,
       skippedFiles: skippedFileCount,
       unsupportedFileTypes: skippedFileTypes,

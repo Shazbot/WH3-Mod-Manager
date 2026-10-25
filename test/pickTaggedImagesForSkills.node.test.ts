@@ -26,13 +26,18 @@ describe("pickTaggedImagesForTexts", () => {
   const images = { icon_a: "ui\\a.png", icon_b: "ui\\b.png" };
 
   it("ignores undefined texts and unknown tags", () => {
-    expect(pickTaggedImagesForTexts([undefined, "[[img:icon_zzz]][[/img]]", "[[img:icon_a]][[/img]]"], images)).toEqual({
-      icon_a: "ui\\a.png",
-    });
+    expect(pickTaggedImagesForTexts([undefined, "[[img:icon_zzz]][[/img]]", "[[img:icon_a]][[/img]]"], images)).toEqual(
+      {
+        icon_a: "ui\\a.png",
+      },
+    );
   });
 
   it("picks a repeated tag once", () => {
-    const picked = pickTaggedImagesForTexts(["[[img:icon_b]][[/img]] x [[img:icon_b]][[/img]]", "[[img:icon_b]]"], images);
+    const picked = pickTaggedImagesForTexts(
+      ["[[img:icon_b]][[/img]] x [[img:icon_b]][[/img]]", "[[img:icon_b]]"],
+      images,
+    );
     expect(Object.keys(picked)).toEqual(["icon_b"]);
   });
 });

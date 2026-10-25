@@ -190,9 +190,7 @@ export const readPayload = async (
     throw new Error(`Stored payload ${entry.name} exceeds configured ${maxLogicalPayloadBytes} byte limit`);
   }
   const raw = readRawPayload(pack, entry);
-  const logical = entry.is_compressed
-    ? await decompressPackedPayload(raw, entry.name, maxLogicalPayloadBytes)
-    : raw;
+  const logical = entry.is_compressed ? await decompressPackedPayload(raw, entry.name, maxLogicalPayloadBytes) : raw;
   if (logical.length > maxLogicalPayloadBytes) {
     throw new Error(`Logical payload ${entry.name} exceeds configured ${maxLogicalPayloadBytes} byte limit`);
   }
@@ -203,11 +201,14 @@ const createDependencyBytes = (dependencies: readonly string[]): Buffer => {
   if (dependencies.some((dependency) => dependency.includes("\0"))) {
     throw new Error("Dependency pack names cannot contain null bytes");
   }
-  return Buffer.concat(dependencies.map((dependency) => Buffer.concat([Buffer.from(dependency, "utf8"), Buffer.from([0])])));
+  return Buffer.concat(
+    dependencies.map((dependency) => Buffer.concat([Buffer.from(dependency, "utf8"), Buffer.from([0])])),
+  );
 };
 
 const validateWriteEntry = (entry: RawPackWriteEntry, useFilenameHash: boolean): number => {
-  if (!entry.name || entry.name.includes("\0")) throw new Error(`Invalid packed filename: ${JSON.stringify(entry.name)}`);
+  if (!entry.name || entry.name.includes("\0"))
+    throw new Error(`Invalid packed filename: ${JSON.stringify(entry.name)}`);
   if ((entry.buffer === undefined) === (entry.source === undefined)) {
     throw new Error(`Packed file ${entry.name} must have exactly one of buffer or source`);
   }
@@ -215,7 +216,10 @@ const validateWriteEntry = (entry: RawPackWriteEntry, useFilenameHash: boolean):
   if (!Number.isSafeInteger(size) || size < 0 || size > 0x7fffffff) {
     throw new Error(`Packed file ${entry.name} has unsupported size ${size}`);
   }
-  if (useFilenameHash && (!Number.isInteger(entry.file_name_hash) || entry.file_name_hash! < 0 || entry.file_name_hash! > 0xffffffff)) {
+  if (
+    useFilenameHash &&
+    (!Number.isInteger(entry.file_name_hash) || entry.file_name_hash! < 0 || entry.file_name_hash! > 0xffffffff)
+  ) {
     throw new Error(`Packed file ${entry.name} is missing its filename hash`);
   }
   if (entry.source) {

@@ -3,12 +3,7 @@ import { SchemaField } from "../packFileTypes";
 import { normalizePackFilePathKey } from "../utility/packFilePathUtils";
 import { buildNumericCellFields, buildStringCellFields, isStringCellType } from "./cellFields";
 import { checksumBytes } from "./checksum";
-import {
-  decodeDictionaryColumn,
-  decodeDictionaryColumnIds,
-  decodeI64Column,
-  decodeNumericColumn,
-} from "./columnCodec";
+import { decodeDictionaryColumn, decodeDictionaryColumnIds, decodeI64Column, decodeNumericColumn } from "./columnCodec";
 import { FRONT_CODED_CHECKPOINT_INTERVAL, FrontCodedBlock, readAllFrontCodedEntries } from "./frontCodedBlock";
 import {
   VANILLA_DB_CACHE_HEADER_BYTES,
@@ -314,7 +309,11 @@ export const openVanillaDbCache = (
     const values = decodeI64Column(
       columnSlice(column.offset, column.length, column.checksum, `${tablePath}:${column.name}`),
     );
-    decoded.set(cacheKey, values, values.reduce((total, value) => total + value.length * 2 + 16, 0));
+    decoded.set(
+      cacheKey,
+      values,
+      values.reduce((total, value) => total + value.length * 2 + 16, 0),
+    );
     return values;
   };
 

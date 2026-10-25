@@ -50,32 +50,32 @@ Use native Windows Git for this repository, ideally from PowerShell or Windows T
 
 ## Pack inspection and automation
 
-  Use WHMM’s headless tools for inspecting, querying, editing, comparing,
-  validating, and subsetting WH3 pack files.
+Use WHMMï¿½s headless tools for inspecting, querying, editing, comparing,
+validating, and subsetting WH3 pack files.
 
-  Documentation: /mnt/k/projects/whmm/docs/HEADLESS.md
+Documentation: /mnt/k/projects/whmm/docs/HEADLESS.md
 
-  Prefer the WHMM MCP tools when available. Otherwise invoke the CLI:
-  node /mnt/k/projects/whmm/dist/cli/main.js --help
+Prefer the WHMM MCP tools when available. Otherwise invoke the CLI:
+node /mnt/k/projects/whmm/dist/cli/main.js --help
 
-  If the tooling is missing or its source changed, build from the WHMM repo:
-  cd /mnt/k/projects/whmm
-  yarn build:tools
+If the tooling is missing or its source changed, build from the WHMM repo:
+cd /mnt/k/projects/whmm
+yarn build:tools
 
-  - Use --format json for machine-readable CLI results.
-  - Use explicit input packs and load order.
-  - Write modified packs to a separate output path.
-  - Validate generated packs before reporting success.
-  - Use pagination or explicit reports for large results.
-  - Inspect incomplete/unsupported coverage before relying on dependency graphs.
-  - Do not write one-off pack parsers when these tools support the operation.
-  - Use Node and native dependencies installed for the current platform.
+- Use --format json for machine-readable CLI results.
+- Use explicit input packs and load order.
+- Write modified packs to a separate output path.
+- Validate generated packs before reporting success.
+- Use pagination or explicit reports for large results.
+- Inspect incomplete/unsupported coverage before relying on dependency graphs.
+- Do not write one-off pack parsers when these tools support the operation.
+- Use Node and native dependencies installed for the current platform.
 
-  Reuse src/packCore and src/automation when implementing pack functionality.
-  Keep CLI and MCP as adapters over the shared operation registry.
-  Rebuild the tools after changing their source before testing through the CLI.
-  
-   ## WSL2 Windows Filesystem Performance
+Reuse src/packCore and src/automation when implementing pack functionality.
+Keep CLI and MCP as adapters over the shared operation registry.
+Rebuild the tools after changing their source before testing through the CLI.
+
+## WSL2 Windows Filesystem Performance
 
 Windows-mounted paths (`/mnt/c`, `/mnt/k`, etc.) are slow to traverse from WSL2. Prefer Windows-native tools for filesystem searches:
 

@@ -273,7 +273,13 @@ const api = {
   openWorkshopOptimizerReport: (modName: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("openWorkshopOptimizerReport", modName),
   startVisualAssetCheck: (
-    mod: { name: string; path: string; workshopId?: string; reqModIdToName?: [string, string][]; dependencyPacks?: string[] },
+    mod: {
+      name: string;
+      path: string;
+      workshopId?: string;
+      reqModIdToName?: [string, string][];
+      dependencyPacks?: string[];
+    },
     enabledMods: {
       name: string;
       path: string;

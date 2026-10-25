@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { ensureLegacyWorkshopPack, isLegacyWorkshopBin, resolveLegacyPackName } from "../src/utility/legacyWorkshopPack";
+import {
+  ensureLegacyWorkshopPack,
+  isLegacyWorkshopBin,
+  resolveLegacyPackName,
+} from "../src/utility/legacyWorkshopPack";
 
 const respond = (filename: unknown) => async () => ({
   ok: true,

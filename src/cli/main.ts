@@ -1,7 +1,13 @@
 import * as fs from "node:fs/promises";
 import { inspect } from "node:util";
 import { parseArgs } from "node:util";
-import { createAutomationCacheService, createAutomationContext, executeAutomationRequest, getExitCodeForAutomationError, type AutomationContext } from "../automation/registry";
+import {
+  createAutomationCacheService,
+  createAutomationContext,
+  executeAutomationRequest,
+  getExitCodeForAutomationError,
+  type AutomationContext,
+} from "../automation/registry";
 import { AutomationError, automationErrorFromUnknown } from "../automation/errors";
 
 const rootHelp = `Usage:
@@ -130,9 +136,11 @@ const readInput = async (
 
 const numericOption = (value: string | undefined, flagName: string): number | undefined => {
   if (value === undefined) return undefined;
-  if (!/^\d+$/.test(value)) throw new AutomationError("INVALID_ARGUMENT", `--${flagName} must be a non-negative integer`);
+  if (!/^\d+$/.test(value))
+    throw new AutomationError("INVALID_ARGUMENT", `--${flagName} must be a non-negative integer`);
   const number = Number(value);
-  if (!Number.isSafeInteger(number)) throw new AutomationError("INVALID_ARGUMENT", `--${flagName} exceeds the safe integer range`);
+  if (!Number.isSafeInteger(number))
+    throw new AutomationError("INVALID_ARGUMENT", `--${flagName} exceeds the safe integer range`);
   return number;
 };
 
@@ -158,10 +166,16 @@ const buildRequest = async (
 
   const [group, action, first, second, third] = command;
   if (values["with-vanilla"] !== undefined || values["game-data"] !== undefined) {
-    const supportsVanilla = (group === "pack" && ["validate", "subset"].includes(action)) ||
+    const supportsVanilla =
+      (group === "pack" && ["validate", "subset"].includes(action)) ||
       (group === "asset" && ["resolve", "references", "materials"].includes(action)) ||
-      (group === "loc" && action === "lookup") || (group === "unit" && action === "resolve");
-    if (!supportsVanilla) throw new AutomationError("INVALID_ARGUMENT", "--with-vanilla and --game-data require validate, subset, asset, loc lookup, or unit resolve");
+      (group === "loc" && action === "lookup") ||
+      (group === "unit" && action === "resolve");
+    if (!supportsVanilla)
+      throw new AutomationError(
+        "INVALID_ARGUMENT",
+        "--with-vanilla and --game-data require validate, subset, asset, loc lookup, or unit resolve",
+      );
     if (values["with-vanilla"] !== undefined) common.withVanilla = values["with-vanilla"];
     if (values["game-data"] !== undefined) common.gameDataPath = values["game-data"];
   }
@@ -178,7 +192,8 @@ const buildRequest = async (
   if (group === "rigid" && action === "patch") {
     ensurePositionals(command, 4);
     const outputPath = values.output ?? extra.outputPath;
-    if (typeof outputPath !== "string") throw new AutomationError("INVALID_ARGUMENT", "rigid patch requires --output <packPath>");
+    if (typeof outputPath !== "string")
+      throw new AutomationError("INVALID_ARGUMENT", "rigid patch requires --output <packPath>");
     return { ...common, operation: "rigid_patch", packPath: first, filePath: second, outputPath };
   }
   if (group === "pack") {
@@ -187,7 +202,15 @@ const buildRequest = async (
       if (first !== "inspect") throw new AutomationError("INVALID_ARGUMENT", `Unknown texture command: ${first}`);
       const mipLevel = numericOption(values.mip, "mip");
       const surface = numericOption(values.surface, "surface");
-      return { ...common, operation: "pack_texture_inspect", packPath: second, filePath: third, ...(mipLevel === undefined ? {} : { mipLevel }), ...(surface === undefined ? {} : { surface }), ...(values.output === undefined ? {} : { outputPath: values.output }) };
+      return {
+        ...common,
+        operation: "pack_texture_inspect",
+        packPath: second,
+        filePath: third,
+        ...(mipLevel === undefined ? {} : { mipLevel }),
+        ...(surface === undefined ? {} : { surface }),
+        ...(values.output === undefined ? {} : { outputPath: values.output }),
+      };
     }
     if (action === "info") {
       ensurePositionals(command, 3);
@@ -212,7 +235,11 @@ const buildRequest = async (
     }
     if (action === "search") {
       ensurePositionals(command, 3, 4);
-      if (values.query !== undefined && second !== undefined) throw new AutomationError("INVALID_ARGUMENT", "Provide the search query either as a positional argument or --query");
+      if (values.query !== undefined && second !== undefined)
+        throw new AutomationError(
+          "INVALID_ARGUMENT",
+          "Provide the search query either as a positional argument or --query",
+        );
       const maxResults = numericOption(values["max-results"], "max-results");
       const query = values.query ?? second ?? extra.query;
       return {
@@ -239,15 +266,35 @@ const buildRequest = async (
     }
     if (action === "write") {
       ensurePositionals(command, 3);
-      return { ...common, operation: "pack_write_files", packPath: first, ...(values.output === undefined && extra.outputPath === undefined ? {} : { outputPath: values.output ?? extra.outputPath }) };
+      return {
+        ...common,
+        operation: "pack_write_files",
+        packPath: first,
+        ...(values.output === undefined && extra.outputPath === undefined
+          ? {}
+          : { outputPath: values.output ?? extra.outputPath }),
+      };
     }
     if (action === "validate") {
       ensurePositionals(command, 3);
-      return { ...common, operation: "pack_validate", packPath: first, ...(values["full-payloads"] ? { fullPayloads: true } : {}) };
+      return {
+        ...common,
+        operation: "pack_validate",
+        packPath: first,
+        ...(values["full-payloads"] ? { fullPayloads: true } : {}),
+      };
     }
     if (action === "clone") {
       ensurePositionals(command, 3);
-      return { ...common, operation: "pack_clone", packPath: first, ...(values.output === undefined && extra.outputPath === undefined ? {} : { outputPath: values.output ?? extra.outputPath }), ...(values["verify-sha256"] ? { verifySha256: true } : {}) };
+      return {
+        ...common,
+        operation: "pack_clone",
+        packPath: first,
+        ...(values.output === undefined && extra.outputPath === undefined
+          ? {}
+          : { outputPath: values.output ?? extra.outputPath }),
+        ...(values["verify-sha256"] ? { verifySha256: true } : {}),
+      };
     }
     if (action === "diff") {
       ensurePositionals(command, 4);
@@ -262,14 +309,21 @@ const buildRequest = async (
     }
     if (action === "subset") {
       ensurePositionals(command, 3);
-      if (values.strict && values["no-strict"]) throw new AutomationError("INVALID_ARGUMENT", "Use only one of --strict or --no-strict");
-      const includes = values.include === undefined ? [] : Array.isArray(values.include) ? values.include : [values.include];
-      const globs = [...(Array.isArray(extra.globs) ? extra.globs.filter((item): item is string => typeof item === "string") : []), ...includes];
+      if (values.strict && values["no-strict"])
+        throw new AutomationError("INVALID_ARGUMENT", "Use only one of --strict or --no-strict");
+      const includes =
+        values.include === undefined ? [] : Array.isArray(values.include) ? values.include : [values.include];
+      const globs = [
+        ...(Array.isArray(extra.globs) ? extra.globs.filter((item): item is string => typeof item === "string") : []),
+        ...includes,
+      ];
       return {
         ...common,
         operation: "pack_subset",
         sourcePackPaths: Array.isArray(extra.sourcePackPaths) ? extra.sourcePackPaths : [first],
-        ...(values.output === undefined && extra.outputPath === undefined ? {} : { outputPath: values.output ?? extra.outputPath }),
+        ...(values.output === undefined && extra.outputPath === undefined
+          ? {}
+          : { outputPath: values.output ?? extra.outputPath }),
         ...(globs.length ? { globs } : {}),
         ...(values.closure === undefined ? {} : { closure: values.closure }),
         ...(values.mode === undefined ? {} : { mode: values.mode }),
@@ -279,17 +333,28 @@ const buildRequest = async (
     }
     if (action === "table") {
       const [, , tableAction, packPath, tablePath] = command;
-      if (!["read", "query", "patch"].includes(tableAction)) throw new AutomationError("INVALID_ARGUMENT", `Unknown table command: ${tableAction ?? "(empty)"}`);
+      if (!["read", "query", "patch"].includes(tableAction))
+        throw new AutomationError("INVALID_ARGUMENT", `Unknown table command: ${tableAction ?? "(empty)"}`);
       ensurePositionals(command, 5);
-      const operation = tableAction === "read" ? "pack_read_table" : tableAction === "query" ? "pack_query_table" : "pack_patch_table";
-      return { ...common, operation, packPath, tablePath, ...(values.output === undefined && extra.outputPath === undefined ? {} : { outputPath: values.output ?? extra.outputPath }) };
+      const operation =
+        tableAction === "read" ? "pack_read_table" : tableAction === "query" ? "pack_query_table" : "pack_patch_table";
+      return {
+        ...common,
+        operation,
+        packPath,
+        tablePath,
+        ...(values.output === undefined && extra.outputPath === undefined
+          ? {}
+          : { outputPath: values.output ?? extra.outputPath }),
+      };
     }
   }
   if (group === "asset") {
     ensurePositionals(command, 2);
     if (!values.input) throw new AutomationError("INVALID_ARGUMENT", `asset ${action} requires --input <jsonFile>`);
     if (action === "resolve") return { ...extra, ...common, operation: "asset_resolve_references" };
-    if (action === "references" || action === "find-references") return { ...extra, ...common, operation: "asset_find_references" };
+    if (action === "references" || action === "find-references")
+      return { ...extra, ...common, operation: "asset_find_references" };
     if (action === "materials") return { ...extra, ...common, operation: "asset_materials" };
   }
   if ((group === "loc" && action === "lookup") || (group === "unit" && action === "resolve")) {
@@ -299,9 +364,19 @@ const buildRequest = async (
   }
   if (group === "table") {
     ensurePositionals(command, 4);
-    if (!["read", "query", "patch"].includes(action)) throw new AutomationError("INVALID_ARGUMENT", `Unknown table command: ${action ?? "(empty)"}`);
-    const operation = action === "read" ? "pack_read_table" : action === "query" ? "pack_query_table" : "pack_patch_table";
-    return { ...common, operation, packPath: first, tablePath: second, ...(values.output === undefined && extra.outputPath === undefined ? {} : { outputPath: values.output ?? extra.outputPath }) };
+    if (!["read", "query", "patch"].includes(action))
+      throw new AutomationError("INVALID_ARGUMENT", `Unknown table command: ${action ?? "(empty)"}`);
+    const operation =
+      action === "read" ? "pack_read_table" : action === "query" ? "pack_query_table" : "pack_patch_table";
+    return {
+      ...common,
+      operation,
+      packPath: first,
+      tablePath: second,
+      ...(values.output === undefined && extra.outputPath === undefined
+        ? {}
+        : { outputPath: values.output ?? extra.outputPath }),
+    };
   }
   throw new AutomationError("INVALID_ARGUMENT", `Unknown command: ${command.join(" ") || "(empty)"}`);
 };
@@ -330,7 +405,8 @@ export const main = async (argv = process.argv.slice(2), io: CliIo = defaultIo):
       printHelp(io, command);
       return 0;
     }
-    if (format !== "json" && format !== "text") throw new AutomationError("INVALID_ARGUMENT", `Unsupported output format: ${format}`);
+    if (format !== "json" && format !== "text")
+      throw new AutomationError("INVALID_ARGUMENT", `Unsupported output format: ${format}`);
     if (!noCache) {
       let memoryMiB = 128;
       if (parsed.values["cache-memory-mib"] !== undefined) {
@@ -357,7 +433,12 @@ export const main = async (argv = process.argv.slice(2), io: CliIo = defaultIo):
       const inputPath = await context.policy.assertReadPath(parsed.values.input);
       if (request && typeof request === "object") {
         const candidate = request as Record<string, unknown>;
-        const outputs = [candidate.outputPath, candidate.extractTo, candidate.reportPath, candidate.manifestPath].filter((value): value is string => typeof value === "string");
+        const outputs = [
+          candidate.outputPath,
+          candidate.extractTo,
+          candidate.reportPath,
+          candidate.manifestPath,
+        ].filter((value): value is string => typeof value === "string");
         for (const outputPath of outputs) await context.policy.assertOutputDistinctFromSources(outputPath, [inputPath]);
       }
     }
@@ -371,8 +452,17 @@ export const main = async (argv = process.argv.slice(2), io: CliIo = defaultIo):
       io.stderr(`[${item.severity}] ${item.code}: ${item.message}${item.path ? ` (${item.path})` : ""}\n`);
     }
     if (format === "json") io.stdout(`${JSON.stringify(response)}\n`);
-    else io.stdout(`${inspect(response.data, { colors: io === defaultIo && process.stdout.isTTY, depth: null, compact: false })}\n`);
-    if (request && typeof request === "object" && (request as Record<string, unknown>).operation === "pack_validate" && (response.data as { valid?: boolean }).valid === false) return 5;
+    else
+      io.stdout(
+        `${inspect(response.data, { colors: io === defaultIo && process.stdout.isTTY, depth: null, compact: false })}\n`,
+      );
+    if (
+      request &&
+      typeof request === "object" &&
+      (request as Record<string, unknown>).operation === "pack_validate" &&
+      (response.data as { valid?: boolean }).valid === false
+    )
+      return 5;
     return 0;
   } catch (error) {
     const normalized = automationErrorFromUnknown(error);

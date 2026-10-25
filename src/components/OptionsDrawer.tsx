@@ -305,36 +305,35 @@ const OptionsDrawer = memo(() => {
     optimizeWorkshopModsOnStart,
   ]);
 
-  const clearWorkshopOptimizerCache = useCallback(async (options?: { stopBackground?: boolean }) => {
-    const clear = window.api?.clearWorkshopOptimizerCache;
-    if (!clear) return;
-    setIsClearingWorkshopOptimizerCache(true);
-    setWorkshopStagingFolderMessage(undefined);
-    try {
-      const result = await clear(options);
-      setWorkshopStagingFolderMessage(
-        result?.success
-          ? { message: localized.workshopOptimizerCacheCleared || "Cleared optimized mods cache.", isError: false }
-          : {
-              message:
-                result?.error || localized.workshopOptimizerCacheBusy || "Could not clear the optimized mods cache.",
-              isError: true,
-            },
-      );
-      await refreshWorkshopOptimizerCacheInfo();
-    } catch (error) {
-      setWorkshopStagingFolderMessage({
-        message: error instanceof Error ? error.message : String(error),
-        isError: true,
-      });
-    } finally {
-      setIsClearingWorkshopOptimizerCache(false);
-    }
-  }, [
-    localized.workshopOptimizerCacheBusy,
-    localized.workshopOptimizerCacheCleared,
-    refreshWorkshopOptimizerCacheInfo,
-  ]);
+  const clearWorkshopOptimizerCache = useCallback(
+    async (options?: { stopBackground?: boolean }) => {
+      const clear = window.api?.clearWorkshopOptimizerCache;
+      if (!clear) return;
+      setIsClearingWorkshopOptimizerCache(true);
+      setWorkshopStagingFolderMessage(undefined);
+      try {
+        const result = await clear(options);
+        setWorkshopStagingFolderMessage(
+          result?.success
+            ? { message: localized.workshopOptimizerCacheCleared || "Cleared optimized mods cache.", isError: false }
+            : {
+                message:
+                  result?.error || localized.workshopOptimizerCacheBusy || "Could not clear the optimized mods cache.",
+                isError: true,
+              },
+        );
+        await refreshWorkshopOptimizerCacheInfo();
+      } catch (error) {
+        setWorkshopStagingFolderMessage({
+          message: error instanceof Error ? error.message : String(error),
+          isError: true,
+        });
+      } finally {
+        setIsClearingWorkshopOptimizerCache(false);
+      }
+    },
+    [localized.workshopOptimizerCacheBusy, localized.workshopOptimizerCacheCleared, refreshWorkshopOptimizerCacheInfo],
+  );
 
   // Optimized packs are only used in copy mode: leaving it clears their cache.
   const changeWorkshopModStagingMode = useCallback(

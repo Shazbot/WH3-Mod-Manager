@@ -300,33 +300,39 @@ describe("vanilla loc cache store", () => {
       decoderRevision: "packCore-loc-v1",
     };
     expect(
-      (await openOrBuildVanillaLocCache({
-        ...common,
-        orderFingerprint: "gui-order",
-        readEntries,
-      }))?.get("key"),
+      (
+        await openOrBuildVanillaLocCache({
+          ...common,
+          orderFingerprint: "gui-order",
+          readEntries,
+        })
+      )?.get("key"),
     ).toBe("gui order");
     closeVanillaLocCaches();
 
     readEntries.mockReturnValue([["key", "pack-index order"] as const]);
     expect(
-      (await openOrBuildVanillaLocCache({
-        ...common,
-        orderFingerprint: "pack-index-order",
-        readEntries,
-      }))?.get("key"),
+      (
+        await openOrBuildVanillaLocCache({
+          ...common,
+          orderFingerprint: "pack-index-order",
+          readEntries,
+        })
+      )?.get("key"),
     ).toBe("pack-index order");
     closeVanillaLocCaches();
 
     readEntries.mockReturnValue([["key", "legacy-source"] as const]);
     expect(
-      (await openOrBuildVanillaLocCache({
-        userDataPath,
-        game: "wh3",
-        packPaths: [packPath],
-        orderFingerprint: "pack-index-order",
-        readEntries,
-      }))?.get("key"),
+      (
+        await openOrBuildVanillaLocCache({
+          userDataPath,
+          game: "wh3",
+          packPaths: [packPath],
+          orderFingerprint: "pack-index-order",
+          readEntries,
+        })
+      )?.get("key"),
     ).toBe("legacy-source");
     expect(readEntries).toHaveBeenCalledTimes(3);
   });

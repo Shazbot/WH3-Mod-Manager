@@ -27,13 +27,7 @@ const locPreamble = Buffer.from([255, 254, 76, 79, 67, 0, 1, 0, 0, 0]);
 const locTable = (value: string) =>
   serializeDbTable(
     LocVersion,
-    [
-      [
-        [{ type: "String", val: "shared_key" }],
-        [{ type: "String", val: value }],
-        [{ type: "UInt8", val: 0 }],
-      ],
-    ],
+    [[[{ type: "String", val: "shared_key" }], [{ type: "String", val: value }], [{ type: "UInt8", val: 0 }]]],
     { preamble: locPreamble },
   );
 const emptyLocTable = () => serializeDbTable(LocVersion, [], { preamble: locPreamble });

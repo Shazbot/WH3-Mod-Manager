@@ -6,7 +6,14 @@ import { z } from "zod";
 import { vanillaInputs } from "./vanilla";
 import { parseDBTablePath } from "../utility/packFileHelpers";
 import { normalizePackFilePathKey } from "../utility/packFilePathUtils";
-import { readPackIndex, rewriteDbTableRows, writeRawPack, type CorePack, type CorePackEntry, type RawPackWriteEntry } from "../packCore";
+import {
+  readPackIndex,
+  rewriteDbTableRows,
+  writeRawPack,
+  type CorePack,
+  type CorePackEntry,
+  type RawPackWriteEntry,
+} from "../packCore";
 import { AutomationError, throwIfAborted, yieldToEventLoop, type AutomationDiagnostic } from "./errors";
 import { normalizeInternalPackPath } from "./filesystem";
 import { readAutomationPayload, getAutomationSchemaProvider } from "./packAccess";
@@ -23,39 +30,58 @@ import {
 import { loadPackedTable, queryTableRows, type TableFilter } from "./tables";
 import type { AutomationContext } from "./operations";
 
-const scalarSchema = z.union([z.string(), z.number().finite(), z.boolean(), z.null(), z.array(z.union([z.string(), z.number().finite(), z.boolean(), z.null()]))]);
-const filterSchema = z.object({
-  field: z.string().min(1),
-  op: z.enum(["eq", "ne", "lt", "lte", "gt", "gte", "in", "contains"]),
-  value: scalarSchema,
-}).strict();
+const scalarSchema = z.union([
+  z.string(),
+  z.number().finite(),
+  z.boolean(),
+  z.null(),
+  z.array(z.union([z.string(), z.number().finite(), z.boolean(), z.null()])),
+]);
+const filterSchema = z
+  .object({
+    field: z.string().min(1),
+    op: z.enum(["eq", "ne", "lt", "lte", "gt", "gte", "in", "contains"]),
+    value: scalarSchema,
+  })
+  .strict();
 const rowRootSchema = z.object({ filePath: z.string().min(1), where: z.array(filterSchema).max(1000) }).strict();
 
-export const packSubsetSchema = z.object({
-  operation: z.literal("pack_subset"),
-  sourcePackPaths: z.array(z.string().min(1)).min(1).max(512),
-  /** Complete low-to-high mod load order. Every sourcePackPath must occur here. */
-  packPaths: z.array(z.string().min(1)).min(1).max(512).optional(),
-  ...vanillaInputs,
-  paths: z.array(z.string().min(1)).max(10000).default([]),
-  prefixes: z.array(z.string().min(1)).max(1000).default([]),
-  globs: z.array(z.string().min(1)).max(1000).default([]),
-  tableNames: z.array(z.string().min(1)).max(1000).default([]),
-  assetRoots: z.array(z.string().min(1)).max(1000).default([]),
-  rows: z.array(rowRootSchema).max(1000).default([]),
-  closure: z.enum(["none", "direct", "transitive"]).default("none"),
-  mode: z.enum(["external", "selfContained"]).default("external"),
-  includeVanilla: z.boolean().default(false),
-  strict: z.boolean().default(false),
-  offset: z.number().int().min(0).default(0),
-  limit: z.number().int().min(1).max(1000).default(100),
-  outputPath: z.string().min(1),
-  overwrite: z.boolean().default(false),
-  manifestPath: z.string().min(1).optional(),
-  reportPath: z.string().min(1).optional(),
-}).strict().refine((request) =>
-  request.paths.length + request.prefixes.length + request.globs.length + request.tableNames.length + request.assetRoots.length + request.rows.length > 0,
-"At least one subset selection is required");
+export const packSubsetSchema = z
+  .object({
+    operation: z.literal("pack_subset"),
+    sourcePackPaths: z.array(z.string().min(1)).min(1).max(512),
+    /** Complete low-to-high mod load order. Every sourcePackPath must occur here. */
+    packPaths: z.array(z.string().min(1)).min(1).max(512).optional(),
+    ...vanillaInputs,
+    paths: z.array(z.string().min(1)).max(10000).default([]),
+    prefixes: z.array(z.string().min(1)).max(1000).default([]),
+    globs: z.array(z.string().min(1)).max(1000).default([]),
+    tableNames: z.array(z.string().min(1)).max(1000).default([]),
+    assetRoots: z.array(z.string().min(1)).max(1000).default([]),
+    rows: z.array(rowRootSchema).max(1000).default([]),
+    closure: z.enum(["none", "direct", "transitive"]).default("none"),
+    mode: z.enum(["external", "selfContained"]).default("external"),
+    includeVanilla: z.boolean().default(false),
+    strict: z.boolean().default(false),
+    offset: z.number().int().min(0).default(0),
+    limit: z.number().int().min(1).max(1000).default(100),
+    outputPath: z.string().min(1),
+    overwrite: z.boolean().default(false),
+    manifestPath: z.string().min(1).optional(),
+    reportPath: z.string().min(1).optional(),
+  })
+  .strict()
+  .refine(
+    (request) =>
+      request.paths.length +
+        request.prefixes.length +
+        request.globs.length +
+        request.tableNames.length +
+        request.assetRoots.length +
+        request.rows.length >
+      0,
+    "At least one subset selection is required",
+  );
 
 type SubsetRequest = z.output<typeof packSubsetSchema>;
 
@@ -79,18 +105,29 @@ interface ExpectedPayload {
   buffer?: Buffer;
 }
 
-const canonicalAbsolute = (value: string) => process.platform === "win32" ? value.toLowerCase() : value;
+const canonicalAbsolute = (value: string) => (process.platform === "win32" ? value.toLowerCase() : value);
 const pathExt = (value: string) => {
   const lower = value.toLowerCase();
   if (lower.endsWith(".xml.material")) return "xml.material";
   if (lower.endsWith(".variantmeshdefinition")) return "variantmeshdefinition";
   if (lower.endsWith(".rigid_model_v2")) return "rigid_model_v2";
-  return lower.split("\\").at(-1)?.match(/\.([a-z0-9_]+)$/)?.[1] ?? "";
+  return (
+    lower
+      .split("\\")
+      .at(-1)
+      ?.match(/\.([a-z0-9_]+)$/)?.[1] ?? ""
+  );
 };
 const isDbPath = (value: string) => parseDBTablePath(normalizePackFilePathKey(value))?.dbFolder === "db";
 
 const assertSafePattern = (value: string): string => {
-  if (!value || value.includes("\0") || path.posix.isAbsolute(value) || path.win32.isAbsolute(value) || /^[a-zA-Z]:/.test(value)) {
+  if (
+    !value ||
+    value.includes("\0") ||
+    path.posix.isAbsolute(value) ||
+    path.win32.isAbsolute(value) ||
+    /^[a-zA-Z]:/.test(value)
+  ) {
     throw new AutomationError("INVALID_ARGUMENT", `Invalid packed path pattern: ${JSON.stringify(value)}`);
   }
   const normalized = value.replace(/\\/g, "/");
@@ -102,7 +139,8 @@ const assertSafePattern = (value: string): string => {
 
 const entryMatches = (entry: CorePackEntry, request: SubsetRequest): boolean => {
   const key = normalizePackFilePathKey(entry.name);
-  for (const value of request.paths) if (key === normalizePackFilePathKey(normalizeInternalPackPath(value))) return true;
+  for (const value of request.paths)
+    if (key === normalizePackFilePathKey(normalizeInternalPackPath(value))) return true;
   for (const value of request.prefixes) {
     const prefix = normalizePackFilePathKey(normalizeInternalPackPath(value));
     if (key === prefix || key.startsWith(`${prefix}\\`)) return true;
@@ -148,8 +186,10 @@ const selectEffectiveSource = (
   selectedFiles: Map<string, SelectedFile>,
 ): SelectedFile => {
   const resolved = resolveReferenceAsset(environment, packedPath, false);
-  if (resolved.status === "missing") throw new AutomationError("VALIDATION", `Selected packed file does not exist: ${packedPath}`);
-  if (resolved.status === "ambiguous" || !resolved.winner) throw new AutomationError("CONFLICT", `Selected packed file path is ambiguous: ${packedPath}`);
+  if (resolved.status === "missing")
+    throw new AutomationError("VALIDATION", `Selected packed file does not exist: ${packedPath}`);
+  if (resolved.status === "ambiguous" || !resolved.winner)
+    throw new AutomationError("CONFLICT", `Selected packed file path is ambiguous: ${packedPath}`);
   if (!sourceProviderPaths.has(canonicalAbsolute(resolved.winner.provider.pack.path))) {
     throw new AutomationError("CONFLICT", `Selected file ${packedPath} is shadowed by a pack outside sourcePackPaths`, {
       winner: resolved.winner.provider.pack.path,
@@ -161,7 +201,11 @@ const selectEffectiveSource = (
     provider: resolved.winner.provider,
     entry: resolved.winner.entry,
     reasons: selectedFiles.get(resolved.key)?.reasons ?? new Set<string>(),
-    shadowedCandidates: resolved.shadowed?.map(({ provider, entry }) => ({ packPath: provider.pack.path, entryPath: entry.name, kind: provider.kind })),
+    shadowedCandidates: resolved.shadowed?.map(({ provider, entry }) => ({
+      packPath: provider.pack.path,
+      entryPath: entry.name,
+      kind: provider.kind,
+    })),
   };
   selected.reasons.add(reason);
   selectedFiles.set(resolved.key, selected);
@@ -173,31 +217,57 @@ const assertUniqueEntries = (entries: readonly RawPackWriteEntry[]) => {
   for (const entry of entries) {
     const key = normalizePackFilePathKey(entry.name);
     const previous = names.get(key);
-    if (previous) throw new AutomationError("CONFLICT", `Subset output contains duplicate normalized path ${entry.name}`, { previous, name: entry.name });
+    if (previous)
+      throw new AutomationError("CONFLICT", `Subset output contains duplicate normalized path ${entry.name}`, {
+        previous,
+        name: entry.name,
+      });
     names.set(key, entry.name);
   }
 };
 
-const rowJsonKey = (row: EffectiveDbRow): Record<string, unknown> => Object.fromEntries(
-  row.loaded.schema.fields.filter((field) => field.is_key).map((field) => [field.name, row.row[field.name]]),
-);
+const rowJsonKey = (row: EffectiveDbRow): Record<string, unknown> =>
+  Object.fromEntries(
+    row.loaded.schema.fields.filter((field) => field.is_key).map((field) => [field.name, row.row[field.name]]),
+  );
 
 export const runPackSubset = async (request: SubsetRequest, context: AutomationContext) => {
   const modLoadOrder = request.packPaths ?? request.sourcePackPaths;
-  const environment = await prepareReferenceEnvironment(context, modLoadOrder, request.vanillaPackPaths, request.gameDataPath, request.withVanilla);
-  const canonicalSourcePaths = await Promise.all(request.sourcePackPaths.map((sourcePath) => context.policy.assertReadPath(sourcePath)));
+  const environment = await prepareReferenceEnvironment(
+    context,
+    modLoadOrder,
+    request.vanillaPackPaths,
+    request.gameDataPath,
+    request.withVanilla,
+  );
+  const canonicalSourcePaths = await Promise.all(
+    request.sourcePackPaths.map((sourcePath) => context.policy.assertReadPath(sourcePath)),
+  );
   const sourceProviderPaths = new Set(canonicalSourcePaths.map(canonicalAbsolute));
-  const providersByPath = new Map(environment.providers.map((provider) => [canonicalAbsolute(provider.pack.path), provider]));
+  const providersByPath = new Map(
+    environment.providers.map((provider) => [canonicalAbsolute(provider.pack.path), provider]),
+  );
   const missingSources = [...sourceProviderPaths].filter((sourcePath) => !providersByPath.has(sourcePath));
-  if (missingSources.length) throw new AutomationError("INVALID_ARGUMENT", "Every sourcePackPath must occur in the complete packPaths list", { missingSourcePackPaths: missingSources });
+  if (missingSources.length)
+    throw new AutomationError("INVALID_ARGUMENT", "Every sourcePackPath must occur in the complete packPaths list", {
+      missingSourcePackPaths: missingSources,
+    });
   if (request.packPaths) {
-    const canonicalLoadOrder = await Promise.all(request.packPaths.map((value) => context.policy.assertReadPath(value)));
+    const canonicalLoadOrder = await Promise.all(
+      request.packPaths.map((value) => context.policy.assertReadPath(value)),
+    );
     const completePaths = new Set(canonicalLoadOrder.map(canonicalAbsolute));
     const omitted = [...sourceProviderPaths].filter((sourcePath) => !completePaths.has(sourcePath));
-    if (omitted.length) throw new AutomationError("INVALID_ARGUMENT", "packPaths is the complete mod load order and must contain every sourcePackPath", { omitted });
+    if (omitted.length)
+      throw new AutomationError(
+        "INVALID_ARGUMENT",
+        "packPaths is the complete mod load order and must contain every sourcePackPath",
+        { omitted },
+      );
   }
   const primaryProvider = providersByPath.get(canonicalAbsolute(canonicalSourcePaths[0]));
-  if (!primaryProvider || primaryProvider.kind !== "mod") throw new AutomationError("INVALID_ARGUMENT", "The first sourcePackPath could not be loaded as a mod pack");
+  if (!primaryProvider || primaryProvider.kind !== "mod")
+    throw new AutomationError("INVALID_ARGUMENT", "The first sourcePackPath could not be loaded as a mod pack");
 
   const selectedFiles = new Map<string, SelectedFile>();
   const selectedRows = new Map<string, SelectedRows>();
@@ -206,7 +276,9 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
   const exactPathMatches = new Set<string>();
 
   let candidateEntries = 0;
-  for (const provider of environment.providers.filter((candidate) => candidate.kind === "mod" && sourceProviderPaths.has(canonicalAbsolute(candidate.pack.path)))) {
+  for (const provider of environment.providers.filter(
+    (candidate) => candidate.kind === "mod" && sourceProviderPaths.has(canonicalAbsolute(candidate.pack.path)),
+  )) {
     throwIfAborted(context.signal);
     for (const entry of provider.pack.entries) {
       throwIfAborted(context.signal);
@@ -215,23 +287,32 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
       const key = normalizePackFilePathKey(entry.name);
       exactPathMatches.add(key);
       const reasons = selectedReasons.get(key) ?? new Set<string>();
-      if (request.paths.some((value) => normalizePackFilePathKey(normalizeInternalPackPath(value)) === key)) reasons.add("path");
-      if (request.prefixes.some((value) => {
-        const prefix = normalizePackFilePathKey(normalizeInternalPackPath(value));
-        return key === prefix || key.startsWith(`${prefix}\\`);
-      })) reasons.add("prefix");
-      if (request.globs.some((value) => path.posix.matchesGlob(key.replace(/\\/g, "/"), assertSafePattern(value)))) reasons.add("glob");
-      if (request.tableNames.some((table) => {
-        const parsed = parseDBTablePath(key);
-        return parsed?.dbFolder === "db" && parsed.dbName.toLowerCase() === table.toLowerCase().replace(/^db\\/, "");
-      })) reasons.add("tableName");
+      if (request.paths.some((value) => normalizePackFilePathKey(normalizeInternalPackPath(value)) === key))
+        reasons.add("path");
+      if (
+        request.prefixes.some((value) => {
+          const prefix = normalizePackFilePathKey(normalizeInternalPackPath(value));
+          return key === prefix || key.startsWith(`${prefix}\\`);
+        })
+      )
+        reasons.add("prefix");
+      if (request.globs.some((value) => path.posix.matchesGlob(key.replace(/\\/g, "/"), assertSafePattern(value))))
+        reasons.add("glob");
+      if (
+        request.tableNames.some((table) => {
+          const parsed = parseDBTablePath(key);
+          return parsed?.dbFolder === "db" && parsed.dbName.toLowerCase() === table.toLowerCase().replace(/^db\\/, "");
+        })
+      )
+        reasons.add("tableName");
       selectedReasons.set(key, reasons);
     }
   }
 
   for (const value of request.paths) {
     const key = normalizePackFilePathKey(normalizeInternalPackPath(value));
-    if (!exactPathMatches.has(key)) throw new AutomationError("VALIDATION", `Selected path was not found in sourcePackPaths: ${value}`);
+    if (!exactPathMatches.has(key))
+      throw new AutomationError("VALIDATION", `Selected path was not found in sourcePackPaths: ${value}`);
   }
 
   for (const key of exactPathMatches) {
@@ -240,29 +321,48 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
       .find((provider) => provider.entriesByPath.has(key))
       ?.entriesByPath.get(key)?.[0]?.name;
     if (!entryName) continue;
-    selectEffectiveSource(environment, sourceProviderPaths, entryName, [...(selectedReasons.get(key) ?? ["selection"])].join(","), selectedFiles);
+    selectEffectiveSource(
+      environment,
+      sourceProviderPaths,
+      entryName,
+      [...(selectedReasons.get(key) ?? ["selection"])].join(","),
+      selectedFiles,
+    );
   }
 
   for (const assetRoot of request.assetRoots) {
     throwIfAborted(context.signal);
     const resolved = resolveReferenceAsset(environment, normalizeInternalPackPath(assetRoot), true);
-    if (resolved.status !== "found" || !resolved.winner) throw new AutomationError(resolved.status === "ambiguous" ? "CONFLICT" : "VALIDATION", `Asset root could not be resolved: ${assetRoot}`);
+    if (resolved.status !== "found" || !resolved.winner)
+      throw new AutomationError(
+        resolved.status === "ambiguous" ? "CONFLICT" : "VALIDATION",
+        `Asset root could not be resolved: ${assetRoot}`,
+      );
     const selected = selectEffectiveSource(environment, sourceProviderPaths, resolved.path, "assetRoot", selectedFiles);
     graphRoots.push({ type: "asset", path: selected.entry.name });
   }
 
   const exactRowsFor = async (filePath: string): Promise<EffectiveDbRow[]> => {
     const resolved = resolveReferenceAsset(environment, filePath, false);
-    if (resolved.status !== "found" || !resolved.winner) throw new AutomationError(resolved.status === "ambiguous" ? "CONFLICT" : "VALIDATION", `DB table file could not be resolved: ${filePath}`);
+    if (resolved.status !== "found" || !resolved.winner)
+      throw new AutomationError(
+        resolved.status === "ambiguous" ? "CONFLICT" : "VALIDATION",
+        `DB table file could not be resolved: ${filePath}`,
+      );
     if (!sourceProviderPaths.has(canonicalAbsolute(resolved.winner.provider.pack.path))) {
-      throw new AutomationError("CONFLICT", `Selected DB file ${filePath} is shadowed by a pack outside sourcePackPaths`, { winner: resolved.winner.provider.pack.path });
+      throw new AutomationError(
+        "CONFLICT",
+        `Selected DB file ${filePath} is shadowed by a pack outside sourcePackPaths`,
+        { winner: resolved.winner.provider.pack.path },
+      );
     }
     return loadExactDbFileRows(environment, resolved.path);
   };
 
   const loadDbSchema = async (filePath: string) => {
     const resolved = resolveReferenceAsset(environment, filePath, false);
-    if (resolved.status !== "found" || !resolved.winner) throw new AutomationError("VALIDATION", `DB table file could not be resolved: ${filePath}`);
+    if (resolved.status !== "found" || !resolved.winner)
+      throw new AutomationError("VALIDATION", `DB table file could not be resolved: ${filePath}`);
     const bytes = await readAutomationPayload(resolved.winner.provider.pack, resolved.winner.entry, context);
     return loadPackedTable(resolved.winner.entry.name, bytes, getAutomationSchemaProvider(context));
   };
@@ -285,13 +385,21 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
     try {
       queryTableRows({ schema }, [], rowRoot.where as TableFilter[]);
     } catch (error) {
-      throw new AutomationError("INVALID_ARGUMENT", error instanceof Error ? error.message : String(error), { filePath });
+      throw new AutomationError("INVALID_ARGUMENT", error instanceof Error ? error.message : String(error), {
+        filePath,
+      });
     }
-    const matches = rows.filter((row) => queryTableRows(row.loaded, [row.row], rowRoot.where as TableFilter[]).length > 0);
+    const matches = rows.filter(
+      (row) => queryTableRows(row.loaded, [row.row], rowRoot.where as TableFilter[]).length > 0,
+    );
     if (matches.length === 0) throw new AutomationError("VALIDATION", `No rows match selector in ${filePath}`);
     for (const row of matches) {
       const key = normalizePackFilePathKey(row.entry.name);
-      const group = selectedRows.get(key) ?? { provider: row.provider, entry: row.entry, rows: new Map<number, EffectiveDbRow>() };
+      const group = selectedRows.get(key) ?? {
+        provider: row.provider,
+        entry: row.entry,
+        rows: new Map<number, EffectiveDbRow>(),
+      };
       group.rows.set(row.rowIndex, row);
       selectedRows.set(key, group);
       graphRoots.push({ type: "db-row", row });
@@ -303,20 +411,36 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
     rowIndexes: [...rows.keys()].sort((left, right) => left - right),
   }));
 
-  if (selectedFiles.size === 0 && selectedRows.size === 0) throw new AutomationError("VALIDATION", "Subset selection matched no packed files or DB rows");
+  if (selectedFiles.size === 0 && selectedRows.size === 0)
+    throw new AutomationError("VALIDATION", "Subset selection matched no packed files or DB rows");
   for (const [key, selected] of selectedFiles) {
     throwIfAborted(context.signal);
     if (isDbPath(selected.entry.name)) continue;
     const extension = pathExt(selected.entry.name);
-    if (request.closure !== "none" || ["variantmeshdefinition", "wsmodel", "xml.material", "rigid_model_v2", "dds"].includes(extension)) {
+    if (
+      request.closure !== "none" ||
+      ["variantmeshdefinition", "wsmodel", "xml.material", "rigid_model_v2", "dds"].includes(extension)
+    ) {
       graphRoots.push({ type: "asset", path: selected.entry.name });
     }
   }
 
   const closureTraversal = request.closure === "transitive" ? "recursive" : "direct";
   const graph = graphRoots.length
-    ? await buildReferenceGraph(environment, graphRoots, { traversal: closureTraversal, maxDepth: 32, maxNodes: 10000, maxEdges: 50000 })
-    : { roots: [], nodes: [], edges: [], diagnostics: environment.diagnostics, complete: environment.complete, coverage: { nodes: 0, edges: 0, maxDepth: 32, maxNodes: 10000, maxEdges: 50000, hitLimit: false } };
+    ? await buildReferenceGraph(environment, graphRoots, {
+        traversal: closureTraversal,
+        maxDepth: 32,
+        maxNodes: 10000,
+        maxEdges: 50000,
+      })
+    : {
+        roots: [],
+        nodes: [],
+        edges: [],
+        diagnostics: environment.diagnostics,
+        complete: environment.complete,
+        coverage: { nodes: 0, edges: 0, maxDepth: 32, maxNodes: 10000, maxEdges: 50000, hitLimit: false },
+      };
 
   for (const selected of selectedFiles.values()) {
     selected.reasons.add("selected");
@@ -349,18 +473,39 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
       }
       const key = normalizePackFilePathKey(entry.name);
       if (includedFiles.has(key) || request.closure === "none" || !canCopyProvider(provider)) continue;
-      includedFiles.set(key, { provider, entry, reasons: new Set(["referenceClosure"]), shadowedCandidates: node.shadowedCandidates });
+      includedFiles.set(key, {
+        provider,
+        entry,
+        reasons: new Set(["referenceClosure"]),
+        shadowedCandidates: node.shadowedCandidates,
+      });
     } else if (node.type === "db-row" && node.status === "found") {
       const row = environment.rowById.get(node.id);
       if (!row) continue;
       const key = normalizePackFilePathKey(row.entry.name);
-      if (includedFiles.has(key) || includedRows.get(key)?.rows.has(row.rowIndex) || request.closure === "none" || !canCopyProvider(row.provider)) continue;
-      const group = includedRows.get(key) ?? { provider: row.provider, entry: row.entry, rows: new Map<number, EffectiveDbRow>() };
+      if (
+        includedFiles.has(key) ||
+        includedRows.get(key)?.rows.has(row.rowIndex) ||
+        request.closure === "none" ||
+        !canCopyProvider(row.provider)
+      )
+        continue;
+      const group = includedRows.get(key) ?? {
+        provider: row.provider,
+        entry: row.entry,
+        rows: new Map<number, EffectiveDbRow>(),
+      };
       group.rows.set(row.rowIndex, row);
       includedRows.set(key, group);
     }
-    if (node.status === "missing" || node.status === "ambiguous") unresolved.push({ path: node.path, status: node.status, candidates: node.candidates });
-    if (node.status === "unsupported" || node.coverage === "unsupportedInternals" || node.coverage === "unsupportedType" || node.coverage === "unreadable") {
+    if (node.status === "missing" || node.status === "ambiguous")
+      unresolved.push({ path: node.path, status: node.status, candidates: node.candidates });
+    if (
+      node.status === "unsupported" ||
+      node.coverage === "unsupportedInternals" ||
+      node.coverage === "unsupportedType" ||
+      node.coverage === "unreadable"
+    ) {
       unsupported.push({ path: node.path, status: node.status, coverage: node.coverage });
     }
   }
@@ -379,18 +524,22 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
       ...(target.provider ? { provider: target.provider } : {}),
       ...(target.providerKind ? { providerKind: target.providerKind } : {}),
     };
-    if (target.status === "missing" || target.status === "ambiguous") unresolved.push({ ...record, candidates: target.candidates });
+    if (target.status === "missing" || target.status === "ambiguous")
+      unresolved.push({ ...record, candidates: target.candidates });
     if (target.status === "unsupported") unsupported.push(record);
     if (target.status === "found") {
       const row = target.type === "db-row" ? environment.rowById.get(target.id) : undefined;
       const key = normalizePackFilePathKey(row?.entry.name ?? target.path);
-      const included = target.type === "asset"
-        ? includedFiles.has(key)
-        : includedFiles.has(key) || Boolean(row && includedRows.get(key)?.rows.has(row.rowIndex));
+      const included =
+        target.type === "asset"
+          ? includedFiles.has(key)
+          : includedFiles.has(key) || Boolean(row && includedRows.get(key)?.rows.has(row.rowIndex));
       if (!included) external.push(record);
     }
   }
-  const deduplicate = (items: Array<Record<string, unknown>>) => [...new Map(items.map((item) => [JSON.stringify(item), item])).values()];
+  const deduplicate = (items: Array<Record<string, unknown>>) => [
+    ...new Map(items.map((item) => [JSON.stringify(item), item])).values(),
+  ];
   external.splice(0, external.length, ...deduplicate(external));
   unresolved.splice(0, unresolved.length, ...deduplicate(unresolved));
   unsupported.splice(0, unsupported.length, ...deduplicate(unsupported));
@@ -398,18 +547,35 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
   const graphDiagnostics = graph.diagnostics;
   for (const item of graphDiagnostics) {
     throwIfAborted(context.signal);
-    if (item.code.startsWith("UNSUPPORTED") && !unsupported.some((value) => value.path === item.path && value.code === item.code)) unsupported.push({ code: item.code, path: item.path, message: item.message });
-    if (["MISSING_ASSET", "AMBIGUOUS_ASSET", "MISSING_DB_REFERENCE", "AMBIGUOUS_DB_REFERENCE"].includes(item.code)) unresolved.push({ code: item.code, path: item.path, message: item.message });
+    if (
+      item.code.startsWith("UNSUPPORTED") &&
+      !unsupported.some((value) => value.path === item.path && value.code === item.code)
+    )
+      unsupported.push({ code: item.code, path: item.path, message: item.message });
+    if (["MISSING_ASSET", "AMBIGUOUS_ASSET", "MISSING_DB_REFERENCE", "AMBIGUOUS_DB_REFERENCE"].includes(item.code))
+      unresolved.push({ code: item.code, path: item.path, message: item.message });
   }
 
   if (request.strict && request.closure !== "none" && !graph.complete) {
-    throw new AutomationError("VALIDATION", "Strict subset closure is incomplete; no output pack was published", { diagnostics: graphDiagnostics, unresolved, unsupported });
+    throw new AutomationError("VALIDATION", "Strict subset closure is incomplete; no output pack was published", {
+      diagnostics: graphDiagnostics,
+      unresolved,
+      unsupported,
+    });
   }
   if (request.strict && request.mode === "selfContained" && request.closure !== "transitive") {
     throw new AutomationError("VALIDATION", "Strict self-contained output requires transitive closure");
   }
-  if (request.strict && request.mode === "selfContained" && (external.length > 0 || unresolved.length > 0 || unsupported.length > 0)) {
-    throw new AutomationError("VALIDATION", "Strict self-contained subset has external, unresolved, or unsupported dependencies", { external, unresolved, unsupported });
+  if (
+    request.strict &&
+    request.mode === "selfContained" &&
+    (external.length > 0 || unresolved.length > 0 || unsupported.length > 0)
+  ) {
+    throw new AutomationError(
+      "VALIDATION",
+      "Strict self-contained subset has external, unresolved, or unsupported dependencies",
+      { external, unresolved, unsupported },
+    );
   }
 
   const writeEntries: RawPackWriteEntry[] = [];
@@ -423,7 +589,11 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
     writeEntries.push({
       name: selected.entry.name,
       is_compressed: selected.entry.is_compressed,
-      source: { path: selected.provider.pack.path, start_pos: selected.entry.start_pos, file_size: selected.entry.file_size },
+      source: {
+        path: selected.provider.pack.path,
+        start_pos: selected.entry.start_pos,
+        file_size: selected.entry.file_size,
+      },
     });
     expected.push({ name: selected.entry.name, sourcePack: selected.provider.pack, sourceEntry: selected.entry });
   }
@@ -432,14 +602,19 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
     if (!group.rows.size) continue;
     const bytes = await readAutomationPayload(group.provider.pack, group.entry, context);
     const loaded = await loadPackedTable(group.entry.name, bytes, getAutomationSchemaProvider(context));
-    if (loaded.isLoc) throw new AutomationError("VALIDATION", `Selected DB file is a localization table: ${group.entry.name}`);
+    if (loaded.isLoc)
+      throw new AutomationError("VALIDATION", `Selected DB file is a localization table: ${group.entry.name}`);
     const table = loaded.parsed;
     const selectedIndexes = [...group.rows.keys()].sort((left, right) => left - right);
-    const outputBytes = rewriteDbTableRows(table, selectedIndexes.map((index) => {
-      const row = table.rows[index];
-      if (!row) throw new AutomationError("VALIDATION", `Selected DB row index ${index} is outside ${group.entry.name}`);
-      return row.cells.map((cell) => ({ bytes: cell.bytes }));
-    }));
+    const outputBytes = rewriteDbTableRows(
+      table,
+      selectedIndexes.map((index) => {
+        const row = table.rows[index];
+        if (!row)
+          throw new AutomationError("VALIDATION", `Selected DB row index ${index} is outside ${group.entry.name}`);
+        return row.cells.map((cell) => ({ bytes: cell.bytes }));
+      }),
+    );
     writeEntries.push({ name: group.entry.name, is_compressed: false, buffer: outputBytes });
     expected.push({ name: group.entry.name, buffer: outputBytes });
   }
@@ -447,7 +622,9 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
   if (!writeEntries.length) throw new AutomationError("VALIDATION", "Subset selection produced no output files");
 
   const primary = primaryProvider.pack;
-  const externalModProviders = new Set(external.filter((entry) => entry.providerKind === "mod").map((entry) => path.basename(String(entry.provider))));
+  const externalModProviders = new Set(
+    external.filter((entry) => entry.providerKind === "mod").map((entry) => path.basename(String(entry.provider))),
+  );
   const dependencies = [...new Set([...primary.dependencies, ...externalModProviders])];
   const packType: "movie" | "mod" = (primary.header.byteMask & 0x7) === 4 ? "movie" : "mod";
   const metadata = {
@@ -456,7 +633,9 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
     refFileCount: primary.header.refFileCount,
     headerBuffer: primary.header.headerBuffer,
     dependencies,
-    ...(JSON.stringify(dependencies) === JSON.stringify(primary.dependencies) ? { dependencyBytes: primary.dependencyBytes } : {}),
+    ...(JSON.stringify(dependencies) === JSON.stringify(primary.dependencies)
+      ? { dependencyBytes: primary.dependencyBytes }
+      : {}),
     trailingBytes: primary.trailingBytes,
     packType,
   };
@@ -480,10 +659,17 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
     produce: (temporaryPath) => writeRawPack(temporaryPath, writeEntries, metadata),
     validate: async (temporaryPath) => {
       const reopened = readPackIndex(temporaryPath, { game: "wh3" });
-      if (reopened.entries.length !== expected.length) throw new AutomationError("VALIDATION", "Subset output file count does not match the selected manifest", { expected: expected.length, actual: reopened.entries.length });
-      if ((reopened.header.byteMask & 0x40) !== 0) throw new AutomationError("VALIDATION", "Subset output unexpectedly retains the filename-hash flag");
-      if (!reopened.trailingBytes.equals(primary.trailingBytes)) throw new AutomationError("VALIDATION", "Subset output did not preserve source trailing bytes");
-      if (JSON.stringify(reopened.dependencies) !== JSON.stringify(dependencies)) throw new AutomationError("VALIDATION", "Subset output dependency metadata does not match the manifest");
+      if (reopened.entries.length !== expected.length)
+        throw new AutomationError("VALIDATION", "Subset output file count does not match the selected manifest", {
+          expected: expected.length,
+          actual: reopened.entries.length,
+        });
+      if ((reopened.header.byteMask & 0x40) !== 0)
+        throw new AutomationError("VALIDATION", "Subset output unexpectedly retains the filename-hash flag");
+      if (!reopened.trailingBytes.equals(primary.trailingBytes))
+        throw new AutomationError("VALIDATION", "Subset output did not preserve source trailing bytes");
+      if (JSON.stringify(reopened.dependencies) !== JSON.stringify(dependencies))
+        throw new AutomationError("VALIDATION", "Subset output dependency metadata does not match the manifest");
       const outputEntries = new Map<string, CorePackEntry[]>();
       for (const entry of reopened.entries) {
         const key = normalizePackFilePathKey(entry.name);
@@ -493,15 +679,20 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
       }
       for (const item of expected) {
         const entries = outputEntries.get(normalizePackFilePathKey(item.name));
-        if (entries?.length !== 1) throw new AutomationError("VALIDATION", `Subset output failed to reopen ${item.name}`);
+        if (entries?.length !== 1)
+          throw new AutomationError("VALIDATION", `Subset output failed to reopen ${item.name}`);
         const entry = entries[0];
         const outputHash = await hashRange(temporaryPath, entry.start_pos, entry.file_size);
         const expectedHash = item.buffer
           ? createHash("sha256").update(item.buffer).digest("hex")
           : await hashRange(item.sourcePack!.path, item.sourceEntry!.start_pos, item.sourceEntry!.file_size);
-        if (outputHash !== expectedHash) throw new AutomationError("VALIDATION", `Subset output payload changed for ${item.name}`);
+        if (outputHash !== expectedHash)
+          throw new AutomationError("VALIDATION", `Subset output payload changed for ${item.name}`);
         const sourceEntry = item.sourceEntry;
-        if (sourceEntry && (entry.file_size !== sourceEntry.file_size || entry.is_compressed !== sourceEntry.is_compressed)) {
+        if (
+          sourceEntry &&
+          (entry.file_size !== sourceEntry.file_size || entry.is_compressed !== sourceEntry.is_compressed)
+        ) {
           throw new AutomationError("VALIDATION", `Subset output did not preserve stored metadata for ${item.name}`);
         }
       }
@@ -521,17 +712,30 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
     path: entry.name,
     provider: provider.pack.path,
     providerKind: provider.kind,
-    rows: [...rows.values()].sort((a, b) => a.rowIndex - b.rowIndex).map((row) => ({ rowIndex: row.rowIndex, key: rowJsonKey(row) })),
+    rows: [...rows.values()]
+      .sort((a, b) => a.rowIndex - b.rowIndex)
+      .map((row) => ({ rowIndex: row.rowIndex, key: rowJsonKey(row) })),
   }));
-  const selfContained = request.mode === "selfContained" && request.closure === "transitive" && graph.complete && external.length === 0 && unresolved.length === 0 && unsupported.length === 0;
+  const selfContained =
+    request.mode === "selfContained" &&
+    request.closure === "transitive" &&
+    graph.complete &&
+    external.length === 0 &&
+    unresolved.length === 0 &&
+    unsupported.length === 0;
   const manifest = {
     sourcePackPaths: request.sourcePackPaths,
     packPaths: modLoadOrder,
-    vanillaPackPaths: environment.providers.filter((provider) => provider.kind === "vanilla").map((provider) => provider.pack.path),
+    vanillaPackPaths: environment.providers
+      .filter((provider) => provider.kind === "vanilla")
+      .map((provider) => provider.pack.path),
     closure: request.closure,
     mode: request.mode,
     roots: {
-      explicitFiles: [...selectedFiles.values()].map(({ provider, entry }) => ({ path: entry.name, provider: provider.pack.path })),
+      explicitFiles: [...selectedFiles.values()].map(({ provider, entry }) => ({
+        path: entry.name,
+        provider: provider.pack.path,
+      })),
       explicitRows: explicitlySelectedRows,
       assetRoots: request.assetRoots,
       rowSelectors: request.rows,
@@ -560,7 +764,12 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
     selfContained,
     manifest,
   };
-  const manifestPath = await jsonOutput(context, request.manifestPath, [...environment.sourcePaths, output.path], manifest);
+  const manifestPath = await jsonOutput(
+    context,
+    request.manifestPath,
+    [...environment.sourcePaths, output.path],
+    manifest,
+  );
   const reportPath = await jsonOutput(context, request.reportPath, [...environment.sourcePaths, output.path], report);
   const page = <T>(items: readonly T[]) => ({
     total: items.length,
@@ -586,7 +795,12 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
     diagnostics: page(manifest.diagnostics),
   };
   return {
-    data: { ...report, manifest: manifestPreview, ...(manifestPath ? { manifestPath } : {}), ...(reportPath ? { reportPath } : {}) },
+    data: {
+      ...report,
+      manifest: manifestPreview,
+      ...(manifestPath ? { manifestPath } : {}),
+      ...(reportPath ? { reportPath } : {}),
+    },
     diagnostics: graphDiagnostics.slice(0, 1000),
   };
 };

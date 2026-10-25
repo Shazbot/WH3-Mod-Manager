@@ -22,5 +22,8 @@ export const getVanillaLocCacheIdentity = (game: string, packPaths: readonly str
       ? [source.path, source.size, source.mtimeNs, source.ctimeNs, source.dev, source.ino].map(String).join(":")
       : `${nodePath.resolve(packPath)}:missing`;
   });
-  return crypto.createHash("sha1").update(JSON.stringify([game, parts])).digest("hex");
+  return crypto
+    .createHash("sha1")
+    .update(JSON.stringify([game, parts]))
+    .digest("hex");
 };

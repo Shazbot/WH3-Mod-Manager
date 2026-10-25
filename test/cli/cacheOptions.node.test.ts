@@ -37,7 +37,10 @@ describe("CLI cache options", () => {
 
     expect(exitCode).toBe(0);
     expect(JSON.parse(stdout.join(""))).toMatchObject({ ok: true, data: { fileCount: 1 } });
-    const statsLine = stderr.join("").split(/\r?\n/).find((line) => line.startsWith("[cache-stats] "));
+    const statsLine = stderr
+      .join("")
+      .split(/\r?\n/)
+      .find((line) => line.startsWith("[cache-stats] "));
     expect(statsLine).toBeDefined();
     expect(JSON.parse(statsLine!.slice("[cache-stats] ".length))).toMatchObject({
       enabled: true,
@@ -58,16 +61,36 @@ describe("CLI cache options", () => {
     });
     const output: string[] = [];
     const stats: string[] = [];
-    const noCacheCode = await main([
-      "pack", "info", packPath, "--format", "json", "--no-cache", "--cache-memory-mib", "0",
-      "--cache-dir", path.join(root, "should-not-be-created"), "--cache-stats",
-    ], {
-      stdout: (value) => output.push(value),
-      stderr: (value) => stats.push(value),
-    });
+    const noCacheCode = await main(
+      [
+        "pack",
+        "info",
+        packPath,
+        "--format",
+        "json",
+        "--no-cache",
+        "--cache-memory-mib",
+        "0",
+        "--cache-dir",
+        path.join(root, "should-not-be-created"),
+        "--cache-stats",
+      ],
+      {
+        stdout: (value) => output.push(value),
+        stderr: (value) => stats.push(value),
+      },
+    );
     expect(noCacheCode).toBe(0);
     expect(JSON.parse(output.join(""))).toMatchObject({ ok: true, data: { fileCount: 0 } });
-    expect(JSON.parse(stats.join("").split(/\r?\n/).find((line) => line.startsWith("[cache-stats] "))!.slice("[cache-stats] ".length))).toMatchObject({
+    expect(
+      JSON.parse(
+        stats
+          .join("")
+          .split(/\r?\n/)
+          .find((line) => line.startsWith("[cache-stats] "))!
+          .slice("[cache-stats] ".length),
+      ),
+    ).toMatchObject({
       enabled: false,
       memoryLimitBytes: 0,
     });

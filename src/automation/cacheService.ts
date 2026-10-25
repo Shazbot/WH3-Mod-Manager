@@ -13,12 +13,12 @@ import {
 } from "../packCore";
 import { parseDBTablePath, resolveParsedDBVersion } from "../utility/packFileHelpers";
 import { normalizePackFilePath, normalizePackFilePathKey } from "../utility/packFilePathUtils";
+import { getSchemaFilePath, getSchemaForGame, clearSchemaCache } from "../schema";
 import {
-  getSchemaFilePath,
-  getSchemaForGame,
-  clearSchemaCache,
-} from "../schema";
-import { VANILLA_DB_CACHE_DECODER_REVISION, VANILLA_DB_CACHE_EXACT_SOURCE_FORMAT, type VanillaDbCacheIdentity } from "../vanillaDbCache/format";
+  VANILLA_DB_CACHE_DECODER_REVISION,
+  VANILLA_DB_CACHE_EXACT_SOURCE_FORMAT,
+  type VanillaDbCacheIdentity,
+} from "../vanillaDbCache/format";
 import { buildVanillaDbCacheFromTables } from "../vanillaDbCache/build";
 import {
   DEFAULT_DECODED_CACHE_BYTES,
@@ -27,11 +27,26 @@ import {
   openVanillaDbCache,
   type VanillaDbCacheReader,
 } from "../vanillaDbCache/read";
-import { readExactVanillaLocEntries, indexExactVanillaLocPackSet, VanillaLocSourceReadCanceled, type ExactVanillaLocFileOrder } from "../vanillaLocCache/exactSource";
+import {
+  readExactVanillaLocEntries,
+  indexExactVanillaLocPackSet,
+  VanillaLocSourceReadCanceled,
+  type ExactVanillaLocFileOrder,
+} from "../vanillaLocCache/exactSource";
 import { buildVanillaLocCacheBytes } from "../vanillaLocCache/build";
-import { createFileSource as createLocFileSource, createFileSourceFromFd as createLocFileSourceFromFd, createMemorySource as createLocMemorySource, openVanillaLocCache, type VanillaLocCacheReader } from "../vanillaLocCache/read";
+import {
+  createFileSource as createLocFileSource,
+  createFileSourceFromFd as createLocFileSourceFromFd,
+  createMemorySource as createLocMemorySource,
+  openVanillaLocCache,
+  type VanillaLocCacheReader,
+} from "../vanillaLocCache/read";
 import { getVanillaLocCacheFilePath, getVanillaLocCacheIdentity } from "../vanillaLocCache/identity";
-import { VANILLA_LOC_CACHE_DECODER_REVISION, VANILLA_LOC_CACHE_EXACT_SOURCE_FORMAT, VANILLA_LOC_UNKNOWN_ROW_INDEX } from "../vanillaLocCache/format";
+import {
+  VANILLA_LOC_CACHE_DECODER_REVISION,
+  VANILLA_LOC_CACHE_EXACT_SOURCE_FORMAT,
+  VANILLA_LOC_UNKNOWN_ROW_INDEX,
+} from "../vanillaLocCache/format";
 import { publishCacheFiles } from "../vanillaCacheFiles";
 import { canonicalizeExistingPath, type CanonicalFileIdentity } from "../vanillaCacheIdentity";
 import { AutomationError, throwIfAborted, yieldToEventLoop } from "./errors";
@@ -145,9 +160,14 @@ class RetainedBudget {
     readonly maxReaders: number,
   ) {}
 
-  get retainedBytes(): number { return this.retainedBytesValue; }
+  get retainedBytes(): number {
+    return this.retainedBytesValue;
+  }
   get readerCount(): number {
-    return this.pendingReaders + [...this.entries.values()].filter((entry) => entry.kind === "dbReader" || entry.kind === "locReader").length;
+    return (
+      this.pendingReaders +
+      [...this.entries.values()].filter((entry) => entry.kind === "dbReader" || entry.kind === "locReader").length
+    );
   }
   counts(): { packIndexes: number; typedTables: number; dbReaders: number; locReaders: number } {
     const entries = [...this.entries.values()];
@@ -190,10 +210,7 @@ class RetainedBudget {
     if (old?.pins) return false;
     if (old) this.drop(entry.key);
     const isReader = entry.kind === "dbReader" || entry.kind === "locReader";
-    while (
-      this.retainedBytesValue + entry.bytes > this.maxBytes ||
-      (isReader && this.readerCount >= this.maxReaders)
-    ) {
+    while (this.retainedBytesValue + entry.bytes > this.maxBytes || (isReader && this.readerCount >= this.maxReaders)) {
       const victim = [...this.entries.values()].find((candidate) => candidate.pins === 0);
       if (!victim) return false;
       this.drop(victim.key);
@@ -219,7 +236,11 @@ class RetainedBudget {
     if (!entry || entry.pins > 0) return;
     this.entries.delete(key);
     this.retainedBytesValue -= entry.bytes;
-    try { entry.close?.(); } catch { /* A closed reader is already evicted. */ }
+    try {
+      entry.close?.();
+    } catch {
+      /* A closed reader is already evicted. */
+    }
   }
 
   dropWhere(predicate: (entry: RetainedEntry) => boolean): void {
@@ -244,14 +265,15 @@ const deepFreeze = <T>(value: T): T => {
 const cloneAndFreezeSchema = (schema: DBVersion): Readonly<DBVersion> =>
   deepFreeze(JSON.parse(JSON.stringify(schema)) as DBVersion);
 
-const identityString = (identity: CanonicalFileIdentity): string => JSON.stringify([
-  identity.path,
-  identity.size.toString(10),
-  identity.mtimeNs.toString(10),
-  identity.ctimeNs.toString(10),
-  identity.dev.toString(10),
-  identity.ino.toString(10),
-]);
+const identityString = (identity: CanonicalFileIdentity): string =>
+  JSON.stringify([
+    identity.path,
+    identity.size.toString(10),
+    identity.mtimeNs.toString(10),
+    identity.ctimeNs.toString(10),
+    identity.dev.toString(10),
+    identity.ino.toString(10),
+  ]);
 
 const identityFromDescriptor = (filePath: string, fd: number): CanonicalFileIdentity => {
   const canonicalPath = fs.realpathSync.native(filePath);
@@ -276,11 +298,19 @@ const descriptorMatchesPath = (expected: CanonicalFileIdentity): boolean => {
   } catch {
     return false;
   } finally {
-    if (fd !== undefined) try { fs.closeSync(fd); } catch { /* Ignore cleanup errors. */ }
+    if (fd !== undefined)
+      try {
+        fs.closeSync(fd);
+      } catch {
+        /* Ignore cleanup errors. */
+      }
   }
 };
 
-const openIdentity = async (requestedPath: string, policy: FilesystemPolicy): Promise<{ identity: CanonicalFileIdentity; fd: number }> => {
+const openIdentity = async (
+  requestedPath: string,
+  policy: FilesystemPolicy,
+): Promise<{ identity: CanonicalFileIdentity; fd: number }> => {
   const canonicalPath = await policy.assertReadPath(requestedPath);
   let fd: number | undefined;
   try {
@@ -292,15 +322,25 @@ const openIdentity = async (requestedPath: string, policy: FilesystemPolicy): Pr
   }
 };
 
-const schemaLayoutMatches = (schema: DBVersion, table: { schemaVersion: number; columns: Array<{ name: string; fieldType: string }> }): boolean =>
+const schemaLayoutMatches = (
+  schema: DBVersion,
+  table: { schemaVersion: number; columns: Array<{ name: string; fieldType: string }> },
+): boolean =>
   schema.version === table.schemaVersion &&
   schema.fields.length === table.columns.length &&
-  schema.fields.every((field, index) => field.name === table.columns[index]?.name && field.field_type === table.columns[index]?.fieldType);
+  schema.fields.every(
+    (field, index) => field.name === table.columns[index]?.name && field.field_type === table.columns[index]?.fieldType,
+  );
 
 const tablePathHash = (value: string): string => crypto.createHash("sha256").update(value, "utf8").digest("hex");
 
 const estimatePackBytes = (pack: CorePack): number => {
-  let bytes = 1024 + pack.header.headerBuffer.length + pack.header.rawHeader.length + pack.dependencyBytes.length + pack.trailingBytes.length;
+  let bytes =
+    1024 +
+    pack.header.headerBuffer.length +
+    pack.header.rawHeader.length +
+    pack.dependencyBytes.length +
+    pack.trailingBytes.length;
   for (const dependency of pack.dependencies) bytes += dependency.length * 2 + 32;
   for (const entry of pack.entries) bytes += entry.name.length * 2 + 80;
   return bytes;
@@ -340,20 +380,23 @@ const getDbCacheIdentity = (source: CanonicalFileIdentity, schemaHash: string): 
   decoderRevision: VANILLA_DB_CACHE_DECODER_REVISION,
 });
 
-const dbSourceIdentityString = (identity: VanillaDbCacheIdentity): string => JSON.stringify([
-  identity.dbPackPath,
-  String(identity.dbPackSize),
-  identity.dbPackMtimeNs,
-  identity.dbPackCtimeNs,
-  identity.dbPackDev,
-  identity.dbPackIno,
-]);
+const dbSourceIdentityString = (identity: VanillaDbCacheIdentity): string =>
+  JSON.stringify([
+    identity.dbPackPath,
+    String(identity.dbPackSize),
+    identity.dbPackMtimeNs,
+    identity.dbPackCtimeNs,
+    identity.dbPackDev,
+    identity.dbPackIno,
+  ]);
 
 const dbReaderIsProven = (reader: VanillaDbCacheReader, identity: VanillaDbCacheIdentity): boolean =>
   reader.meta.sourceFormat === VANILLA_DB_CACHE_EXACT_SOURCE_FORMAT &&
   reader.meta.decoderRevision === VANILLA_DB_CACHE_DECODER_REVISION &&
-  reader.meta.dbPackMtimeNs !== undefined && reader.meta.dbPackCtimeNs !== undefined &&
-  reader.meta.dbPackDev !== undefined && reader.meta.dbPackIno !== undefined &&
+  reader.meta.dbPackMtimeNs !== undefined &&
+  reader.meta.dbPackCtimeNs !== undefined &&
+  reader.meta.dbPackDev !== undefined &&
+  reader.meta.dbPackIno !== undefined &&
   reader.meta.dbPackPath === identity.dbPackPath &&
   reader.meta.dbPackSize === identity.dbPackSize &&
   reader.meta.dbPackMtimeNs === identity.dbPackMtimeNs &&
@@ -416,11 +459,18 @@ interface CacheCounters {
 
 export const createAutomationCacheService = (options: AutomationCacheServiceOptions = {}): AutomationCacheService => {
   const memoryMiB = options.memoryMiB ?? DEFAULT_AUTOMATION_CACHE_MEMORY_MIB;
-  if (!Number.isInteger(memoryMiB) || memoryMiB < MIN_AUTOMATION_CACHE_MEMORY_MIB || memoryMiB > MAX_AUTOMATION_CACHE_MEMORY_MIB) {
-    throw new RangeError(`cache memory must be between ${MIN_AUTOMATION_CACHE_MEMORY_MIB} and ${MAX_AUTOMATION_CACHE_MEMORY_MIB} MiB`);
+  if (
+    !Number.isInteger(memoryMiB) ||
+    memoryMiB < MIN_AUTOMATION_CACHE_MEMORY_MIB ||
+    memoryMiB > MAX_AUTOMATION_CACHE_MEMORY_MIB
+  ) {
+    throw new RangeError(
+      `cache memory must be between ${MIN_AUTOMATION_CACHE_MEMORY_MIB} and ${MAX_AUTOMATION_CACHE_MEMORY_MIB} MiB`,
+    );
   }
   const maxReaders = options.maxReaders ?? 8;
-  if (!Number.isInteger(maxReaders) || maxReaders < 1 || maxReaders > 8) throw new RangeError("maxReaders must be an integer from 1 through 8");
+  if (!Number.isInteger(maxReaders) || maxReaders < 1 || maxReaders > 8)
+    throw new RangeError("maxReaders must be an integer from 1 through 8");
   const cacheDir = options.cacheDir ? path.resolve(options.cacheDir) : undefined;
   const whmmCacheDir = options.whmmCacheDir ? path.resolve(options.whmmCacheDir) : undefined;
   const budget = new RetainedBudget(memoryMiB * 1024 * 1024, maxReaders);
@@ -443,15 +493,16 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
     options.onWarning?.(message);
   };
 
-  const schemaSnapshot = async (request: AutomationCacheRequestOptions): Promise<{ snapshot: LoadedSchemaSnapshot; cacheable: boolean }> => {
+  const schemaSnapshot = async (
+    request: AutomationCacheRequestOptions,
+  ): Promise<{ snapshot: LoadedSchemaSnapshot; cacheable: boolean }> => {
     if (request.schemaProvider) {
       const loaded = await request.schemaProvider(DEFAULT_GAME);
       if (options.schemaFingerprint === undefined) {
         return { snapshot: { schema: loaded, fingerprint: "custom-uncached" }, cacheable: false };
       }
-      const fingerprint = typeof options.schemaFingerprint === "function"
-        ? options.schemaFingerprint(loaded)
-        : options.schemaFingerprint;
+      const fingerprint =
+        typeof options.schemaFingerprint === "function" ? options.schemaFingerprint(loaded) : options.schemaFingerprint;
       return { snapshot: { schema: loaded, fingerprint }, cacheable: true };
     }
 
@@ -467,9 +518,10 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
     if (defaultSchemaSnapshot?.fingerprint !== currentHash) {
       if (defaultSchemaSnapshot) {
         clearSchemaCache();
-        budget.dropWhere((entry) =>
-          (entry.kind === "table" || entry.kind === "dbReader") &&
-          (entry.metadata as { schemaHash?: string } | undefined)?.schemaHash !== currentHash,
+        budget.dropWhere(
+          (entry) =>
+            (entry.kind === "table" || entry.kind === "dbReader") &&
+            (entry.metadata as { schemaHash?: string } | undefined)?.schemaHash !== currentHash,
         );
       } else {
         // A different caller may have initialized the global schema before this service existed.
@@ -477,13 +529,17 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
       }
       for (let attempt = 0; attempt < 2; attempt++) {
         let before: string;
-        try { before = schemaFileHash(DEFAULT_GAME); } catch {
+        try {
+          before = schemaFileHash(DEFAULT_GAME);
+        } catch {
           const loaded = await getSchemaForGame(DEFAULT_GAME);
           return { snapshot: { schema: loaded, fingerprint: "unhashed-default-schema" }, cacheable: false };
         }
         const loaded = await getSchemaForGame(DEFAULT_GAME);
         let after: string;
-        try { after = schemaFileHash(DEFAULT_GAME); } catch {
+        try {
+          after = schemaFileHash(DEFAULT_GAME);
+        } catch {
           return { snapshot: { schema: loaded, fingerprint: "unhashed-default-schema" }, cacheable: false };
         }
         if (before === after) {
@@ -493,7 +549,11 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
         clearSchemaCache();
       }
       let finalHash: string | undefined;
-      try { finalHash = schemaFileHash(DEFAULT_GAME); } catch { /* The caller will not cache this snapshot. */ }
+      try {
+        finalHash = schemaFileHash(DEFAULT_GAME);
+      } catch {
+        /* The caller will not cache this snapshot. */
+      }
       if (!defaultSchemaSnapshot || defaultSchemaSnapshot.fingerprint !== finalHash) {
         throw new AutomationError("CONFLICT", "Bundled DB schema changed while it was being loaded");
       }
@@ -503,8 +563,10 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
 
   const descriptorIdentityKey = (identity: CanonicalFileIdentity): string => identityString(identity);
 
-  const authorizeCacheRead = async (filePath: string, policy: FilesystemPolicy): Promise<{ identity: CanonicalFileIdentity; fd: number }> =>
-    openIdentity(filePath, policy);
+  const authorizeCacheRead = async (
+    filePath: string,
+    policy: FilesystemPolicy,
+  ): Promise<{ identity: CanonicalFileIdentity; fd: number }> => openIdentity(filePath, policy);
 
   const prepareWritePath = async (filePath: string, policy: FilesystemPolicy): Promise<string | undefined> => {
     try {
@@ -513,7 +575,9 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
       return await policy.assertWritePath(canonical);
     } catch (error) {
       if (error instanceof AutomationError && error.code === "CANCELLED") throw error;
-      warnOnce("Headless cache persistence is unavailable under the configured write roots; using readable cache, memory, or source data.");
+      warnOnce(
+        "Headless cache persistence is unavailable under the configured write roots; using readable cache, memory, or source data.",
+      );
       return undefined;
     }
   };
@@ -569,7 +633,17 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
       const record: DbReaderRecord = { reader, filePath: authorized.identity.path, fileIdentity, sourcePath };
       const reservedBytes = DEFAULT_DECODED_CACHE_BYTES + reader.residentBytes;
       releaseSlot();
-      if (!budget.admit({ key: cacheKey, kind: "dbReader", bytes: reservedBytes, value: record, close: () => reader?.close(), pins: 0, metadata: { sourcePath, sourceIdentity: dbSourceIdentityString(identity), schemaHash: identity.schemaHash } })) {
+      if (
+        !budget.admit({
+          key: cacheKey,
+          kind: "dbReader",
+          bytes: reservedBytes,
+          value: record,
+          close: () => reader?.close(),
+          pins: 0,
+          metadata: { sourcePath, sourceIdentity: dbSourceIdentityString(identity), schemaHash: identity.schemaHash },
+        })
+      ) {
         reader.close();
         reader = undefined;
         return undefined;
@@ -577,9 +651,22 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
       counters.misses.dbReaders++;
       return record.reader;
     } catch (error) {
-      try { reader?.close(); } catch { /* Ignore cleanup errors on a cache miss. */ }
-      try { if (!reader) source?.close(); } catch { /* Source may already be closed. */ }
-      if (fd !== undefined) try { fs.closeSync(fd); } catch { /* Ignore cleanup errors. */ }
+      try {
+        reader?.close();
+      } catch {
+        /* Ignore cleanup errors on a cache miss. */
+      }
+      try {
+        if (!reader) source?.close();
+      } catch {
+        /* Source may already be closed. */
+      }
+      if (fd !== undefined)
+        try {
+          fs.closeSync(fd);
+        } catch {
+          /* Ignore cleanup errors. */
+        }
       if (error instanceof AutomationError && error.code === "CANCELLED") throw error;
       counters.misses.dbReaders++;
       return undefined;
@@ -606,7 +693,12 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
       const rawRows = reader.getTypedTableRows(packedFilePath);
       if (!rawRows || rawRows.length !== tableMeta.rowCount) return undefined;
       const rows = rawRows.map((row) => Object.freeze(row as TableRow));
-      return Object.freeze({ packedPath: packedFilePath, schema: cloneAndFreezeSchema(schema), isLoc: false, rows: Object.freeze(rows) });
+      return Object.freeze({
+        packedPath: packedFilePath,
+        schema: cloneAndFreezeSchema(schema),
+        isLoc: false,
+        rows: Object.freeze(rows),
+      });
     } catch (error) {
       if (error instanceof VanillaDbCacheIntegrityError) dropDbReader(reader);
       return undefined;
@@ -618,7 +710,16 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
     stampPath: string,
     expected: { identity: string; sourceFormat: string; decoderRevision: string; orderFingerprint: string },
     policy: FilesystemPolicy,
-  ): Promise<{ reader: VanillaLocCacheReader; fileIdentity: string; stampIdentity: string; canonicalPath: string; canonicalStampPath: string } | undefined> => {
+  ): Promise<
+    | {
+        reader: VanillaLocCacheReader;
+        fileIdentity: string;
+        stampIdentity: string;
+        canonicalPath: string;
+        canonicalStampPath: string;
+      }
+    | undefined
+  > => {
     let cacheFd: number | undefined;
     let stampFd: number | undefined;
     let source: ReturnType<typeof createLocFileSourceFromFd> | undefined;
@@ -631,14 +732,20 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
       const stampAfterRead = identityFromDescriptor(stampFile.identity.path, stampFd);
       if (descriptorIdentityKey(stampAfterRead) !== descriptorIdentityKey(stampFile.identity)) return undefined;
       let stamp: Record<string, unknown>;
-      try { stamp = JSON.parse(stampBytes.toString("utf8")) as Record<string, unknown>; } catch { return undefined; }
+      try {
+        stamp = JSON.parse(stampBytes.toString("utf8")) as Record<string, unknown>;
+      } catch {
+        return undefined;
+      }
       if (
         stamp.identity !== expected.identity ||
         stamp.sourceFormat !== expected.sourceFormat ||
         stamp.decoderRevision !== expected.decoderRevision ||
         stamp.orderFingerprint !== expected.orderFingerprint ||
-        typeof stamp.contentSha256 !== "string" || !/^[0-9a-f]{64}$/.test(stamp.contentSha256)
-      ) return undefined;
+        typeof stamp.contentSha256 !== "string" ||
+        !/^[0-9a-f]{64}$/.test(stamp.contentSha256)
+      )
+        return undefined;
       if (hashDescriptor(cacheFd) !== stamp.contentSha256) return undefined;
       const cacheAfterRead = identityFromDescriptor(cache.identity.path, cacheFd);
       if (descriptorIdentityKey(cache.identity) !== descriptorIdentityKey(cacheAfterRead)) return undefined;
@@ -646,8 +753,16 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
       cacheFd = undefined;
       const reader = openVanillaLocCache(source);
       if (!reader || !reader.hasCompleteProvenance) {
-        try { reader?.close(); } catch { /* Ignore invalid cache cleanup. */ }
-        try { source.close(); } catch { /* Ignore invalid cache cleanup. */ }
+        try {
+          reader?.close();
+        } catch {
+          /* Ignore invalid cache cleanup. */
+        }
+        try {
+          source.close();
+        } catch {
+          /* Ignore invalid cache cleanup. */
+        }
         return undefined;
       }
       return {
@@ -661,8 +776,18 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
       if (error instanceof AutomationError && error.code === "CANCELLED") throw error;
       return undefined;
     } finally {
-      if (cacheFd !== undefined) try { fs.closeSync(cacheFd); } catch { /* Ignore cleanup errors. */ }
-      if (stampFd !== undefined) try { fs.closeSync(stampFd); } catch { /* Ignore cleanup errors. */ }
+      if (cacheFd !== undefined)
+        try {
+          fs.closeSync(cacheFd);
+        } catch {
+          /* Ignore cleanup errors. */
+        }
+      if (stampFd !== undefined)
+        try {
+          fs.closeSync(stampFd);
+        } catch {
+          /* Ignore cleanup errors. */
+        }
     }
   };
 
@@ -679,7 +804,8 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
     if (whmmCacheDir) {
       const canonical = await policy.assertReadPath(whmmCacheDir);
       const stat = await fsp.stat(canonical);
-      if (!stat.isDirectory()) throw new AutomationError("IO_ACCESS", `--whmm-cache-dir must be a directory: ${whmmCacheDir}`);
+      if (!stat.isDirectory())
+        throw new AutomationError("IO_ACCESS", `--whmm-cache-dir must be a directory: ${whmmCacheDir}`);
     }
   };
 
@@ -716,7 +842,9 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
       const { identity, fd } = await openIdentity(expected.path, request.policy);
       fs.closeSync(fd);
       if (identityString(identity) !== identityString(expected)) {
-        throw new AutomationError("CONFLICT", "Pack changed while the request was using its cached index", { packPath: expected.path });
+        throw new AutomationError("CONFLICT", "Pack changed while the request was using its cached index", {
+          packPath: expected.path,
+        });
       }
     };
 
@@ -737,32 +865,43 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
       return payload;
     };
 
-    const getSchemaForRequest = async (): Promise<{ schema: Record<string, DBVersion[]>; hash: string; cacheable: boolean }> => {
+    const getSchemaForRequest = async (): Promise<{
+      schema: Record<string, DBVersion[]>;
+      hash: string;
+      cacheable: boolean;
+    }> => {
       const result = await schemaSnapshot(request);
       return { schema: result.snapshot.schema, hash: result.snapshot.fingerprint, cacheable: result.cacheable };
     };
 
-    const dropStaleTables = (sourcePath: string, current: {
-      domain: "db" | "loc";
-      sourceIdentity: string;
-      payloadLimit: number;
-      schemaHash?: string;
-    }) => {
+    const dropStaleTables = (
+      sourcePath: string,
+      current: {
+        domain: "db" | "loc";
+        sourceIdentity: string;
+        payloadLimit: number;
+        schemaHash?: string;
+      },
+    ) => {
       budget.dropWhere((entry) => {
         if (entry.kind !== "table") return false;
-        const metadata = entry.metadata as {
-          sourcePath?: string;
-          domain?: "db" | "loc";
-          sourceIdentity?: string;
-          payloadLimit?: number;
-          codecRevision?: string;
-          schemaHash?: string;
-        } | undefined;
+        const metadata = entry.metadata as
+          | {
+              sourcePath?: string;
+              domain?: "db" | "loc";
+              sourceIdentity?: string;
+              payloadLimit?: number;
+              codecRevision?: string;
+              schemaHash?: string;
+            }
+          | undefined;
         if (metadata?.sourcePath !== sourcePath) return false;
-        return metadata.sourceIdentity !== current.sourceIdentity ||
+        return (
+          metadata.sourceIdentity !== current.sourceIdentity ||
           metadata.payloadLimit !== current.payloadLimit ||
           metadata.codecRevision !== DB_CODEC_REVISION ||
-          (current.domain === "db" && metadata.domain === "db" && metadata.schemaHash !== current.schemaHash);
+          (current.domain === "db" && metadata.domain === "db" && metadata.schemaHash !== current.schemaHash)
+        );
       });
     };
 
@@ -789,13 +928,18 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
     ): Promise<{ cachePath: string; cacheIdentity: string } | undefined> => {
       if (!cacheDir) return undefined;
       const dbIdentity = getDbCacheIdentity(source, schemaHash);
-      const built = buildVanillaDbCacheFromTables([{
-        packedFilePath: data.packedPath,
-        schema: parsed.schema,
-        rows: parsed.rows.map((row) => row.cells.map((cell) => cell.fields)),
-        packedFileVersion: parsed.preamble.version,
-        guid: parsed.preamble.guid,
-      }], dbIdentity);
+      const built = buildVanillaDbCacheFromTables(
+        [
+          {
+            packedFilePath: data.packedPath,
+            schema: parsed.schema,
+            rows: parsed.rows.map((row) => row.cells.map((cell) => cell.fields)),
+            packedFileVersion: parsed.preamble.version,
+            guid: parsed.preamble.guid,
+          },
+        ],
+        dbIdentity,
+      );
       if (built.skipped.length > 0 || built.meta.tables.length !== 1) return undefined;
       const directory = path.join(cacheDir, "headless", "db", sha256(source.path));
       const tableHash = tablePathHash(normalizePackFilePathKey(data.packedPath));
@@ -816,7 +960,10 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
       return { cachePath: opened.identity.path, cacheIdentity: descriptorIdentityKey(opened.identity) };
     };
 
-    const readReadonlyTable = async (packPath: string, packedFilePath: string): Promise<ReadonlyTableData | undefined> => {
+    const readReadonlyTable = async (
+      packPath: string,
+      packedFilePath: string,
+    ): Promise<ReadonlyTableData | undefined> => {
       checkOpen();
       const pack = await scope.readPackIndex(packPath);
       const entry = locateEntry(pack, packedFilePath);
@@ -842,7 +989,11 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
         const retained = budget.get<ReadonlyTableData>(retainedKey);
         if (retained) {
           const metadata = retained.metadata as { cachePath?: string; cacheIdentity?: string } | undefined;
-          if (!metadata?.cachePath || !metadata.cacheIdentity || await verifyCacheFileIdentity(metadata.cachePath, metadata.cacheIdentity, request.policy)) {
+          if (
+            !metadata?.cachePath ||
+            !metadata.cacheIdentity ||
+            (await verifyCacheFileIdentity(metadata.cachePath, metadata.cacheIdentity, request.policy))
+          ) {
             await assertIdentityStillCurrent(source);
             counters.hits.typedTables++;
             return retained.value as ReadonlyTableData;
@@ -874,7 +1025,15 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
           ];
           for (const cachePath of candidates) {
             const readerKey = `dbReader:${cachePath}:${identityString(source)}:${schema.hash}:${payloadLimit}`;
-            const data = await getTableFromDbCache(cachePath, readerKey, source.path, dbIdentity, normalizedPath, parsedPath.dbName, schema.schema);
+            const data = await getTableFromDbCache(
+              cachePath,
+              readerKey,
+              source.path,
+              dbIdentity,
+              normalizedPath,
+              parsedPath.dbName,
+              schema.schema,
+            );
             if (data) {
               await assertIdentityStillCurrent(source);
               counters.hits.typedTables++;
@@ -895,7 +1054,9 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
                   domain: "db",
                   payloadLimit,
                   codecRevision: DB_CODEC_REVISION,
-                  ...(readerRecord ? { cachePath: readerRecord.filePath, cacheIdentity: readerRecord.fileIdentity } : {}),
+                  ...(readerRecord
+                    ? { cachePath: readerRecord.filePath, cacheIdentity: readerRecord.fileIdentity }
+                    : {}),
                 },
               });
               return immutable;
@@ -917,24 +1078,60 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
       if (!isLoc && retainView && schema?.cacheable) {
         const rowBytes = estimateRowsBytes(immutable);
         let diskOrigin: { cachePath: string; cacheIdentity: string } | undefined;
-        try { diskOrigin = await publishDbTable(immutable, loaded.parsed, source, schema.hash, payloadLimit); } catch (error) {
-          if (error instanceof AutomationError && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code)) throw error;
+        try {
+          diskOrigin = await publishDbTable(immutable, loaded.parsed, source, schema.hash, payloadLimit);
+        } catch (error) {
+          if (error instanceof AutomationError && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code))
+            throw error;
           // Persistent cache writes never change a source result.
         }
         await assertIdentityStillCurrent(source);
-        budget.admit({ key: retainedKey, kind: "table", bytes: rowBytes, value: immutable, pins: 0, metadata: { sourcePath: source.path, sourceIdentity: identityString(source), schemaHash: schema.hash, sourceEpoch, domain, payloadLimit, codecRevision: DB_CODEC_REVISION, ...diskOrigin } });
+        budget.admit({
+          key: retainedKey,
+          kind: "table",
+          bytes: rowBytes,
+          value: immutable,
+          pins: 0,
+          metadata: {
+            sourcePath: source.path,
+            sourceIdentity: identityString(source),
+            schemaHash: schema.hash,
+            sourceEpoch,
+            domain,
+            payloadLimit,
+            codecRevision: DB_CODEC_REVISION,
+            ...diskOrigin,
+          },
+        });
       } else if (isLoc && retainView) {
         await assertIdentityStillCurrent(source);
-        budget.admit({ key: retainedKey, kind: "table", bytes: estimateRowsBytes(immutable), value: immutable, pins: 0, metadata: { sourcePath: source.path, sourceIdentity: identityString(source), sourceEpoch, domain, payloadLimit, codecRevision: DB_CODEC_REVISION } });
+        budget.admit({
+          key: retainedKey,
+          kind: "table",
+          bytes: estimateRowsBytes(immutable),
+          value: immutable,
+          pins: 0,
+          metadata: {
+            sourcePath: source.path,
+            sourceIdentity: identityString(source),
+            sourceEpoch,
+            domain,
+            payloadLimit,
+            codecRevision: DB_CODEC_REVISION,
+          },
+        });
       }
       counters.sourceFallbacks++;
       return immutable;
     };
 
     const checkRecordFileIdentity = async (record: LocReaderRecord): Promise<boolean> => {
-      if (record.memoryBacked || !record.filePath || !record.fileIdentity || !record.stampPath || !record.stampIdentity) return true;
-      return await verifyCacheFileIdentity(record.filePath, record.fileIdentity, request.policy) &&
-        await verifyCacheFileIdentity(record.stampPath, record.stampIdentity, request.policy);
+      if (record.memoryBacked || !record.filePath || !record.fileIdentity || !record.stampPath || !record.stampIdentity)
+        return true;
+      return (
+        (await verifyCacheFileIdentity(record.filePath, record.fileIdentity, request.policy)) &&
+        (await verifyCacheFileIdentity(record.stampPath, record.stampIdentity, request.policy))
+      );
     };
 
     const makeLookupLease = (key: string, record: LocReaderRecord): RawLocalizationLookupLease | undefined => {
@@ -948,7 +1145,11 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
         budget.unpin(key);
       };
       releases.add(release);
-      const entryInfo = (sourceLabel: string | undefined, rowIndex: number, rawText: string): RawLocalizationEntry | undefined => {
+      const entryInfo = (
+        sourceLabel: string | undefined,
+        rowIndex: number,
+        rawText: string,
+      ): RawLocalizationEntry | undefined => {
         const source = sourceLabelParts(sourceLabel);
         if (!source || rowIndex === VANILLA_LOC_UNKNOWN_ROW_INDEX) return undefined;
         return { rawText, packPath: source.packPath, filePath: source.filePath, rowIndex };
@@ -960,11 +1161,14 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
         },
         async forEachEntry(visit) {
           checkOpen();
-          await record.reader.forEachEntryAsync?.((keyText, value, _rank, sourceLabel, rowIndex) => {
-            throwIfAborted(request.signal);
-            const entry = entryInfo(sourceLabel, rowIndex ?? VANILLA_LOC_UNKNOWN_ROW_INDEX, value);
-            return entry ? visit(keyText, entry) : false;
-          }, { yieldEvery: 256, yieldToEventLoop: () => yieldToEventLoop(request.signal) });
+          await record.reader.forEachEntryAsync?.(
+            (keyText, value, _rank, sourceLabel, rowIndex) => {
+              throwIfAborted(request.signal);
+              const entry = entryInfo(sourceLabel, rowIndex ?? VANILLA_LOC_UNKNOWN_ROW_INDEX, value);
+              return entry ? visit(keyText, entry) : false;
+            },
+            { yieldEvery: 256, yieldToEventLoop: () => yieldToEventLoop(request.signal) },
+          );
           checkOpen();
         },
       };
@@ -976,14 +1180,20 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
       order: ExactVanillaLocFileOrder = "packIndex",
     ): Promise<RawLocalizationLookupLease | undefined> => {
       checkOpen();
-      if (!useTypedCache || !cachePayloadAllowed || (request.schemaProvider && options.schemaFingerprint === undefined)) {
+      if (
+        !useTypedCache ||
+        !cachePayloadAllowed ||
+        (request.schemaProvider && options.schemaFingerprint === undefined)
+      ) {
         counters.misses.locReaders++;
         return undefined;
       }
       const indexedPacks = await Promise.all(packPaths.map((packPath) => scope.readPackIndex(packPath)));
-      const packs = indexedPacks.filter((pack) => pack.entries.some((entry) =>
-        order === "gui" ? entry.name.endsWith(".loc") : entry.name.toLowerCase().endsWith(".loc"),
-      ));
+      const packs = indexedPacks.filter((pack) =>
+        pack.entries.some((entry) =>
+          order === "gui" ? entry.name.endsWith(".loc") : entry.name.toLowerCase().endsWith(".loc"),
+        ),
+      );
       if (packs.length === 0) return undefined;
       const canonicalPackPaths = packs.map((pack) => pack.path);
       const byPath = new Map(packs.map((pack) => [pack.path, pack]));
@@ -995,7 +1205,8 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
           return pack;
         });
       } catch (error) {
-        if (error instanceof AutomationError && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code)) throw error;
+        if (error instanceof AutomationError && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code))
+          throw error;
         counters.sourceFallbacks++;
         return undefined;
       }
@@ -1010,10 +1221,17 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
         }
       };
       const sourceIdentity = getVanillaLocCacheIdentity(DEFAULT_GAME, canonicalPackPaths);
-      const sourceSetIdentity = JSON.stringify(canonicalPackPaths.map((packPath) => [packPath, identityString(scopedIdentity.get(packPath)!)]));
-      budget.dropWhere((entry) => entry.kind === "locReader" &&
-        (entry.metadata as { sourcePaths?: readonly string[]; sourceSetIdentity?: string } | undefined)?.sourcePaths?.some((candidate) => canonicalPackPaths.includes(candidate)) === true &&
-        (entry.metadata as { sourceSetIdentity?: string } | undefined)?.sourceSetIdentity !== sourceSetIdentity);
+      const sourceSetIdentity = JSON.stringify(
+        canonicalPackPaths.map((packPath) => [packPath, identityString(scopedIdentity.get(packPath)!)]),
+      );
+      budget.dropWhere(
+        (entry) =>
+          entry.kind === "locReader" &&
+          (
+            entry.metadata as { sourcePaths?: readonly string[]; sourceSetIdentity?: string } | undefined
+          )?.sourcePaths?.some((candidate) => canonicalPackPaths.includes(candidate)) === true &&
+          (entry.metadata as { sourceSetIdentity?: string } | undefined)?.sourceSetIdentity !== sourceSetIdentity,
+      );
       const expectedStamp = {
         identity: sourceIdentity,
         sourceFormat: VANILLA_LOC_CACHE_EXACT_SOURCE_FORMAT,
@@ -1033,7 +1251,10 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
       }
       counters.misses.locReaders++;
 
-      const tryCandidate = async (filePath: string, stampPath: string): Promise<RawLocalizationLookupLease | undefined> => {
+      const tryCandidate = async (
+        filePath: string,
+        stampPath: string,
+      ): Promise<RawLocalizationLookupLease | undefined> => {
         const releaseSlot = budget.reserveReaderSlot();
         if (!releaseSlot) return undefined;
         try {
@@ -1051,7 +1272,15 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
               memoryBacked: false,
             };
             releaseSlot();
-            const accepted = budget.admit({ key, kind: "locReader", bytes: opened.reader.residentBytes, value: record, close: () => opened.reader.close(), pins: 0, metadata: { sourcePaths: canonicalPackPaths, sourceSetIdentity } });
+            const accepted = budget.admit({
+              key,
+              kind: "locReader",
+              bytes: opened.reader.residentBytes,
+              value: record,
+              close: () => opened.reader.close(),
+              pins: 0,
+              metadata: { sourcePaths: canonicalPackPaths, sourceSetIdentity },
+            });
             if (!accepted) {
               opened.reader.close();
               return undefined;
@@ -1068,10 +1297,12 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
       };
 
       if (whmmCacheDir) {
-        const guiFiles = [...new Set([
-          getVanillaLocCacheFilePath(whmmCacheDir, DEFAULT_GAME, packPaths),
-          getVanillaLocCacheFilePath(whmmCacheDir, DEFAULT_GAME, canonicalPackPaths),
-        ])];
+        const guiFiles = [
+          ...new Set([
+            getVanillaLocCacheFilePath(whmmCacheDir, DEFAULT_GAME, packPaths),
+            getVanillaLocCacheFilePath(whmmCacheDir, DEFAULT_GAME, canonicalPackPaths),
+          ]),
+        ];
         for (const guiFile of guiFiles) {
           const found = await tryCandidate(guiFile, `${guiFile}.id`);
           if (found) return found;
@@ -1109,10 +1340,12 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
               cacheBytes: bytes,
               stampPath,
               stampBytes,
-              shouldPublish: () => !request.signal?.aborted && canonicalPackPaths.every((packPath) => {
-                const expected = scopedIdentity.get(packPath);
-                return expected ? descriptorMatchesPath(expected) : false;
-              }),
+              shouldPublish: () =>
+                !request.signal?.aborted &&
+                canonicalPackPaths.every((packPath) => {
+                  const expected = scopedIdentity.get(packPath);
+                  return expected ? descriptorMatchesPath(expected) : false;
+                }),
             });
             if (published) {
               counters.persistentWrites++;
@@ -1148,14 +1381,25 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
         const bytesHeld = reader.residentBytes + (record.memoryBacked ? bytes.length : 0);
         await assertPackSetCurrent();
         releaseColdSlot();
-        const accepted = budget.admit({ key, kind: "locReader", bytes: bytesHeld, value: record, close: () => reader?.close(), pins: 0, metadata: { sourcePaths: canonicalPackPaths, sourceSetIdentity } });
+        const accepted = budget.admit({
+          key,
+          kind: "locReader",
+          bytes: bytesHeld,
+          value: record,
+          close: () => reader?.close(),
+          pins: 0,
+          metadata: { sourcePaths: canonicalPackPaths, sourceSetIdentity },
+        });
         if (!accepted) {
           reader.close();
           return undefined;
         }
         return makeLookupLease(key, record);
       } catch (error) {
-        if (error instanceof VanillaLocSourceReadCanceled || (error instanceof AutomationError && error.code === "CANCELLED")) {
+        if (
+          error instanceof VanillaLocSourceReadCanceled ||
+          (error instanceof AutomationError && error.code === "CANCELLED")
+        ) {
           throw new AutomationError("CANCELLED", "Operation was cancelled");
         }
         if (error instanceof AutomationError && ["CONFLICT", "IO_ACCESS"].includes(error.code)) throw error;
@@ -1180,10 +1424,11 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
         }
         if (!firstIdentity) scopedIdentity.set(canonicalPath, identity);
         const key = `index:${currentIdentity}:${DEFAULT_GAME}:${maxIndexBytes}`;
-        budget.dropWhere((entry) =>
-          (entry.kind === "index" || entry.kind === "table" || entry.kind === "dbReader") &&
-          (entry.metadata as { sourcePath?: string } | undefined)?.sourcePath === canonicalPath &&
-          (entry.metadata as { sourceIdentity?: string } | undefined)?.sourceIdentity !== currentIdentity,
+        budget.dropWhere(
+          (entry) =>
+            (entry.kind === "index" || entry.kind === "table" || entry.kind === "dbReader") &&
+            (entry.metadata as { sourcePath?: string } | undefined)?.sourcePath === canonicalPath &&
+            (entry.metadata as { sourceIdentity?: string } | undefined)?.sourceIdentity !== currentIdentity,
         );
         const retained = useIndexCache ? budget.get<CorePack>(key) : undefined;
         if (retained) {
@@ -1196,14 +1441,23 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
         counters.misses.packIndexes++;
         const pack = deepFreeze(readPackIndex(canonicalPath, { game: DEFAULT_GAME, maxIndexBytes }));
         if (pack.fileSize !== Number(identity.size)) {
-          throw new AutomationError("CONFLICT", "Pack changed while its index was being read", { packPath: canonicalPath });
+          throw new AutomationError("CONFLICT", "Pack changed while its index was being read", {
+            packPath: canonicalPath,
+          });
         }
         await assertIdentityStillCurrent(identity);
         scopedSources.set(pack, identity);
         packIdentityByObject.set(pack, identityString(identity));
         if (useIndexCache) {
           const bytes = estimatePackBytes(pack);
-          budget.admit({ key, kind: "index", bytes, value: pack, pins: 0, metadata: { sourcePath: canonicalPath, sourceIdentity: currentIdentity } });
+          budget.admit({
+            key,
+            kind: "index",
+            bytes,
+            value: pack,
+            pins: 0,
+            metadata: { sourcePath: canonicalPath, sourceIdentity: currentIdentity },
+          });
         }
         return pack;
       },
@@ -1212,10 +1466,14 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
         const expected = scopedSources.get(pack);
         if (!expected) {
           const snapshotIdentity = packIdentityByObject.get(pack);
-          if (!snapshotIdentity) throw new AutomationError("CONFLICT", "Pack index was not obtained from this request scope", { packPath: pack.path });
+          if (!snapshotIdentity)
+            throw new AutomationError("CONFLICT", "Pack index was not obtained from this request scope", {
+              packPath: pack.path,
+            });
           const { identity, fd } = await openIdentity(pack.path, request.policy);
           fs.closeSync(fd);
-          if (identityString(identity) !== snapshotIdentity) throw new AutomationError("CONFLICT", "Pack changed since its index was read", { packPath: pack.path });
+          if (identityString(identity) !== snapshotIdentity)
+            throw new AutomationError("CONFLICT", "Pack changed since its index was read", { packPath: pack.path });
           return;
         }
         await assertIdentityStillCurrent(expected);
@@ -1245,10 +1503,17 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
     invalidatePath(filePath) {
       const canonical = canonicalizeExistingPath(filePath);
       budget.dropWhere((entry) => {
-        if (entry.kind === "index") return (entry.metadata as { sourcePath?: string } | undefined)?.sourcePath === canonical;
-        if (entry.kind === "table") return (entry.metadata as { sourcePath?: string } | undefined)?.sourcePath === canonical;
-        if (entry.kind === "dbReader") return (entry.metadata as { sourcePath?: string } | undefined)?.sourcePath === canonical;
-        if (entry.kind === "locReader") return (entry.metadata as { sourcePaths?: readonly string[] } | undefined)?.sourcePaths?.includes(canonical) ?? false;
+        if (entry.kind === "index")
+          return (entry.metadata as { sourcePath?: string } | undefined)?.sourcePath === canonical;
+        if (entry.kind === "table")
+          return (entry.metadata as { sourcePath?: string } | undefined)?.sourcePath === canonical;
+        if (entry.kind === "dbReader")
+          return (entry.metadata as { sourcePath?: string } | undefined)?.sourcePath === canonical;
+        if (entry.kind === "locReader")
+          return (
+            (entry.metadata as { sourcePaths?: readonly string[] } | undefined)?.sourcePaths?.includes(canonical) ??
+            false
+          );
         return false;
       });
     },
@@ -1261,4 +1526,3 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
     },
   };
 };
-

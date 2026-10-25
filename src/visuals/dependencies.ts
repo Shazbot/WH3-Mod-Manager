@@ -93,33 +93,67 @@ type OrderedXmlNode = Record<string, unknown> & { ":@"?: Record<string, unknown>
 const xmlElementAndValue = (node: OrderedXmlNode): [string, unknown] | undefined =>
   Object.entries(node).find(([key]) => key !== ":@");
 
-const referenceRelationship = (extension: SupportedVisualDependencyExtension): VisualReferenceDetail["relationship"] => {
+const referenceRelationship = (
+  extension: SupportedVisualDependencyExtension,
+): VisualReferenceDetail["relationship"] => {
   switch (extension) {
-    case "variantmeshdefinition": return "variant-mesh-reference";
-    case "wsmodel": return "model";
-    case "rigid_model_v2": return "geometry";
-    case "xml.material": return "material";
-    case "dds": return "texture";
+    case "variantmeshdefinition":
+      return "variant-mesh-reference";
+    case "wsmodel":
+      return "model";
+    case "rigid_model_v2":
+      return "geometry";
+    case "xml.material":
+      return "material";
+    case "dds":
+      return "texture";
   }
 };
 
 const referenceBearingFields = new Set([
-  "animation", "definition", "file", "filename", "geometry", "material", "mesh", "model", "path",
-  "rigid_model", "shader", "skeleton", "source", "texture", "variant_mesh", "variant_mesh_reference", "wsmodel",
+  "animation",
+  "definition",
+  "file",
+  "filename",
+  "geometry",
+  "material",
+  "mesh",
+  "model",
+  "path",
+  "rigid_model",
+  "shader",
+  "skeleton",
+  "source",
+  "texture",
+  "variant_mesh",
+  "variant_mesh_reference",
+  "wsmodel",
 ]);
 
 /** Extracts supported XML references with their source field and conservative VMD choice context. */
 export const getSupportedVisualReferenceDetails = (text: string): VisualReferenceExtraction => {
   const validation = XMLValidator.validate(text);
-  if (validation !== true) return { references: [], unsupportedReferences: [], valid: false, error: JSON.stringify(validation) };
+  if (validation !== true)
+    return { references: [], unsupportedReferences: [], valid: false, error: JSON.stringify(validation) };
 
   let parsed: unknown;
   try {
     parsed = detailedDependencyXmlParser.parse(text);
   } catch (error) {
-    return { references: [], unsupportedReferences: [], valid: false, error: error instanceof Error ? error.message : String(error) };
+    return {
+      references: [],
+      unsupportedReferences: [],
+      valid: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
-  if (!Array.isArray(parsed)) return { references: [], unsupportedReferences: [], valid: false, error: "XML parser returned no ordered document" };
+  if (!Array.isArray(parsed))
+    return {
+      references: [],
+      unsupportedReferences: [],
+      valid: false,
+      error: "XML parser returned no ordered document",
+    };
 
   const references: VisualReferenceDetail[] = [];
   const unsupportedReferences: UnsupportedVisualReferenceDetail[] = [];
@@ -132,7 +166,12 @@ export const getSupportedVisualReferenceDetails = (text: string): VisualReferenc
       const hasExtension = /(?:^|\\)[^\\]+\.[a-z0-9_]+$/i.test(normalizedPath);
       const fieldLooksLikeReference = referenceBearingFields.has(sourceField.toLowerCase());
       if (hasExtension && (normalizedPath.includes("\\") || fieldLooksLikeReference)) {
-        unsupportedReferences.push({ path: normalizedPath, location, sourceField, ...(conditional ? { conditional } : {}) });
+        unsupportedReferences.push({
+          path: normalizedPath,
+          location,
+          sourceField,
+          ...(conditional ? { conditional } : {}),
+        });
       }
       return;
     }
@@ -155,7 +194,11 @@ export const getSupportedVisualReferenceDetails = (text: string): VisualReferenc
     const siblings = Array.isArray(rawChildren) ? rawChildren : rawChildren == null ? [] : [rawChildren];
     const index = Number((node as { __index?: number }).__index ?? 0);
     if (elementName === "#text") {
-      const parentElement = parentPath.split("/").at(-1)?.replace(/\[\d+\]$/, "") ?? "#text";
+      const parentElement =
+        parentPath
+          .split("/")
+          .at(-1)
+          ?.replace(/\[\d+\]$/, "") ?? "#text";
       for (const child of siblings) addReference(child, `${parentPath}/text()`, parentElement, inherited);
       return;
     }
@@ -178,10 +221,12 @@ export const getSupportedVisualReferenceDetails = (text: string): VisualReferenc
       }
       siblings.forEach((child, childIndex) => {
         const choiceIndex = choiceByChild.get(child);
-        const childConditional = choiceIndex === undefined
-          ? current
-          : { slotPath: elementPath, slotName, choiceIndex, ...(current ? { parent: current } : {}) };
-        const childNode = child && typeof child === "object" ? { ...(child as OrderedXmlNode), __index: childIndex } : child;
+        const childConditional =
+          choiceIndex === undefined
+            ? current
+            : { slotPath: elementPath, slotName, choiceIndex, ...(current ? { parent: current } : {}) };
+        const childNode =
+          child && typeof child === "object" ? { ...(child as OrderedXmlNode), __index: childIndex } : child;
         visit(childNode, elementPath, childConditional);
       });
       return;
@@ -195,7 +240,8 @@ export const getSupportedVisualReferenceDetails = (text: string): VisualReferenc
       }
     }
     siblings.forEach((child, childIndex) => {
-      const childNode = child && typeof child === "object" ? { ...(child as OrderedXmlNode), __index: childIndex } : child;
+      const childNode =
+        child && typeof child === "object" ? { ...(child as OrderedXmlNode), __index: childIndex } : child;
       if (typeof child === "string") addReference(child, `${elementPath}/text()`, elementName, current);
       else visit(childNode, elementPath, current);
     });

@@ -1,11 +1,6 @@
 import { LocVersion, type DBField, type DBVersion, type Field, type SCHEMA_FIELD_TYPE } from "../packFileTypes";
 import { parseDBTablePath, resolveParsedDBVersion } from "../utility/packFileHelpers";
-import {
-  parseDbTable,
-  parseLocTable,
-  readDbTablePreamble,
-  type ParsedDbTable,
-} from "../packCore";
+import { parseDbTable, parseLocTable, readDbTablePreamble, type ParsedDbTable } from "../packCore";
 import { AutomationError } from "./errors";
 import { normalizeInternalPackPath } from "./filesystem";
 
@@ -97,7 +92,8 @@ export const validateCellValue = (field: DBField, value: unknown): JsonCell => {
       break;
     case "I32":
     case "ColourRGB":
-      if (typeof value === "number" && Number.isInteger(value) && value >= -2147483648 && value <= 2147483647) return value;
+      if (typeof value === "number" && Number.isInteger(value) && value >= -2147483648 && value <= 2147483647)
+        return value;
       break;
     case "F32":
       if (typeof value === "number" && Number.isFinite(value) && Number.isFinite(Math.fround(value))) return value;
@@ -115,7 +111,10 @@ export const validateCellValue = (field: DBField, value: unknown): JsonCell => {
 
 const validateStringU8 = (field: DBField, value: string): string => {
   if (Buffer.byteLength(value, "utf8") > 0xffff) {
-    throw new AutomationError("VALIDATION", `Field ${field.name} requires a UTF-8 StringU8 value of at most 65535 bytes`);
+    throw new AutomationError(
+      "VALIDATION",
+      `Field ${field.name} requires a UTF-8 StringU8 value of at most 65535 bytes`,
+    );
   }
   return value;
 };
@@ -178,17 +177,16 @@ export const jsonValueFromCell = (fieldType: SCHEMA_FIELD_TYPE, fields: Field[])
     case "I16":
     case "I32":
     case "F64":
-    case "ColourRGB":
-      {
-        const value = Number(fields[0]?.val ?? 0);
-        if ((fieldType === "F32" || fieldType === "F64") && !Number.isFinite(value)) {
-          throw new AutomationError("UNSUPPORTED", `Non-finite ${fieldType} value cannot be represented in JSON`, {
-            fieldType,
-            value: String(value),
-          });
-        }
-        return value;
+    case "ColourRGB": {
+      const value = Number(fields[0]?.val ?? 0);
+      if ((fieldType === "F32" || fieldType === "F64") && !Number.isFinite(value)) {
+        throw new AutomationError("UNSUPPORTED", `Non-finite ${fieldType} value cannot be represented in JSON`, {
+          fieldType,
+          value: String(value),
+        });
       }
+      return value;
+    }
   }
 };
 
@@ -203,7 +201,10 @@ export const loadPackedTable = async (
       return { packedPath, parsed: parseLocTable(buffer), isLoc: true };
     } catch (error) {
       if (error instanceof AutomationError) throw error;
-      throw new AutomationError("VALIDATION", `Invalid LOC table ${packedPath}: ${error instanceof Error ? error.message : String(error)}`);
+      throw new AutomationError(
+        "VALIDATION",
+        `Invalid LOC table ${packedPath}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
   const parsedPath = parseDBTablePath(packedPath.toLowerCase());
@@ -222,11 +223,15 @@ export const loadPackedTable = async (
   try {
     preamble = readDbTablePreamble(buffer);
   } catch (error) {
-    throw new AutomationError("VALIDATION", `Invalid DB preamble ${packedPath}: ${error instanceof Error ? error.message : String(error)}`);
+    throw new AutomationError(
+      "VALIDATION",
+      `Invalid DB preamble ${packedPath}: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
-  const schema = preamble.version === undefined
-    ? resolveParsedDBVersion(undefined, versions)
-    : versions.find((candidate) => candidate.version === preamble.version);
+  const schema =
+    preamble.version === undefined
+      ? resolveParsedDBVersion(undefined, versions)
+      : versions.find((candidate) => candidate.version === preamble.version);
   if (!schema) {
     throw new AutomationError(
       "UNSUPPORTED",
@@ -240,7 +245,10 @@ export const loadPackedTable = async (
     return { packedPath, parsed: parseDbTable(buffer, schema, { game: "wh3" }), isLoc: false };
   } catch (error) {
     if (error instanceof AutomationError) throw error;
-    throw new AutomationError("VALIDATION", `Invalid DB table ${packedPath}: ${error instanceof Error ? error.message : String(error)}`);
+    throw new AutomationError(
+      "VALIDATION",
+      `Invalid DB table ${packedPath}: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 };
 
@@ -285,11 +293,16 @@ export const validateFilters = (schema: DBVersion, filters: readonly TableFilter
       return filter;
     }
     if (filter.op === "in") {
-      if (!Array.isArray(filter.value)) throw new AutomationError("VALIDATION", `in requires an array value (${field.name})`);
+      if (!Array.isArray(filter.value))
+        throw new AutomationError("VALIDATION", `in requires an array value (${field.name})`);
       return { ...filter, value: filter.value.map((value) => validateCellValue(field, value)) };
     }
-    if (Array.isArray(filter.value)) throw new AutomationError("VALIDATION", `${filter.op} requires a scalar (${field.name})`);
-    if (["lt", "lte", "gt", "gte"].includes(filter.op) && (!numericTypes.has(field.field_type) && !stringTypes.has(field.field_type) || field.field_type === "Boolean")) {
+    if (Array.isArray(filter.value))
+      throw new AutomationError("VALIDATION", `${filter.op} requires a scalar (${field.name})`);
+    if (
+      ["lt", "lte", "gt", "gte"].includes(filter.op) &&
+      ((!numericTypes.has(field.field_type) && !stringTypes.has(field.field_type)) || field.field_type === "Boolean")
+    ) {
       throw new AutomationError("VALIDATION", `${filter.op} is unsupported for ${field.field_type} (${field.name})`);
     }
     if (["lt", "lte", "gt", "gte"].includes(filter.op) && filter.value === null) {
@@ -317,15 +330,24 @@ export const queryTableRows = (
       const { field } = resolveField(table.schema, filter.field);
       const value = row[field.name];
       if (filter.op === "contains") return typeof value === "string" && value.includes(filter.value as string);
-      if (filter.op === "in") return (filter.value as JsonCell[]).some((candidate) => compareValues(field.field_type, value, candidate) === 0);
+      if (filter.op === "in")
+        return (filter.value as JsonCell[]).some(
+          (candidate) => compareValues(field.field_type, value, candidate) === 0,
+        );
       const order = compareValues(field.field_type, value, filter.value as JsonCell);
       switch (filter.op) {
-        case "eq": return order === 0;
-        case "ne": return order !== 0;
-        case "lt": return order < 0;
-        case "lte": return order <= 0;
-        case "gt": return order > 0;
-        case "gte": return order >= 0;
+        case "eq":
+          return order === 0;
+        case "ne":
+          return order !== 0;
+        case "lt":
+          return order < 0;
+        case "lte":
+          return order <= 0;
+        case "gt":
+          return order > 0;
+        case "gte":
+          return order >= 0;
       }
     }),
   );
@@ -334,7 +356,11 @@ export const queryTableRows = (
     .map((row, index) => ({ row, index }))
     .toSorted((a, b) => {
       for (const item of validatedSort) {
-        const order = compareValues(item.fieldInfo.field.field_type, a.row[item.fieldInfo.field.name], b.row[item.fieldInfo.field.name]);
+        const order = compareValues(
+          item.fieldInfo.field.field_type,
+          a.row[item.fieldInfo.field.name],
+          b.row[item.fieldInfo.field.name],
+        );
         if (order !== 0) return item.direction === "asc" ? order : -order;
       }
       return a.index - b.index;
@@ -348,7 +374,11 @@ export const enforceUniqueSchemaKeys = (table: ParsedDbTable, rows: readonly Tab
   const seen = new Set<string>();
   for (const row of rows) {
     const key = JSON.stringify(keyFields.map((field) => row[field.name]));
-    if (seen.has(key)) throw new AutomationError("CONFLICT", "Resulting table contains duplicate schema key", { keyFields: keyFields.map((field) => field.name), key });
+    if (seen.has(key))
+      throw new AutomationError("CONFLICT", "Resulting table contains duplicate schema key", {
+        keyFields: keyFields.map((field) => field.name),
+        key,
+      });
     seen.add(key);
   }
 };
@@ -356,7 +386,8 @@ export const enforceUniqueSchemaKeys = (table: ParsedDbTable, rows: readonly Tab
 export const makeRowFields = (schema: DBVersion, row: Record<string, unknown>, allowDefaults: boolean): Field[][] => {
   const knownNames = new Set(schema.fields.map((field) => field.name));
   const unknown = Object.keys(row).filter((key) => !knownNames.has(key));
-  if (unknown.length > 0) throw new AutomationError("INVALID_ARGUMENT", `Unknown table field(s): ${unknown.join(", ")}`, { fields: unknown });
+  if (unknown.length > 0)
+    throw new AutomationError("INVALID_ARGUMENT", `Unknown table field(s): ${unknown.join(", ")}`, { fields: unknown });
   return schema.fields.map((field) => fieldsFromJsonValue(field, row[field.name], allowDefaults));
 };
 
@@ -367,7 +398,8 @@ export const applyRecordToCells = (
 ): Array<{ fields: Field[] } | { bytes: Buffer }> => {
   const knownNames = new Set(schema.fields.map((field) => field.name));
   const unknown = Object.keys(values).filter((key) => !knownNames.has(key));
-  if (unknown.length > 0) throw new AutomationError("INVALID_ARGUMENT", `Unknown table field(s): ${unknown.join(", ")}`, { fields: unknown });
+  if (unknown.length > 0)
+    throw new AutomationError("INVALID_ARGUMENT", `Unknown table field(s): ${unknown.join(", ")}`, { fields: unknown });
   return schema.fields.map((field, index) =>
     Object.prototype.hasOwnProperty.call(values, field.name)
       ? { fields: fieldsFromJsonValue(field, values[field.name]) }

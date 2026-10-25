@@ -285,9 +285,11 @@ describe.skipIf(!enabled)("Workshop mod optimizer end to end", () => {
       const handover = await stage(
         "run5-handover",
         handoverList,
-        { onProgress: (progress) => {
+        {
+          onProgress: (progress) => {
             if (progress.fraction !== undefined) progressSeen.push(progress.fraction);
-          } },
+          },
+        },
         { background: handoverBackground },
       );
       handoverBackground.setLaunchActive(false);

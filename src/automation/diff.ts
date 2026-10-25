@@ -2,38 +2,53 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { z } from "zod";
-import { getSupportedVisualReferenceDetails, type VisualReferenceDetail, type UnsupportedVisualReferenceDetail } from "../visuals/dependencies";
+import {
+  getSupportedVisualReferenceDetails,
+  type VisualReferenceDetail,
+  type UnsupportedVisualReferenceDetail,
+} from "../visuals/dependencies";
 import { normalizePackFilePathKey } from "../utility/packFilePathUtils";
 import { parseDBTablePath } from "../utility/packFileHelpers";
-import { compareRmv2PartGeometry, parseRmv2, Rmv2CodecError, type CorePack, type CorePackEntry, type ParsedDbTable, type Rmv2Part } from "../packCore";
+import {
+  compareRmv2PartGeometry,
+  parseRmv2,
+  Rmv2CodecError,
+  type CorePack,
+  type CorePackEntry,
+  type ParsedDbTable,
+  type Rmv2Part,
+} from "../packCore";
 import { decodePackedTextBuffer } from "../utility/packFileViewing";
 import { AutomationError, throwIfAborted, yieldToEventLoop, type AutomationDiagnostic } from "./errors";
-import {
-  getAutomationSchemaProvider,
-  readAutomationPack,
-  readAutomationPayload,
-} from "./packAccess";
+import { getAutomationSchemaProvider, readAutomationPack, readAutomationPayload } from "./packAccess";
 import { loadPackedTable, tableRowsToJson, type TableRow } from "./tables";
 import type { AutomationContext } from "./operations";
 
-export const packDiffSchema = z.object({
-  operation: z.literal("pack_diff"),
-  beforePath: z.string().min(1),
-  afterPath: z.string().min(1),
-  pathPrefix: z.string().optional(),
-  glob: z.string().optional(),
-  fileTypes: z.array(z.string().min(1)).max(256).optional(),
-  details: z.boolean().default(false),
-  semanticOffset: z.number().int().min(0).default(0),
-  semanticLimit: z.number().int().min(1).max(1000).default(100),
-  offset: z.number().int().min(0).default(0),
-  limit: z.number().int().min(1).max(1000).default(100),
-  reportPath: z.string().min(1).optional(),
-}).strict();
+export const packDiffSchema = z
+  .object({
+    operation: z.literal("pack_diff"),
+    beforePath: z.string().min(1),
+    afterPath: z.string().min(1),
+    pathPrefix: z.string().optional(),
+    glob: z.string().optional(),
+    fileTypes: z.array(z.string().min(1)).max(256).optional(),
+    details: z.boolean().default(false),
+    semanticOffset: z.number().int().min(0).default(0),
+    semanticLimit: z.number().int().min(1).max(1000).default(100),
+    offset: z.number().int().min(0).default(0),
+    limit: z.number().int().min(1).max(1000).default(100),
+    reportPath: z.string().min(1).optional(),
+  })
+  .strict();
 
 type DiffRequest = z.output<typeof packDiffSchema>;
 
-const diagnostic = (code: string, message: string, severity: AutomationDiagnostic["severity"] = "warning", path?: string): AutomationDiagnostic => ({
+const diagnostic = (
+  code: string,
+  message: string,
+  severity: AutomationDiagnostic["severity"] = "warning",
+  path?: string,
+): AutomationDiagnostic => ({
   code,
   message,
   severity,
@@ -44,7 +59,11 @@ const indexByCanonicalPath = (pack: CorePack): Map<string, CorePackEntry> => {
   const result = new Map<string, CorePackEntry>();
   for (const entry of pack.entries) {
     const key = normalizePackFilePathKey(entry.name);
-    if (result.has(key)) throw new AutomationError("CONFLICT", `Pack contains duplicate normalized file path: ${entry.name}`, { packPath: pack.path, key });
+    if (result.has(key))
+      throw new AutomationError("CONFLICT", `Pack contains duplicate normalized file path: ${entry.name}`, {
+        packPath: pack.path,
+        key,
+      });
     result.set(key, entry);
   }
   return result;
@@ -99,9 +118,14 @@ const canonicalRow = (row: TableRow, fields: readonly { name: string }[]): strin
 const getTableRows = (table: ParsedDbTable): TableRow[] => tableRowsToJson(table);
 
 const rowKeyNames = (table: ParsedDbTable, isLoc: boolean): string[] =>
-  table.schema.fields.flatMap((field) => (isLoc ? field.name === "key" : field.is_key) ? [field.name] : []);
+  table.schema.fields.flatMap((field) => ((isLoc ? field.name === "key" : field.is_key) ? [field.name] : []));
 
-const multisetDiff = (beforeRows: readonly TableRow[], afterRows: readonly TableRow[], fields: readonly { name: string }[], includeDetails: boolean) => {
+const multisetDiff = (
+  beforeRows: readonly TableRow[],
+  afterRows: readonly TableRow[],
+  fields: readonly { name: string }[],
+  includeDetails: boolean,
+) => {
   const counts = (rows: readonly TableRow[]) => {
     const values = new Map<string, { count: number; row: TableRow }>();
     for (const row of rows) {
@@ -130,7 +154,13 @@ const multisetDiff = (beforeRows: readonly TableRow[], afterRows: readonly Table
   return { added, removed, addedCount, deletedCount };
 };
 
-const semanticDbDiff = (before: ParsedDbTable, after: ParsedDbTable, beforeLoc: boolean, afterLoc: boolean, includeDetails: boolean) => {
+const semanticDbDiff = (
+  before: ParsedDbTable,
+  after: ParsedDbTable,
+  beforeLoc: boolean,
+  afterLoc: boolean,
+  includeDetails: boolean,
+) => {
   if (beforeLoc !== afterLoc || !semanticSchemaMatches(before, after)) return undefined;
   const fields = before.schema.fields;
   const beforeRows = getTableRows(before);
@@ -171,7 +201,10 @@ const semanticDbDiff = (before: ParsedDbTable, after: ParsedDbTable, beforeLoc: 
   }
   const added: TableRow[] = [];
   const deleted: TableRow[] = [];
-  const modified: Array<{ key: Record<string, unknown>; fields: Array<{ field: string; before: unknown; after: unknown }> }> = [];
+  const modified: Array<{
+    key: Record<string, unknown>;
+    fields: Array<{ field: string; before: unknown; after: unknown }>;
+  }> = [];
   let addedCount = 0;
   let deletedCount = 0;
   let modifiedCount = 0;
@@ -184,16 +217,22 @@ const semanticDbDiff = (before: ParsedDbTable, after: ParsedDbTable, beforeLoc: 
     }
     const oldRow = oldValues[0];
     const newRow = values[0];
-    const changes = fields.flatMap((field) => oldRow[field.name] === newRow[field.name] ? [] : [{ field: field.name, before: oldRow[field.name], after: newRow[field.name] }]);
+    const changes = fields.flatMap((field) =>
+      oldRow[field.name] === newRow[field.name]
+        ? []
+        : [{ field: field.name, before: oldRow[field.name], after: newRow[field.name] }],
+    );
     if (changes.length) {
       modifiedCount += 1;
-      if (includeDetails) modified.push({ key: Object.fromEntries(keyNames.map((name) => [name, newRow[name]])), fields: changes });
+      if (includeDetails)
+        modified.push({ key: Object.fromEntries(keyNames.map((name) => [name, newRow[name]])), fields: changes });
     }
   }
-  for (const [key, values] of beforeByKey) if (!afterByKey.has(key)) {
-    deletedCount += 1;
-    if (includeDetails) deleted.push(values[0]);
-  }
+  for (const [key, values] of beforeByKey)
+    if (!afterByKey.has(key)) {
+      deletedCount += 1;
+      if (includeDetails) deleted.push(values[0]);
+    }
   return {
     mode: "schema-key" as const,
     ...(includeDetails ? { added, deleted, modified } : {}),
@@ -208,13 +247,14 @@ const parseSemanticTable = async (pack: CorePack, entry: CorePackEntry, context:
   return loadPackedTable(entry.name, payload, getAutomationSchemaProvider(context));
 };
 
-const referenceIdentity = (reference: VisualReferenceDetail | UnsupportedVisualReferenceDetail): string => JSON.stringify([
-  normalizePackFilePathKey(reference.path),
-  reference.location,
-  reference.sourceField,
-  "relationship" in reference ? reference.relationship : "unsupported",
-  reference.conditional ?? null,
-]);
+const referenceIdentity = (reference: VisualReferenceDetail | UnsupportedVisualReferenceDetail): string =>
+  JSON.stringify([
+    normalizePackFilePathKey(reference.path),
+    reference.location,
+    reference.sourceField,
+    "relationship" in reference ? reference.relationship : "unsupported",
+    reference.conditional ?? null,
+  ]);
 
 const detailMultisetDiff = <T extends VisualReferenceDetail | UnsupportedVisualReferenceDetail>(
   before: readonly T[],
@@ -249,12 +289,13 @@ const detailMultisetDiff = <T extends VisualReferenceDetail | UnsupportedVisualR
   return { added, removed, addedCount, removedCount };
 };
 
-const normalizedParameters = (part: Rmv2Part) => [
-  ["string", part.stringParams ?? []],
-  ["float", part.floatParams ?? []],
-  ["int", part.intParams ?? []],
-  ["vec4", part.vec4Params ?? []],
-] as const;
+const normalizedParameters = (part: Rmv2Part) =>
+  [
+    ["string", part.stringParams ?? []],
+    ["float", part.floatParams ?? []],
+    ["int", part.intParams ?? []],
+    ["vec4", part.vec4Params ?? []],
+  ] as const;
 
 const semanticRmv2Diff = (
   beforeModel: ReturnType<typeof parseRmv2>,
@@ -286,11 +327,17 @@ const semanticRmv2Diff = (
     if (includeDetails) (group === "added" ? added : group === "deleted" ? deleted : modified).push(record);
   };
   if (beforeModel.version !== afterModel.version || beforeModel.skeletonName !== afterModel.skeletonName) {
-    addRecord("modified", { kind: "model", version: { before: beforeModel.version, after: afterModel.version }, skeletonName: { before: beforeModel.skeletonName, after: afterModel.skeletonName } });
+    addRecord("modified", {
+      kind: "model",
+      version: { before: beforeModel.version, after: afterModel.version },
+      skeletonName: { before: beforeModel.skeletonName, after: afterModel.skeletonName },
+    });
   }
   const beforeLods = new Map(beforeModel.lods.map((lod) => [lod.lodIndex, lod]));
   const afterLods = new Map(afterModel.lods.map((lod) => [lod.lodIndex, lod]));
-  for (const lodIndex of [...new Set([...beforeLods.keys(), ...afterLods.keys()])].sort((left, right) => left - right)) {
+  for (const lodIndex of [...new Set([...beforeLods.keys(), ...afterLods.keys()])].sort(
+    (left, right) => left - right,
+  )) {
     const beforeLod = beforeLods.get(lodIndex);
     const afterLod = afterLods.get(lodIndex);
     if (!beforeLod) {
@@ -303,35 +350,77 @@ const semanticRmv2Diff = (
       addRecord("deleted", { kind: "lod", lodIndex, distance: beforeLod.distance, partCount: beforeLod.meshCount });
       continue;
     }
-    if (beforeLod.distance !== afterLod.distance || beforeLod.authoredLodIndex !== afterLod.authoredLodIndex || beforeLod.qualityLevel !== afterLod.qualityLevel) {
+    if (
+      beforeLod.distance !== afterLod.distance ||
+      beforeLod.authoredLodIndex !== afterLod.authoredLodIndex ||
+      beforeLod.qualityLevel !== afterLod.qualityLevel
+    ) {
       addRecord("modified", {
         kind: "lod",
         lodIndex,
-        before: { distance: beforeLod.distance, authoredLodIndex: beforeLod.authoredLodIndex, qualityLevel: beforeLod.qualityLevel },
-        after: { distance: afterLod.distance, authoredLodIndex: afterLod.authoredLodIndex, qualityLevel: afterLod.qualityLevel },
+        before: {
+          distance: beforeLod.distance,
+          authoredLodIndex: beforeLod.authoredLodIndex,
+          qualityLevel: beforeLod.qualityLevel,
+        },
+        after: {
+          distance: afterLod.distance,
+          authoredLodIndex: afterLod.authoredLodIndex,
+          qualityLevel: afterLod.qualityLevel,
+        },
       });
     }
     const beforeParts = new Map(beforeLod.parts.map((part) => [part.partIndex, part]));
     const afterParts = new Map(afterLod.parts.map((part) => [part.partIndex, part]));
-    for (const partIndex of [...new Set([...beforeParts.keys(), ...afterParts.keys()])].sort((left, right) => left - right)) {
+    for (const partIndex of [...new Set([...beforeParts.keys(), ...afterParts.keys()])].sort(
+      (left, right) => left - right,
+    )) {
       const beforePart = beforeParts.get(partIndex);
       const afterPart = afterParts.get(partIndex);
       if (!beforePart) {
         partAddedCount += 1;
-        addRecord("added", { kind: "part", lodIndex, partIndex, name: afterPart!.name, materialTypeId: afterPart!.materialTypeId, materialTypeName: afterPart!.materialTypeName, vertexCount: afterPart!.vertexCount, indexCount: afterPart!.indexCount });
+        addRecord("added", {
+          kind: "part",
+          lodIndex,
+          partIndex,
+          name: afterPart!.name,
+          materialTypeId: afterPart!.materialTypeId,
+          materialTypeName: afterPart!.materialTypeName,
+          vertexCount: afterPart!.vertexCount,
+          indexCount: afterPart!.indexCount,
+        });
         continue;
       }
       if (!afterPart) {
         partRemovedCount += 1;
-        addRecord("deleted", { kind: "part", lodIndex, partIndex, name: beforePart.name, materialTypeId: beforePart.materialTypeId, materialTypeName: beforePart.materialTypeName, vertexCount: beforePart.vertexCount, indexCount: beforePart.indexCount });
+        addRecord("deleted", {
+          kind: "part",
+          lodIndex,
+          partIndex,
+          name: beforePart.name,
+          materialTypeId: beforePart.materialTypeId,
+          materialTypeName: beforePart.materialTypeName,
+          vertexCount: beforePart.vertexCount,
+          indexCount: beforePart.indexCount,
+        });
         continue;
       }
       if (!beforePart.complete || !afterPart.complete) {
         complete = false;
-        diagnostics.push(diagnostic("UNSUPPORTED_RMV2_DIFF_PART", `LOD ${lodIndex} part ${partIndex} has an unsupported material or vertex layout; semantic comparison is incomplete`, "warning", beforePath));
+        diagnostics.push(
+          diagnostic(
+            "UNSUPPORTED_RMV2_DIFF_PART",
+            `LOD ${lodIndex} part ${partIndex} has an unsupported material or vertex layout; semantic comparison is incomplete`,
+            "warning",
+            beforePath,
+          ),
+        );
         continue;
       }
-      const materialChanged = beforePart.materialTypeId !== afterPart.materialTypeId || beforePart.vertexFormatId !== afterPart.vertexFormatId || beforePart.renderFlags !== afterPart.renderFlags;
+      const materialChanged =
+        beforePart.materialTypeId !== afterPart.materialTypeId ||
+        beforePart.vertexFormatId !== afterPart.vertexFormatId ||
+        beforePart.renderFlags !== afterPart.renderFlags;
       if (materialChanged) {
         materialChangedCount += 1;
         addRecord("modified", {
@@ -339,12 +428,23 @@ const semanticRmv2Diff = (
           lodIndex,
           partIndex,
           name: { before: beforePart.name, after: afterPart.name },
-          materialType: { before: { id: beforePart.materialTypeId, name: beforePart.materialTypeName }, after: { id: afterPart.materialTypeId, name: afterPart.materialTypeName } },
-          vertexFormat: { before: { id: beforePart.vertexFormatId, name: beforePart.vertexFormatName }, after: { id: afterPart.vertexFormatId, name: afterPart.vertexFormatName } },
+          materialType: {
+            before: { id: beforePart.materialTypeId, name: beforePart.materialTypeName },
+            after: { id: afterPart.materialTypeId, name: afterPart.materialTypeName },
+          },
+          vertexFormat: {
+            before: { id: beforePart.vertexFormatId, name: beforePart.vertexFormatName },
+            after: { id: afterPart.vertexFormatId, name: afterPart.vertexFormatName },
+          },
           renderFlags: { before: beforePart.renderFlags, after: afterPart.renderFlags },
         });
       } else if (beforePart.name !== afterPart.name) {
-        addRecord("modified", { kind: "part", lodIndex, partIndex, name: { before: beforePart.name, after: afterPart.name } });
+        addRecord("modified", {
+          kind: "part",
+          lodIndex,
+          partIndex,
+          name: { before: beforePart.name, after: afterPart.name },
+        });
       }
       const textureOccurrences = (textures: Rmv2Part["textures"] | undefined) => {
         const byType = new Map<string, Array<{ texture: NonNullable<Rmv2Part["textures"]>[number]; index: number }>>();
@@ -400,7 +500,15 @@ const semanticRmv2Diff = (
           const afterValue = afterValues[parameterIndex];
           if (JSON.stringify(beforeValue ?? null) === JSON.stringify(afterValue ?? null)) continue;
           parameterChangedCount += 1;
-          addRecord("modified", { kind: "parameter", parameterType, lodIndex, partIndex, parameterIndex, before: beforeValue ?? null, after: afterValue ?? null });
+          addRecord("modified", {
+            kind: "parameter",
+            parameterType,
+            lodIndex,
+            partIndex,
+            parameterIndex,
+            before: beforeValue ?? null,
+            after: afterValue ?? null,
+          });
         }
       }
       const geometry = compareRmv2PartGeometry(beforeModel.version, beforePart, afterModel.version, afterPart);
@@ -408,7 +516,13 @@ const semanticRmv2Diff = (
       positionChangedCount += geometry.positionChangedCount;
       uvChangedCount += geometry.uvChangedCount;
       indexChangedCount += geometry.indexChangedCount;
-      if (geometry.vertexChangedCount || geometry.positionChangedCount || geometry.uvChangedCount || geometry.indexChangedCount || !geometry.layoutComparable) {
+      if (
+        geometry.vertexChangedCount ||
+        geometry.positionChangedCount ||
+        geometry.uvChangedCount ||
+        geometry.indexChangedCount ||
+        !geometry.layoutComparable
+      ) {
         addRecord("modified", { kind: "geometry", lodIndex, partIndex, ...geometry });
       }
     }
@@ -461,12 +575,23 @@ const semanticDiffForFile = async (
         parseSemanticTable(afterPack, afterEntry, context),
       ]);
       const semantic = semanticDbDiff(before.parsed, after.parsed, before.isLoc, after.isLoc, includeDetails);
-      if (!semantic) diagnostics.push(diagnostic("DB_SCHEMA_MISMATCH", "DB semantic comparison was skipped because table versions or field layouts differ", "warning", beforeEntry.name));
+      if (!semantic)
+        diagnostics.push(
+          diagnostic(
+            "DB_SCHEMA_MISMATCH",
+            "DB semantic comparison was skipped because table versions or field layouts differ",
+            "warning",
+            beforeEntry.name,
+          ),
+        );
       return semantic ? { type: "db-rows" as const, ...semantic } : { type: "db-rows" as const, available: false };
     } catch (error) {
       if (error instanceof AutomationError && error.code === "CANCELLED") throw error;
-      const code = error instanceof AutomationError && error.code === "UNSUPPORTED" ? "DB_SCHEMA_UNAVAILABLE" : "DB_PARSE_FAILED";
-      diagnostics.push(diagnostic(code, error instanceof Error ? error.message : String(error), "warning", beforeEntry.name));
+      const code =
+        error instanceof AutomationError && error.code === "UNSUPPORTED" ? "DB_SCHEMA_UNAVAILABLE" : "DB_PARSE_FAILED";
+      diagnostics.push(
+        diagnostic(code, error instanceof Error ? error.message : String(error), "warning", beforeEntry.name),
+      );
       return { type: "db-rows" as const, available: false };
     }
   }
@@ -484,22 +609,36 @@ const semanticDiffForFile = async (
         afterModel = parseRmv2(afterBytes);
       } catch (error) {
         const unsupported = error instanceof Rmv2CodecError && error.code === "UNSUPPORTED";
-        diagnostics.push(diagnostic(
-          unsupported ? "UNSUPPORTED_RMV2_DIFF" : "INVALID_RMV2_DIFF",
-          error instanceof Error ? error.message : String(error),
-          "warning",
-          beforeEntry.name,
-        ));
+        diagnostics.push(
+          diagnostic(
+            unsupported ? "UNSUPPORTED_RMV2_DIFF" : "INVALID_RMV2_DIFF",
+            error instanceof Error ? error.message : String(error),
+            "warning",
+            beforeEntry.name,
+          ),
+        );
         return { type: "rmv2" as const, available: false, complete: false };
       }
       return semanticRmv2Diff(beforeModel, afterModel, beforeEntry.name, includeDetails, diagnostics);
     } catch (error) {
       if (error instanceof AutomationError && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code)) throw error;
-      diagnostics.push(diagnostic("INVALID_RMV2_DIFF", error instanceof Error ? error.message : String(error), "warning", beforeEntry.name));
+      diagnostics.push(
+        diagnostic(
+          "INVALID_RMV2_DIFF",
+          error instanceof Error ? error.message : String(error),
+          "warning",
+          beforeEntry.name,
+        ),
+      );
       return { type: "rmv2" as const, available: false, complete: false };
     }
   }
-  if (!extension.endsWith(".variantmeshdefinition") && !extension.endsWith(".wsmodel") && !extension.endsWith(".xml.material")) return undefined;
+  if (
+    !extension.endsWith(".variantmeshdefinition") &&
+    !extension.endsWith(".wsmodel") &&
+    !extension.endsWith(".xml.material")
+  )
+    return undefined;
   try {
     const [beforeBytes, afterBytes] = await Promise.all([
       readAutomationPayload(beforePack, beforeEntry, context),
@@ -510,14 +649,32 @@ const semanticDiffForFile = async (
     const beforeRefs = getSupportedVisualReferenceDetails(beforeText);
     const afterRefs = getSupportedVisualReferenceDetails(afterText);
     if (!beforeRefs.valid || !afterRefs.valid) {
-      diagnostics.push(diagnostic("XML_PARSE_FAILED", "XML reference comparison was skipped because a document is invalid", "warning", beforeEntry.name));
+      diagnostics.push(
+        diagnostic(
+          "XML_PARSE_FAILED",
+          "XML reference comparison was skipped because a document is invalid",
+          "warning",
+          beforeEntry.name,
+        ),
+      );
       return { type: "xml-references" as const, available: false };
     }
     if (beforeRefs.unsupportedReferences.length || afterRefs.unsupportedReferences.length) {
-      diagnostics.push(diagnostic("UNSUPPORTED_XML_REFERENCES", "Some XML references use unsupported extensions and were excluded from semantic reference comparison", "warning", beforeEntry.name));
+      diagnostics.push(
+        diagnostic(
+          "UNSUPPORTED_XML_REFERENCES",
+          "Some XML references use unsupported extensions and were excluded from semantic reference comparison",
+          "warning",
+          beforeEntry.name,
+        ),
+      );
     }
     const supported = detailMultisetDiff(beforeRefs.references, afterRefs.references, includeDetails);
-    const unsupported = detailMultisetDiff(beforeRefs.unsupportedReferences, afterRefs.unsupportedReferences, includeDetails);
+    const unsupported = detailMultisetDiff(
+      beforeRefs.unsupportedReferences,
+      afterRefs.unsupportedReferences,
+      includeDetails,
+    );
     return {
       type: "xml-references" as const,
       semanticScope: "supportedReferences" as const,
@@ -525,21 +682,33 @@ const semanticDiffForFile = async (
       removedCount: supported.removedCount,
       unsupportedAddedCount: unsupported.addedCount,
       unsupportedRemovedCount: unsupported.removedCount,
-      ...(includeDetails ? {
-        added: supported.added,
-        removed: supported.removed,
-        unsupportedAdded: unsupported.added,
-        unsupportedRemoved: unsupported.removed,
-      } : {}),
+      ...(includeDetails
+        ? {
+            added: supported.added,
+            removed: supported.removed,
+            unsupportedAdded: unsupported.added,
+            unsupportedRemoved: unsupported.removed,
+          }
+        : {}),
     };
   } catch (error) {
     if (error instanceof AutomationError && error.code === "CANCELLED") throw error;
-    diagnostics.push(diagnostic("XML_PARSE_FAILED", error instanceof Error ? error.message : String(error), "warning", beforeEntry.name));
+    diagnostics.push(
+      diagnostic(
+        "XML_PARSE_FAILED",
+        error instanceof Error ? error.message : String(error),
+        "warning",
+        beforeEntry.name,
+      ),
+    );
     return { type: "xml-references" as const, available: false };
   }
 };
 
-const metadataDifferences = (before: CorePack, after: CorePack): Record<string, { before: unknown; after: unknown }> => {
+const metadataDifferences = (
+  before: CorePack,
+  after: CorePack,
+): Record<string, { before: unknown; after: unknown }> => {
   const hash = (value: Buffer) => createHash("sha256").update(value).digest("hex");
   const values: Record<string, [unknown, unknown]> = {
     byteMask: [before.header.byteMask, after.header.byteMask],
@@ -552,9 +721,11 @@ const metadataDifferences = (before: CorePack, after: CorePack): Record<string, 
       { length: after.trailingBytes.length, sha256: hash(after.trailingBytes) },
     ],
   };
-  return Object.fromEntries(Object.entries(values).flatMap(([key, [oldValue, newValue]]) =>
-    JSON.stringify(oldValue) === JSON.stringify(newValue) ? [] : [[key, { before: oldValue, after: newValue }]],
-  ));
+  return Object.fromEntries(
+    Object.entries(values).flatMap(([key, [oldValue, newValue]]) =>
+      JSON.stringify(oldValue) === JSON.stringify(newValue) ? [] : [[key, { before: oldValue, after: newValue }]],
+    ),
+  );
 };
 
 const semanticRecordPreview = (semantic: Record<string, unknown>, offset: number, limit: number) => {
@@ -564,8 +735,12 @@ const semanticRecordPreview = (semantic: Record<string, unknown>, offset: number
     const items = semantic[kind];
     if (Array.isArray(items)) for (const record of items) records.push({ kind, record });
   }
-  const totalRecords = Number(semantic.addedCount ?? 0) + Number(semantic.deletedCount ?? semantic.removedCount ?? 0) +
-    Number(semantic.modifiedCount ?? 0) + Number(semantic.unsupportedAddedCount ?? 0) + Number(semantic.unsupportedRemovedCount ?? 0);
+  const totalRecords =
+    Number(semantic.addedCount ?? 0) +
+    Number(semantic.deletedCount ?? semantic.removedCount ?? 0) +
+    Number(semantic.modifiedCount ?? 0) +
+    Number(semantic.unsupportedAddedCount ?? 0) +
+    Number(semantic.unsupportedRemovedCount ?? 0);
   return {
     type: semantic.type,
     mode: semantic.mode,
@@ -629,7 +804,13 @@ export const runPackDiff = async (request: DiffRequest, context: AutomationConte
     const afterEntry = afterEntries.get(key);
     const beforeHash = beforeEntry ? await hashEntry(beforePack, beforeEntry, context) : undefined;
     const afterHash = afterEntry ? await hashEntry(afterPack, afterEntry, context) : undefined;
-    const status = !beforeEntry ? "added" : !afterEntry ? "removed" : beforeHash!.sha256 === afterHash!.sha256 ? "identical" : "changed";
+    const status = !beforeEntry
+      ? "added"
+      : !afterEntry
+        ? "removed"
+        : beforeHash!.sha256 === afterHash!.sha256
+          ? "identical"
+          : "changed";
     if (status === "added") addedCount += 1;
     else if (status === "removed") removedCount += 1;
     else if (status === "changed") changedCount += 1;
@@ -639,15 +820,41 @@ export const runPackDiff = async (request: DiffRequest, context: AutomationConte
     const item: Record<string, unknown> = {
       path: (afterEntry ?? beforeEntry)!.name,
       status,
-      ...(request.details ? {
-        before: beforeEntry ? { storedSize: beforeEntry.file_size, logicalSize: beforeHash!.logicalSize, sha256: beforeHash!.sha256, compressed: beforeEntry.is_compressed } : undefined,
-        after: afterEntry ? { storedSize: afterEntry.file_size, logicalSize: afterHash!.logicalSize, sha256: afterHash!.sha256, compressed: afterEntry.is_compressed } : undefined,
-      } : {}),
+      ...(request.details
+        ? {
+            before: beforeEntry
+              ? {
+                  storedSize: beforeEntry.file_size,
+                  logicalSize: beforeHash!.logicalSize,
+                  sha256: beforeHash!.sha256,
+                  compressed: beforeEntry.is_compressed,
+                }
+              : undefined,
+            after: afterEntry
+              ? {
+                  storedSize: afterEntry.file_size,
+                  logicalSize: afterHash!.logicalSize,
+                  sha256: afterHash!.sha256,
+                  compressed: afterEntry.is_compressed,
+                }
+              : undefined,
+          }
+        : {}),
     };
     if (status === "changed" && beforeEntry && afterEntry) {
-      const semantic = await semanticDiffForFile(beforePack, beforeEntry, afterPack, afterEntry, context, diagnostics, request.details);
+      const semantic = await semanticDiffForFile(
+        beforePack,
+        beforeEntry,
+        afterPack,
+        afterEntry,
+        context,
+        diagnostics,
+        request.details,
+      );
       if (semantic) {
-        item.semantic = request.details ? semanticRecordPreview(semantic, request.semanticOffset, request.semanticLimit) : semantic;
+        item.semantic = request.details
+          ? semanticRecordPreview(semantic, request.semanticOffset, request.semanticLimit)
+          : semantic;
         reportFiles.push(request.details ? { ...item, semantic } : item);
       } else {
         reportFiles.push(item);
@@ -690,7 +897,8 @@ export const runPackDiff = async (request: DiffRequest, context: AutomationConte
     const output = await context.policy.withAtomicOutput({
       outputPath: request.reportPath,
       sourcePaths: [beforePack.path, afterPack.path],
-      produce: async (temporaryPath) => fs.promises.writeFile(temporaryPath, `${JSON.stringify({ ...data, files: reportFiles, preview }, null, 2)}\n`),
+      produce: async (temporaryPath) =>
+        fs.promises.writeFile(temporaryPath, `${JSON.stringify({ ...data, files: reportFiles, preview }, null, 2)}\n`),
     });
     reportPath = output.path;
   }

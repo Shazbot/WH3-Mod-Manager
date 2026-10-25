@@ -144,7 +144,10 @@ describe("front coded block", () => {
       "\uFEFFprefix_001",
       "\uFEFFprefix_002",
       "key_\uFEFFsuffix",
-      ...Array.from({ length: FRONT_CODED_CHECKPOINT_INTERVAL + 4 }, (_, index) => `z_${String(index).padStart(3, "0")}`),
+      ...Array.from(
+        { length: FRONT_CODED_CHECKPOINT_INTERVAL + 4 },
+        (_, index) => `z_${String(index).padStart(3, "0")}`,
+      ),
     ]);
     const block = buildFrontCodedBlock(values);
 

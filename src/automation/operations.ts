@@ -69,85 +69,180 @@ const pageShape = {
   limit: z.number().int().min(1).max(1000).default(100),
   reportPath: z.string().min(1).optional(),
 };
-const createFileSchema = z.object({
-  path: z.string().min(1),
-  sourcePath: z.string().min(1).optional(),
-  text: z.string().optional(),
-}).strict().refine(
-  (value) => Number(value.sourcePath !== undefined) + Number(value.text !== undefined) === 1,
-  "create file requires exactly one of sourcePath or text",
-);
+const createFileSchema = z
+  .object({
+    path: z.string().min(1),
+    sourcePath: z.string().min(1).optional(),
+    text: z.string().optional(),
+  })
+  .strict()
+  .refine(
+    (value) => Number(value.sourcePath !== undefined) + Number(value.text !== undefined) === 1,
+    "create file requires exactly one of sourcePath or text",
+  );
 const fileChangeSchema = z.discriminatedUnion("op", [
-  z.object({ op: z.literal("add"), path: z.string().min(1), sourcePath: z.string().min(1).optional(), text: z.string().optional() })
+  z
+    .object({
+      op: z.literal("add"),
+      path: z.string().min(1),
+      sourcePath: z.string().min(1).optional(),
+      text: z.string().optional(),
+    })
     .strict()
-    .refine((value) => Number(value.sourcePath !== undefined) + Number(value.text !== undefined) === 1, "add requires exactly one of sourcePath or text"),
-  z.object({ op: z.literal("replace"), path: z.string().min(1), sourcePath: z.string().min(1).optional(), text: z.string().optional() })
+    .refine(
+      (value) => Number(value.sourcePath !== undefined) + Number(value.text !== undefined) === 1,
+      "add requires exactly one of sourcePath or text",
+    ),
+  z
+    .object({
+      op: z.literal("replace"),
+      path: z.string().min(1),
+      sourcePath: z.string().min(1).optional(),
+      text: z.string().optional(),
+    })
     .strict()
-    .refine((value) => Number(value.sourcePath !== undefined) + Number(value.text !== undefined) === 1, "replace requires exactly one of sourcePath or text"),
+    .refine(
+      (value) => Number(value.sourcePath !== undefined) + Number(value.text !== undefined) === 1,
+      "replace requires exactly one of sourcePath or text",
+    ),
   z.object({ op: z.literal("remove"), path: z.string().min(1) }).strict(),
 ]);
-const filterSchema = z.object({
-  field: z.string().min(1),
-  op: z.enum(["eq", "ne", "lt", "lte", "gt", "gte", "in", "contains"]),
-  value: z.union([z.string(), z.number().finite(), z.boolean(), z.null(), z.array(z.union([z.string(), z.number().finite(), z.boolean(), z.null()]))]),
-}).strict();
+const filterSchema = z
+  .object({
+    field: z.string().min(1),
+    op: z.enum(["eq", "ne", "lt", "lte", "gt", "gte", "in", "contains"]),
+    value: z.union([
+      z.string(),
+      z.number().finite(),
+      z.boolean(),
+      z.null(),
+      z.array(z.union([z.string(), z.number().finite(), z.boolean(), z.null()])),
+    ]),
+  })
+  .strict();
 const sortSchema = z.object({ field: z.string().min(1), direction: z.enum(["asc", "desc"]) }).strict();
 const patchSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("insert"), row: z.record(z.string(), z.unknown()) }).strict(),
-  z.object({ op: z.literal("update"), where: z.array(filterSchema).max(1000), set: z.record(z.string(), z.unknown()) }).strict(),
+  z
+    .object({ op: z.literal("update"), where: z.array(filterSchema).max(1000), set: z.record(z.string(), z.unknown()) })
+    .strict(),
   z.object({ op: z.literal("delete"), where: z.array(filterSchema).max(1000) }).strict(),
 ]);
 
 export const operationSchemas = {
-  pack_info: z.object({ operation: z.literal("pack_info"), packPath: z.string().min(1), reportPath: z.string().min(1).optional() }).strict(),
-  pack_list_files: z.object({
-    operation: z.literal("pack_list_files"), packPath: z.string().min(1), pathPrefix: z.string().optional(), glob: z.string().optional(),
-    ...pageShape,
-  }).strict(),
-  pack_read_file: z.object({
-    operation: z.literal("pack_read_file"), packPath: z.string().min(1), filePath: z.string().min(1),
-    offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(65536).default(65536),
-    extractTo: z.string().min(1).optional(), overwrite: z.boolean().default(false), reportPath: z.string().min(1).optional(),
-  }).strict(),
-  pack_search: z.object({
-    operation: z.literal("pack_search"), packPath: z.string().min(1), query: z.string().min(1).max(2048),
-    caseSensitive: z.boolean().default(false), regex: z.boolean().default(false), fileGlob: z.string().optional(),
-    content: z.boolean().default(true), maxResults: z.number().int().min(1).max(10000).default(1000),
-    reportPath: z.string().min(1).optional(),
-  }).strict(),
-  pack_read_table: z.object({
-    operation: z.literal("pack_read_table"), packPath: z.string().min(1), tablePath: z.string().min(1),
-    columns: z.array(z.string().min(1)).max(1024).optional(), ...pageShape,
-  }).strict(),
-  pack_query_table: z.object({
-    operation: z.literal("pack_query_table"), packPath: z.string().min(1), tablePath: z.string().min(1),
-    filters: z.array(filterSchema).max(1000).default([]), columns: z.array(z.string().min(1)).max(1024).optional(),
-    sort: z.array(sortSchema).max(128).default([]), ...pageShape,
-  }).strict(),
-  pack_create: z.object({
-    operation: z.literal("pack_create"), outputPath: z.string().min(1), overwrite: z.boolean().default(false),
-    packType: z.enum(["mod", "movie"]).default("mod"), dependencies: z.array(z.string()).default([]),
-    files: z.array(createFileSchema).default([]),
-    reportPath: z.string().min(1).optional(),
-  }).strict(),
-  pack_write_files: z.object({
-    operation: z.literal("pack_write_files"), packPath: z.string().min(1), outputPath: z.string().min(1), overwrite: z.boolean().default(false),
-    files: z.array(fileChangeSchema).min(1).max(10000), reportPath: z.string().min(1).optional(),
-  }).strict(),
-  pack_patch_table: z.object({
-    operation: z.literal("pack_patch_table"), packPath: z.string().min(1), outputPath: z.string().min(1), tablePath: z.string().min(1),
-    overwrite: z.boolean().default(false), patches: z.array(patchSchema).min(1).max(10000), reportPath: z.string().min(1).optional(),
-  }).strict(),
-  pack_validate: z.object({
-    operation: z.literal("pack_validate"), packPath: z.string().min(1), fullPayloads: z.boolean().default(false),
-    packPaths: z.array(z.string().min(1)).max(512).optional(),
-    ...vanillaInputs,
-    reportPath: z.string().min(1).optional(),
-  }).strict(),
-  pack_clone: z.object({
-    operation: z.literal("pack_clone"), packPath: z.string().min(1), outputPath: z.string().min(1),
-    overwrite: z.boolean().default(false), verifySha256: z.boolean().default(false), reportPath: z.string().min(1).optional(),
-  }).strict(),
+  pack_info: z
+    .object({
+      operation: z.literal("pack_info"),
+      packPath: z.string().min(1),
+      reportPath: z.string().min(1).optional(),
+    })
+    .strict(),
+  pack_list_files: z
+    .object({
+      operation: z.literal("pack_list_files"),
+      packPath: z.string().min(1),
+      pathPrefix: z.string().optional(),
+      glob: z.string().optional(),
+      ...pageShape,
+    })
+    .strict(),
+  pack_read_file: z
+    .object({
+      operation: z.literal("pack_read_file"),
+      packPath: z.string().min(1),
+      filePath: z.string().min(1),
+      offset: z.number().int().min(0).default(0),
+      limit: z.number().int().min(1).max(65536).default(65536),
+      extractTo: z.string().min(1).optional(),
+      overwrite: z.boolean().default(false),
+      reportPath: z.string().min(1).optional(),
+    })
+    .strict(),
+  pack_search: z
+    .object({
+      operation: z.literal("pack_search"),
+      packPath: z.string().min(1),
+      query: z.string().min(1).max(2048),
+      caseSensitive: z.boolean().default(false),
+      regex: z.boolean().default(false),
+      fileGlob: z.string().optional(),
+      content: z.boolean().default(true),
+      maxResults: z.number().int().min(1).max(10000).default(1000),
+      reportPath: z.string().min(1).optional(),
+    })
+    .strict(),
+  pack_read_table: z
+    .object({
+      operation: z.literal("pack_read_table"),
+      packPath: z.string().min(1),
+      tablePath: z.string().min(1),
+      columns: z.array(z.string().min(1)).max(1024).optional(),
+      ...pageShape,
+    })
+    .strict(),
+  pack_query_table: z
+    .object({
+      operation: z.literal("pack_query_table"),
+      packPath: z.string().min(1),
+      tablePath: z.string().min(1),
+      filters: z.array(filterSchema).max(1000).default([]),
+      columns: z.array(z.string().min(1)).max(1024).optional(),
+      sort: z.array(sortSchema).max(128).default([]),
+      ...pageShape,
+    })
+    .strict(),
+  pack_create: z
+    .object({
+      operation: z.literal("pack_create"),
+      outputPath: z.string().min(1),
+      overwrite: z.boolean().default(false),
+      packType: z.enum(["mod", "movie"]).default("mod"),
+      dependencies: z.array(z.string()).default([]),
+      files: z.array(createFileSchema).default([]),
+      reportPath: z.string().min(1).optional(),
+    })
+    .strict(),
+  pack_write_files: z
+    .object({
+      operation: z.literal("pack_write_files"),
+      packPath: z.string().min(1),
+      outputPath: z.string().min(1),
+      overwrite: z.boolean().default(false),
+      files: z.array(fileChangeSchema).min(1).max(10000),
+      reportPath: z.string().min(1).optional(),
+    })
+    .strict(),
+  pack_patch_table: z
+    .object({
+      operation: z.literal("pack_patch_table"),
+      packPath: z.string().min(1),
+      outputPath: z.string().min(1),
+      tablePath: z.string().min(1),
+      overwrite: z.boolean().default(false),
+      patches: z.array(patchSchema).min(1).max(10000),
+      reportPath: z.string().min(1).optional(),
+    })
+    .strict(),
+  pack_validate: z
+    .object({
+      operation: z.literal("pack_validate"),
+      packPath: z.string().min(1),
+      fullPayloads: z.boolean().default(false),
+      packPaths: z.array(z.string().min(1)).max(512).optional(),
+      ...vanillaInputs,
+      reportPath: z.string().min(1).optional(),
+    })
+    .strict(),
+  pack_clone: z
+    .object({
+      operation: z.literal("pack_clone"),
+      packPath: z.string().min(1),
+      outputPath: z.string().min(1),
+      overwrite: z.boolean().default(false),
+      verifySha256: z.boolean().default(false),
+      reportPath: z.string().min(1).optional(),
+    })
+    .strict(),
   pack_diff: packDiffSchema,
   asset_resolve_references: assetResolveReferencesSchema,
   asset_find_references: assetFindReferencesSchema,
@@ -172,8 +267,13 @@ export type AutomationContext = {
 };
 export type OperationOutput<T = unknown> = { data: T; diagnostics: AutomationDiagnostic[] };
 type Request<K extends OperationName> = z.output<(typeof operationSchemas)[K]>;
-type OperationHandler<K extends OperationName> = (request: Request<K>, context: AutomationContext) => Promise<OperationOutput>;
-export type OperationRegistry = { [K in OperationName]: { schema: (typeof operationSchemas)[K]; execute: OperationHandler<K> } };
+type OperationHandler<K extends OperationName> = (
+  request: Request<K>,
+  context: AutomationContext,
+) => Promise<OperationOutput>;
+export type OperationRegistry = {
+  [K in OperationName]: { schema: (typeof operationSchemas)[K]; execute: OperationHandler<K> };
+};
 
 const defaultContext = (): AutomationContext => ({ policy: new FilesystemPolicy() });
 const diagnostic = (
@@ -326,7 +426,8 @@ const runSearch: OperationHandler<"pack_search"> = async (request, context) => {
     caseSensitive: request.caseSensitive,
     regex: request.regex,
   });
-  if (!matcher.isValidRegex) throw new AutomationError("INVALID_ARGUMENT", "Search regular expression is invalid or too long");
+  if (!matcher.isValidRegex)
+    throw new AutomationError("INVALID_ARGUMENT", "Search regular expression is invalid or too long");
   const diagnostics: AutomationDiagnostic[] = [];
   const results: Array<Record<string, unknown>> = [];
   let truncated = false;
@@ -342,7 +443,9 @@ const runSearch: OperationHandler<"pack_search"> = async (request, context) => {
     if (matcher.test(entry.name)) addResult({ kind: "filename", filePath: entry.name });
     if (!request.content || !isTextPackedFilePath(entry.name.replace(/\//g, "\\").toLowerCase())) continue;
     if (entry.file_size > (context.maxLogicalPayloadBytes ?? DEFAULT_MAX_LOGICAL_PAYLOAD_BYTES)) {
-      diagnostics.push(diagnostic("SKIPPED_TOO_LARGE", "Text entry exceeds the configured read limit", "warning", entry.name));
+      diagnostics.push(
+        diagnostic("SKIPPED_TOO_LARGE", "Text entry exceeds the configured read limit", "warning", entry.name),
+      );
       continue;
     }
     let content: Buffer;
@@ -350,7 +453,9 @@ const runSearch: OperationHandler<"pack_search"> = async (request, context) => {
       content = await readLogical(pack, entry, context);
     } catch (error) {
       if (error instanceof AutomationError && error.code === "CANCELLED") throw error;
-      diagnostics.push(diagnostic("SKIPPED_UNREADABLE", error instanceof Error ? error.message : String(error), "warning", entry.name));
+      diagnostics.push(
+        diagnostic("SKIPPED_UNREADABLE", error instanceof Error ? error.message : String(error), "warning", entry.name),
+      );
       continue;
     }
     const matches = scanTextForMatches(decodePackedTextBuffer(content), matcher, { maxMatches: 100 });
@@ -358,7 +463,10 @@ const runSearch: OperationHandler<"pack_search"> = async (request, context) => {
       throwIfAborted(context.signal);
       addResult({ kind: "text", filePath: entry.name, ...match });
     }
-    if (matches.truncated) diagnostics.push(diagnostic("TRUNCATED_FILE_MATCHES", "Additional matches in this entry were omitted", "info", entry.name));
+    if (matches.truncated)
+      diagnostics.push(
+        diagnostic("TRUNCATED_FILE_MATCHES", "Additional matches in this entry were omitted", "info", entry.name),
+      );
   }
   const fullResult = { packPath: pack.path, query: request.query, results, truncated };
   const reportPath = await withReport(context, request.reportPath, [pack.path], fullResult);
@@ -384,18 +492,24 @@ const runTableRead = async (
   const selectedColumns = columns ?? loaded.schema.fields.map((field) => field.name);
   const columnMetadata = selectedColumns.map((name) => {
     const matches = loaded.schema.fields.filter((field) => field.name === name);
-    if (matches.length !== 1) throw new AutomationError("INVALID_ARGUMENT", matches.length === 0 ? `Unknown table field: ${name}` : `Ambiguous table field name: ${name}`);
+    if (matches.length !== 1)
+      throw new AutomationError(
+        "INVALID_ARGUMENT",
+        matches.length === 0 ? `Unknown table field: ${name}` : `Ambiguous table field name: ${name}`,
+      );
     return {
       name: matches[0].name,
       type: matches[0].field_type,
       isKey: loaded.isLoc ? matches[0].name === "key" : matches[0].is_key,
     };
   });
-  const selectedRows = columns ? matchingRows.map((row) => {
-    const projected: TableRow = {};
-    for (const column of columns) projected[column] = row[column];
-    return projected;
-  }) : matchingRows;
+  const selectedRows = columns
+    ? matchingRows.map((row) => {
+        const projected: TableRow = {};
+        for (const column of columns) projected[column] = row[column];
+        return projected;
+      })
+    : matchingRows;
   const data = {
     packPath: pack.path,
     tablePath: entry.name,
@@ -418,10 +532,28 @@ const runTableRead = async (
 };
 
 const runReadTable: OperationHandler<"pack_read_table"> = async (request, context) =>
-  runTableRead(request.packPath, request.tablePath, request.columns, request.offset, request.limit, request.reportPath, context);
+  runTableRead(
+    request.packPath,
+    request.tablePath,
+    request.columns,
+    request.offset,
+    request.limit,
+    request.reportPath,
+    context,
+  );
 
 const runQueryTable: OperationHandler<"pack_query_table"> = async (request, context) =>
-  runTableRead(request.packPath, request.tablePath, request.columns, request.offset, request.limit, request.reportPath, context, request.filters, request.sort);
+  runTableRead(
+    request.packPath,
+    request.tablePath,
+    request.columns,
+    request.offset,
+    request.limit,
+    request.reportPath,
+    context,
+    request.filters,
+    request.sort,
+  );
 
 const loadSourceBytes = async (
   context: AutomationContext,
@@ -459,7 +591,12 @@ const parseChangedPayloads = async (
     if ((changedEntries++ & 127) === 0) await yieldToEventLoop(context.signal);
     if (!changed.has(normalizePackFilePathKey(entry.name))) continue;
     const bytes = await readLogical(pack, entry, context);
-    if (entry.name.toLowerCase().endsWith(".xml") || entry.name.toLowerCase().endsWith(".variantmeshdefinition") || entry.name.toLowerCase().endsWith(".wsmodel") || entry.name.toLowerCase().endsWith(".xml.material")) {
+    if (
+      entry.name.toLowerCase().endsWith(".xml") ||
+      entry.name.toLowerCase().endsWith(".variantmeshdefinition") ||
+      entry.name.toLowerCase().endsWith(".wsmodel") ||
+      entry.name.toLowerCase().endsWith(".xml.material")
+    ) {
       const result = XMLValidator.validate(decodePackedTextBuffer(bytes));
       if (result !== true) throw new AutomationError("VALIDATION", `Invalid XML in ${entry.name}`, result);
     }
@@ -504,8 +641,13 @@ const runCreate: OperationHandler<"pack_create"> = async (request, context) => {
     produce: (temporaryPath) => writeRawPack(temporaryPath, writeEntries, metadata),
     validate: async (temporaryPath) => {
       const index = readPackIndex(temporaryPath, { game: "wh3" });
-      diagnostics = await parseChangedPayloads(temporaryPath, index.entries.map((entry) => entry.name), context);
-      if (diagnostics.some((item) => item.severity === "error")) throw new AutomationError("VALIDATION", "Created pack failed validation", diagnostics);
+      diagnostics = await parseChangedPayloads(
+        temporaryPath,
+        index.entries.map((entry) => entry.name),
+        context,
+      );
+      if (diagnostics.some((item) => item.severity === "error"))
+        throw new AutomationError("VALIDATION", "Created pack failed validation", diagnostics);
     },
   });
   const data = {
@@ -524,14 +666,21 @@ const runWriteFiles: OperationHandler<"pack_write_files"> = async (request, cont
   const sourcePaths = [pack.path];
   const changePaths = request.files.map((file) => normalizeInternalPackPath(file.path));
   assertUniqueInternalPaths(changePaths);
-  const changesByKey = new Map(request.files.map((file, index) => [normalizePackFilePathKey(changePaths[index]), file]));
+  const changesByKey = new Map(
+    request.files.map((file, index) => [normalizePackFilePathKey(changePaths[index]), file]),
+  );
   const sourceEntries = pack.entries.filter((entry) => changesByKey.has(normalizePackFilePathKey(entry.name)));
   for (const file of request.files) {
     throwIfAborted(context.signal);
     const key = normalizePackFilePathKey(file.path);
     const existing = sourceEntries.filter((entry) => normalizePackFilePathKey(entry.name) === key);
-    if (file.op === "add" && existing.length > 0) throw new AutomationError("CONFLICT", `Packed file already exists: ${file.path}`);
-    if (file.op !== "add" && existing.length !== 1) throw new AutomationError(existing.length > 1 ? "CONFLICT" : "VALIDATION", `${file.op} requires exactly one existing packed file: ${file.path}`);
+    if (file.op === "add" && existing.length > 0)
+      throw new AutomationError("CONFLICT", `Packed file already exists: ${file.path}`);
+    if (file.op !== "add" && existing.length !== 1)
+      throw new AutomationError(
+        existing.length > 1 ? "CONFLICT" : "VALIDATION",
+        `${file.op} requires exactly one existing packed file: ${file.path}`,
+      );
   }
   const byKey = new Map(pack.entries.map((entry) => [normalizePackFilePathKey(entry.name), entry]));
   const additions: RawPackWriteEntry[] = [];
@@ -543,9 +692,13 @@ const runWriteFiles: OperationHandler<"pack_write_files"> = async (request, cont
     if (content.sourcePath) sourcePaths.push(content.sourcePath);
     const key = normalizePackFilePathKey(file.path);
     const previous = byKey.get(key);
-    if (file.op === "replace" && !previous) throw new AutomationError("VALIDATION", `Packed file does not exist: ${file.path}`);
+    if (file.op === "replace" && !previous)
+      throw new AutomationError("VALIDATION", `Packed file does not exist: ${file.path}`);
     if (file.op === "add" && hasPackedFileNameHash(pack.header.byteMask)) {
-      throw new AutomationError("UNSUPPORTED", "Adding files to a filename-hashed pack requires a supported hash generator");
+      throw new AutomationError(
+        "UNSUPPORTED",
+        "Adding files to a filename-hashed pack requires a supported hash generator",
+      );
     }
     additions.push({
       name: previous?.name ?? normalizeInternalPackPath(file.path),
@@ -555,7 +708,9 @@ const runWriteFiles: OperationHandler<"pack_write_files"> = async (request, cont
     });
     changedNames.push(previous?.name ?? normalizeInternalPackPath(file.path));
   }
-  const removed = request.files.filter((file) => file.op === "remove" || file.op === "replace").map((file) => normalizePackFilePathKey(file.path));
+  const removed = request.files
+    .filter((file) => file.op === "remove" || file.op === "replace")
+    .map((file) => normalizePackFilePathKey(file.path));
   const keptEntries = pack.entries.filter((entry) => !removed.includes(normalizePackFilePathKey(entry.name)));
   const writeEntries = [
     ...keptEntries.map((entry) => ({
@@ -572,15 +727,16 @@ const runWriteFiles: OperationHandler<"pack_write_files"> = async (request, cont
     outputPath: request.outputPath,
     overwrite: request.overwrite,
     sourcePaths,
-    produce: (temporaryPath) => writeRawPack(temporaryPath, writeEntries, {
-      game: "wh3",
-      byteMask: pack.header.byteMask,
-      refFileCount: pack.header.refFileCount,
-      headerBuffer: pack.header.headerBuffer,
-      dependencies: pack.dependencies,
-      dependencyBytes: pack.dependencyBytes,
-      trailingBytes: pack.trailingBytes,
-    }),
+    produce: (temporaryPath) =>
+      writeRawPack(temporaryPath, writeEntries, {
+        game: "wh3",
+        byteMask: pack.header.byteMask,
+        refFileCount: pack.header.refFileCount,
+        headerBuffer: pack.header.headerBuffer,
+        dependencies: pack.dependencies,
+        dependencyBytes: pack.dependencyBytes,
+        trailingBytes: pack.trailingBytes,
+      }),
     validate: async (temporaryPath) => {
       readPackIndex(temporaryPath, { game: "wh3" });
       diagnostics = await parseChangedPayloads(temporaryPath, changedNames, context);
@@ -624,12 +780,18 @@ const patchRows = (
       continue;
     }
     const matching = rawRows.flatMap((row, index) =>
-      queryTableRows(table, [jsonRowForFilters(row, patch.where)], patch.where as TableFilter[]).length === 1 ? [index] : [],
+      queryTableRows(table, [jsonRowForFilters(row, patch.where)], patch.where as TableFilter[]).length === 1
+        ? [index]
+        : [],
     );
     if (matching.length !== 1) {
-      throw new AutomationError("CONFLICT", `${patch.op} selector must match exactly one row; matched ${matching.length}`, {
-        matchedRows: matching.length,
-      });
+      throw new AutomationError(
+        "CONFLICT",
+        `${patch.op} selector must match exactly one row; matched ${matching.length}`,
+        {
+          matchedRows: matching.length,
+        },
+      );
     }
     const rowIndex = matching[0];
     if (patch.op === "delete") {
@@ -649,18 +811,21 @@ const patchRows = (
   if (keyIndexes.length > 0) {
     const seen = new Set<string>();
     for (const row of rawRows) {
-      const key = JSON.stringify(keyIndexes.map((index) => {
-        const field = table.schema.fields[index];
-        return row[index].dirty
-          ? serializeSchemaFieldToBuffer({ type: field.field_type, fields: row[index].fields }).toString("hex")
-          : row[index].bytes.toString("hex");
-      }));
-      if (seen.has(key)) throw new AutomationError("CONFLICT", "Resulting table contains duplicate schema key", { key });
+      const key = JSON.stringify(
+        keyIndexes.map((index) => {
+          const field = table.schema.fields[index];
+          return row[index].dirty
+            ? serializeSchemaFieldToBuffer({ type: field.field_type, fields: row[index].fields }).toString("hex")
+            : row[index].bytes.toString("hex");
+        }),
+      );
+      if (seen.has(key))
+        throw new AutomationError("CONFLICT", "Resulting table contains duplicate schema key", { key });
       seen.add(key);
     }
   }
   return {
-    rows: rawRows.map((row) => row.map((cell) => cell.dirty ? { fields: cell.fields } : { bytes: cell.bytes })),
+    rows: rawRows.map((row) => row.map((cell) => (cell.dirty ? { fields: cell.fields } : { bytes: cell.bytes }))),
     rowCount: rawRows.length,
   };
 };
@@ -691,15 +856,16 @@ const runPatchTable: OperationHandler<"pack_patch_table"> = async (request, cont
     outputPath: request.outputPath,
     overwrite: request.overwrite,
     sourcePaths: [pack.path],
-    produce: (temporaryPath) => writeRawPack(temporaryPath, writeEntries, {
-      game: "wh3",
-      byteMask: pack.header.byteMask,
-      refFileCount: pack.header.refFileCount,
-      headerBuffer: pack.header.headerBuffer,
-      dependencies: pack.dependencies,
-      dependencyBytes: pack.dependencyBytes,
-      trailingBytes: pack.trailingBytes,
-    }),
+    produce: (temporaryPath) =>
+      writeRawPack(temporaryPath, writeEntries, {
+        game: "wh3",
+        byteMask: pack.header.byteMask,
+        refFileCount: pack.header.refFileCount,
+        headerBuffer: pack.header.headerBuffer,
+        dependencies: pack.dependencies,
+        dependencyBytes: pack.dependencyBytes,
+        trailingBytes: pack.trailingBytes,
+      }),
     validate: async (temporaryPath) => {
       const updated = readPackIndex(temporaryPath, { game: "wh3" });
       const updatedEntry = findEntry(updated, entry.name);
@@ -720,7 +886,10 @@ const runValidate: OperationHandler<"pack_validate"> = async (request, context) 
   };
   const targetKey = canonicalPath(pack.path);
   const requestedProviders: Array<{ path: string; kind: "vanilla" | "mod" }> = [];
-  for (const [paths, kind] of [[request.vanillaPackPaths, "vanilla"], [request.packPaths, "mod"]] as const) {
+  for (const [paths, kind] of [
+    [request.vanillaPackPaths, "vanilla"],
+    [request.packPaths, "mod"],
+  ] as const) {
     for (const sourcePath of paths ?? []) {
       throwIfAborted(context.signal);
       const supportingPack = await readIndex(sourcePath, context);
@@ -728,12 +897,23 @@ const runValidate: OperationHandler<"pack_validate"> = async (request, context) 
     }
   }
   const lastProviderIndex = new Map(requestedProviders.map((provider, index) => [canonicalPath(provider.path), index]));
-  const uniqueProviders = requestedProviders.filter((provider, index) =>
-    canonicalPath(provider.path) !== targetKey && lastProviderIndex.get(canonicalPath(provider.path)) === index,
+  const uniqueProviders = requestedProviders.filter(
+    (provider, index) =>
+      canonicalPath(provider.path) !== targetKey && lastProviderIndex.get(canonicalPath(provider.path)) === index,
   );
-  const vanillaPackPaths = uniqueProviders.filter((provider) => provider.kind === "vanilla").map((provider) => provider.path);
-  const supportingPackPaths = uniqueProviders.filter((provider) => provider.kind === "mod").map((provider) => provider.path);
-  const referenceEnvironment = await prepareReferenceEnvironment(context, [...supportingPackPaths, pack.path], vanillaPackPaths, request.gameDataPath, request.withVanilla);
+  const vanillaPackPaths = uniqueProviders
+    .filter((provider) => provider.kind === "vanilla")
+    .map((provider) => provider.path);
+  const supportingPackPaths = uniqueProviders
+    .filter((provider) => provider.kind === "mod")
+    .map((provider) => provider.path);
+  const referenceEnvironment = await prepareReferenceEnvironment(
+    context,
+    [...supportingPackPaths, pack.path],
+    vanillaPackPaths,
+    request.gameDataPath,
+    request.withVanilla,
+  );
   const diagnostics: AutomationDiagnostic[] = [];
   const seenPaths = new Set<string>();
   let validatedEntries = 0;
@@ -746,13 +926,19 @@ const runValidate: OperationHandler<"pack_validate"> = async (request, context) 
     if ((validatedEntries++ & 127) === 0) await yieldToEventLoop(context.signal);
     try {
       const normalizedPath = normalizePackFilePathKey(normalizeInternalPackPath(entry.name));
-      if (seenPaths.has(normalizedPath)) diagnostics.push(diagnostic("DUPLICATE_PACKED_PATH", "Packed path is duplicated after normalization", "error", entry.name));
+      if (seenPaths.has(normalizedPath))
+        diagnostics.push(
+          diagnostic("DUPLICATE_PACKED_PATH", "Packed path is duplicated after normalization", "error", entry.name),
+        );
       seenPaths.add(normalizedPath);
     } catch (error) {
-      diagnostics.push(diagnostic("INVALID_PACKED_PATH", error instanceof Error ? error.message : String(error), "error", entry.name));
+      diagnostics.push(
+        diagnostic("INVALID_PACKED_PATH", error instanceof Error ? error.message : String(error), "error", entry.name),
+      );
     }
     const isRmv = isModelInternalPath(entry.name);
-    if (!request.fullPayloads && !entry.name.toLowerCase().endsWith(".loc") && !isDbTablePath(entry.name) && !isRmv) continue;
+    if (!request.fullPayloads && !entry.name.toLowerCase().endsWith(".loc") && !isDbTablePath(entry.name) && !isRmv)
+      continue;
     try {
       const bytes = await readLogical(pack, entry, context);
       if (isRmv) {
@@ -768,13 +954,23 @@ const runValidate: OperationHandler<"pack_validate"> = async (request, context) 
           } else throw error;
           continue;
         }
-        parsedRigidModels.set(normalizePackFilePathKey(normalizeInternalPackPath(entry.name)), { path: entry.name, model });
+        parsedRigidModels.set(normalizePackFilePathKey(normalizeInternalPackPath(entry.name)), {
+          path: entry.name,
+          model,
+        });
         for (const lod of model.lods) {
           throwIfAborted(context.signal);
           for (const part of lod.parts) {
             if (!part.complete || !part.textures) {
               unsupportedRigidPartCount += 1;
-              diagnostics.push(diagnostic("UNSUPPORTED_RMV2_PART", `LOD ${lod.lodIndex} part ${part.partIndex}: ${part.unsupportedReason ?? "unsupported layout"}`, "warning", entry.name));
+              diagnostics.push(
+                diagnostic(
+                  "UNSUPPORTED_RMV2_PART",
+                  `LOD ${lod.lodIndex} part ${part.partIndex}: ${part.unsupportedReason ?? "unsupported layout"}`,
+                  "warning",
+                  entry.name,
+                ),
+              );
               continue;
             }
             for (let textureIndex = 0; textureIndex < part.textures.length; textureIndex++) {
@@ -783,18 +979,25 @@ const runValidate: OperationHandler<"pack_validate"> = async (request, context) 
               const resolved = resolveReferenceAsset(referenceEnvironment, texture.path, false);
               if (resolved.status === "found") continue;
               unresolvedRigidTextureCount += 1;
-              diagnostics.push(diagnostic(
-                resolved.status === "missing" ? "MISSING_RMV2_TEXTURE" : "AMBIGUOUS_RMV2_TEXTURE",
-                `${resolved.status} embedded texture at LOD ${lod.lodIndex} part ${part.partIndex} slot ${textureIndex}: ${texture.path}`,
-                "warning",
-                entry.name,
-              ));
+              diagnostics.push(
+                diagnostic(
+                  resolved.status === "missing" ? "MISSING_RMV2_TEXTURE" : "AMBIGUOUS_RMV2_TEXTURE",
+                  `${resolved.status} embedded texture at LOD ${lod.lodIndex} part ${part.partIndex} slot ${textureIndex}: ${texture.path}`,
+                  "warning",
+                  entry.name,
+                ),
+              );
             }
           }
         }
         continue;
       }
-      if (entry.name.toLowerCase().endsWith(".xml") || entry.name.toLowerCase().endsWith(".variantmeshdefinition") || entry.name.toLowerCase().endsWith(".wsmodel") || entry.name.toLowerCase().endsWith(".xml.material")) {
+      if (
+        entry.name.toLowerCase().endsWith(".xml") ||
+        entry.name.toLowerCase().endsWith(".variantmeshdefinition") ||
+        entry.name.toLowerCase().endsWith(".wsmodel") ||
+        entry.name.toLowerCase().endsWith(".xml.material")
+      ) {
         const result = XMLValidator.validate(decodePackedTextBuffer(bytes));
         if (result !== true) diagnostics.push(diagnostic("INVALID_XML", JSON.stringify(result), "error", entry.name));
       }
@@ -810,23 +1013,39 @@ const runValidate: OperationHandler<"pack_validate"> = async (request, context) 
     } catch (error) {
       if (error instanceof AutomationError && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code)) throw error;
       const unsupported = error instanceof AutomationError && error.code === "UNSUPPORTED";
-      diagnostics.push(diagnostic(unsupported ? "UNSUPPORTED_PAYLOAD" : "INVALID_PAYLOAD", error instanceof Error ? error.message : String(error), unsupported ? "warning" : "error", entry.name));
+      diagnostics.push(
+        diagnostic(
+          unsupported ? "UNSUPPORTED_PAYLOAD" : "INVALID_PAYLOAD",
+          error instanceof Error ? error.message : String(error),
+          unsupported ? "warning" : "error",
+          entry.name,
+        ),
+      );
     }
   }
   const hasWsmodelCandidate = [...referenceEnvironment.assetCandidates.values()].some((candidates) => {
     const highestOrder = candidates[candidates.length - 1]?.provider.order;
-    return highestOrder !== undefined && candidates.some((candidate) =>
-      candidate.provider.order === highestOrder && candidate.entry.name.toLowerCase().endsWith(".wsmodel"),
+    return (
+      highestOrder !== undefined &&
+      candidates.some(
+        (candidate) =>
+          candidate.provider.order === highestOrder && candidate.entry.name.toLowerCase().endsWith(".wsmodel"),
+      )
     );
   });
   if (parsedRigidModels.size && hasWsmodelCandidate) {
-    const loaderScan = await findRigidLoaderEdges(referenceEnvironment, [...parsedRigidModels.values()].map(({ path: modelPath }) => modelPath));
+    const loaderScan = await findRigidLoaderEdges(
+      referenceEnvironment,
+      [...parsedRigidModels.values()].map(({ path: modelPath }) => modelPath),
+    );
     const loaderEdges = loaderScan.edges;
     for (const item of loaderScan.diagnostics) {
       diagnostics.push({ ...item, code: "INVALID_RIGID_LOADER_REFERENCE" });
     }
     if (loaderScan.hitLimit) {
-      diagnostics.push(diagnostic("RIGID_LOADER_SCAN_LIMIT", "The bounded RMV2 loader scan reached its node or edge limit", "warning"));
+      diagnostics.push(
+        diagnostic("RIGID_LOADER_SCAN_LIMIT", "The bounded RMV2 loader scan reached its node or edge limit", "warning"),
+      );
     }
     for (const [modelKey, { path: modelPath, model }] of parsedRigidModels) {
       throwIfAborted(context.signal);
@@ -842,7 +1061,11 @@ const runValidate: OperationHandler<"pack_validate"> = async (request, context) 
           if (resolvedWs.status !== "found" || !resolvedWs.winner) continue;
           const wsBytes = await readLogical(resolvedWs.winner.provider.pack, resolvedWs.winner.entry, context);
           const document = inspectWsModelBindings(decodePackedTextBuffer(wsBytes), resolvedWs.winner.entry.name);
-          if (!document.geometryPath || normalizePackFilePathKey(normalizeInternalPackPath(document.geometryPath)) !== modelKey) continue;
+          if (
+            !document.geometryPath ||
+            normalizePackFilePathKey(normalizeInternalPackPath(document.geometryPath)) !== modelKey
+          )
+            continue;
           const counts = new Map<string, number>();
           for (const binding of document.bindings) {
             if (binding.lodIndex === null || binding.partIndex === null) continue;
@@ -852,24 +1075,34 @@ const runValidate: OperationHandler<"pack_validate"> = async (request, context) 
           for (const binding of document.bindings) {
             if (binding.invalidReason || binding.lodIndex === null || binding.partIndex === null) continue;
             const pair = `${binding.lodIndex}:${binding.partIndex}`;
-            if ((counts.get(pair) ?? 0) !== 1 || binding.lodIndex >= model.lods.length || binding.partIndex >= (model.lods[binding.lodIndex]?.meshCount ?? 0)) continue;
+            if (
+              (counts.get(pair) ?? 0) !== 1 ||
+              binding.lodIndex >= model.lods.length ||
+              binding.partIndex >= (model.lods[binding.lodIndex]?.meshCount ?? 0)
+            )
+              continue;
             const material = resolveReferenceAsset(referenceEnvironment, binding.materialPath, false);
             if (material.status === "found") validWsBindings.push({ path: resolvedWs.winner.entry.name, pair });
           }
         } catch (error) {
-          if (error instanceof AutomationError && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code)) throw error;
+          if (error instanceof AutomationError && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code))
+            throw error;
         }
       }
       if (!validWsBindings.length) continue;
       const directSources = [...new Set(direct.map((item) => item.sourcePath))].slice(0, 3).join(", ");
       const wsEvidence = [...new Map(validWsBindings.map((item) => [`${item.path}\0${item.pair}`, item])).values()]
-        .slice(0, 3).map((item) => `${item.path} lod/part ${item.pair}`).join(", ");
-      diagnostics.push(diagnostic(
-        "IGNORED_WSMODEL_BINDING",
-        `This model is loaded directly by ${directSources} and also has WS material bindings ${wsEvidence}; WS materials do not apply in the direct load context`,
-        "warning",
-        modelPath,
-      ));
+        .slice(0, 3)
+        .map((item) => `${item.path} lod/part ${item.pair}`)
+        .join(", ");
+      diagnostics.push(
+        diagnostic(
+          "IGNORED_WSMODEL_BINDING",
+          `This model is loaded directly by ${directSources} and also has WS material bindings ${wsEvidence}; WS materials do not apply in the direct load context`,
+          "warning",
+          modelPath,
+        ),
+      );
     }
   }
   const data = {
@@ -877,9 +1110,21 @@ const runValidate: OperationHandler<"pack_validate"> = async (request, context) 
     rigidModelCount,
     unsupportedRigidPartCount,
     unresolvedRigidTextureCount,
-    textureResolutionPacks: referenceEnvironment.providers.map((provider) => ({ path: provider.pack.path, kind: provider.kind })),
+    textureResolutionPacks: referenceEnvironment.providers.map((provider) => ({
+      path: provider.pack.path,
+      kind: provider.kind,
+    })),
     valid: diagnostics.every((item) => item.severity !== "error"),
-    validationComplete: !diagnostics.some((item) => ["UNSUPPORTED_PAYLOAD", "UNSUPPORTED_TABLE_SCHEMA", "UNSUPPORTED_RMV2_MODEL", "UNSUPPORTED_RMV2_PART", "RIGID_LOADER_SCAN_LIMIT", "INVALID_RIGID_LOADER_REFERENCE"].includes(item.code)),
+    validationComplete: !diagnostics.some((item) =>
+      [
+        "UNSUPPORTED_PAYLOAD",
+        "UNSUPPORTED_TABLE_SCHEMA",
+        "UNSUPPORTED_RMV2_MODEL",
+        "UNSUPPORTED_RMV2_PART",
+        "RIGID_LOADER_SCAN_LIMIT",
+        "INVALID_RIGID_LOADER_REFERENCE",
+      ].includes(item.code),
+    ),
     diagnostics,
   };
   const reportPath = await withReport(context, request.reportPath, referenceEnvironment.sourcePaths, data);
@@ -897,7 +1142,7 @@ const runClone: OperationHandler<"pack_clone"> = async (request, context) => {
     produce: async (temporaryPath) => fs.promises.copyFile(sourcePath, temporaryPath),
     validate: async (temporaryPath) => {
       readPackIndex(temporaryPath, { game: "wh3" });
-      if (sourceHash && sourceHash !== await hashFile(temporaryPath)) {
+      if (sourceHash && sourceHash !== (await hashFile(temporaryPath))) {
         throw new AutomationError("VALIDATION", "Cloned pack SHA256 does not match source");
       }
     },
@@ -931,15 +1176,21 @@ export const operationRegistry: OperationRegistry = {
   rigid_patch: { schema: operationSchemas.rigid_patch, execute: runRigidPatch },
 };
 
-export const createAutomationContext = (options: {
-  readRoots?: readonly string[];
-  writeRoots?: readonly string[];
-  schemaProvider?: TableSchemaProvider;
-  maxLogicalPayloadBytes?: number;
-  signal?: AbortSignal;
-  cache?: AutomationCacheService;
-} = {}): AutomationContext => ({
-  policy: new FilesystemPolicy({ readRoots: options.readRoots, writeRoots: options.writeRoots, signal: options.signal }),
+export const createAutomationContext = (
+  options: {
+    readRoots?: readonly string[];
+    writeRoots?: readonly string[];
+    schemaProvider?: TableSchemaProvider;
+    maxLogicalPayloadBytes?: number;
+    signal?: AbortSignal;
+    cache?: AutomationCacheService;
+  } = {},
+): AutomationContext => ({
+  policy: new FilesystemPolicy({
+    readRoots: options.readRoots,
+    writeRoots: options.writeRoots,
+    signal: options.signal,
+  }),
   ...(options.schemaProvider ? { schemaProvider: options.schemaProvider } : {}),
   ...(options.maxLogicalPayloadBytes ? { maxLogicalPayloadBytes: options.maxLogicalPayloadBytes } : {}),
   ...(options.signal ? { signal: options.signal } : {}),

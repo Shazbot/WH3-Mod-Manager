@@ -3,16 +3,35 @@ import * as crypto from "node:crypto";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { createAutomationCacheService, createAutomationContext, executeAutomationRequest } from "../../src/automation/registry";
+import {
+  createAutomationCacheService,
+  createAutomationContext,
+  executeAutomationRequest,
+} from "../../src/automation/registry";
 import { FilesystemPolicy } from "../../src/automation/filesystem";
 import { readAutomationPayload } from "../../src/automation/packAccess";
-import { dbPreambleMarkers, parseDbTable, readPackIndex, readPayload, serializeDbTable, writeRawPack } from "../../src/packCore";
+import {
+  dbPreambleMarkers,
+  parseDbTable,
+  readPackIndex,
+  readPayload,
+  serializeDbTable,
+  writeRawPack,
+} from "../../src/packCore";
 import { LocVersion, type DBField, type DBVersion, type Field } from "../../src/packFileTypes";
 import { getCanonicalFileIdentity } from "../../src/vanillaCacheIdentity";
 import { buildVanillaDbCacheFromTables } from "../../src/vanillaDbCache/build";
 import { createFileSource, openVanillaDbCache } from "../../src/vanillaDbCache/read";
-import { VANILLA_DB_CACHE_DECODER_REVISION, VANILLA_DB_CACHE_EXACT_SOURCE_FORMAT, type VanillaDbCacheIdentity } from "../../src/vanillaDbCache/format";
-import { VANILLA_LOC_CACHE_DECODER_REVISION, VANILLA_LOC_CACHE_EXACT_SOURCE_FORMAT, VANILLA_LOC_UNKNOWN_ROW_INDEX } from "../../src/vanillaLocCache/format";
+import {
+  VANILLA_DB_CACHE_DECODER_REVISION,
+  VANILLA_DB_CACHE_EXACT_SOURCE_FORMAT,
+  type VanillaDbCacheIdentity,
+} from "../../src/vanillaDbCache/format";
+import {
+  VANILLA_LOC_CACHE_DECODER_REVISION,
+  VANILLA_LOC_CACHE_EXACT_SOURCE_FORMAT,
+  VANILLA_LOC_UNKNOWN_ROW_INDEX,
+} from "../../src/vanillaLocCache/format";
 import { buildVanillaLocCacheBytes } from "../../src/vanillaLocCache/build";
 import { indexExactVanillaLocPackSet, readExactVanillaLocEntries } from "../../src/vanillaLocCache/exactSource";
 import { getVanillaLocCacheFilePath, getVanillaLocCacheIdentity } from "../../src/vanillaLocCache/identity";
@@ -70,31 +89,43 @@ const dbPayload = (rows: Array<[string, number]> = [["probe", 84]]): Buffer => {
   const version = Buffer.alloc(4);
   version.writeInt32LE(schema.version);
   const preamble = Buffer.concat([dbPreambleMarkers.version, version, Buffer.from([1])]);
-  return serializeDbTable(schema, rows.map(([key, count]) => [stringFields(key), [{ type: "I32", val: count }]]), { preamble });
+  return serializeDbTable(
+    schema,
+    rows.map(([key, count]) => [stringFields(key), [{ type: "I32", val: count }]]),
+    { preamble },
+  );
 };
 
 const locPayload = (rows: Array<[string, string]>): Buffer => {
-  return serializeDbTable(LocVersion, rows.map(([key, value]) => [
-    [{ type: "String", val: key }],
-    [{ type: "String", val: value }],
-    [{ type: "UInt8", val: 0 }],
-  ]), { preamble: Buffer.from([0xff, 0xfe, 0x4c, 0x4f, 0x43, 0, 1, 0, 0, 0]) });
+  return serializeDbTable(
+    LocVersion,
+    rows.map(([key, value]) => [
+      [{ type: "String", val: key }],
+      [{ type: "String", val: value }],
+      [{ type: "UInt8", val: 0 }],
+    ]),
+    { preamble: Buffer.from([0xff, 0xfe, 0x4c, 0x4f, 0x43, 0, 1, 0, 0, 0]) },
+  );
 };
 
-const writeDbPack = async (packPath: string, fileName = "db\\sample_tables\\data__", rows: Array<[string, number]> = [["probe", 84]]) =>
-  writeRawPack(packPath, [{ name: fileName, buffer: dbPayload(rows) }], metadata());
+const writeDbPack = async (
+  packPath: string,
+  fileName = "db\\sample_tables\\data__",
+  rows: Array<[string, number]> = [["probe", 84]],
+) => writeRawPack(packPath, [{ name: fileName, buffer: dbPayload(rows) }], metadata());
 
 const makeContext = (
   root: string,
   cache: ReturnType<typeof createAutomationCacheService>,
   options: { writeRoots?: readonly string[]; signal?: AbortSignal } = {},
-) => createAutomationContext({
-  readRoots: [root],
-  writeRoots: options.writeRoots ?? [root],
-  schemaProvider,
-  cache,
-  ...(options.signal ? { signal: options.signal } : {}),
-});
+) =>
+  createAutomationContext({
+    readRoots: [root],
+    writeRoots: options.writeRoots ?? [root],
+    schemaProvider,
+    cache,
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
 
 const filesUnder = (directory: string): string[] => {
   if (!fs.existsSync(directory)) return [];
@@ -119,15 +150,22 @@ const makeGuiDbCache = (packPath: string, directory: string, includeTarget = tru
     dbPackDev: source.dev.toString(10),
     dbPackIno: source.ino.toString(10),
     schemaHash: "fixture-schema-v1",
-    ...(proven ? { sourceFormat: VANILLA_DB_CACHE_EXACT_SOURCE_FORMAT, decoderRevision: VANILLA_DB_CACHE_DECODER_REVISION } : {}),
+    ...(proven
+      ? { sourceFormat: VANILLA_DB_CACHE_EXACT_SOURCE_FORMAT, decoderRevision: VANILLA_DB_CACHE_DECODER_REVISION }
+      : {}),
   };
-  const built = buildVanillaDbCacheFromTables([{
-    packedFilePath: includeTarget ? entry.name : "db\\other_tables\\data__",
-    schema: parsed.schema,
-    rows: parsed.rows.map((row) => row.cells.map((cell) => cell.fields)),
-    packedFileVersion: parsed.preamble.version,
-    guid: parsed.preamble.guid,
-  }], identity);
+  const built = buildVanillaDbCacheFromTables(
+    [
+      {
+        packedFilePath: includeTarget ? entry.name : "db\\other_tables\\data__",
+        schema: parsed.schema,
+        rows: parsed.rows.map((row) => row.cells.map((cell) => cell.fields)),
+        packedFileVersion: parsed.preamble.version,
+        guid: parsed.preamble.guid,
+      },
+    ],
+    identity,
+  );
   fs.writeFileSync(path.join(directory, "vanilla-db-cache-wh3.bin"), built.bytes);
   return path.join(directory, "vanilla-db-cache-wh3.bin");
 };
@@ -140,10 +178,16 @@ describe("automation cache service", () => {
     const versions = await getSchemaForGame("wh3");
     const schema = versions[tableName][0];
     expect(fs.existsSync(getSchemaFilePath("wh3"))).toBe(true);
-    await writeRawPack(packPath, [{
-      name: `db\\${tableName}\\data__`,
-      buffer: serializeDbTable(schema, [], { version: schema.version }),
-    }], metadata());
+    await writeRawPack(
+      packPath,
+      [
+        {
+          name: `db\\${tableName}\\data__`,
+          buffer: serializeDbTable(schema, [], { version: schema.version }),
+        },
+      ],
+      metadata(),
+    );
     const cache = makeService();
     const scope = cache.beginRequest({ policy: new FilesystemPolicy({ readRoots: [root] }) });
     try {
@@ -166,7 +210,10 @@ describe("automation cache service", () => {
     const context = makeContext(root, cache);
 
     for (let index = 0; index < 2; index++) {
-      const response = await executeAutomationRequest({ operation: "pack_read_file", packPath, filePath: "one.txt" }, context);
+      const response = await executeAutomationRequest(
+        { operation: "pack_read_file", packPath, filePath: "one.txt" },
+        context,
+      );
       expect(response).toMatchObject({ ok: true, data: { content: "fresh payload" } });
     }
     expect(cache.stats().hits.packIndexes).toBe(1);
@@ -212,12 +259,20 @@ describe("automation cache service", () => {
     const cache = makeService({ whmmCacheDir: guiDir, schemaFingerprint: "fixture-schema-v1" });
     const normalPolicy = new FilesystemPolicy({ readRoots: [root] });
     const warm = cache.beginRequest({ policy: normalPolicy, schemaProvider });
-    try { await warm.getReadonlyTable(packPath, "db\\sample_tables\\data__"); } finally { warm.close(); }
+    try {
+      await warm.getReadonlyTable(packPath, "db\\sample_tables\\data__");
+    } finally {
+      warm.close();
+    }
 
     let signalValidationStarted!: () => void;
     let releaseValidation!: () => void;
-    const validationStarted = new Promise<void>((resolve) => { signalValidationStarted = resolve; });
-    const validationGate = new Promise<void>((resolve) => { releaseValidation = resolve; });
+    const validationStarted = new Promise<void>((resolve) => {
+      signalValidationStarted = resolve;
+    });
+    const validationGate = new Promise<void>((resolve) => {
+      releaseValidation = resolve;
+    });
     class GatedPolicy extends FilesystemPolicy {
       private blockNextCacheValidation = true;
       override async assertReadPath(requestedPath: string): Promise<string> {
@@ -236,25 +291,35 @@ describe("automation cache service", () => {
       await writeDbPack(packPath, undefined, [["changed", 99]]);
       releaseValidation();
       await expect(pending).rejects.toMatchObject({ code: "CONFLICT" });
-    } finally { scope.close(); }
+    } finally {
+      scope.close();
+    }
   });
 
   it("returns immutable typed rows and persists a cold request as a one-table cache", async () => {
     const root = workspace();
     const packPath = path.join(root, "db.pack");
     const cacheDir = path.join(root, "cache");
-    await writeDbPack(packPath, undefined, [["probe", 84], ["second", 9]]);
+    await writeDbPack(packPath, undefined, [
+      ["probe", 84],
+      ["second", 9],
+    ]);
     const cache = makeService({ cacheDir, memoryMiB: 32, schemaFingerprint: "fixture-schema-v1" });
     const context = makeContext(root, cache);
     await cache.validateConfiguredPaths(context.policy);
     const scope = cache.beginRequest({ policy: context.policy, schemaProvider, useTypedCache: true });
     try {
       const table = await scope.getReadonlyTable(packPath, "db\\sample_tables\\data__");
-      expect(table?.rows).toEqual([{ key: "probe", count: 84 }, { key: "second", count: 9 }]);
+      expect(table?.rows).toEqual([
+        { key: "probe", count: 84 },
+        { key: "second", count: 9 },
+      ]);
       expect(Object.isFrozen(table)).toBe(true);
       expect(Object.isFrozen(table?.rows)).toBe(true);
       expect(Object.isFrozen(table?.rows[0])).toBe(true);
-      expect(() => { (table!.rows[0] as Record<string, unknown>).count = 1; }).toThrow();
+      expect(() => {
+        (table!.rows[0] as Record<string, unknown>).count = 1;
+      }).toThrow();
     } finally {
       scope.close();
     }
@@ -278,7 +343,9 @@ describe("automation cache service", () => {
       try {
         const table = await scope.getReadonlyTable(packPath, "db\\sample_tables\\data__");
         expect(table?.rows).toHaveLength(rows.length);
-      } finally { scope.close(); }
+      } finally {
+        scope.close();
+      }
     };
 
     await read();
@@ -302,9 +369,13 @@ describe("automation cache service", () => {
     for (let index = 0; index < 2; index++) {
       const scope = cache.beginRequest({ policy, schemaProvider });
       try {
-        expect((await scope.getReadonlyTable(packPath, "db\\sample_tables\\data__"))?.rows).toEqual([{ key: "probe", count: 84 }]);
+        expect((await scope.getReadonlyTable(packPath, "db\\sample_tables\\data__"))?.rows).toEqual([
+          { key: "probe", count: 84 },
+        ]);
         expect(await scope.getVanillaRawLoc([locPack])).toBeUndefined();
-      } finally { scope.close(); }
+      } finally {
+        scope.close();
+      }
     }
     expect(cache.stats().hits.typedTables).toBe(0);
     expect(cache.stats().entries.typedTables).toBe(0);
@@ -325,7 +396,9 @@ describe("automation cache service", () => {
     try {
       await expect(scope.getReadonlyTable(dbPack, "db\\sample_tables\\data__")).rejects.toThrow();
       expect(await scope.getVanillaRawLoc([locPack])).toBeUndefined();
-    } finally { scope.close(); }
+    } finally {
+      scope.close();
+    }
     expect(cache.stats().entries.typedTables).toBe(0);
     expect(cache.stats().entries.locReaders).toBe(0);
     expect(cache.stats().persistentWrites).toBe(0);
@@ -336,7 +409,11 @@ describe("automation cache service", () => {
     const root = workspace();
     const packPath = path.join(root, "local.pack");
     const cacheDir = path.join(root, "cache");
-    await writeRawPack(packPath, [{ name: "text\\names.loc", buffer: locPayload([["key", "cached text"]]) }], metadata());
+    await writeRawPack(
+      packPath,
+      [{ name: "text\\names.loc", buffer: locPayload([["key", "cached text"]]) }],
+      metadata(),
+    );
     const policy = new FilesystemPolicy({ readRoots: [root], writeRoots: [root] });
     const firstService = makeService({ cacheDir });
     const firstScope = firstService.beginRequest({ policy });
@@ -344,7 +421,9 @@ describe("automation cache service", () => {
       const lease = await firstScope.getVanillaRawLoc([packPath]);
       expect(lease?.lookup.getRaw("key")?.rawText).toBe("cached text");
       lease?.release();
-    } finally { firstScope.close(); }
+    } finally {
+      firstScope.close();
+    }
     expect(firstService.stats().persistentWrites).toBe(1);
     const managedLocFiles = filesUnder(path.join(cacheDir, "headless", "loc"));
     expect(managedLocFiles).toHaveLength(2);
@@ -358,7 +437,9 @@ describe("automation cache service", () => {
       const lease = await secondScope.getVanillaRawLoc([packPath]);
       expect(lease?.lookup.getRaw("key")?.rawText).toBe("cached text");
       lease?.release();
-    } finally { secondScope.close(); }
+    } finally {
+      secondScope.close();
+    }
     expect(secondService.stats().hits.locReaders).toBe(1);
     expect(secondService.stats().persistentWrites).toBe(0);
   });
@@ -376,16 +457,21 @@ describe("automation cache service", () => {
     await validCache.validateConfiguredPaths(validContext.policy);
     const validScope = validCache.beginRequest({ policy: validContext.policy, schemaProvider });
     try {
-      expect((await validScope.getReadonlyTable(packPath, "db\\sample_tables\\data__"))?.rows).toEqual([{ key: "probe", count: 84 }]);
-    } finally { validScope.close(); }
+      expect((await validScope.getReadonlyTable(packPath, "db\\sample_tables\\data__"))?.rows).toEqual([
+        { key: "probe", count: 84 },
+      ]);
+    } finally {
+      validScope.close();
+    }
     expect(validCache.stats().hits.typedTables).toBe(1);
     expect(fs.readdirSync(guiDir)).toEqual(["vanilla-db-cache-wh3.bin"]);
 
     const originalBytes = fs.readFileSync(validPath);
-    const unprovenBytes = buildVanillaDbCacheFromTables(
-      [{ packedFilePath: "unused", schema, rows: [] }],
-      { ...getDbIdentityForTest(packPath), sourceFormat: undefined, decoderRevision: undefined },
-    ).bytes;
+    const unprovenBytes = buildVanillaDbCacheFromTables([{ packedFilePath: "unused", schema, rows: [] }], {
+      ...getDbIdentityForTest(packPath),
+      sourceFormat: undefined,
+      decoderRevision: undefined,
+    }).bytes;
     const v3Bytes = Uint8Array.from(originalBytes);
     new DataView(v3Bytes.buffer, v3Bytes.byteOffset, v3Bytes.byteLength).setUint32(4, 3, true);
     const corruptBytes = Uint8Array.from(originalBytes);
@@ -399,9 +485,13 @@ describe("automation cache service", () => {
       const context = makeContext(root, cache);
       const scope = cache.beginRequest({ policy: context.policy, schemaProvider });
       try {
-        expect((await scope.getReadonlyTable(packPath, "db\\sample_tables\\data__"))?.rows).toEqual([{ key: "probe", count: 84 }]);
+        expect((await scope.getReadonlyTable(packPath, "db\\sample_tables\\data__"))?.rows).toEqual([
+          { key: "probe", count: 84 },
+        ]);
         expect(cache.stats().sourceFallbacks).toBe(1);
-      } finally { scope.close(); }
+      } finally {
+        scope.close();
+      }
     }
   });
 
@@ -420,30 +510,46 @@ describe("automation cache service", () => {
     const editedCache = makeService({ whmmCacheDir: guiDir, schemaFingerprint: "fixture-schema-v1" });
     const editedContext = makeContext(root, editedCache);
     const warm = editedCache.beginRequest({ policy: editedContext.policy, schemaProvider });
-    try { await warm.getReadonlyTable(packPath, "db\\sample_tables\\data__"); } finally { warm.close(); }
+    try {
+      await warm.getReadonlyTable(packPath, "db\\sample_tables\\data__");
+    } finally {
+      warm.close();
+    }
     const corrupted = Buffer.from(originalBytes);
     corrupted[corrupted.length - 1] ^= 0xff;
     fs.writeFileSync(cachePath, corrupted);
     fs.utimesSync(cachePath, originalStat.atime, originalStat.mtime);
     const afterEdit = editedCache.beginRequest({ policy: editedContext.policy, schemaProvider });
     try {
-      expect((await afterEdit.getReadonlyTable(packPath, "db\\sample_tables\\data__"))?.rows).toEqual([{ key: "probe", count: 84 }]);
-    } finally { afterEdit.close(); }
+      expect((await afterEdit.getReadonlyTable(packPath, "db\\sample_tables\\data__"))?.rows).toEqual([
+        { key: "probe", count: 84 },
+      ]);
+    } finally {
+      afterEdit.close();
+    }
     expect(editedCache.stats().sourceFallbacks).toBe(1);
 
     fs.writeFileSync(cachePath, originalBytes);
     const replacedCache = makeService({ whmmCacheDir: guiDir, schemaFingerprint: "fixture-schema-v1" });
     const replacedContext = makeContext(root, replacedCache);
     const first = replacedCache.beginRequest({ policy: replacedContext.policy, schemaProvider });
-    try { await first.getReadonlyTable(packPath, "db\\sample_tables\\data__"); } finally { first.close(); }
+    try {
+      await first.getReadonlyTable(packPath, "db\\sample_tables\\data__");
+    } finally {
+      first.close();
+    }
     const replacementPath = path.join(guiDir, "replacement.bin");
     fs.writeFileSync(replacementPath, originalBytes);
     fs.rmSync(cachePath);
     fs.renameSync(replacementPath, cachePath);
     const second = replacedCache.beginRequest({ policy: replacedContext.policy, schemaProvider });
     try {
-      expect((await second.getReadonlyTable(packPath, "db\\sample_tables\\data__"))?.rows).toEqual([{ key: "probe", count: 84 }]);
-    } finally { second.close(); }
+      expect((await second.getReadonlyTable(packPath, "db\\sample_tables\\data__"))?.rows).toEqual([
+        { key: "probe", count: 84 },
+      ]);
+    } finally {
+      second.close();
+    }
     expect(replacedCache.stats().misses.dbReaders).toBe(2);
   });
 
@@ -458,35 +564,60 @@ describe("automation cache service", () => {
     makeGuiDbCache(packPath, guiDir);
     const cache = makeService({ whmmCacheDir: guiDir, schemaFingerprint: "fixture-schema-v1" });
     const allowed = cache.beginRequest({ policy: new FilesystemPolicy({ readRoots: [root] }), schemaProvider });
-    try { await allowed.getReadonlyTable(packPath, "db\\sample_tables\\data__"); } finally { allowed.close(); }
-
-    const deniedCacheRoot = cache.beginRequest({ policy: new FilesystemPolicy({ readRoots: [sourceRoot] }), schemaProvider });
     try {
-      expect((await deniedCacheRoot.getReadonlyTable(packPath, "db\\sample_tables\\data__"))?.rows).toEqual([{ key: "probe", count: 84 }]);
-    } finally { deniedCacheRoot.close(); }
+      await allowed.getReadonlyTable(packPath, "db\\sample_tables\\data__");
+    } finally {
+      allowed.close();
+    }
+
+    const deniedCacheRoot = cache.beginRequest({
+      policy: new FilesystemPolicy({ readRoots: [sourceRoot] }),
+      schemaProvider,
+    });
+    try {
+      expect((await deniedCacheRoot.getReadonlyTable(packPath, "db\\sample_tables\\data__"))?.rows).toEqual([
+        { key: "probe", count: 84 },
+      ]);
+    } finally {
+      deniedCacheRoot.close();
+    }
     expect(cache.stats().sourceFallbacks).toBe(1);
   });
 
   it("retains separate typed table entries for one unchanged pack", async () => {
     const root = workspace();
     const packPath = path.join(root, "db.pack");
-    await writeRawPack(packPath, [
-      { name: "db\\sample_tables\\data__", buffer: dbPayload() },
-      { name: "db\\sample_tables\\other", buffer: dbPayload([["other", 7]]) },
-    ], metadata());
+    await writeRawPack(
+      packPath,
+      [
+        { name: "db\\sample_tables\\data__", buffer: dbPayload() },
+        { name: "db\\sample_tables\\other", buffer: dbPayload([["other", 7]]) },
+      ],
+      metadata(),
+    );
     const cache = makeService({ memoryMiB: 8, schemaFingerprint: "fixture-schema-v1" });
     const context = makeContext(root, cache);
     const request = () => cache.beginRequest({ policy: context.policy, schemaProvider });
 
     const one = request();
-    try { await one.getReadonlyTable(packPath, "db\\sample_tables\\data__"); } finally { one.close(); }
+    try {
+      await one.getReadonlyTable(packPath, "db\\sample_tables\\data__");
+    } finally {
+      one.close();
+    }
     const two = request();
-    try { await two.getReadonlyTable(packPath, "db\\sample_tables\\other"); } finally { two.close(); }
+    try {
+      await two.getReadonlyTable(packPath, "db\\sample_tables\\other");
+    } finally {
+      two.close();
+    }
     const three = request();
     try {
       await three.getReadonlyTable(packPath, "db\\sample_tables\\data__");
       await three.getReadonlyTable(packPath, "db\\sample_tables\\other");
-    } finally { three.close(); }
+    } finally {
+      three.close();
+    }
 
     expect(cache.stats().hits.typedTables).toBe(2);
     expect(cache.stats().entries.typedTables).toBe(2);
@@ -495,11 +626,15 @@ describe("automation cache service", () => {
   it("keeps LOC and multiple DB views warm together for one unchanged pack", async () => {
     const root = workspace();
     const packPath = path.join(root, "mixed.pack");
-    await writeRawPack(packPath, [
-      { name: "db\\sample_tables\\data__", buffer: dbPayload() },
-      { name: "db\\sample_tables\\other", buffer: dbPayload([["other", 7]]) },
-      { name: "text\\names.loc", buffer: locPayload([["name", "text"]]) },
-    ], metadata());
+    await writeRawPack(
+      packPath,
+      [
+        { name: "db\\sample_tables\\data__", buffer: dbPayload() },
+        { name: "db\\sample_tables\\other", buffer: dbPayload([["other", 7]]) },
+        { name: "text\\names.loc", buffer: locPayload([["name", "text"]]) },
+      ],
+      metadata(),
+    );
     const cache = makeService({ memoryMiB: 8, schemaFingerprint: "fixture-schema-v1" });
     const context = makeContext(root, cache);
     const scope = cache.beginRequest({ policy: context.policy, schemaProvider });
@@ -507,7 +642,9 @@ describe("automation cache service", () => {
     try {
       for (const tablePath of paths) await scope.getReadonlyTable(packPath, tablePath);
       for (const tablePath of paths) await scope.getReadonlyTable(packPath, tablePath);
-    } finally { scope.close(); }
+    } finally {
+      scope.close();
+    }
     expect(cache.stats().hits.typedTables).toBe(3);
     expect(cache.stats().entries.typedTables).toBe(3);
   });
@@ -521,16 +658,24 @@ describe("automation cache service", () => {
     const first = makeService({ cacheDir, schemaFingerprint: "fixture-schema-v1" });
     const firstScope = first.beginRequest({ policy, schemaProvider });
     try {
-      expect((await firstScope.getReadonlyTable(packPath, "DB\\SAMPLE_TABLES\\DATA__"))?.rows).toEqual([{ key: "probe", count: 84 }]);
-    } finally { firstScope.close(); }
+      expect((await firstScope.getReadonlyTable(packPath, "DB\\SAMPLE_TABLES\\DATA__"))?.rows).toEqual([
+        { key: "probe", count: 84 },
+      ]);
+    } finally {
+      firstScope.close();
+    }
     await first.close();
     services.splice(services.indexOf(first), 1);
 
     const second = makeService({ cacheDir, schemaFingerprint: "fixture-schema-v1" });
     const secondScope = second.beginRequest({ policy, schemaProvider });
     try {
-      expect((await secondScope.getReadonlyTable(packPath, "db\\sample_tables\\data__"))?.rows).toEqual([{ key: "probe", count: 84 }]);
-    } finally { secondScope.close(); }
+      expect((await secondScope.getReadonlyTable(packPath, "db\\sample_tables\\data__"))?.rows).toEqual([
+        { key: "probe", count: 84 },
+      ]);
+    } finally {
+      secondScope.close();
+    }
     expect(second.stats().hits.typedTables).toBe(1);
     expect(second.stats().sourceFallbacks).toBe(0);
   });
@@ -539,7 +684,19 @@ describe("automation cache service", () => {
     const root = workspace();
     const firstPack = path.join(root, "local_a.pack");
     const secondPack = path.join(root, "local_b.pack");
-    await writeRawPack(firstPack, [{ name: "text\\first.loc", buffer: locPayload([["same", "first"], ["blank", ""]]) }], metadata());
+    await writeRawPack(
+      firstPack,
+      [
+        {
+          name: "text\\first.loc",
+          buffer: locPayload([
+            ["same", "first"],
+            ["blank", ""],
+          ]),
+        },
+      ],
+      metadata(),
+    );
     await writeRawPack(secondPack, [{ name: "text\\second.loc", buffer: locPayload([["same", "last"]]) }], metadata());
     const cache = makeService({ maxReaders: 1, memoryMiB: 16 });
     const scope = cache.beginRequest({ policy: new FilesystemPolicy({ readRoots: [root] }) });
@@ -563,7 +720,9 @@ describe("automation cache service", () => {
       const secondAfterRelease = await scope.getVanillaRawLoc([secondPack]);
       expect(secondAfterRelease?.lookup.getRaw("same")?.rawText).toBe("last");
       secondAfterRelease?.release();
-    } finally { scope.close(); }
+    } finally {
+      scope.close();
+    }
     expect(cache.stats().readerCount).toBe(1);
     await cache.close();
     expect(cache.stats().readerCount).toBe(0);
@@ -576,20 +735,27 @@ describe("automation cache service", () => {
     const guiDir = path.join(root, "gui-cache");
     fs.mkdirSync(guiDir);
     await writeRawPack(dbPack, [{ name: "db\\sample_tables\\data__", buffer: dbPayload() }], metadata());
-    await writeRawPack(locPack, [{ name: "text\\names.loc", buffer: locPayload([["shared", "from local"]]) }], metadata());
+    await writeRawPack(
+      locPack,
+      [{ name: "text\\names.loc", buffer: locPayload([["shared", "from local"]]) }],
+      metadata(),
+    );
 
     const guiPackSet = indexExactVanillaLocPackSet([locPack], "wh3", "gui");
     const guiEntries = await readExactVanillaLocEntries(guiPackSet);
     const guiBytes = buildVanillaLocCacheBytes(guiEntries);
     const guiFile = getVanillaLocCacheFilePath(guiDir, "wh3", [locPack]);
     fs.writeFileSync(guiFile, guiBytes);
-    fs.writeFileSync(`${guiFile}.id`, JSON.stringify({
-      identity: getVanillaLocCacheIdentity("wh3", [locPack]),
-      sourceFormat: VANILLA_LOC_CACHE_EXACT_SOURCE_FORMAT,
-      decoderRevision: VANILLA_LOC_CACHE_DECODER_REVISION,
-      orderFingerprint: guiPackSet.orderFingerprint,
-      contentSha256: crypto.createHash("sha256").update(guiBytes).digest("hex"),
-    }));
+    fs.writeFileSync(
+      `${guiFile}.id`,
+      JSON.stringify({
+        identity: getVanillaLocCacheIdentity("wh3", [locPack]),
+        sourceFormat: VANILLA_LOC_CACHE_EXACT_SOURCE_FORMAT,
+        decoderRevision: VANILLA_LOC_CACHE_DECODER_REVISION,
+        orderFingerprint: guiPackSet.orderFingerprint,
+        contentSha256: crypto.createHash("sha256").update(guiBytes).digest("hex"),
+      }),
+    );
 
     const cache = makeService({ whmmCacheDir: guiDir });
     const policy = new FilesystemPolicy({ readRoots: [root] });
@@ -598,20 +764,34 @@ describe("automation cache service", () => {
       const lease = await first.getVanillaRawLoc([dbPack, locPack]);
       expect(lease?.lookup.getRaw("shared")?.rawText).toBe("from local");
       lease?.release();
-    } finally { first.close(); }
+    } finally {
+      first.close();
+    }
     expect(cache.stats().hits.locReaders).toBe(1);
 
-    await writeRawPack(dbPack, [
-      { name: "db\\sample_tables\\data__", buffer: dbPayload() },
-      { name: "text\\db_names.loc", buffer: locPayload([["db_only", "from db"], ["shared", "from db"]]) },
-    ], metadata());
+    await writeRawPack(
+      dbPack,
+      [
+        { name: "db\\sample_tables\\data__", buffer: dbPayload() },
+        {
+          name: "text\\db_names.loc",
+          buffer: locPayload([
+            ["db_only", "from db"],
+            ["shared", "from db"],
+          ]),
+        },
+      ],
+      metadata(),
+    );
     const second = cache.beginRequest({ policy });
     try {
       const lease = await second.getVanillaRawLoc([dbPack, locPack]);
       expect(lease?.lookup.getRaw("db_only")?.rawText).toBe("from db");
       expect(lease?.lookup.getRaw("shared")?.rawText).toBe("from local");
       lease?.release();
-    } finally { second.close(); }
+    } finally {
+      second.close();
+    }
     expect(cache.stats().misses.locReaders).toBe(2);
   });
 
@@ -621,15 +801,26 @@ describe("automation cache service", () => {
     const cacheDir = path.join(root, "cache");
     await writeDbPack(packPath);
     const warnings: string[] = [];
-    const cache = makeService({ cacheDir, memoryMiB: 4, schemaFingerprint: "fixture-schema-v1", onWarning: (message) => warnings.push(message) });
+    const cache = makeService({
+      cacheDir,
+      memoryMiB: 4,
+      schemaFingerprint: "fixture-schema-v1",
+      onWarning: (message) => warnings.push(message),
+    });
     const context = makeContext(root, cache, { writeRoots: [] });
     const scope = cache.beginRequest({ policy: context.policy, schemaProvider });
-    try { await scope.getReadonlyTable(packPath, "db\\sample_tables\\data__"); } finally { scope.close(); }
+    try {
+      await scope.getReadonlyTable(packPath, "db\\sample_tables\\data__");
+    } finally {
+      scope.close();
+    }
     expect(fs.existsSync(path.join(cacheDir, "headless"))).toBe(false);
     expect(warnings).toHaveLength(1);
     const otherReadRoot = path.join(root, "allowed-read-root");
     fs.mkdirSync(otherReadRoot);
-    await expect(cache.validateConfiguredPaths(new FilesystemPolicy({ readRoots: [otherReadRoot] }))).rejects.toMatchObject({ code: "IO_ACCESS" });
+    await expect(
+      cache.validateConfiguredPaths(new FilesystemPolicy({ readRoots: [otherReadRoot] })),
+    ).rejects.toMatchObject({ code: "IO_ACCESS" });
 
     const fileCachePath = path.join(root, "cache-file");
     fs.writeFileSync(fileCachePath, "not a directory");
@@ -646,7 +837,9 @@ describe("automation cache service", () => {
     const alias = path.join(root, "cache-alias");
     fs.symlinkSync(outside, alias, "dir");
     const cache = makeService({ whmmCacheDir: alias });
-    await expect(cache.validateConfiguredPaths(new FilesystemPolicy({ readRoots: [root] }))).rejects.toMatchObject({ code: "IO_ACCESS" });
+    await expect(cache.validateConfiguredPaths(new FilesystemPolicy({ readRoots: [root] }))).rejects.toMatchObject({
+      code: "IO_ACCESS",
+    });
   });
 
   it("rejects changed source snapshots and unauthorized source/cache reads", async () => {
@@ -658,7 +851,9 @@ describe("automation cache service", () => {
     const pack = await scope.readPackIndex(packPath);
     await writeRawPack(packPath, [{ name: "two.txt", buffer: Buffer.from("two") }], metadata());
     await expect(scope.assertPackSnapshot(pack)).rejects.toMatchObject({ code: "CONFLICT" });
-    await expect(readAutomationPayload(pack, pack.entries[0], { ...makeContext(root, cache), cacheRequest: scope })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(
+      readAutomationPayload(pack, pack.entries[0], { ...makeContext(root, cache), cacheRequest: scope }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
     scope.close();
 
     const denied = cache.beginRequest({ policy: new FilesystemPolicy({ readRoots: [] }) });
@@ -675,24 +870,41 @@ describe("automation cache service", () => {
     const context = makeContext(root, cache);
     const inheritedScope = cache.beginRequest({ policy: context.policy, schemaProvider });
     try {
-      const response = await executeAutomationRequest({
-        operation: "pack_create",
-        outputPath,
-        files: [{ path: "db\\sample_tables\\data__", sourcePath: payloadPath }],
-      }, { ...context, cacheRequest: inheritedScope });
+      const response = await executeAutomationRequest(
+        {
+          operation: "pack_create",
+          outputPath,
+          files: [{ path: "db\\sample_tables\\data__", sourcePath: payloadPath }],
+        },
+        { ...context, cacheRequest: inheritedScope },
+      );
       expect(response).toMatchObject({ ok: true, data: { fileCount: 1 } });
       expect(cache.stats().misses.packIndexes).toBe(0);
       expect(fs.existsSync(outputPath)).toBe(true);
-    } finally { inheritedScope.close(); }
+    } finally {
+      inheritedScope.close();
+    }
   });
 
   it("propagates cancellation from LOC enumeration and releases its reader lease", async () => {
     const root = workspace();
     const packPath = path.join(root, "local.pack");
-    await writeRawPack(packPath, [{ name: "text\\many.loc", buffer: locPayload(Array.from({ length: 700 }, (_, index) => [`key_${index}`, `value_${index}`])) }], metadata());
+    await writeRawPack(
+      packPath,
+      [
+        {
+          name: "text\\many.loc",
+          buffer: locPayload(Array.from({ length: 700 }, (_, index) => [`key_${index}`, `value_${index}`])),
+        },
+      ],
+      metadata(),
+    );
     const cache = makeService();
     const controller = new AbortController();
-    const scope = cache.beginRequest({ policy: new FilesystemPolicy({ readRoots: [root], signal: controller.signal }), signal: controller.signal });
+    const scope = cache.beginRequest({
+      policy: new FilesystemPolicy({ readRoots: [root], signal: controller.signal }),
+      signal: controller.signal,
+    });
     try {
       const lease = await scope.getVanillaRawLoc([packPath]);
       expect(lease).toBeDefined();
@@ -702,11 +914,15 @@ describe("automation cache service", () => {
         visited.push(key);
       });
       expect(visited).toHaveLength(700);
-      await expect(lease!.lookup.forEachEntry(() => {
-        controller.abort();
-      })).rejects.toMatchObject({ code: "CANCELLED" });
+      await expect(
+        lease!.lookup.forEachEntry(() => {
+          controller.abort();
+        }),
+      ).rejects.toMatchObject({ code: "CANCELLED" });
       lease!.release();
-    } finally { scope.close(); }
+    } finally {
+      scope.close();
+    }
     expect(cache.stats().readerCount).toBe(1);
     await cache.close();
     expect(cache.stats().readerCount).toBe(0);
@@ -720,10 +936,15 @@ describe("automation cache service", () => {
     const controller = new AbortController();
     controller.abort();
     const cache = makeService({ cacheDir });
-    const scope = cache.beginRequest({ policy: new FilesystemPolicy({ readRoots: [root], signal: controller.signal }), signal: controller.signal });
+    const scope = cache.beginRequest({
+      policy: new FilesystemPolicy({ readRoots: [root], signal: controller.signal }),
+      signal: controller.signal,
+    });
     try {
       await expect(scope.getVanillaRawLoc([packPath])).rejects.toMatchObject({ code: "CANCELLED" });
-    } finally { scope.close(); }
+    } finally {
+      scope.close();
+    }
     expect(fs.existsSync(cacheDir)).toBe(false);
   });
 });

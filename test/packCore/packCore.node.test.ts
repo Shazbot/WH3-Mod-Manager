@@ -56,7 +56,11 @@ describe("shared pack core", () => {
     );
 
     const indexed = readPackIndex(sourcePath, { game: "wh3" });
-    expect(indexed.entries[0]).toMatchObject({ name: "data\\raw.bin", file_name_hash: 0xf1234567, is_compressed: true });
+    expect(indexed.entries[0]).toMatchObject({
+      name: "data\\raw.bin",
+      file_name_hash: 0xf1234567,
+      is_compressed: true,
+    });
     expect(readRawPayload(indexed, indexed.entries[0])).toEqual(storedPayload);
     expect(await readPayload(indexed, { ...indexed.entries[0], is_compressed: false })).toEqual(storedPayload);
 
@@ -97,8 +101,30 @@ describe("shared pack core", () => {
     const schema: DBVersion = {
       version: 7,
       fields: [
-        { name: "id", field_type: "I32", is_key: true, default_value: "0", is_filename: false, is_reference: [], description: "", ca_order: 0, is_bitwise: 0, enum_values: {} },
-        { name: "name", field_type: "StringU8", is_key: false, default_value: "", is_filename: false, is_reference: [], description: "", ca_order: 1, is_bitwise: 0, enum_values: {} },
+        {
+          name: "id",
+          field_type: "I32",
+          is_key: true,
+          default_value: "0",
+          is_filename: false,
+          is_reference: [],
+          description: "",
+          ca_order: 0,
+          is_bitwise: 0,
+          enum_values: {},
+        },
+        {
+          name: "name",
+          field_type: "StringU8",
+          is_key: false,
+          default_value: "",
+          is_filename: false,
+          is_reference: [],
+          description: "",
+          ca_order: 1,
+          is_bitwise: 0,
+          enum_values: {},
+        },
       ],
     };
     const prefix = Buffer.from([0xfc, 0xfd, 0xfe, 0xff, 7, 0, 0, 0, 1]);
@@ -107,9 +133,7 @@ describe("shared pack core", () => {
     const untouchedCell = Buffer.from([3, 0, 65, 66, 67]);
     const original = Buffer.concat([prefix, count, firstCell, untouchedCell]);
     const parsed = parseDbTable(original, schema);
-    const patched = patchDbTableCells(parsed, [
-      { rowIndex: 0, fieldIndex: 0, fields: [{ type: "I32", val: 99 }] },
-    ]);
+    const patched = patchDbTableCells(parsed, [{ rowIndex: 0, fieldIndex: 0, fields: [{ type: "I32", val: 99 }] }]);
     expect(patched.subarray(0, prefix.length)).toEqual(prefix);
     expect(patched.subarray(prefix.length + count.length + firstCell.length)).toEqual(untouchedCell);
   });

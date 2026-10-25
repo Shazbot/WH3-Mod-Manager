@@ -197,9 +197,9 @@ export const serializeDbTable = (
   rowCount.writeInt32LE(rows.length, 0);
   parts.push(rowCount);
   for (const row of rows) {
-      row.forEach((fields, index) =>
-        parts.push(serializeSchemaFieldWithType(schema.fields[index].field_type, [...fields])),
-      );
+    row.forEach((fields, index) =>
+      parts.push(serializeSchemaFieldWithType(schema.fields[index].field_type, [...fields])),
+    );
   }
   return Buffer.concat(parts);
 };
@@ -394,10 +394,7 @@ export const patchDbTableCells = (table: ParsedDbTable, patches: readonly DbCell
 };
 
 /** Rebuilds row topology while retaining original bytes for every unchanged cell. */
-export const rewriteDbTableRows = (
-  table: ParsedDbTable,
-  rows: readonly (readonly DbSerializedCell[])[],
-): Buffer => {
+export const rewriteDbTableRows = (table: ParsedDbTable, rows: readonly (readonly DbSerializedCell[])[]): Buffer => {
   if (rows.length > 0x7fffffff) throw new Error("DB table row count exceeds the format limit");
   const parts: Buffer[] = [table.preamble.bytes];
   if (rows.length === table.preamble.rowCount) {

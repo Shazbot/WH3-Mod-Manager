@@ -30,18 +30,23 @@ const descriptions: Record<OperationName, string> = {
   pack_create: "Create a WH3 mod or movie pack with optional dependencies and files.",
   pack_write_files: "Add, replace, or remove pack files into a validated output pack.",
   pack_patch_table: "Insert, update, or delete DB or LOC rows in a copy-on-write output pack.",
-  pack_validate: "Validate pack structure, RMV2 models, and optional logical payloads; resolve RMV2 textures through explicit load order.",
+  pack_validate:
+    "Validate pack structure, RMV2 models, and optional logical payloads; resolve RMV2 textures through explicit load order.",
   pack_clone: "Clone a pack byte-for-byte, optionally verifying its SHA-256 hash.",
   pack_diff: "Compare two packs by logical file hashes and supported DB, LOC, XML-reference, and RMV2 semantics.",
   asset_resolve_references: "Resolve asset and DB row roots into a bounded forward reference graph.",
   asset_find_references: "Scan explicit packs for reverse references to an asset or DB table.",
   pack_subset: "Create a subset pack from selected files or DB rows and a declared dependency closure.",
   localization_lookup: "Look up translated text, localization keys, and schema-verified DB keys in explicit packs.",
-  unit_resolve: "Resolve unit names/keys to roster cultures, factions, campaign recruitment rules, visuals, character art, and optimizer metadata with source evidence.",
-  pack_texture_inspect: "Inspect DDS format, dimensions, surfaces, and mip payload ranges; optionally export a selected stored mip as a PNG preview.",
+  unit_resolve:
+    "Resolve unit names/keys to roster cultures, factions, campaign recruitment rules, visuals, character art, and optimizer metadata with source evidence.",
+  pack_texture_inspect:
+    "Inspect DDS format, dimensions, surfaces, and mip payload ranges; optionally export a selected stored mip as a PNG preview.",
   rigid_inspect: "Inspect registered RMV2 headers, LODs, parts, materials, textures, UV ranges, and parameters.",
-  asset_materials: "Trace each selected direct or WSModel loader context to RMV2 parts and report declared material textures with load-order resolution.",
-  rigid_patch: "Edit registered RMV2 texture slots, same-layout material types, and supported alpha parameters into a single-model MOD pack.",
+  asset_materials:
+    "Trace each selected direct or WSModel loader context to RMV2 parts and report declared material textures with load-order resolution.",
+  rigid_patch:
+    "Edit registered RMV2 texture slots, same-layout material types, and supported alpha parameters into a single-model MOD pack.",
 };
 
 export interface McpServerOptions {
@@ -101,7 +106,8 @@ const parseMcpArgs = (args: readonly string[]): McpCliOptions => {
   let cacheMemoryMiB = 128;
   const memoryValue = parsed.values["cache-memory-mib"];
   if (!noCache && memoryValue !== undefined) {
-    if (!/^\d+$/.test(memoryValue)) throw new AutomationError("INVALID_ARGUMENT", "--cache-memory-mib must be an integer between 1 and 1024");
+    if (!/^\d+$/.test(memoryValue))
+      throw new AutomationError("INVALID_ARGUMENT", "--cache-memory-mib must be an integer between 1 and 1024");
     cacheMemoryMiB = Number(memoryValue);
     if (!Number.isSafeInteger(cacheMemoryMiB) || cacheMemoryMiB < 1 || cacheMemoryMiB > 1024) {
       throw new AutomationError("INVALID_ARGUMENT", "--cache-memory-mib must be between 1 and 1024");
@@ -216,9 +222,16 @@ const makeResponse = (
   const completedWrite =
     response.ok &&
     Boolean(outputPath) &&
-    ["pack_create", "pack_write_files", "pack_patch_table", "pack_clone", "pack_subset", "pack_read_file", "pack_texture_inspect", "rigid_patch"].includes(
-      request.operation,
-    );
+    [
+      "pack_create",
+      "pack_write_files",
+      "pack_patch_table",
+      "pack_clone",
+      "pack_subset",
+      "pack_read_file",
+      "pack_texture_inspect",
+      "rigid_patch",
+    ].includes(request.operation);
 
   if (response.ok && returnedReport) {
     const summary: AutomationResponse = {
@@ -279,12 +292,15 @@ const cancelledResponse = (): AutomationResponse =>
 
 export const createMcpServer = (options: McpServerOptions): McpServer => {
   const server = new McpServer({ name: "wh3mm-pack-tools", version: "2.31.0" });
-  const cacheService = options.noCache ? undefined : options.cacheService ?? createAutomationCacheService({
-    cacheDir: options.cacheDir,
-    whmmCacheDir: options.whmmCacheDir,
-    memoryMiB: options.cacheMemoryMiB ?? 128,
-    onWarning: (message) => process.stderr.write(`[info] ${message}\n`),
-  });
+  const cacheService = options.noCache
+    ? undefined
+    : (options.cacheService ??
+      createAutomationCacheService({
+        cacheDir: options.cacheDir,
+        whmmCacheDir: options.whmmCacheDir,
+        memoryMiB: options.cacheMemoryMiB ?? 128,
+        onWarning: (message) => process.stderr.write(`[info] ${message}\n`),
+      }));
   const shutdownController = new AbortController();
   const shutdownSignal = options.shutdownSignal
     ? AbortSignal.any([options.shutdownSignal, shutdownController.signal])
@@ -394,7 +410,11 @@ export const startMcpServer = (options: McpServerOptions): StdioServerHandle => 
     clearInterval(keepAlive);
     shutdownController.abort();
     void (async () => {
-      try { await handle.close(); } catch (error) { process.stderr.write(`MCP shutdown: ${String(error)}\n`); }
+      try {
+        await handle.close();
+      } catch (error) {
+        process.stderr.write(`MCP shutdown: ${String(error)}\n`);
+      }
       await options.cacheService?.close();
     })();
   };
@@ -416,12 +436,14 @@ export const main = async (argv = process.argv.slice(2)): Promise<number> => {
       throw new AutomationError("INVALID_ARGUMENT", "At least one --read-root is required");
     const readRoots = await validateRoots(options.readRoots, "read");
     const writeRoots = await validateRoots(options.writeRoots, "write");
-    const cacheService = options.noCache ? undefined : createAutomationCacheService({
-      cacheDir: options.cacheDir,
-      whmmCacheDir: options.whmmCacheDir,
-      memoryMiB: options.cacheMemoryMiB ?? 128,
-      onWarning: (message) => process.stderr.write(`[info] ${message}\n`),
-    });
+    const cacheService = options.noCache
+      ? undefined
+      : createAutomationCacheService({
+          cacheDir: options.cacheDir,
+          whmmCacheDir: options.whmmCacheDir,
+          memoryMiB: options.cacheMemoryMiB ?? 128,
+          onWarning: (message) => process.stderr.write(`[info] ${message}\n`),
+        });
     if (cacheService) {
       const context = createAutomationContext({ readRoots, writeRoots });
       await cacheService.validateConfiguredPaths(context.policy);

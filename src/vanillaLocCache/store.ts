@@ -196,7 +196,8 @@ export const openOrBuildVanillaLocCache = async (
       }
       return reader;
     } catch (error) {
-      if (error instanceof VanillaLocCacheBuildCanceled || error instanceof VanillaLocSourceReadCanceled) return undefined;
+      if (error instanceof VanillaLocCacheBuildCanceled || error instanceof VanillaLocSourceReadCanceled)
+        return undefined;
       console.log("vanilla loc cache: could not build", error);
       abandoned.add(readerKey);
       return undefined;

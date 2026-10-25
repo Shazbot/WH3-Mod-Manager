@@ -92,7 +92,11 @@ export const decompressPackedPayload = async (
     try {
       return checked(tryZstdDecompress(payload, maxOutputBytes));
     } catch (error) {
-      if (error instanceof Error && (/maxOutputLength|larger than/i.test(error.message) || ("code" in error && (error as NodeJS.ErrnoException).code === "ERR_BUFFER_TOO_LARGE"))) {
+      if (
+        error instanceof Error &&
+        (/maxOutputLength|larger than/i.test(error.message) ||
+          ("code" in error && (error as NodeJS.ErrnoException).code === "ERR_BUFFER_TOO_LARGE"))
+      ) {
         oversizedZstdOffsets.add(offset);
       }
       lastError = error;

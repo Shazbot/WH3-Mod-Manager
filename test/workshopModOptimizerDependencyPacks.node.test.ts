@@ -28,8 +28,15 @@ describe("dependencyRelatedMods", () => {
   });
 
   it("ignores missing or disabled dependencies, empty ids and the source itself", () => {
-    const source = mod("a.pack", { workshopId: "", dependencyPacks: ["a.pack", "gone.pack"], reqModIdToName: [["99", "gone"]] });
-    const result = dependencyRelatedMods(source, [source, mod("c.pack", { workshopId: "", reqModIdToName: [["", "x"]] })]);
+    const source = mod("a.pack", {
+      workshopId: "",
+      dependencyPacks: ["a.pack", "gone.pack"],
+      reqModIdToName: [["99", "gone"]],
+    });
+    const result = dependencyRelatedMods(source, [
+      source,
+      mod("c.pack", { workshopId: "", reqModIdToName: [["", "x"]] }),
+    ]);
     expect(result).toEqual([]);
   });
 

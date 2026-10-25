@@ -8,7 +8,10 @@ export const parseFilenameRelativePaths = (filenameRelativePath: unknown): strin
 };
 
 /** Applies the same placeholder and wildcard-prefix rules used by deep-clone file collection. */
-export const getFilenameRelativePathMatch = (pattern: string, cellValue: string): { exactPath?: string; prefix?: string } => {
+export const getFilenameRelativePathMatch = (
+  pattern: string,
+  cellValue: string,
+): { exactPath?: string; prefix?: string } => {
   const substituted = pattern.replace("%", cellValue);
   if (pattern.includes("*")) return { prefix: substituted.replace(/\*.*$/, "") };
   return { exactPath: pattern.split("%").join(cellValue) };

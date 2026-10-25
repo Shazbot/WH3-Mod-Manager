@@ -8914,8 +8914,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             decoderRevision: EXACT_VANILLA_LOC_DECODER_REVISION,
             orderFingerprint: exactPackSet.orderFingerprint,
             shouldCancel: () => cancelState.canceled,
-            readEntries: () =>
-              readExactVanillaLocEntries(exactPackSet, { shouldCancel: () => cancelState.canceled }),
+            readEntries: () => readExactVanillaLocEntries(exactPackSet, { shouldCancel: () => cancelState.canceled }),
           });
         } catch (error) {
           if (!cancelState.canceled) console.log("vanilla loc cache: exact source unavailable", error);

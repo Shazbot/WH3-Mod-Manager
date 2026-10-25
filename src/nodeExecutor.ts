@@ -313,7 +313,10 @@ export const resolveEffectiveTableRows = (
 
       // Lower lexical filename wins. Keeping the existing winner on equality gives stable
       // first-encountered behavior without consulting pack names or load order.
-      if (!currentWinner || shouldReplaceEffectiveDbRowWinner(candidate.normalizedFileName, currentWinner.normalizedFileName)) {
+      if (
+        !currentWinner ||
+        shouldReplaceEffectiveDbRowWinner(candidate.normalizedFileName, currentWinner.normalizedFileName)
+      ) {
         winnersByLogicalTableAndKey.set(identity, candidate);
       }
     }

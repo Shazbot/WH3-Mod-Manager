@@ -2,7 +2,11 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { createAutomationCacheService, createAutomationContext, executeAutomationRequest } from "../../src/automation/registry";
+import {
+  createAutomationCacheService,
+  createAutomationContext,
+  executeAutomationRequest,
+} from "../../src/automation/registry";
 import { makeRowFields } from "../../src/automation/tables";
 import { classifyUnitForOptimization } from "../../src/automation/units";
 import { serializeDbTable, writeRawPack } from "../../src/packCore";
@@ -188,21 +192,29 @@ describe("localization and unit lookups", () => {
   it("keeps keyed localization results identical while using warm vanilla and mod caches", async () => {
     const base = path.join(root, "cached-localization-base.pack");
     const mod = path.join(root, "cached-localization-mod.pack");
-    await writeRawPack(base, [
-      db("land_units", [land("cache_unit"), land("empty_unit"), land("missing_unit")]),
-      loc({
-        land_units_onscreen_name_cache_unit: "Vanilla",
-        land_units_onscreen_name_empty_unit: "",
-        empty_name: "",
-        "\uFEFFbom_key": "\uFEFFBOM text",
-      }),
-    ], metadata);
-    await writeRawPack(mod, [
-      loc({
-        land_units_onscreen_name_cache_unit: "{{tr:cache_title}}",
-        ui_text_replacements_localised_text_cache_title: "皇帝 🐈",
-      }),
-    ], metadata);
+    await writeRawPack(
+      base,
+      [
+        db("land_units", [land("cache_unit"), land("empty_unit"), land("missing_unit")]),
+        loc({
+          land_units_onscreen_name_cache_unit: "Vanilla",
+          land_units_onscreen_name_empty_unit: "",
+          empty_name: "",
+          "\uFEFFbom_key": "\uFEFFBOM text",
+        }),
+      ],
+      metadata,
+    );
+    await writeRawPack(
+      mod,
+      [
+        loc({
+          land_units_onscreen_name_cache_unit: "{{tr:cache_title}}",
+          ui_text_replacements_localised_text_cache_title: "皇帝 🐈",
+        }),
+      ],
+      metadata,
+    );
     const request = {
       operation: "localization_lookup",
       packPaths: [mod],
@@ -220,10 +232,20 @@ describe("localization and unit lookups", () => {
     const uncachedEmpty = await executeAutomationRequest(emptyRequest, context());
     const missingRequest = { ...request, query: "missing_unit" };
     const uncachedMissing = await executeAutomationRequest(missingRequest, context());
-    expect(uncachedEmpty).toMatchObject({ ok: true, data: { items: [expect.objectContaining({ text: "", translationFound: true })] } });
-    expect(uncachedMissing).toMatchObject({ ok: true, data: { items: [expect.objectContaining({ text: "", translationFound: false })] } });
+    expect(uncachedEmpty).toMatchObject({
+      ok: true,
+      data: { items: [expect.objectContaining({ text: "", translationFound: true })] },
+    });
+    expect(uncachedMissing).toMatchObject({
+      ok: true,
+      data: { items: [expect.objectContaining({ text: "", translationFound: false })] },
+    });
     const cache = createAutomationCacheService({ schemaFingerprint: "lookup-fixture-v1" });
-    const cachedContext = createAutomationContext({ schemaProvider: async () => definitions, readRoots: [root], cache });
+    const cachedContext = createAutomationContext({
+      schemaProvider: async () => definitions,
+      readRoots: [root],
+      cache,
+    });
     try {
       expect(await executeAutomationRequest(request, cachedContext)).toEqual(uncached);
       expect(await executeAutomationRequest(request, cachedContext)).toEqual(uncached);
@@ -249,7 +271,9 @@ describe("localization and unit lookups", () => {
         return lease;
       };
       try {
-        expect(await executeAutomationRequest(request, { ...cachedContext, cache: undefined, cacheRequest: scope })).toEqual(uncached);
+        expect(
+          await executeAutomationRequest(request, { ...cachedContext, cache: undefined, cacheRequest: scope }),
+        ).toEqual(uncached);
       } finally {
         scope.close();
       }
@@ -261,10 +285,14 @@ describe("localization and unit lookups", () => {
 
   it("preserves malformed LOC and DB diagnostics through the cached readonly path", async () => {
     const pack = path.join(root, "malformed-lookup.pack");
-    await writeRawPack(pack, [
-      { name: "text\\bad.loc", buffer: Buffer.from([0, 1, 2]) },
-      { name: "db\\land_units_tables\\data", buffer: Buffer.from([0, 1, 2]) },
-    ], metadata);
+    await writeRawPack(
+      pack,
+      [
+        { name: "text\\bad.loc", buffer: Buffer.from([0, 1, 2]) },
+        { name: "db\\land_units_tables\\data", buffer: Buffer.from([0, 1, 2]) },
+      ],
+      metadata,
+    );
     const request = {
       operation: "localization_lookup",
       packPaths: [pack],
@@ -275,11 +303,16 @@ describe("localization and unit lookups", () => {
     const uncached = await executeAutomationRequest(request, context());
     const cache = createAutomationCacheService({ schemaFingerprint: "lookup-fixture-v1" });
     try {
-      expect(await executeAutomationRequest(request, createAutomationContext({
-        schemaProvider: async () => definitions,
-        readRoots: [root],
-        cache,
-      }))).toEqual(uncached);
+      expect(
+        await executeAutomationRequest(
+          request,
+          createAutomationContext({
+            schemaProvider: async () => definitions,
+            readRoots: [root],
+            cache,
+          }),
+        ),
+      ).toEqual(uncached);
     } finally {
       await cache.close();
     }
@@ -368,11 +401,16 @@ describe("localization and unit lookups", () => {
     const uncachedResponse = await executeAutomationRequest(unitRequest, context());
     const cache = createAutomationCacheService({ schemaFingerprint: "unit-fixture-v1" });
     try {
-      expect(await executeAutomationRequest(unitRequest, createAutomationContext({
-        schemaProvider: async () => definitions,
-        readRoots: [root],
-        cache,
-      }))).toEqual(uncachedResponse);
+      expect(
+        await executeAutomationRequest(
+          unitRequest,
+          createAutomationContext({
+            schemaProvider: async () => definitions,
+            readRoots: [root],
+            cache,
+          }),
+        ),
+      ).toEqual(uncachedResponse);
     } finally {
       await cache.close();
     }

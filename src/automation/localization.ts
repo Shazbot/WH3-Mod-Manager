@@ -76,7 +76,10 @@ export const loadLocalization = async (environment: ReferenceEnvironment): Promi
   const vanillaProviders = environment.providers.filter((provider) => provider.kind === "vanilla");
   let vanillaLease: RawLocalizationLookupLease | undefined;
   if (environment.context.cacheRequest && vanillaProviders.length) {
-    vanillaLease = await environment.context.cacheRequest.getVanillaRawLoc(vanillaProviders.map((provider) => provider.pack.path), "packIndex");
+    vanillaLease = await environment.context.cacheRequest.getVanillaRawLoc(
+      vanillaProviders.map((provider) => provider.pack.path),
+      "packIndex",
+    );
   }
 
   const readProviders = async (
@@ -100,7 +103,8 @@ export const loadLocalization = async (environment: ReferenceEnvironment): Promi
         }
         try {
           const loaded = await readAutomationReadonlyTable(provider.pack, entry, environment.context);
-          if (!loaded.isLoc) throw new AutomationError("VALIDATION", "Packed localization entry did not decode as a LOC table");
+          if (!loaded.isLoc)
+            throw new AutomationError("VALIDATION", "Packed localization entry did not decode as a LOC table");
           for (let index = 0; index < loaded.rows.length; index++) {
             throwIfAborted(environment.context.signal);
             const row = loaded.rows[index];
@@ -114,7 +118,8 @@ export const loadLocalization = async (environment: ReferenceEnvironment): Promi
             });
           }
         } catch (error) {
-          if (error instanceof AutomationError && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code)) throw error;
+          if (error instanceof AutomationError && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code))
+            throw error;
           environment.complete = false;
           environment.diagnostics.push({
             code: "INVALID_LOC_FILE",
@@ -128,7 +133,10 @@ export const loadLocalization = async (environment: ReferenceEnvironment): Promi
   };
 
   if (!vanillaLease) await readProviders(vanillaProviders, vanillaFallback);
-  await readProviders(environment.providers.filter((provider) => provider.kind === "mod"), modOverlay);
+  await readProviders(
+    environment.providers.filter((provider) => provider.kind === "mod"),
+    modOverlay,
+  );
 
   const getRaw = (key: string): RawLocalizationEntry | undefined =>
     modOverlay.get(key) ?? vanillaLease?.lookup.getRaw(key) ?? vanillaFallback.get(key);
@@ -245,7 +253,14 @@ export const runLocalizationLookup = async (
     if (loc) matches.set(loc.locKey, { ...loc, dbReferences: [] });
   } else if (request.searchBy !== "dbKey") {
     await locs.forEachEntry((loc) => {
-      if (matchesLookup(request.searchBy === "text" ? loc.text : loc.locKey, request.query, request.match, request.caseSensitive)) {
+      if (
+        matchesLookup(
+          request.searchBy === "text" ? loc.text : loc.locKey,
+          request.query,
+          request.match,
+          request.caseSensitive,
+        )
+      ) {
         matches.set(loc.locKey, { ...loc, dbReferences: [] });
       }
     });

@@ -114,7 +114,9 @@ export const runUnitResolve = async (request: z.output<typeof unitResolveSchema>
     data[table] = await loadEffectiveDbRows(environment, `db\\${table}_tables`);
   }
   const optionalModelTables = new Set<TableName>(["warscape_animated", "warscape_animated_lod"]);
-  const missingTables = tables.filter((table) => !optionalModelTables.has(table) && !environment.dbFiles.has(`db\\${table}_tables`));
+  const missingTables = tables.filter(
+    (table) => !optionalModelTables.has(table) && !environment.dbFiles.has(`db\\${table}_tables`),
+  );
   if (missingTables.length) environment.complete = false;
   if (missingTables.includes("main_units") || missingTables.includes("land_units")) {
     environment.complete = false;
@@ -188,9 +190,11 @@ export const runUnitResolve = async (request: z.output<typeof unitResolveSchema>
     if (!engine || !rawModel || rawModel === ".") return null;
     if (/\.(?:rigid_model_v2|wsmodel|variantmeshdefinition)$/i.test(rawModel)) {
       const resolved = resolveReferenceAsset(environment, rawModel, false);
-      const loadMode = rawModel.toLowerCase().endsWith(".rigid_model_v2") ? "direct" as const
-        : rawModel.toLowerCase().endsWith(".wsmodel") ? "wsmodel" as const
-          : "assetReference" as const;
+      const loadMode = rawModel.toLowerCase().endsWith(".rigid_model_v2")
+        ? ("direct" as const)
+        : rawModel.toLowerCase().endsWith(".wsmodel")
+          ? ("wsmodel" as const)
+          : ("assetReference" as const);
       return {
         loadMode,
         sourceField: "model",
@@ -198,13 +202,26 @@ export const runUnitResolve = async (request: z.output<typeof unitResolveSchema>
         path: resolved.path,
         status: resolved.status,
         ...(resolved.winner ? { packPath: resolved.winner.provider.pack.path } : {}),
-        ...(resolved.shadowed?.length ? { shadowed: resolved.shadowed.map(({ provider, entry }) => ({ packPath: provider.pack.path, filePath: entry.name })) } : {}),
+        ...(resolved.shadowed?.length
+          ? {
+              shadowed: resolved.shadowed.map(({ provider, entry }) => ({
+                packPath: provider.pack.path,
+                filePath: entry.name,
+              })),
+            }
+          : {}),
         evidence: rowEvidence(engine),
       };
     }
     const animated = find("warscape_animated", "key", rawModel);
     if (!animated) {
-      return { loadMode: "battlefieldEngineModel" as const, sourceField: "model", value: rawModel, status: "missingAnimatedRow", evidence: rowEvidence(engine) };
+      return {
+        loadMode: "battlefieldEngineModel" as const,
+        sourceField: "model",
+        value: rawModel,
+        status: "missingAnimatedRow",
+        evidence: rowEvidence(engine),
+      };
     }
     const lodRows = filter("warscape_animated_lod", "animated", text(animated, "key"));
     const lods = lodRows.map((lod) => {
@@ -222,7 +239,12 @@ export const runUnitResolve = async (request: z.output<typeof unitResolveSchema>
       loadMode: "battlefieldEngineModel" as const,
       sourceField: "model",
       value: rawModel,
-      status: lods.length && lods.every((lod) => lod.status === "found") ? "found" as const : lods.length ? "incomplete" as const : "missingLodRows" as const,
+      status:
+        lods.length && lods.every((lod) => lod.status === "found")
+          ? ("found" as const)
+          : lods.length
+            ? ("incomplete" as const)
+            : ("missingLodRows" as const),
       evidence: rowEvidence(engine),
       animated: rowEvidence(animated),
       lods,
@@ -273,7 +295,11 @@ export const runUnitResolve = async (request: z.output<typeof unitResolveSchema>
     const engineModel = engineModelFor(engine);
     if (mountKey && !mount) issues.push({ code: "MISSING_MOUNT", message: `Mount ${mountKey} was not resolved` });
     if (engineKey && !engine) issues.push({ code: "MISSING_ENGINE", message: `Engine ${engineKey} was not resolved` });
-    if (engineModel && engineModel.status !== "found") issues.push({ code: "UNRESOLVED_ENGINE_MODEL", message: `Engine ${engineKey} model chain has status ${engineModel.status}` });
+    if (engineModel && engineModel.status !== "found")
+      issues.push({
+        code: "UNRESOLVED_ENGINE_MODEL",
+        message: `Engine ${engineKey} model chain has status ${engineModel.status}`,
+      });
     const buildings = filter("building_units_allowed", "unit", mainKey).map((row) => ({
       ...rowEvidence(row),
       cultureVariants: bounded(filter("building_culture_variants", "building", text(row, "building")).map(rowEvidence)),
@@ -323,7 +349,11 @@ export const runUnitResolve = async (request: z.output<typeof unitResolveSchema>
     const extraEngines = filter("land_units_to_extra_engines", "land_unit", landKey).map((row) => {
       const extra = find("battlefield_engines", "key", text(row, "battle_engine"));
       const model = engineModelFor(extra);
-      if (model && model.status !== "found") issues.push({ code: "UNRESOLVED_EXTRA_ENGINE_MODEL", message: `Extra engine ${text(row, "battle_engine")} model chain has status ${model.status}` });
+      if (model && model.status !== "found")
+        issues.push({
+          code: "UNRESOLVED_EXTRA_ENGINE_MODEL",
+          message: `Extra engine ${text(row, "battle_engine")} model chain has status ${model.status}`,
+        });
       return { evidence: rowEvidence(row), ...(extra ? { engine: rowEvidence(extra), model } : { missing: true }) };
     });
     if (issues.length) environment.complete = false;
@@ -352,7 +382,9 @@ export const runUnitResolve = async (request: z.output<typeof unitResolveSchema>
       visuals: {
         variants: bounded(variants),
         mount: mount ? { ...rowEvidence(mount), variant: variantsFor(text(mount, "variant")) } : null,
-        engine: engine ? { ...rowEvidence(engine), variant: variantsFor(text(engine, "variant")), model: engineModel } : null,
+        engine: engine
+          ? { ...rowEvidence(engine), variant: variantsFor(text(engine, "variant")), model: engineModel }
+          : null,
         extraEngines: bounded(extraEngines),
       },
       characters: {
