@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { z } from "zod";
+import { vanillaInputs, discoverGameDataPath } from "./vanilla";
 import { getSupportedVisualReferenceDetails, type VisualReferenceDetail } from "../visuals/dependencies";
 import { toVariantMeshDefinitionPath } from "../visuals/paths";
 import { getFilenameRelativePathMatch, parseFilenameRelativePaths } from "../utility/filenameRelativePaths";
@@ -36,8 +37,7 @@ const referenceBounds = {
 export const assetResolveReferencesSchema = z.object({
   operation: z.literal("asset_resolve_references"),
   packPaths: z.array(z.string().min(1)).min(1).max(512),
-  vanillaPackPaths: z.array(z.string().min(1)).max(512).optional(),
-  gameDataPath: z.string().min(1).optional(),
+  ...vanillaInputs,
   roots: z.array(z.union([z.string().min(1), dbRootSchema])).min(1).max(1000),
   traversal: z.enum(["direct", "recursive"]).default("recursive"),
   ...referenceBounds,
@@ -46,8 +46,7 @@ export const assetResolveReferencesSchema = z.object({
 export const assetFindReferencesSchema = z.object({
   operation: z.literal("asset_find_references"),
   packPaths: z.array(z.string().min(1)).min(1).max(512),
-  vanillaPackPaths: z.array(z.string().min(1)).max(512).optional(),
-  gameDataPath: z.string().min(1).optional(),
+  ...vanillaInputs,
   targetPath: z.string().min(1),
   maxNodes: z.number().int().min(1).max(10000).default(10000),
   maxEdges: z.number().int().min(1).max(50000).default(50000),
@@ -126,14 +125,18 @@ export const prepareReferenceEnvironment = async (
   modPackPaths: readonly string[],
   explicitVanillaPackPaths: readonly string[] = [],
   gameDataPath?: string,
+  withVanilla = false,
 ): Promise<ReferenceEnvironment> => {
+  gameDataPath ??= withVanilla ? await discoverGameDataPath(context) : undefined;
   const diagnostics: AutomationDiagnostic[] = [];
   const vanillaPaths = [...explicitVanillaPackPaths];
   const manifestPaths: string[] = [];
   if (gameDataPath) {
     const dataPath = await context.policy.assertReadPath(gameDataPath);
     const manifest = await context.policy.readFile(path.join(dataPath, "manifest.txt"));
-    for (const name of parseManifestPackNames(manifest.bytes.toString("utf8"))) {
+    const names = parseManifestPackNames(manifest.bytes.toString("utf8"));
+    if (!names.length) throw new AutomationError("VALIDATION", `No base game packs listed in ${manifest.path}`);
+    for (const name of names) {
       const safeName = validateManifestPackName(name);
       const resolved = path.resolve(dataPath, safeName);
       const relative = path.relative(dataPath, resolved);
@@ -1034,7 +1037,7 @@ const previewPage = <T>(items: readonly T[], offset: number, limit: number) => (
 });
 
 export const runAssetResolveReferences = async (request: ResolveRequest, context: AutomationContext) => {
-  const environment = await prepareReferenceEnvironment(context, request.packPaths, request.vanillaPackPaths, request.gameDataPath);
+  const environment = await prepareReferenceEnvironment(context, request.packPaths, request.vanillaPackPaths, request.gameDataPath, request.withVanilla);
   const roots: ReferenceGraphRoot[] = request.roots.map((root) => typeof root === "string"
     ? (() => {
         const normalized = normalizeInternalPackPath(root);
@@ -1063,7 +1066,7 @@ export const runAssetResolveReferences = async (request: ResolveRequest, context
 };
 
 export const runAssetFindReferences = async (request: FindRequest, context: AutomationContext) => {
-  const environment = await prepareReferenceEnvironment(context, request.packPaths, request.vanillaPackPaths, request.gameDataPath);
+  const environment = await prepareReferenceEnvironment(context, request.packPaths, request.vanillaPackPaths, request.gameDataPath, request.withVanilla);
   const targetPath = normalizeInternalPackPath(request.targetPath);
   const builder = new ReferenceGraphBuilder(environment, {
     traversal: "direct",

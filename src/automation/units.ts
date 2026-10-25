@@ -105,6 +105,7 @@ export const runUnitResolve = async (request: z.output<typeof unitResolveSchema>
     request.packPaths,
     request.vanillaPackPaths,
     request.gameDataPath,
+    request.withVanilla,
   );
   const locs = await loadLocalization(environment);
   const data = {} as Record<TableName, EffectiveDbRow[]>;

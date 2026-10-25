@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import { z } from "zod";
+import { vanillaInputs } from "./vanilla";
 import { resolveTextReplacements, stripGameMarkup } from "../utility/localizationText";
 import { getLocKeyColumns } from "../utility/locKeyGeneration";
 import { normalizePackFilePathKey } from "../utility/packFilePathUtils";
@@ -17,8 +18,7 @@ import type { AutomationContext } from "./operations";
 
 export const lookupInputs = {
   packPaths: z.array(z.string().min(1)).min(1).max(512),
-  vanillaPackPaths: z.array(z.string().min(1)).max(512).optional(),
-  gameDataPath: z.string().min(1).optional(),
+  ...vanillaInputs,
   query: z.string().min(1).max(2048),
   match: z.enum(["exact", "contains"]).default("exact"),
   caseSensitive: z.boolean().default(false),
@@ -236,6 +236,7 @@ export const runLocalizationLookup = async (
     request.packPaths,
     request.vanillaPackPaths,
     request.gameDataPath,
+    request.withVanilla,
   );
   const locs = await loadLocalization(environment);
   const matches = new Map<string, LocalizationEntry & { dbReferences: unknown[] }>();

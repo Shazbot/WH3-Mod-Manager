@@ -14,7 +14,7 @@ const rootHelp = `Usage:
   whmm pack search <packPath> <query> [--max-results <number>]
   whmm pack create <outputPath> [--input <jsonFile>]
   whmm pack write <packPath> --output <outputPath> --input <jsonFile>
-  whmm pack validate <packPath> [--full-payloads] [--input <jsonFile>]
+  whmm pack validate <packPath> [--full-payloads] [--with-vanilla] [--game-data <directory>] [--input <jsonFile>]
   whmm pack clone <packPath> --output <outputPath>
   whmm pack diff <beforePath> <afterPath> [--details]
   whmm pack subset <sourcePackPath> --include <glob> --output <outputPath> [--input <jsonFile>]
@@ -39,6 +39,8 @@ Flags:
   --closure <mode>     Subset closure: none, direct, or transitive
   --mode <mode>        Subset mode: external or selfContained
   --strict             Reject incomplete requested closure
+  --with-vanilla       Resolve against base game packs from manifest.txt
+  --game-data <dir>    Game data directory (otherwise WHMM_GAME_DATA_PATH or WHMM config)
   --include-vanilla    Copy vanilla dependencies in selfContained mode
   --details            Include bounded semantic file-diff details
   --semantic-offset    Semantic detail offset (default 0)
@@ -82,6 +84,8 @@ const options = {
   mode: { type: "string" as const },
   strict: { type: "boolean" as const },
   "no-strict": { type: "boolean" as const },
+  "with-vanilla": { type: "boolean" as const },
+  "game-data": { type: "string" as const },
   "include-vanilla": { type: "boolean" as const },
   "extract-to": { type: "string" as const },
   "pack-type": { type: "string" as const },
@@ -153,6 +157,14 @@ const buildRequest = async (
   if (limit !== undefined) common.limit = limit;
 
   const [group, action, first, second, third] = command;
+  if (values["with-vanilla"] !== undefined || values["game-data"] !== undefined) {
+    const supportsVanilla = (group === "pack" && ["validate", "subset"].includes(action)) ||
+      (group === "asset" && ["resolve", "references", "materials"].includes(action)) ||
+      (group === "loc" && action === "lookup") || (group === "unit" && action === "resolve");
+    if (!supportsVanilla) throw new AutomationError("INVALID_ARGUMENT", "--with-vanilla and --game-data require validate, subset, asset, loc lookup, or unit resolve");
+    if (values["with-vanilla"] !== undefined) common.withVanilla = values["with-vanilla"];
+    if (values["game-data"] !== undefined) common.gameDataPath = values["game-data"];
+  }
   if (group === "rigid" && action === "inspect") {
     ensurePositionals(command, 4);
     return {

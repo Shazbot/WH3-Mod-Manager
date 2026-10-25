@@ -194,6 +194,51 @@ const textureSet = (part: ReturnType<typeof parseRmv2>["lods"][number]["parts"][
   part.textures?.map((texture) => [texture.typeId, texture.path]);
 
 describe("RMV2 diff, validation, and patch operations", () => {
+  it("validates embedded textures against manifest packs with mods taking priority", async () => {
+    const internalPath = "models\\manifest.rigid_model_v2";
+    const vanilla = await writePack("base-textures.pack", [
+      { name: "textures\\diffuse.dds", buffer: Buffer.from("base") },
+      { name: "textures\\spec.dds", buffer: Buffer.from("base") },
+      { name: "textures\\gloss.dds", buffer: Buffer.from("base") },
+    ]);
+    // A stray pack in data is deliberately omitted from the manifest.
+    await writePack("stray-mod.pack", [{ name: "textures\\diffuse.dds", buffer: Buffer.from("stray") }]);
+    writeFileSync(path.join(tempRoot, "manifest.txt"), `${path.basename(vanilla)}\t123\n`);
+    const mod = await writePack("manifest-mod.pack", [{ name: internalPath, buffer: buildModel({ lods: [[{}]] }) }]);
+    const missing = expectData<{ unresolvedRigidTextureCount: number }>(
+      await executeAutomationRequest({ operation: "pack_validate", packPath: mod }),
+    );
+    expect(missing.unresolvedRigidTextureCount).toBe(3);
+    const result = expectData<{
+      valid: boolean;
+      validationComplete: boolean;
+      unresolvedRigidTextureCount: number;
+      textureResolutionPacks: Array<{ path: string; kind: string }>;
+    }>(
+      await executeAutomationRequest({
+        operation: "pack_validate",
+        packPath: mod,
+        withVanilla: true,
+        gameDataPath: tempRoot,
+      }),
+    );
+    expect(result).toMatchObject({ valid: true, validationComplete: true, unresolvedRigidTextureCount: 0 });
+    expect(result.textureResolutionPacks).toEqual([
+      { path: vanilla, kind: "vanilla" },
+      { path: mod, kind: "mod" },
+    ]);
+    // Exercise the same discovery path through the actual CLI adapter.
+    const { main } = await import("../../src/cli/main");
+    const stdout: string[] = [];
+    expect(
+      await main(["pack", "validate", mod, "--with-vanilla", "--game-data", tempRoot, "--format", "json"], {
+        stdout: (value) => stdout.push(value),
+        stderr: () => undefined,
+      }),
+    ).toBe(0);
+    expect(JSON.parse(stdout.join("")).data.unresolvedRigidTextureCount).toBe(0);
+  });
+
   it("reports bounded semantic LOD, part, geometry, material, texture, and parameter differences", async () => {
     const internalPath = "models\\semantic.rigid_model_v2";
     const beforeModel = buildModel({ lods: [[{}]], trailing: Buffer.from([1]) });

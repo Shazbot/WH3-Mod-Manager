@@ -149,8 +149,13 @@ describe("WH3 MCP stdio server", () => {
         properties: { sourcePackPaths: { type: "array" }, outputPath: { type: "string" } },
       });
       expect(listed.tools.find((tool) => tool.name === "pack_validate")?.inputSchema).toMatchObject({
-        properties: { packPaths: { type: "array" }, vanillaPackPaths: { type: "array" } },
+        properties: { packPaths: { type: "array" }, vanillaPackPaths: { type: "array" }, withVanilla: { type: "boolean" }, gameDataPath: { type: "string" } },
       });
+      for (const name of ["pack_subset", "asset_resolve_references", "asset_find_references", "asset_materials", "localization_lookup", "unit_resolve"]) {
+        expect(listed.tools.find(tool => tool.name === name)?.inputSchema).toMatchObject({
+          properties: { withVanilla: { type: "boolean" }, gameDataPath: { type: "string" } },
+        });
+      }
       expect(listed.tools.find((tool) => tool.name === "rigid_inspect")?.inputSchema).toMatchObject({
         properties: { packPath: { type: "string" }, filePath: { type: "string" }, textureSlotsOnly: { type: "boolean" } },
       });
@@ -163,6 +168,27 @@ describe("WH3 MCP stdio server", () => {
         properties: { edits: { type: "array" }, overwrite: { type: "boolean" } },
       });
       expect(listed.tools.find((tool) => tool.name === "rigid_patch")?.description).toContain("single-model MOD pack");
+    } finally {
+      await session.close();
+    }
+  });
+
+  it("includes manifest packs through MCP and the built CLI without an input file", async () => {
+    const dataRoot = path.join(allowedRoot, "vanilla-game-data");
+    mkdirSync(dataRoot);
+    const basePath = path.join(dataRoot, "base.pack");
+    const modPath = path.join(allowedRoot, "vanilla-check-mod.pack");
+    await writeRawPack(basePath, [{ name: "textures\\base.dds", buffer: Buffer.from("base") }], metadata());
+    await writeRawPack(modPath, [], metadata());
+    writeFileSync(path.join(dataRoot, "manifest.txt"), "base.pack\t123\n");
+    const session = await connect();
+    try {
+      const result = await session.client.callTool({ name: "pack_validate", arguments: { packPath: modPath, withVanilla: true, gameDataPath: dataRoot } });
+      const content = result.content as Array<{ type: string; text?: string }>;
+      const response = JSON.parse(content.find(item => item.type === "text")!.text!);
+      expect(response).toMatchObject({ ok: true, data: { valid: true, textureResolutionPacks: [{ path: basePath, kind: "vanilla" }, { path: modPath, kind: "mod" }] } });
+      const cli = JSON.parse(execFileSync(process.execPath, [cliEntry, "pack", "validate", modPath, "--with-vanilla", "--game-data", dataRoot, "--format", "json"], { encoding: "utf8" }));
+      expect(cli).toEqual(response);
     } finally {
       await session.close();
     }

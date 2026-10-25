@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
 import { z } from "zod";
+import { vanillaInputs } from "./vanilla";
 import { parseRmv2, Rmv2CodecError } from "../packCore";
 import { decodePackedTextBuffer } from "../utility/packFileViewing";
 import { normalizePackFilePathKey } from "../utility/packFilePathUtils";
@@ -23,8 +24,7 @@ export const assetMaterialsSchema = z
   .object({
     operation: z.literal("asset_materials"),
     packPaths: z.array(z.string().min(1)).min(1).max(512),
-    vanillaPackPaths: z.array(z.string().min(1)).max(512).optional(),
-    gameDataPath: z.string().min(1).optional(),
+    ...vanillaInputs,
     assetPaths: z.array(z.string().min(1)).min(1).max(1000).optional(),
     unitKey: z.string().min(1).optional(),
     maxDepth: z.number().int().min(0).max(32).default(32),
@@ -375,6 +375,7 @@ export const runAssetMaterials = async (request: MaterialsRequest, context: Auto
     request.packPaths,
     request.vanillaPackPaths,
     request.gameDataPath,
+    request.withVanilla,
   );
   const roots: ReferenceGraphRoot[] = [];
   const rootContexts = new Map<string, ExplicitRootContext[]>();
@@ -405,6 +406,7 @@ export const runAssetMaterials = async (request: MaterialsRequest, context: Auto
     const unitRequest = unitResolveSchema.parse({
       operation: "unit_resolve",
       packPaths: request.packPaths,
+      withVanilla: request.withVanilla,
       ...(request.vanillaPackPaths ? { vanillaPackPaths: request.vanillaPackPaths } : {}),
       ...(request.gameDataPath ? { gameDataPath: request.gameDataPath } : {}),
       query: request.unitKey,

@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { XMLValidator } from "fast-xml-parser";
 import { z } from "zod";
+import { vanillaInputs } from "./vanilla";
 import type { Field } from "../packFileTypes";
 import { parseDBTablePath } from "../utility/packFileHelpers";
 import { decodePackedTextBuffer, isTextPackedFilePath } from "../utility/packFileViewing";
@@ -140,7 +141,7 @@ export const operationSchemas = {
   pack_validate: z.object({
     operation: z.literal("pack_validate"), packPath: z.string().min(1), fullPayloads: z.boolean().default(false),
     packPaths: z.array(z.string().min(1)).max(512).optional(),
-    vanillaPackPaths: z.array(z.string().min(1)).max(512).optional(),
+    ...vanillaInputs,
     reportPath: z.string().min(1).optional(),
   }).strict(),
   pack_clone: z.object({
@@ -732,7 +733,7 @@ const runValidate: OperationHandler<"pack_validate"> = async (request, context) 
   );
   const vanillaPackPaths = uniqueProviders.filter((provider) => provider.kind === "vanilla").map((provider) => provider.path);
   const supportingPackPaths = uniqueProviders.filter((provider) => provider.kind === "mod").map((provider) => provider.path);
-  const referenceEnvironment = await prepareReferenceEnvironment(context, [...supportingPackPaths, pack.path], vanillaPackPaths);
+  const referenceEnvironment = await prepareReferenceEnvironment(context, [...supportingPackPaths, pack.path], vanillaPackPaths, request.gameDataPath, request.withVanilla);
   const diagnostics: AutomationDiagnostic[] = [];
   const seenPaths = new Set<string>();
   let validatedEntries = 0;

@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 import { z } from "zod";
+import { vanillaInputs } from "./vanilla";
 import { parseDBTablePath } from "../utility/packFileHelpers";
 import { normalizePackFilePathKey } from "../utility/packFilePathUtils";
 import { readPackIndex, rewriteDbTableRows, writeRawPack, type CorePack, type CorePackEntry, type RawPackWriteEntry } from "../packCore";
@@ -35,8 +36,7 @@ export const packSubsetSchema = z.object({
   sourcePackPaths: z.array(z.string().min(1)).min(1).max(512),
   /** Complete low-to-high mod load order. Every sourcePackPath must occur here. */
   packPaths: z.array(z.string().min(1)).min(1).max(512).optional(),
-  vanillaPackPaths: z.array(z.string().min(1)).max(512).optional(),
-  gameDataPath: z.string().min(1).optional(),
+  ...vanillaInputs,
   paths: z.array(z.string().min(1)).max(10000).default([]),
   prefixes: z.array(z.string().min(1)).max(1000).default([]),
   globs: z.array(z.string().min(1)).max(1000).default([]),
@@ -184,7 +184,7 @@ const rowJsonKey = (row: EffectiveDbRow): Record<string, unknown> => Object.from
 
 export const runPackSubset = async (request: SubsetRequest, context: AutomationContext) => {
   const modLoadOrder = request.packPaths ?? request.sourcePackPaths;
-  const environment = await prepareReferenceEnvironment(context, modLoadOrder, request.vanillaPackPaths, request.gameDataPath);
+  const environment = await prepareReferenceEnvironment(context, modLoadOrder, request.vanillaPackPaths, request.gameDataPath, request.withVanilla);
   const canonicalSourcePaths = await Promise.all(request.sourcePackPaths.map((sourcePath) => context.policy.assertReadPath(sourcePath)));
   const sourceProviderPaths = new Set(canonicalSourcePaths.map(canonicalAbsolute));
   const providersByPath = new Map(environment.providers.map((provider) => [canonicalAbsolute(provider.pack.path), provider]));
@@ -527,7 +527,7 @@ export const runPackSubset = async (request: SubsetRequest, context: AutomationC
   const manifest = {
     sourcePackPaths: request.sourcePackPaths,
     packPaths: modLoadOrder,
-    vanillaPackPaths: request.vanillaPackPaths ?? [],
+    vanillaPackPaths: environment.providers.filter((provider) => provider.kind === "vanilla").map((provider) => provider.pack.path),
     closure: request.closure,
     mode: request.mode,
     roots: {

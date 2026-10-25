@@ -18,9 +18,20 @@ node dist/cli/main.js pack read /absolute/path/to/example.pack scripts/example.l
 
 Globs match complete internal paths. `*.dds` matches only root-level files; use `**/*.dds` to find DDS files in nested folders too. Quote glob patterns so your shell passes them to the CLI unchanged. Use forward slashes in patterns even when the returned pack paths contain backslashes.
 
+Use `--with-vanilla` on commands that resolve supporting assets: `pack validate`, `pack subset`, `asset resolve`, `asset references`, `asset materials`, `loc lookup`, and `unit resolve`. For example, validate a mod whose textures are supplied by the base game without writing an input JSON file:
+
+```sh
+node dist/cli/main.js pack validate /mods/example.pack --with-vanilla --format json
+node dist/cli/main.js pack validate /mods/example.pack --with-vanilla --game-data '/games/Total War WARHAMMER III/data' --format json
+```
+
+Game data discovery uses, in order, `--game-data` (`gameDataPath` in JSON/MCP), `WHMM_GAME_DATA_PATH`, then the WH3 data folder saved in WHMM's user configuration (`wh3mm/config.json` under the platform application config directory). If discovery fails, supply the directory explicitly. A supplied `gameDataPath` also loads the manifest without requiring the flag. No Steam library scan is performed. Under WSL, use paths readable by WSL; a Windows-configured game path may need an explicit WSL path.
+
+Only packs listed in that directory's `manifest.txt` are included, in manifest order; unrelated mod packs in the data directory are excluded. Explicit `vanillaPackPaths` precede the manifest packs, supporting mods take priority over vanilla, and the target of `pack validate` remains highest. Missing or empty manifests fail explicitly. MCP and JSON requests use `"withVanilla": true` with the same discovery and filesystem permissions; configured read roots must allow the config (for saved-path discovery), manifest, and base game packs. The flag adds resolution providers; subset copying still requires `--include-vanilla` in `selfContained` mode. Other command-specific fields still use `--input` as before.
+
 The CLI defaults to readable text. Use `--format json` for the full `{ ok, data, diagnostics }` or `{ ok: false, error }` envelope; result data goes to stdout and diagnostics go to stderr. Exit codes are `0` success, `1` unexpected error, `2` invalid arguments, `3` I/O or access failure, `4` unsupported operation/format, `5` validation or conflict, and `130` cancellation.
 
-Use `--input <json-file>` for complex requests. The file contains operation fields; the command supplies the operation name and positional pack/table paths. Use it with `pack validate` to supply supporting `packPaths` and `vanillaPackPaths`. For example, `pack table query` accepts:
+Use `--input <json-file>` for complex requests. The file contains operation fields; the command supplies the operation name and positional pack/table paths. Use it with `pack validate` to supply supporting `packPaths` and `vanillaPackPaths`, or use `--with-vanilla` to include base game packs automatically. For example, `pack table query` accepts:
 
 ```json
 {
@@ -210,7 +221,7 @@ Direct loads use embedded RMV2 materials; WSModel loads use their explicit LOD/p
 
 `pack diff --details` includes bounded RMV2 semantic records for LODs, parts, material types, geometry, textures, and parameters. The geometry counters report changed vertices, positions, UV vertex/channel pairs, and indices. Texture records pair by numeric slot ID and occurrence, with before/after array indexes retained as evidence; additions and removals are paged with the other semantic records. Use `--semantic-offset`, `--semantic-limit`, or `--report` for additional records.
 
-`pack validate` always parses RMV2 structure, even when `--full-payloads` is omitted. Malformed structure is an error; unsupported models or parts are warnings and make `validationComplete` false. `unresolvedRigidTextureCount` counts missing or ambiguous embedded texture paths. To resolve those paths in a declared load order, pass a JSON input containing `vanillaPackPaths` and `packPaths`; each list is ordered from lower to higher priority, supporting packs take priority over vanilla packs, and the validated target pack is highest. Duplicate provider paths retain their last occurrence and highest role. A warning that WS material bindings are unused is emitted only when a direct loader and a valid explicit WS geometry/LOD/part/material binding both point to the same RMV2 model; matching filenames alone do not establish a binding.
+`pack validate` always parses RMV2 structure, even when `--full-payloads` is omitted. Malformed structure is an error; unsupported models or parts are warnings and make `validationComplete` false. `unresolvedRigidTextureCount` counts missing or ambiguous embedded texture paths. To resolve those paths against the base game, use `--with-vanilla` (optionally `--game-data <directory>`). For an explicit load order, pass a JSON input containing `vanillaPackPaths` and `packPaths`; each list is ordered from lower to higher priority, supporting packs take priority over vanilla packs, and the validated target pack is highest. Duplicate provider paths retain their last occurrence and highest role. A warning that WS material bindings are unused is emitted only when a direct loader and a valid explicit WS geometry/LOD/part/material binding both point to the same RMV2 model; matching filenames alone do not establish a binding.
 
 ```json
 {
@@ -306,7 +317,7 @@ The unit result includes:
 
 Campaign data is **rule evidence**, not a guarantee that a faction can recruit the unit in the current campaign. Scripts, alliances, unlocks, current buildings, and campaign state are not evaluated. Conditional character-art rows are candidates, not a claim of authoritative art selection. Native host scenario scaling, live/dead presence, rigid internals, geometry, LOD, texture, atlas, and performance checks are not run by this operation.
 
-Nested unit details default to 100 (`detailLimit`, maximum 1000) with totals and truncation flags. JSON reports retain all matching units and nested details. Supply the relevant vanilla DB and localization packs for useful coverage; missing tables or unresolved unit visuals make the report incomplete. No language or game-install discovery is performed.
+Nested unit details default to 100 (`detailLimit`, maximum 1000) with totals and truncation flags. JSON reports retain all matching units and nested details. Supply the relevant vanilla DB and localization packs for useful coverage; missing tables or unresolved unit visuals make the report incomplete. Use `--with-vanilla` to discover the saved WH3 game data path and include manifest packs. No language selection is inferred.
 
 Both operations are also registered as MCP tools with the same typed inputs and filesystem restrictions.
 
@@ -314,7 +325,7 @@ Both operations are also registered as MCP tools with the same typed inputs and 
 
 DB and LOC queries use the bundled schema and exact typed values. I64 values are decimal strings. Filters in one query are combined with AND. An explicit table version must match a known schema version; an unknown schema/version is reported as unsupported. Table patches reject unknown schemas, invalid field types, ambiguous row selectors, and duplicate resulting keys. LOC identity uses only its key column.
 
-`asset_resolve_references` and `asset_find_references` accept explicit ordered pack lists. Mod packs are ordered lowest priority to highest priority; for asset paths the last matching mod pack wins, and vanilla packs are lower priority than mods. No game install or Steam discovery is performed. A `gameDataPath` may be used to read its explicit `manifest.txt`; manifest paths are confined to that directory. Graph traversal is bounded to depth 32, 10,000 nodes, and 50,000 edges. Results mark incomplete or unsupported coverage rather than treating unknown references as missing or resolved.
+`asset_resolve_references` and `asset_find_references` accept explicit ordered pack lists. Mod packs are ordered lowest priority to highest priority; for asset paths the last matching mod pack wins, and vanilla packs are lower priority than mods. Use `withVanilla: true` or CLI `--with-vanilla` for saved-path discovery. A `gameDataPath` may be used to read its `manifest.txt`; manifest paths are confined to that directory. Graph traversal is bounded to depth 32, 10,000 nodes, and 50,000 edges. Results mark incomplete or unsupported coverage rather than treating unknown references as missing or resolved.
 
 An explicit DB file or row root uses the rows from that file's effective same-path pack provider, even when another table subfile wins cross-subfile row precedence. Outbound DB references use the effective cross-subfile rows selected by the shared normalized-filename precedence rule, matching GUI behavior.
 
