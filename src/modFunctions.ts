@@ -14,6 +14,7 @@ import { registerModThumbnailPath } from "./modThumbnailAssets";
 import { parseWorkshopSubscriptionTimes } from "./workshopSubscriptions";
 import { findSteamAppLocation, findSteamAppsFolder, findSteamInstallPath } from "./steamPaths";
 import { forkSteamWorker as fork } from "./steamWorker";
+import { ensureLegacyWorkshopPack } from "./utility/legacyWorkshopPack";
 
 const matchAuthorNameInSteamHtmlTag = /.*>(.+?)'s .*?<\/a>/;
 const matchBreadcrumbsInSteamPageHtml = /<div class="breadcrumbs">(.*?)<\/div>/s;
@@ -611,9 +612,16 @@ export async function getContentModInFolder(
     subscriptionTimes?.get(contentSubFolderName) ??
     (await getWorkshopSubscriptionTimes(appData.currentGame, log)).get(contentSubFolderName);
 
-  const files = await dumbfs.promises.readdir(contentSubfolder, {
+  let files = await dumbfs.promises.readdir(contentSubfolder, {
     withFileTypes: true,
   });
+
+  if (!files.some((file) => file.name.endsWith(".pack"))) {
+    // Legacy (Shogun 2) workshop items ship as <ugchandle>_legacy.bin; expose them as a normal pack.
+    if (await ensureLegacyWorkshopPack(contentSubfolder, contentSubFolderName, log)) {
+      files = await dumbfs.promises.readdir(contentSubfolder, { withFileTypes: true });
+    }
+  }
 
   const pack = files.find((file) => file.name.endsWith(".pack"));
   const img = files.find((file) => file.name.endsWith(".png")) ?? files.find((file) => file.name.endsWith(".jpg"));

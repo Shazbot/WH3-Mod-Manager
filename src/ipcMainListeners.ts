@@ -459,6 +459,7 @@ import hash from "object-hash";
 import { Md10K } from "react-icons/md";
 import { join } from "path";
 import { createLatestWinsQueue } from "./utility/latestWinsQueue";
+import { ensureLegacyWorkshopPack, isLegacyWorkshopBin } from "./utility/legacyWorkshopPack";
 
 declare const VIEWER_WEBPACK_ENTRY: string;
 declare const VIEWER_PRELOAD_WEBPACK_ENTRY: string;
@@ -6063,6 +6064,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     if (!contentFolder || !dataFolder || !gamePath) return;
     const isIgnoredInModFolder = (path: string, stats?: fs.Stats) =>
       /whmm_backups/.test(path) || (!!stats && !stats.isDirectory() && !path.endsWith(".pack"));
+    const isIgnoredInContentFolder = (path: string, stats?: fs.Stats) =>
+      /whmm_backups/.test(path) ||
+      (!!stats && !stats.isDirectory() && !path.endsWith(".pack") && !isLegacyWorkshopBin(path));
     if (!contentWatcher) {
       console.log("content folder:", contentFolder);
       contentWatcher = chokidar
@@ -6070,7 +6074,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           depth: 1,
           disableGlobbing: true,
           ignoreInitial: true,
-          ignored: isIgnoredInModFolder,
+          ignored: isIgnoredInContentFolder,
           awaitWriteFinish: {
             stabilityThreshold: 2000,
             pollInterval: 100,
@@ -6078,14 +6082,21 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         })
         .on("add", async (path) => {
           console.log("NEW CONTENT ADD", path);
+          if (isLegacyWorkshopBin(path)) {
+            // the created .pack link fires its own add event
+            await ensureLegacyWorkshopPack(nodePath.dirname(path), nodePath.basename(nodePath.dirname(path)), log);
+            return;
+          }
           onNewPackFound(path);
         })
         .on("unlink", async (path) => {
           console.log("NEW CONTENT UNLINK", path);
+          if (isLegacyWorkshopBin(path)) return;
           onPackDeleted(path, true);
         })
         .on("change", async (path) => {
           console.log("NEW CONTENT CHANGE", path);
+          if (isLegacyWorkshopBin(path)) return;
           await onPackChangedOnDisk(path);
         });
     }
