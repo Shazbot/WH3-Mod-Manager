@@ -758,6 +758,7 @@ const api = {
   getUnitViewerAnimationBinClips: (
     sessionId: string,
     tableName: string,
+    profile: "ground" | "rider" | "flying" | "riderFlying" = "ground",
   ): Promise<{
     success: boolean;
     clips?: string[];
@@ -765,13 +766,14 @@ const api = {
     standingClipMetadataPath?: string;
     fragmentPath?: string;
     error?: string;
-  }> => ipcRenderer.invoke("getUnitViewerAnimationBinClips", sessionId, tableName),
+  }> => ipcRenderer.invoke("getUnitViewerAnimationBinClips", sessionId, tableName, profile),
 
   getUnitViewerSkeletonAnim: (
     sessionId: string,
     assetPath: string,
   ): Promise<{
     success: boolean;
+    resolvedPath?: string;
     bones?: Array<{
       name: string;
       parent: number;

@@ -50,7 +50,7 @@ import {
   type UnitViewerTableRows,
 } from "./unitViewer/data";
 import { extractBinAnimClipPaths, pickBinStandingEntry } from "./visuals/twAnimBin";
-import { parseTwAnimSkeleton } from "./visuals/twAnimSkeleton";
+import { findTechAnimationFallback, parseTwAnimSkeleton } from "./visuals/twAnimSkeleton";
 import { loadUnitViewerDiskCache, saveUnitViewerDiskCache } from "./unitViewer/cache";
 import { buildVariantMeshCatalog, type VariantMeshCatalog } from "./visuals/variantMesh";
 import {
@@ -3675,25 +3675,31 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
   });
 
-  ipcMain.handle("getUnitViewerAnimationBinClips", async (_event, sessionId: string, tableName: string) => {
-    try {
-      const session = unitViewerSessions.get(sessionId);
-      if (!session) return { success: false, error: "Unit Viewer session expired" };
-      if (!/^[\w.-]+$/.test(tableName || "")) return { success: false, error: "Invalid animation table" };
-      const asset = await getUnitViewerAsset(session, `animations\\database\\battle\\bin\\${tableName}.bin`);
-      if (!asset) return { success: false, error: "Animation table not found" };
-      const standing = pickBinStandingEntry(asset.buffer);
-      return {
-        success: true,
-        clips: extractBinAnimClipPaths(asset.buffer),
-        standingClip: standing?.clip,
-        standingClipMetadataPath: standing?.metadataPath,
-        fragmentPath: `animations/database/battle/bin/${tableName}.bin`,
-      };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : "Failed to read animation table" };
-    }
-  });
+  ipcMain.handle(
+    "getUnitViewerAnimationBinClips",
+    async (_event, sessionId: string, tableName: string, profile = "ground") => {
+      try {
+        const session = unitViewerSessions.get(sessionId);
+        if (!session) return { success: false, error: "Unit Viewer session expired" };
+        if (!/^[\w.-]+$/.test(tableName || "")) return { success: false, error: "Invalid animation table" };
+        const asset = await getUnitViewerAsset(session, `animations\\database\\battle\\bin\\${tableName}.bin`);
+        if (!asset) return { success: false, error: "Animation table not found" };
+        if (profile !== "ground" && profile !== "rider" && profile !== "flying" && profile !== "riderFlying") {
+          return { success: false, error: "Invalid animation profile" };
+        }
+        const standing = pickBinStandingEntry(asset.buffer, profile);
+        return {
+          success: true,
+          clips: extractBinAnimClipPaths(asset.buffer),
+          standingClip: standing?.clip,
+          standingClipMetadataPath: standing?.metadataPath,
+          fragmentPath: `animations/database/battle/bin/${tableName}.bin`,
+        };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : "Failed to read animation table" };
+      }
+    },
+  );
 
   ipcMain.handle("getUnitViewerSkeletonAnim", async (_event, sessionId: string, assetPath: string) => {
     try {
@@ -3701,9 +3707,32 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       if (!session) return { success: false, error: "Unit Viewer session expired" };
       const normalizedPath = normalizePackFilePath(assetPath || "");
       if (!/\.anim$/i.test(normalizedPath)) return { success: false, error: "Not an animation path" };
-      const asset = await getUnitViewerAsset(session, normalizedPath);
+      let asset = await getUnitViewerAsset(session, normalizedPath);
+      if (!asset && /\\tech\\[^\\]+\.anim$/i.test(normalizedPath)) {
+        const folder = normalizedPath.slice(0, normalizedPath.lastIndexOf("\\") + 1);
+        const vanillaIndex = await getVanillaPackIndex();
+        const availablePaths = new Set<string>();
+        const sessionPackNames = new Set(
+          session.assetPackPaths.map((packPath) => nodePath.basename(packPath).toLowerCase()),
+        );
+        if (vanillaIndex) {
+          for (const [filePath, packName] of collectVanillaFilesUnderPrefix(vanillaIndex, folder)) {
+            if (sessionPackNames.has(packName.toLowerCase())) availablePaths.add(filePath);
+          }
+        }
+        const vanillaNames = new Set([...appData.allVanillaPackNames].map((name) => name.toLowerCase()));
+        for (const packPath of session.assetPackPaths) {
+          if (vanillaIndex && vanillaNames.has(nodePath.basename(packPath).toLowerCase())) continue;
+          const pack = await getOrLoadPackFromAppData(packPath);
+          for (const file of pack?.packedFiles ?? []) {
+            if (file.name.toLowerCase().startsWith(folder.toLowerCase())) availablePaths.add(file.name);
+          }
+        }
+        const fallbackPath = findTechAnimationFallback(normalizedPath, availablePaths);
+        if (fallbackPath) asset = await getUnitViewerAsset(session, fallbackPath);
+      }
       if (!asset) return { success: false, error: "Animation not found" };
-      return { success: true, bones: parseTwAnimSkeleton(asset.buffer) };
+      return { success: true, bones: parseTwAnimSkeleton(asset.buffer), resolvedPath: asset.resolvedPath };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : "Failed to read animation skeleton" };
     }

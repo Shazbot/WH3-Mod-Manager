@@ -1,3 +1,5 @@
+import type { AnimationSelectionProfile } from "./animationSelection";
+
 /**
  * Extracts the `.anim` clip paths an animation bin (`animations\database\battle\bin\<table>.bin`)
  * references. Bin strings are uint16 length-prefixed ASCII, so a scan for such strings ending in
@@ -39,10 +41,13 @@ export const pickStandingClip = (clips: readonly string[]): string | undefined =
   return undefined;
 };
 
-/** WH3 animation slot ids (index into the game's slot list): STAND = 1, STAND_IDLE_1..10 = 32..41. */
-const SLOT_STAND = 1;
-const SLOT_STAND_IDLE_FIRST = 32;
-const SLOT_STAND_IDLE_LAST = 41;
+/** WH3 animation slot ids from the current battle bins, including the separate rider families. */
+const STANDING_SLOTS: Record<AnimationSelectionProfile, { stand: number; idleFirst: number; idleLast: number }> = {
+  ground: { stand: 1, idleFirst: 32, idleLast: 41 },
+  flying: { stand: 87, idleFirst: 88, idleLast: 92 },
+  rider: { stand: 1706, idleFirst: 1964, idleLast: 1973 },
+  riderFlying: { stand: 1756, idleFirst: 1757, idleLast: 1761 },
+};
 
 type BinEntry = { slot: number; clips: { path: string; metadataPath: string }[] };
 
@@ -97,9 +102,12 @@ const parseBinEntries = (data: Uint8Array): BinEntry[] | undefined => {
 
 /**
  * The game's own standing idle for a bin, chosen by slot like the asset host's default resolver:
- * STAND_IDLE_1, else the lowest STAND_IDLE_n, else STAND. Clip names are never inspected.
+ * The profile's first idle slot, else its standing slot. Clip names are never inspected.
  */
-export const pickBinStandingEntry = (data: Uint8Array): { clip: string; metadataPath?: string } | undefined => {
+export const pickBinStandingEntry = (
+  data: Uint8Array,
+  profile: AnimationSelectionProfile = "ground",
+): { clip: string; metadataPath?: string } | undefined => {
   const entries = parseBinEntries(data);
   if (!entries) return undefined;
   const firstClip = (slots: (slot: number) => boolean) =>
@@ -107,9 +115,12 @@ export const pickBinStandingEntry = (data: Uint8Array): { clip: string; metadata
       .filter((entry) => slots(entry.slot) && entry.clips.some((clip) => clip.path.trim()))
       .sort((first, second) => first.slot - second.slot)[0]
       ?.clips.find((clip) => clip.path.trim());
+  const pickProfile = (family: AnimationSelectionProfile) => {
+    const { stand, idleFirst, idleLast } = STANDING_SLOTS[family];
+    return firstClip((slot) => slot >= idleFirst && slot <= idleLast) ?? firstClip((slot) => slot === stand);
+  };
   const picked =
-    firstClip((slot) => slot >= SLOT_STAND_IDLE_FIRST && slot <= SLOT_STAND_IDLE_LAST) ??
-    firstClip((slot) => slot === SLOT_STAND);
+    pickProfile(profile) ?? (profile === "riderFlying" ? pickProfile("rider") : undefined) ?? pickProfile("ground");
   if (!picked) return undefined;
   return {
     clip: picked.path.replace(/\//g, "\\").toLowerCase(),
@@ -118,4 +129,5 @@ export const pickBinStandingEntry = (data: Uint8Array): { clip: string; metadata
   };
 };
 
-export const pickBinStandingClip = (data: Uint8Array) => pickBinStandingEntry(data)?.clip;
+export const pickBinStandingClip = (data: Uint8Array, profile: AnimationSelectionProfile = "ground") =>
+  pickBinStandingEntry(data, profile)?.clip;

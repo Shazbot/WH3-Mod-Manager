@@ -13,6 +13,25 @@ export interface TwAnimBone {
 type Vec3 = [number, number, number];
 type Vec4 = [number, number, number, number];
 
+/** Shared tech skeletons can have a different appearance's filename. Only accept an unambiguous sibling. */
+export const findTechAnimationFallback = (
+  requestedPath: string,
+  availablePaths: Iterable<string>,
+): string | undefined => {
+  const normalize = (path: string) => path.replaceAll("/", "\\").toLowerCase();
+  const requested = normalize(requestedPath);
+  const folder = requested.slice(0, requested.lastIndexOf("\\") + 1);
+  if (!folder.endsWith("\\tech\\") || !requested.endsWith(".anim")) return undefined;
+  const candidates = new Set<string>();
+  for (const path of availablePaths) {
+    const normalized = normalize(path);
+    if (normalized.startsWith(folder) && /^[^\\]+\.anim$/.test(normalized.slice(folder.length))) {
+      candidates.add(normalized);
+    }
+  }
+  return candidates.size === 1 ? candidates.values().next().value : undefined;
+};
+
 class Reader {
   private offset = 0;
   private readonly view: DataView;

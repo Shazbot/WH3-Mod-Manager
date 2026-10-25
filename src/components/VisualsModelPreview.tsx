@@ -124,16 +124,17 @@ const findAttachmentNodes = (root: THREE.Object3D, name: string | undefined, fal
 
 /**
  * Standing idle of an animation bin as an export reference, or undefined when the bin is missing or has
- * none. Uses the bin's own STAND_IDLE/STAND slots and keeps that entry's fragment + metadata, which the
+ * none. Uses the bin's standing slots for the requested movement family and keeps its fragment + metadata, which the
  * host needs to dock weapons (a shared clip alone gets metadata from whichever bin the host guesses).
  * The clip-name heuristic is only a fallback for unparsable bins.
  */
 const resolveBinStandingReference = async (
   sessionId: string,
   table: string,
+  profile: AnimationSelectionProfile,
 ): Promise<VisualsModelPreviewAnimationReference | undefined> => {
   try {
-    const result = await window.api?.getUnitViewerAnimationBinClips(sessionId, table);
+    const result = await window.api?.getUnitViewerAnimationBinClips(sessionId, table, profile);
     if (!result?.success) return undefined;
     if (result.standingClip) {
       return {
@@ -2305,7 +2306,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         const preferredAnimationPath =
           result.animationDefaults?.[animationProfile]?.path ?? result.animationDefaults?.ground?.path;
         if (primaryAnimationTable && variantMeshSessionId) {
-          const binReference = await resolveBinStandingReference(variantMeshSessionId, primaryAnimationTable);
+          const binReference = await resolveBinStandingReference(
+            variantMeshSessionId,
+            primaryAnimationTable,
+            animationProfile,
+          );
           if (isCancelled) return;
           console.log("[unit viewer] part animation", {
             role: "primary",
@@ -2620,7 +2625,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             let companionReference: VisualsModelPreviewAnimationReference | undefined;
             let binReference: VisualsModelPreviewAnimationReference | undefined;
             if (companion.animationTable && variantMeshSessionId) {
-              binReference = await resolveBinStandingReference(variantMeshSessionId, companion.animationTable);
+              binReference = await resolveBinStandingReference(
+                variantMeshSessionId,
+                companion.animationTable,
+                companion.animationProfile ?? "ground",
+              );
             }
             try {
               const companionCatalog = await getVisualsModelAnimationCatalog(companion.assetPath, effectiveEnabledMods);
@@ -2737,7 +2746,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                 const tech = await window.api?.getUnitViewerSkeletonAnim(variantMeshSessionId, techAnimPath);
                 if (tech?.success && tech.bones) {
                   techBones = tech.bones;
-                  console.log("[unit viewer] engine tech anim", techAnimPath);
+                  console.log("[unit viewer] engine tech anim", tech.resolvedPath ?? techAnimPath);
                   break;
                 }
               }

@@ -1,10 +1,33 @@
 import { describe, expect, it } from "vitest";
 
-import { getUnitViewerAnimationProfile } from "../src/unitViewer/animationProfile";
+import { getPartAnimationProfile, getUnitViewerAnimationProfile } from "../src/unitViewer/animationProfile";
 
 const unit = (baseFlySpeed: number, mountFlySpeed?: number) => ({
   baseEntity: { flySpeed: baseFlySpeed },
   ...(mountFlySpeed === undefined ? {} : { mountEntity: { flySpeed: mountFlySpeed } }),
+});
+
+describe("getPartAnimationProfile", () => {
+  it("uses rider animations for personality crew seated directly on a war bear", () => {
+    expect(
+      getPartAnimationProfile({ role: "crew" }, { ...unit(0, 0), visualParts: [{ role: "crew" }, { role: "mount" }] }),
+    ).toBe("rider");
+  });
+
+  it("keeps engine crew standing when a draught mount is present", () => {
+    expect(
+      getPartAnimationProfile(
+        { role: "crew" },
+        { ...unit(0, 0), visualParts: [{ role: "crew" }, { role: "mount" }, { role: "engine" }] },
+      ),
+    ).toBe("ground");
+  });
+
+  it("uses the mount's own movement family for the mount", () => {
+    expect(getPartAnimationProfile({ role: "mount" }, unit(10, 0))).toBe("ground");
+    expect(getPartAnimationProfile({ role: "mount" }, unit(0, 10))).toBe("flying");
+    expect(getPartAnimationProfile({ role: "crew" }, unit(0, 10))).toBe("riderFlying");
+  });
 });
 
 describe("getUnitViewerAnimationProfile", () => {

@@ -1,5 +1,39 @@
 import { describe, expect, it } from "vitest";
-import { parseTwAnimSkeleton } from "../src/visuals/twAnimSkeleton";
+import { findTechAnimationFallback, parseTwAnimSkeleton } from "../src/visuals/twAnimSkeleton";
+
+describe("findTechAnimationFallback", () => {
+  const folder = "variantmeshes/wh_variantmodels/br1/ksl/ksl_bear/tech/";
+  const requested = `${folder}ksl_bear_medium_white.anim`;
+  const shared = `${folder}ksl_bear_brown_01.anim`;
+
+  it("finds the bear's shared tech skeleton despite the different appearance name", () => {
+    expect(findTechAnimationFallback(requested, [shared, `${folder}ksl_bear_brown_01.bone_inv_trans_mats`])).toBe(
+      shared.replaceAll("/", "\\"),
+    );
+  });
+
+  it("deduplicates providers and ignores nested folders and unrelated clips", () => {
+    expect(
+      findTechAnimationFallback(requested, [
+        shared,
+        shared.toUpperCase(),
+        `${folder}other/nested.anim`,
+        "elsewhere/idle.anim",
+      ]),
+    ).toBe(shared.replaceAll("/", "\\"));
+  });
+
+  it("does not guess when the folder contains multiple skeletons or no skeleton", () => {
+    expect(findTechAnimationFallback(requested, [shared, `${folder}other.anim`])).toBeUndefined();
+    expect(findTechAnimationFallback(requested, [])).toBeUndefined();
+  });
+
+  it("does not substitute ordinary battle animations", () => {
+    expect(
+      findTechAnimationFallback("animations/battle/missing.anim", ["animations/battle/idle.anim"]),
+    ).toBeUndefined();
+  });
+});
 
 const writer = () => {
   const bytes: number[] = [];
