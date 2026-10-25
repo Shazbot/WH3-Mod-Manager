@@ -15415,8 +15415,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         const maxConcurrentWrites = 8;
         const pendingWrites = new Set<Promise<void>>();
         const enqueueWrite = async (name: string, outputPath: string, contents: Buffer) => {
-          let writePromise!: Promise<void>;
-          writePromise = writeOutput(name, outputPath, contents).finally(() => {
+          const writePromise: Promise<void> = writeOutput(name, outputPath, contents).finally(() => {
             pendingWrites.delete(writePromise);
           });
           pendingWrites.add(writePromise);

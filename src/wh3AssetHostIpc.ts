@@ -781,7 +781,7 @@ const MAX_UNIT_PAINTER_TOTAL_BYTES = 256 * 1024 * 1024;
 const sanitizeUnitPainterFileName = (value: unknown, index: number) => {
   if (typeof value !== "string") return `painted_texture_${String(index + 1).padStart(2, "0")}.rgba`;
   const baseName = nodePath.basename(value.trim()).replace(/[^a-zA-Z0-9._-]+/g, "_");
-  const stem = baseName.replace(/\.rgba$/i, "").replace(/^[_\.]+|[_\.]+$/g, "");
+  const stem = baseName.replace(/\.rgba$/i, "").replace(/^[_.]+|[_.]+$/g, "");
   return `${stem || `painted_texture_${String(index + 1).padStart(2, "0")}`}.rgba`;
 };
 
