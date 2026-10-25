@@ -152,4 +152,48 @@ describe("skill data mod overlays", () => {
 
     expect(core.skills).toEqual([expect.objectContaining({ key: "skill_key", iconPath: "icon.png" })]);
   });
+
+  it("keeps a hidden effect that has no icon, so its priority is known", () => {
+    const core = applyRows({
+      effects_tables: [row({ effect: "effect_hidden", is_positive_value_good: "true", priority: "0" })],
+    });
+
+    expect(core.effectsToEffectData.effect_hidden).toEqual({
+      key: "effect_hidden",
+      icon: "",
+      isPositive: "true",
+      priority: "0",
+    });
+  });
+
+  it("keeps the lowest rank a skill is automatically granted at", () => {
+    const core = applyRows({
+      character_skills_to_level_reached_criterias_tables: [
+        row({ character_skill: "skill_mount", character_level: "7", upgrade_to_skill_level: "2" }),
+        row({ character_skill: "skill_mount", character_level: "4", upgrade_to_skill_level: "1" }),
+      ],
+    });
+
+    expect(core.skillsToAutoUnlockRank).toEqual({ skill_mount: 4 });
+  });
+
+  it("keeps ability links that change a spell, not only ones that grant it", () => {
+    const core = applyRows({
+      effect_bonus_value_unit_ability_junctions_tables: [
+        row({ effect: "effect_cooldown", bonus_value_id: "recharge_mod", unit_ability: "spell" }),
+      ],
+    });
+
+    expect(core.effectToUnitAbilityEnables.effect_cooldown).toEqual([
+      { unitAbilityKey: "spell", bonusValueId: "recharge_mod" },
+    ]);
+  });
+
+  it("stores tagged images under the path their icons are kept at", () => {
+    const core = applyRows({
+      ui_tagged_images_tables: [row({ key: "icon_magic", image_path: "UI/Campaign UI/Effect_bundles/magic.png" })],
+    });
+
+    expect(core.uiTaggedImages).toEqual({ icon_magic: "ui\\campaign ui\\effect_bundles\\magic.png" });
+  });
 });

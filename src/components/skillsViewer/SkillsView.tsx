@@ -37,6 +37,15 @@ import groupBy from "object.groupby";
 
 import "@xyflow/react/dist/style.css";
 import Skill, { SkillData } from "./Skill";
+import {
+  skillArrow,
+  skillArt,
+  skillEntry,
+  skillGroup,
+  skillGroupPad,
+  skillGroupWidth,
+  skillVariantStackY,
+} from "./skillPanelLayout";
 import { Dropdown } from "flowbite-react";
 import AddNodeModal from "./AddNodeModal";
 import { Modal } from "../../flowbite/components/Modal/index";
@@ -144,7 +153,10 @@ const GROUP_COLORS = ["#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6", "#1
 
 const AddPlaceholderNode = memo(({ data }: { data: { row: number; column: number } }) => {
   return (
-    <div className="flex items-center justify-center w-[260px] h-20 border-2 border-dashed border-transparent rounded-lg cursor-pointer hover:border-gray-500 hover:bg-gray-800/30 transition-colors group">
+    <div
+      className="flex items-center justify-center border-2 border-dashed border-transparent rounded-lg cursor-pointer hover:border-gray-500 hover:bg-gray-800/30 transition-colors group"
+      style={{ width: skillEntry.width, height: skillEntry.height }}
+    >
       <span className="text-3xl text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">+</span>
     </div>
   );
@@ -226,17 +238,70 @@ let tooltipFrame = "";
 let skillLevelLitIcon = "";
 
 skillIconBackground = require("../../assets/skills/skills_tab_ornament.png");
-skillBackground = require("../../assets/skills//tech_skills_tab_active.png");
+skillBackground = require("../../assets/skills/skills_tab_active.png");
 skillIcon = require("../../assets/skills//character_magic.png");
 arrowImg = require("../../assets/skills//parchment_divider_arrow.png");
 skillLevelImg = require("../../assets/skills//skills_tab_level_off.png");
 tooltipFrame = require("../../assets/skills//tooltip_frame.png");
 skillLevelLitIcon = require("../../assets/skills//skills_tab_level_lit.png");
 
-const nodeWidth = 300;
-const nodeHeight = 100;
-const biggerNodeHeight = 120;
+const nodeWidth = skillEntry.columnPitch;
+const nodeHeight = skillEntry.rowPitch;
+const groupBoxHeight = skillGroupPad.top + skillEntry.height + skillGroupPad.bottom;
+const groupArtStyle = {
+  border: "solid",
+  borderWidth: "30px 15px 30px 30px",
+  borderImage: `url('${skillArt.group}') ${skillGroup.slice} fill`,
+  borderRadius: 0,
+  boxSizing: "border-box" as const,
+};
+
+/**
+ * Gets the width of a group box around a row of cards.
+ * @param numSkills How many cards the group holds.
+ * @returns The width in px.
+ */
+const groupBoxWidth = (numSkills: number) => (numSkills - 1) * nodeWidth + skillEntry.width + skillGroupPad.x * 2;
+
+/**
+ * Gets the key of the spot a skill sits on in the tree, shared by the skills stacked there.
+ * @param skill The skill to look up.
+ * @returns Its indent and tier, joined.
+ */
+const getStackSpot = (skill: Skill) => `${skill.origIndent}|${skill.origTier}`;
 const editModeNodeHeight = 160; // Larger spacing for edit/requirements mode
+
+/**
+ * Lays out each row like the game's chains. Entries are 56 px apart and a group is one item as wide as its cards, so the
+ * columns after a group move right by however much wider it is.
+ * @param skills The skills shown.
+ * @param groupedSkills The skills of each group, sorted by column.
+ * @returns The x of each column, by row and then column.
+ */
+const getChainColumnXs = (skills: Skill[], groupedSkills: Record<string, Skill[]>) => {
+  const groupsByStart: Record<string, Skill[]> = {};
+  for (const members of Object.values(groupedSkills)) groupsByStart[`${members[0].x}|${members[0].y}`] = members;
+  const rowsToMaxColumn: Record<number, number> = {};
+  for (const skill of skills) rowsToMaxColumn[skill.x] = Math.max(rowsToMaxColumn[skill.x] ?? 0, skill.y);
+
+  const columnXs: Record<number, Record<number, number>> = {};
+  for (const [row, maxColumn] of Object.entries(rowsToMaxColumn)) {
+    const xs: Record<number, number> = {};
+    let x = 0;
+    for (let column = 0; column <= maxColumn; column++) {
+      xs[column] = x;
+      const group = groupsByStart[`${row}|${column}`];
+      if (!group) {
+        x += nodeWidth;
+        continue;
+      }
+      x += skillGroupWidth(group.length) + nodeWidth - skillEntry.width;
+      column = group[group.length - 1].y;
+    }
+    columnXs[Number(row)] = xs;
+  }
+  return columnXs;
+};
 
 const sortSameCoordinateSkills = (first: Skill, second: Skill) => {
   if (first.faction == second.faction && first.subculture == second.subculture) return 0;
@@ -545,26 +610,26 @@ const SkillsView = memo(
       return skill;
     });
 
-    let nodeSizeDelta = 0;
-    let usingBiggerNodeHeight = false;
+    // How many skills stack on each spot, which faction variants of one skill do.
+    const stackSizes: Record<string, number> = {};
+    for (const skill of skills) {
+      const spot = getStackSpot(skill);
+      stackSizes[spot] = (stackSizes[spot] || 0) + 1;
+    }
+    const maxStackSize = Math.max(1, ...Object.values(stackSizes));
+
     // if we need to overlay nodes make the y gap between them bigger (normal mode only —
     // in edit mode effectiveNodeHeight must stay at editModeNodeHeight so snap grid,
     // repositionPlaceholders, and the leaving-edit-mode transition all stay consistent)
-    if (
-      !isEditMode &&
-      skills.some((skillFirst) =>
-        skills.some(
-          (skillSecond) =>
-            skillFirst != skillSecond &&
-            skillFirst.origIndent == skillSecond.origIndent &&
-            skillFirst.origTier == skillSecond.origTier,
-        ),
-      )
-    ) {
-      effectiveNodeHeight = biggerNodeHeight;
-      nodeSizeDelta = 20;
-      usingBiggerNodeHeight = true;
+    if (!isEditMode && maxStackSize > 1) {
+      // Room for the deepest stack, so its last card clears the next row.
+      effectiveNodeHeight = nodeHeight + (maxStackSize - 1) * skillVariantStackY;
     }
+    // Like the game, only rows that hold skills take up room, so an unused indent leaves no gap.
+    const rowYs: Record<number, number> = {};
+    [...new Set(skills.map((skill) => skill.x))]
+      .sort((a, b) => a - b)
+      .forEach((row, index) => (rowYs[row] = index * effectiveNodeHeight));
     // console.log("with group:", skills.filter((skill) => skill.group).length);
     const groupedSkills = groupBy(
       skills.filter((skill) => skill.group),
@@ -577,6 +642,7 @@ const SkillsView = memo(
     for (const skillsInGroup of Object.values(groupedSkills)) {
       skillsInGroup.sort((firstSkill, secondSkill) => firstSkill.y - secondSkill.y);
     }
+    const columnXs = getChainColumnXs(skills, groupedSkills);
 
     const skillNodes: Nodes[] = [];
 
@@ -588,6 +654,10 @@ const SkillsView = memo(
           if (skills[i].y < lowest.y) lowest = skills[i];
           if (skills[i].y > highest.y) highest = skills[i];
         }
+        // Stacked members sit lower in the group, so the parchment grows to hold them.
+        const groupHeight =
+          skillGroup.artHeight +
+          (Math.max(...skills.map((skill) => stackSizes[getStackSpot(skill)])) - 1) * skillVariantStackY;
         skillNodes.push({
           id: `${group}_group`,
           data: {
@@ -614,24 +684,23 @@ const SkillsView = memo(
             unlockRank: 0,
           },
           position: {
-            y: lowest.x * effectiveNodeHeight - 15,
-            x: lowest.y * nodeWidth - 10,
+            y: rowYs[lowest.x] + skillGroup.artY,
+            x: columnXs[lowest.x][lowest.y],
           },
           sourcePosition: Position.Right,
           targetPosition: Position.Left,
           parentId: undefined,
           type: "default",
           style: {
+            ...groupArtStyle,
             backgroundColor: "transparent",
-            border: "2px solid rgb(42,11,13)",
-            boxShadow: "inset 0px 0px 20px 20px rgba(0,0,0,0.5),inset 0px 0px 10px 10px rgba(42,11,13,0.5)",
             zIndex: "0",
-            width: skills.length * nodeWidth - 15,
-            height: nodeHeight - 10,
+            width: skillGroupWidth(skills.length),
+            height: groupHeight,
           },
           className: "reactFlowGroup",
-          width: skills.length * nodeWidth - 15,
-          height: nodeHeight - 10,
+          width: skillGroupWidth(skills.length),
+          height: groupHeight,
         });
       }
     }
@@ -689,12 +758,12 @@ const SkillsView = memo(
             border: `2px solid ${groupColor || "rgb(42,11,13)"}`,
             boxShadow: "inset 0px 0px 20px 20px rgba(0,0,0,0.5),inset 0px 0px 10px 10px rgba(42,11,13,0.5)",
             zIndex: "0",
-            width: members.length * nodeWidth - 15,
-            height: nodeHeight + 10,
+            width: groupBoxWidth(members.length),
+            height: groupBoxHeight,
           },
           className: "reactFlowGroup",
-          width: members.length * nodeWidth - 15,
-          height: nodeHeight + 10,
+          width: groupBoxWidth(members.length),
+          height: groupBoxHeight,
         });
       }
     }
@@ -721,8 +790,8 @@ const SkillsView = memo(
         }
       } else {
         position = {
-          y: skill.x * effectiveNodeHeight + indexInSameCoords * 40,
-          x: skill.y * nodeWidth + indexInSameCoords * 25,
+          y: rowYs[skill.x] + indexInSameCoords * skillVariantStackY,
+          x: columnXs[skill.x][skill.y],
         };
         if (skill.group) {
           const skillsInGroup = groupedSkills[skill.group];
@@ -730,8 +799,8 @@ const SkillsView = memo(
             const index = skillsInGroup.indexOf(skill);
             if (index > -1) {
               position = {
-                y: 15 + indexInSameCoords * 40,
-                x: index * nodeWidth + 10 + indexInSameCoords * 25,
+                y: -skillGroup.artY + indexInSameCoords * skillVariantStackY,
+                x: skillGroup.marginX + index * (skillEntry.width + skillGroup.spacing),
               };
             }
           }
@@ -782,6 +851,7 @@ const SkillsView = memo(
           requiredNumParents: skillsData.nodeRequirements?.[skill.nodeId]?.numMultiple || 0,
           isCheckingSkillRequirements,
           unlockRank: skill.unlockRank + 1,
+          autoUnlockRank: skill.autoUnlockRank != undefined ? skill.autoUnlockRank + 1 : undefined,
           isEditMode,
           editGroupColor: isEditMode ? groupIdToColor[editGroups[skill.nodeId]] : undefined,
           existingSkillKey: skill.id,
@@ -830,37 +900,6 @@ const SkillsView = memo(
     }
 
     // console.log("skillNodes:", skillNodes);
-
-    if (!isEditMode) {
-      const skillNodesByRow = groupBy(
-        skillNodes.filter((node) => !node.parentId), // without sub-nodes, only groups or stand-alone nodes
-        (node) => node.data.row.toString(),
-      );
-      for (const row of Object.keys(skillNodesByRow)) {
-        const skillNodesRow = skillNodesByRow[row];
-
-        skillNodesRow.sort((firstNode, secondNode) => firstNode.position.x - secondNode.position.x);
-        let delta = 0;
-        for (let i = 1; i < skillNodesRow.length; i++) {
-          const node = skillNodesRow[i];
-          const nodePrev = skillNodesRow[i - 1];
-          if (node.position.x != nodePrev.position.x) {
-            if (node.data.isGrouping) {
-              delta += 50;
-            }
-            if (!node.data.isGrouping && nodePrev.data.isGrouping) {
-              delta += 50;
-            }
-          } else {
-            node.position.y = nodePrev.position.y + 20;
-          }
-          node.position.x += delta;
-          if (!node.parentId) {
-            // console.log("+");
-          }
-        }
-      }
-    }
 
     const initialEdges: SkillEdge[] = [];
     skills
@@ -958,9 +997,13 @@ const SkillsView = memo(
         const targetNode =
           nodes.find((n) => n.id === edge.target) || nodes.find((n) => (n.data as any)?.id === edge.target);
         if (!sourceNode || !targetNode) return;
-        let x = Math.max(sourceNode.position.x, targetNode.position.x) - 70;
-        if ((targetNode.data as any)?.isGrouping) x -= 20;
-        const y = sourceNode.position.y + ((sourceNode.data as any)?.isGrouping ? 40 + nodeSizeDelta / 2 : 27.5);
+        // The arrow ends at the target card's left edge, or at the edge of a game-style group.
+        const groupInsetX = isEditMode ? skillGroupPad.x : 0;
+        const targetLeft = targetNode.position.x + ((targetNode.data as any)?.isGrouping ? groupInsetX : 0);
+        const x = Math.max(sourceNode.position.x, targetLeft) - skillArrow.width;
+        // A group's arrow leaves from its cards' row, which sits lower in a stacked faction variant's group.
+        const sourceMember = (sourceNode.data as any)?.isGrouping && nodes.find((n) => n.parentId == sourceNode.id);
+        const y = sourceNode.position.y + (sourceMember ? sourceMember.position.y : 0) + skillArrow.y;
         return { x, y };
       })
       .filter((arrow): arrow is { x: number; y: number } => arrow != undefined);
@@ -4167,7 +4210,7 @@ const SkillsView = memo(
               if (!n.parentId) {
                 // Use data.row directly: nodes are not draggable in normal mode so it's always the
                 // correct logical row. Avoids Math.round(y / nodeHeight) going wrong when stacked
-                // nodes caused biggerNodeHeight (120) to be used instead of nodeHeight (100).
+                // nodes caused biggerNodeHeight to be used instead of nodeHeight.
                 const row = (n.data as any).row as number;
                 return {
                   ...n,
@@ -4188,11 +4231,11 @@ const SkillsView = memo(
               return {
                 ...n,
                 position: { x: n.position.x, y: row * newHeight - 15 },
-                height: nodeHeight + 10,
+                height: groupBoxHeight,
                 style: {
                   ...((n.style as Record<string, unknown>) || {}),
                   border: `2px solid ${groupColor || "rgb(42,11,13)"}`,
-                  height: nodeHeight + 10,
+                  height: groupBoxHeight,
                 },
               };
             }
@@ -4415,12 +4458,12 @@ const SkillsView = memo(
                 border: `2px solid ${groupColor || "rgb(42,11,13)"}`,
                 boxShadow: "inset 0px 0px 20px 20px rgba(0,0,0,0.5),inset 0px 0px 10px 10px rgba(42,11,13,0.5)",
                 zIndex: "0",
-                width: members.length * nodeWidth - 15,
-                height: nodeHeight + 10,
+                width: groupBoxWidth(members.length),
+                height: groupBoxHeight,
               },
               className: "reactFlowGroup",
-              width: members.length * nodeWidth - 15,
-              height: nodeHeight + 10,
+              width: groupBoxWidth(members.length),
+              height: groupBoxHeight,
             };
 
             // Add container before members (ReactFlow requires parent before children)
@@ -4639,10 +4682,6 @@ const SkillsView = memo(
           }
           multiSelectionKeyCode="Shift"
         >
-          <Panel position="top-right">
-            <div className="text-slate-200 text-xl opacity-80">{subtype}</div>
-            <div className="text-slate-200 text-xl opacity-80">{`${localized.rank} ${currentRank}`}</div>
-          </Panel>
           {notification && (
             <Panel position="bottom-center">
               <div
@@ -4941,7 +4980,7 @@ const SkillsView = memo(
                     style={{
                       transform: `translate(${arrow.x}px, ${arrow.y}px)`,
                       position: "absolute",
-                      width: "90px",
+                      width: skillArrow.width,
                     }}
                   ></img>
                 ))}

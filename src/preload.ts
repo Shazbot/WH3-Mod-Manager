@@ -420,6 +420,10 @@ const api = {
 
   getSkillsForSubtype: (subtype: string, subtypeIndex: number, requestId?: string) =>
     ipcRenderer.send("getSkillsForSubtype", subtype, subtypeIndex, requestId),
+  prefetchSkillsForSubtype: (subtype: string, subtypeIndex: number): Promise<SkillsData | undefined> =>
+    ipcRenderer.invoke("prefetchSkillsForSubtype", subtype, subtypeIndex),
+  setSkillsSelection: (subtype: string, subtypeIndex: number) =>
+    ipcRenderer.send("setSkillsSelection", subtype, subtypeIndex),
   createNewSkillTree: (subtype: string) => ipcRenderer.send("createNewSkillTree", subtype),
   getSkillsEditorData: (): Promise<SkillsEditorData | undefined> => ipcRenderer.invoke("getSkillsEditorData"),
   saveSkillsPack: (data: any) => ipcRenderer.invoke("saveSkillsPack", data),

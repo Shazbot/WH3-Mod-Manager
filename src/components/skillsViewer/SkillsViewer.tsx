@@ -4,9 +4,10 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
 import SkillsTreeView from "./SkillsTreeView";
 import SkillsView, { SkillsViewHandle, SkillsViewSnapshot } from "./SkillsView";
+import { SkillsDataContext } from "./skillsDataContext";
 import { Resizable } from "re-resizable";
 import debounce from "just-debounce-it";
-import { setHideRepeatedKeyPrefixes, setIsShowingSkillNodeSetNames } from "../../appSlice";
+import { setHideRepeatedKeyPrefixes, setIsShowingSkillNodeSetNames, setSkillsData } from "../../appSlice";
 
 type SkillTab = {
   id: string;
@@ -19,6 +20,8 @@ type SkillTab = {
 let nextTabId = 1;
 let nextSkillsRequestId = 1;
 const SKILL_NODE_SET_MARKER = "_skill_node_set_";
+// Each prefetched tree is a few hundred KB, so only the most recently hovered ones are kept.
+const PREFETCHED_TREES_LIMIT = 10;
 type SkillSubtypeSelection = { subtype: string; subtypeIndex: number; requestId: string };
 
 const makeSkillsRequestId = () => `skills_request_${Date.now()}_${nextSkillsRequestId++}`;
@@ -44,6 +47,12 @@ const SkillsViewer = memo(() => {
   const staleSelectionKeys = useRef(new Set<string>());
   const acceptedRequestId = useRef<string | null>(null);
   const acceptedSelectionKey = useRef<string | null>(null);
+  // The tab a single click last replaced, kept so a double-click can give it back. It has none when the click opened
+  // the first tab.
+  const replacedTab = useRef<{ selectionKey: string; previous?: SkillTab } | null>(null);
+  const routedSkillsData = useRef<SkillsData | null>(null);
+  // Trees loaded on hover, by selection key, so a click can show one without waiting on main.
+  const prefetchedTrees = useRef(new Map<string, Promise<SkillsData | undefined>>());
   const skillsViewRef = useRef<SkillsViewHandle>(null);
   const dispatch = useAppDispatch();
   const debouncedFilterChange = useRef(debounce((val: string) => setDBTableFilter(val), 150));
@@ -151,19 +160,32 @@ const SkillsViewer = memo(() => {
   // When Redux skillsData updates, route it to the correct tab
   useEffect(() => {
     if (!skillsData || !skillsData.currentSkills) return;
+    // Switching tabs re-runs this effect. Only a new response is routed, or the tab switched to would be overwritten.
+    if (skillsData === routedSkillsData.current) return;
+    routedSkillsData.current = skillsData;
+    // Main only pushes unasked when it rebuilt or changed its skills data, which makes the prefetched trees stale.
+    if (!skillsData.requestId) prefetchedTrees.current = new Map();
 
     const pending = pendingNewTab.current;
-    if (pending && isMatchingSelection(pending, skillsData)) {
-      // Double-click: snapshot current tab, then create a new tab
-      markSelectionAccepted(pending);
-      pendingNewTab.current = null;
+    const pendingActive = pendingActiveTab.current;
+    // Double-click: snapshot current tab, then create a new tab. With no tab open, a single click opens one too.
+    const isPendingNewTab = isMatchingSelection(pending, skillsData);
+    const newTabSelection = isPendingNewTab
+      ? pending
+      : !activeTabId && isMatchingSelection(pendingActive, skillsData)
+        ? pendingActive
+        : null;
+    if (newTabSelection) {
+      markSelectionAccepted(newTabSelection);
+      if (isPendingNewTab) pendingNewTab.current = null;
+      else replacedTab.current = { selectionKey: selectionKey(newTabSelection) };
       pendingActiveTab.current = null;
       snapshotCurrentTab();
       const id = `tab_${nextTabId++}`;
       const newTab: SkillTab = {
         id,
-        subtype: pending.subtype,
-        subtypeIndex: pending.subtypeIndex,
+        subtype: newTabSelection.subtype,
+        subtypeIndex: newTabSelection.subtypeIndex,
         skillsData,
       };
       setTabs((prev) => [...prev, newTab]);
@@ -171,10 +193,14 @@ const SkillsViewer = memo(() => {
       return;
     }
 
-    const pendingActive = pendingActiveTab.current;
-    if (pendingActive && isMatchingSelection(pendingActive, skillsData) && activeTabId) {
+    if (pendingActive && isMatchingSelection(pendingActive, skillsData)) {
       markSelectionAccepted(pendingActive);
       pendingActiveTab.current = null;
+      const replaced = tabs.find((tab) => tab.id === activeTabId);
+      if (replaced) {
+        const snapshot = skillsViewRef.current?.getSnapshot();
+        replacedTab.current = { selectionKey: selectionKey(pendingActive), previous: { ...replaced, snapshot } };
+      }
       setTabs((prev) =>
         prev.map((tab) => {
           if (tab.id !== activeTabId) return tab;
@@ -246,27 +272,93 @@ const SkillsViewer = memo(() => {
         }),
       );
     }
-  }, [activeTabId, markSelectionAccepted, skillsData, snapshotCurrentTab, tabs.length]);
+  }, [activeTabId, markSelectionAccepted, skillsData, snapshotCurrentTab, tabs]);
 
-  const onTreeSelect = useCallback((subtype: string, subtypeIndex: number) => {
-    const requestId = makeSkillsRequestId();
-    const previousPending = pendingActiveTab.current;
-    if (previousPending) {
-      staleRequestIds.current.add(previousPending.requestId);
-      staleSelectionKeys.current.add(selectionKey(previousPending));
+  const onTreeHover = useCallback((subtype: string, subtypeIndex: number) => {
+    const trees = prefetchedTrees.current;
+    const key = selectionKey({ subtype, subtypeIndex });
+    if (!window.api || trees.has(key)) return;
+    if (trees.size >= PREFETCHED_TREES_LIMIT) {
+      // A Map keeps insertion order, so the first key is the oldest.
+      const oldestKey = trees.keys().next().value;
+      if (oldestKey !== undefined) trees.delete(oldestKey);
     }
-    pendingActiveTab.current = { subtype, subtypeIndex, requestId };
-    window.api?.getSkillsForSubtype(subtype, subtypeIndex, requestId);
+    const prefetch = window.api.prefetchSkillsForSubtype(subtype, subtypeIndex).catch(() => undefined);
+    trees.set(key, prefetch);
+    prefetch.then((data) => {
+      if (!data && trees.get(key) === prefetch) trees.delete(key);
+    });
   }, []);
 
-  const onTreeDoubleClick = useCallback((subtype: string, subtypeIndex: number) => {
-    console.log("Double clicked", subtype);
-    const requestId = makeSkillsRequestId();
+  // Uses the hover prefetch when there is one, and asks main otherwise. Either way the response is routed by
+  // `requestId`.
+  const requestTree = useCallback(
+    (subtype: string, subtypeIndex: number, requestId: string) => {
+      const key = selectionKey({ subtype, subtypeIndex });
+      const prefetch = prefetchedTrees.current.get(key);
+      if (!prefetch) {
+        window.api?.getSkillsForSubtype(subtype, subtypeIndex, requestId);
+        return;
+      }
+      window.api?.setSkillsSelection(subtype, subtypeIndex);
+      prefetch.then((data) => {
+        // A rebuild may have cleared it while it was loading.
+        if (data && prefetchedTrees.current.get(key) === prefetch) dispatch(setSkillsData({ ...data, requestId }));
+        else window.api?.getSkillsForSubtype(subtype, subtypeIndex, requestId);
+      });
+    },
+    [dispatch],
+  );
+
+  const onTreeSelect = useCallback(
+    (subtype: string, subtypeIndex: number) => {
+      const requestId = makeSkillsRequestId();
+      const previousPending = pendingActiveTab.current;
+      if (previousPending) {
+        staleRequestIds.current.add(previousPending.requestId);
+        staleSelectionKeys.current.add(selectionKey(previousPending));
+      }
+      pendingActiveTab.current = { subtype, subtypeIndex, requestId };
+      requestTree(subtype, subtypeIndex, requestId);
+    },
+    [requestTree],
+  );
+
+  const onTreeDoubleClick = useCallback((subtype: string, subtypeIndex: number, firstClickSelected: boolean) => {
+    // The first click of a double-click already loads the tree into the active tab, so single clicks never wait to
+    // rule out a double-click. The double-click moves that tree to a new tab and gives the active tab back its tree.
+    const key = selectionKey({ subtype, subtypeIndex });
+    const pendingActive = pendingActiveTab.current;
+    const firstClickPending =
+      firstClickSelected && pendingActive && selectionKey(pendingActive) === key ? pendingActive : null;
+    const replaced = replacedTab.current;
+    if (firstClickSelected && !firstClickPending && replaced?.selectionKey === key) {
+      replacedTab.current = null;
+      const previous = replaced.previous;
+      // The first click opened its own tab, so there is nothing to move.
+      if (!previous) return;
+      const restoredTab = { ...previous, id: `tab_${nextTabId++}` };
+      // The loaded tree keeps its tab id so its view stays mounted.
+      setTabs((prev) => {
+        const current = prev.find((tab) => tab.id === previous.id);
+        if (!current || selectionKey(current) !== key) return prev;
+        return [...prev.map((tab) => (tab === current ? restoredTab : tab)), current];
+      });
+      return;
+    }
+
     const previousPending = pendingNewTab.current;
     if (previousPending) {
       staleRequestIds.current.add(previousPending.requestId);
       staleSelectionKeys.current.add(selectionKey(previousPending));
     }
+    if (firstClickPending) {
+      // Its response has not arrived yet, so it is routed to a new tab instead.
+      pendingNewTab.current = firstClickPending;
+      pendingActiveTab.current = null;
+      return;
+    }
+    const requestId = makeSkillsRequestId();
     pendingNewTab.current = { subtype, subtypeIndex, requestId };
     window.api?.getSkillsForSubtype(subtype, subtypeIndex, requestId);
   }, []);
@@ -301,7 +393,9 @@ const SkillsViewer = memo(() => {
                 tableFilter={dbTableFilter}
                 hideRepeatedKeyPrefixes={hideRepeatedKeyPrefixes}
                 onSelect={onTreeSelect}
+                onHover={onTreeHover}
                 onDoubleClick={onTreeDoubleClick}
+                isSelectionCleared={tabs.length === 0}
               />
             </div>
           </div>
@@ -320,21 +414,26 @@ const SkillsViewer = memo(() => {
                         : "bg-gray-800 text-gray-400 hover:bg-gray-750 hover:text-gray-300"
                     }`}
                     onClick={() => switchTab(tab.id)}
+                    onMouseDown={(e) => {
+                      // Keeps the middle button from starting autoscroll.
+                      if (e.button === 1) e.preventDefault();
+                    }}
+                    onAuxClick={(e) => {
+                      if (e.button === 1) closeTab(tab.id);
+                    }}
                   >
                     <span className="mr-2" title={tabLabel.tooltip}>
                       {tabLabel.display}
                     </span>
-                    {tabs.length > 1 && (
-                      <button
-                        className="text-gray-500 hover:text-white ml-1"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          closeTab(tab.id);
-                        }}
-                      >
-                        <FontAwesomeIcon icon={faXmark} size="xs" />
-                      </button>
-                    )}
+                    <button
+                      className="text-gray-500 hover:text-white ml-1"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        closeTab(tab.id);
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faXmark} size="xs" />
+                    </button>
                   </div>
                 );
               })}
@@ -342,12 +441,14 @@ const SkillsViewer = memo(() => {
           )}
           <div className="min-h-0 flex-1">
             {activeTab && (
-              <SkillsView
-                key={activeTab.id}
-                ref={skillsViewRef}
-                skillsData={activeTab.skillsData}
-                initialSnapshot={activeTab.snapshot}
-              />
+              <SkillsDataContext.Provider value={activeTab.skillsData}>
+                <SkillsView
+                  key={activeTab.id}
+                  ref={skillsViewRef}
+                  skillsData={activeTab.skillsData}
+                  initialSnapshot={activeTab.snapshot}
+                />
+              </SkillsDataContext.Provider>
             )}
           </div>
         </div>

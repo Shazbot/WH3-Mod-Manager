@@ -727,6 +727,40 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   background-size: 100% 100%;
 }
 
+/* The skill tooltip's lock bar grows from its center while the tooltip sticks. */
+.skillTooltipLockFill {
+  animation: skillTooltipLockFill linear both;
+}
+
+@keyframes skillTooltipLockFill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* The game's magic_flame glow over the lock bar, colored with effect_panel_smoke's ramp. Its shader is replaced with a
+   slow flicker. */
+.skillTooltipLockGlow {
+  background: linear-gradient(to top, #de3800cc, #9c100066 12%, #4708001f 30%, transparent 50%);
+  mix-blend-mode: screen;
+  transform-origin: bottom;
+  animation: skillTooltipLockGlow 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes skillTooltipLockGlow {
+  from {
+    opacity: 0.75;
+    transform: scaleY(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
 /* it's by default 'will-change: transform;' but this changes text colors */
 .ReactVirtualized__Grid {
   will-change: auto !important;

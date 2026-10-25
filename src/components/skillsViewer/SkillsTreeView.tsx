@@ -1,4 +1,4 @@
-import React, { memo, useRef } from "react";
+import React, { memo, useEffect, useRef } from "react";
 import { useAppSelector } from "../../hooks";
 import { IoMdArrowDropright } from "react-icons/io";
 import TreeView, { INode, ITreeViewOnSelectProps, flattenTree } from "react-accessible-treeview";
@@ -10,10 +10,16 @@ type SkillsTreeViewProps = {
   tableFilter: string;
   hideRepeatedKeyPrefixes?: boolean;
   onSelect?: (subtype: string, subtypeIndex: number) => void;
-  onDoubleClick?: (subtype: string, subtypeIndex: number) => void;
+  onHover?: (subtype: string, subtypeIndex: number) => void;
+  onDoubleClick?: (subtype: string, subtypeIndex: number, firstClickSelected: boolean) => void;
+  isSelectionCleared?: boolean;
 };
 
 const collator = new Intl.Collator("en");
+// Kept stable because the tree re-applies `selectedIds` whenever the array changes.
+const NO_SELECTED_IDS: string[] = [];
+// How long the pointer rests on a row before `onHover`, so sweeping past rows does not load their trees.
+const HOVER_DELAY_MS = 100;
 const SKILL_NODE_SET_PREFIX = "set_";
 /** Known game/DLC prefixes that are boilerplate in skill node-set keys. */
 const SKILL_NODE_SET_OUTLIER_PREFIXES = [
@@ -35,7 +41,9 @@ const stripKnownSkillNodeSetPrefix = (value: string) => {
 };
 
 const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
-  const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const firstClickSelected = useRef(false);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(hoverTimer.current), []);
   const isLocalizingSubtypes = useAppSelector((state) => state.app.isLocalizingSubtypes);
   const isShowingSkillNodeSetNames = useAppSelector((state) => state.app.isShowingSkillNodeSetNames);
   const skillsData = useAppSelector((state) => state.app.skillsData);
@@ -236,11 +244,13 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
         data={data}
         aria-label="Controlled expanded node tree"
         onSelect={(props) => onTreeSelect(props)}
+        selectedIds={props.isSelectionCleared ? NO_SELECTED_IDS : undefined}
         nodeRenderer={({
           element,
           isBranch,
           isExpanded,
           isDisabled,
+          isSelected,
           getNodeProps,
           level,
           handleExpand,
@@ -260,32 +270,34 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
             >
               {isBranch && <ArrowIcon className="" isOpen={isExpanded} />}
               <span
+                onMouseEnter={() => {
+                  const metadata = element.metadata as TreeMetadata;
+                  clearTimeout(hoverTimer.current);
+                  hoverTimer.current = setTimeout(
+                    () => props.onHover?.(metadata.subtype, metadata.subtypeIndex),
+                    HOVER_DELAY_MS,
+                  );
+                }}
+                onMouseLeave={() => clearTimeout(hoverTimer.current)}
                 onMouseDown={(e) => {
                   if (e.detail > 1) {
                     e.preventDefault();
+                  } else if (e.button === 0) {
+                    // A click is coming, so the hover delay is not worth waiting out.
+                    clearTimeout(hoverTimer.current);
+                    const metadata = element.metadata as TreeMetadata;
+                    props.onHover?.(metadata.subtype, metadata.subtypeIndex);
                   }
                 }}
                 onClick={(e) => {
-                  if (props.onDoubleClick) {
-                    const evt = { ...e } as React.MouseEvent;
-                    if (clickTimer.current) clearTimeout(clickTimer.current);
-                    clickTimer.current = setTimeout(() => {
-                      clickTimer.current = null;
-                      handleSelect(evt);
-                    }, 250);
-                  } else {
-                    handleSelect(e);
-                  }
+                  if (e.detail === 1) firstClickSelected.current = !isSelected;
+                  handleSelect(e);
                 }}
                 onDoubleClick={(e) => {
                   e.preventDefault();
                   window.getSelection()?.removeAllRanges();
-                  if (clickTimer.current) {
-                    clearTimeout(clickTimer.current);
-                    clickTimer.current = null;
-                  }
                   const metadata = element.metadata as TreeMetadata;
-                  props.onDoubleClick?.(metadata.subtype, metadata.subtypeIndex);
+                  props.onDoubleClick?.(metadata.subtype, metadata.subtypeIndex, firstClickSelected.current);
                 }}
                 className="relative hover:underline cursor-pointer"
                 title={getNodeTooltip(element)}
