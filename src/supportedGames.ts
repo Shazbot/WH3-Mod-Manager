@@ -61,7 +61,7 @@ export const gameToSteamId: Record<SupportedGames, string> = {
   pharaoh: "1937780",
   dynasties: "2951630",
   rome2: "214950",
-  shogun2: "201270",
+  shogun2: "34330",
 };
 
 export const gameToProcessName: Record<SupportedGames, string> = {
