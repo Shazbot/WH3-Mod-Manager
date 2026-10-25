@@ -422,6 +422,72 @@ describe("RMV2 diff, validation, and patch operations", () => {
     );
   });
 
+  it("reports invalid embedded loader paths without aborting vanilla-backed validation", async () => {
+    const modelPath = "models\\bad-loader.rigid_model_v2";
+    const badPaths = [
+      String.raw`T:\branches\warhammer2\working_data\building.rigid_model_v2`,
+      "../outside.rigid_model_v2",
+      "C:drive-relative.rigid_model_v2",
+    ];
+    const vanillaPath = await writePack(
+      "invalid-loader-vanilla.pack",
+      badPaths.map((badPath, index) => ({
+        name: `models\\invalid-${index}.wsmodel`,
+        buffer: Buffer.from(`<model><geometry>${badPath}</geometry></model>`),
+      })),
+    );
+    const target = await writePack("invalid-loader-target.pack", [
+      { name: modelPath, buffer: buildModel({ lods: [[{ textures: [] }]] }) },
+      {
+        name: "variantmeshes\\valid-loader.variantmeshdefinition",
+        buffer: Buffer.from(`<root><model>${modelPath}</model></root>`),
+      },
+    ]);
+    const response = await executeAutomationRequest({
+      operation: "pack_validate",
+      packPath: target,
+      vanillaPackPaths: [vanillaPath],
+    });
+    const result = expectData<{
+      valid: boolean;
+      validationComplete: boolean;
+      diagnostics: Array<{ code: string; path: string; severity: string }>;
+    }>(response);
+    expect(result).toMatchObject({ valid: true, validationComplete: false });
+    expect(result.diagnostics.filter((item) => item.code === "INVALID_RIGID_LOADER_REFERENCE")).toHaveLength(3);
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ code: "IGNORED_WSMODEL_BINDING" }));
+    for (const item of result.diagnostics) expect(item.severity).toBe("warning");
+    const graph = expectData<{
+      complete: boolean;
+      diagnostics: Array<{ code: string }>;
+      edges: { items: Array<{ status: string }> };
+    }>(
+      await executeAutomationRequest({
+        operation: "asset_resolve_references",
+        packPaths: [vanillaPath],
+        roots: ["models/invalid-0.wsmodel"],
+      }),
+    );
+    expect(graph.complete).toBe(false);
+    expect(graph.diagnostics).toContainEqual(expect.objectContaining({ code: "INVALID_ASSET_REFERENCE" }));
+    // A bad explicit root remains an invalid user argument.
+    expect(
+      await executeAutomationRequest({
+        operation: "asset_resolve_references",
+        packPaths: [vanillaPath],
+        roots: [badPaths[0]],
+      }),
+    ).toMatchObject({ ok: false, error: { code: "INVALID_ARGUMENT" } });
+    const scan = await findRigidLoaderEdges(
+      await prepareReferenceEnvironment(createAutomationContext(), [target], [vanillaPath]),
+      [modelPath],
+    );
+    expect(scan.edges).toContainEqual(
+      expect.objectContaining({ targetPath: modelPath, edge: expect.objectContaining({ loadMode: "direct" }) }),
+    );
+    expect(scan.diagnostics).toHaveLength(3);
+  });
+
   it("warns about WS materials only when direct and exact WS loader evidence both reach the same model", async () => {
     const modelPath = "models\\direct-and-ws.rigid_model_v2";
     const vmdPath = "variantmeshes\\direct.variantmeshdefinition";

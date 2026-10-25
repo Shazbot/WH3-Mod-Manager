@@ -614,7 +614,20 @@ class ReferenceGraphBuilder {
     materialTypeName?: string;
     targetField?: string;
   }, depth: number): void {
-    const resolved = resolveReferenceAsset(this.environment, requestedPath);
+    let resolved: ReturnType<typeof resolveReferenceAsset>;
+    try {
+      resolved = resolveReferenceAsset(this.environment, requestedPath);
+    } catch (error) {
+      if (!(error instanceof AutomationError) || error.code !== "INVALID_ARGUMENT") throw error;
+      // Pack contents are untrusted data, not user arguments. Retain the bad
+      // reference as unsupported evidence without resolving it on the host.
+      const id = `asset:invalid::${requestedPath}`;
+      this.addNode({ id, path: requestedPath, type: "asset", status: "unsupported" });
+      if (this.nodes.has(id)) this.addEdge({ source, target: id, relationship: relation, ...details, status: "unsupported" });
+      this.environment.complete = false;
+      this.diagnostics.push(diagnostic("INVALID_ASSET_REFERENCE", `Invalid embedded asset reference: ${error.message}`, this.nodes.get(source)?.path));
+      return;
+    }
     const extension = resolved.winner ? pathExtension(resolved.winner.entry.name) : pathExtension(resolved.path);
     const sourceNode = this.nodes.get(source);
     const loadMode = extension === "rigid_model_v2"
@@ -952,9 +965,9 @@ export const findRigidLoaderEdges = async (
   environment: ReferenceEnvironment,
   targetPaths: readonly string[],
   limits: { maxNodes?: number; maxEdges?: number } = {},
-): Promise<{ edges: Array<{ targetPath: string; sourcePath: string; edge: ReferenceGraphEdge }>; hitLimit: boolean }> => {
+): Promise<{ edges: Array<{ targetPath: string; sourcePath: string; edge: ReferenceGraphEdge }>; hitLimit: boolean; diagnostics: AutomationDiagnostic[] }> => {
   const targetKeys = new Set(targetPaths.map((target) => normalizePackFilePathKey(normalizeInternalPackPath(target))));
-  if (!targetKeys.size) return { edges: [], hitLimit: false };
+  if (!targetKeys.size) return { edges: [], hitLimit: false, diagnostics: [] };
   const builder = new ReferenceGraphBuilder(environment, {
     traversal: "direct",
     maxDepth: 32,
@@ -1009,7 +1022,7 @@ export const findRigidLoaderEdges = async (
     const key = normalizePackFilePathKey(target.path);
     return targetKeys.has(key) ? [{ targetPath: target.path, sourcePath: source.path, edge }] : [];
   });
-  return { edges, hitLimit: graph.coverage.hitLimit };
+  return { edges, hitLimit: graph.coverage.hitLimit, diagnostics: graph.diagnostics.filter((item) => item.code === "INVALID_ASSET_REFERENCE") };
 };
 
 const writeFullReport = async (

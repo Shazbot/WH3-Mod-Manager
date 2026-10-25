@@ -822,6 +822,9 @@ const runValidate: OperationHandler<"pack_validate"> = async (request, context) 
   if (parsedRigidModels.size && hasWsmodelCandidate) {
     const loaderScan = await findRigidLoaderEdges(referenceEnvironment, [...parsedRigidModels.values()].map(({ path: modelPath }) => modelPath));
     const loaderEdges = loaderScan.edges;
+    for (const item of loaderScan.diagnostics) {
+      diagnostics.push({ ...item, code: "INVALID_RIGID_LOADER_REFERENCE" });
+    }
     if (loaderScan.hitLimit) {
       diagnostics.push(diagnostic("RIGID_LOADER_SCAN_LIMIT", "The bounded RMV2 loader scan reached its node or edge limit", "warning"));
     }
@@ -876,7 +879,7 @@ const runValidate: OperationHandler<"pack_validate"> = async (request, context) 
     unresolvedRigidTextureCount,
     textureResolutionPacks: referenceEnvironment.providers.map((provider) => ({ path: provider.pack.path, kind: provider.kind })),
     valid: diagnostics.every((item) => item.severity !== "error"),
-    validationComplete: !diagnostics.some((item) => ["UNSUPPORTED_PAYLOAD", "UNSUPPORTED_TABLE_SCHEMA", "UNSUPPORTED_RMV2_MODEL", "UNSUPPORTED_RMV2_PART", "RIGID_LOADER_SCAN_LIMIT"].includes(item.code)),
+    validationComplete: !diagnostics.some((item) => ["UNSUPPORTED_PAYLOAD", "UNSUPPORTED_TABLE_SCHEMA", "UNSUPPORTED_RMV2_MODEL", "UNSUPPORTED_RMV2_PART", "RIGID_LOADER_SCAN_LIMIT", "INVALID_RIGID_LOADER_REFERENCE"].includes(item.code)),
     diagnostics,
   };
   const reportPath = await withReport(context, request.reportPath, referenceEnvironment.sourcePaths, data);
