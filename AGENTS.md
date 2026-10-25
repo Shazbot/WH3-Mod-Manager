@@ -47,3 +47,55 @@ For non-UI work, do not read `docs/DESIGN.md` unless relevant.
 
 Use native Windows Git for this repository, ideally from PowerShell or Windows Terminal.
 (located in /mnt/c/Program Files/Git/cmd/git.exe)
+
+## Pack inspection and automation
+
+  Use WHMM’s headless tools for inspecting, querying, editing, comparing,
+  validating, and subsetting WH3 pack files.
+
+  Documentation: /mnt/k/projects/whmm/docs/HEADLESS.md
+
+  Prefer the WHMM MCP tools when available. Otherwise invoke the CLI:
+  node /mnt/k/projects/whmm/dist/cli/main.js --help
+
+  If the tooling is missing or its source changed, build from the WHMM repo:
+  cd /mnt/k/projects/whmm
+  yarn build:tools
+
+  - Use --format json for machine-readable CLI results.
+  - Use explicit input packs and load order.
+  - Write modified packs to a separate output path.
+  - Validate generated packs before reporting success.
+  - Use pagination or explicit reports for large results.
+  - Inspect incomplete/unsupported coverage before relying on dependency graphs.
+  - Do not write one-off pack parsers when these tools support the operation.
+  - Use Node and native dependencies installed for the current platform.
+
+  Reuse src/packCore and src/automation when implementing pack functionality.
+  Keep CLI and MCP as adapters over the shared operation registry.
+  Rebuild the tools after changing their source before testing through the CLI.
+  
+   ## WSL2 Windows Filesystem Performance
+
+Windows-mounted paths (`/mnt/c`, `/mnt/k`, etc.) are slow to traverse from WSL2. Prefer Windows-native tools for filesystem searches:
+
+- **`es.exe` (Everything):** Indexed filename and directory searches. (located at K:\tools\es.exe)
+- **`rg.exe` (Windows ripgrep):** File content searches and ignore-aware file discovery.
+- **Windows Coreutils (`ls.exe`, `find.exe`):** Directory listing and traversal when needed.
+- **`git ls-files`:** Fast discovery of tracked repository files.
+
+Convert WSL paths using `wslpath -w` before passing them to Windows tools:
+
+```bash
+WIN_DIR="$(wslpath -w "$PWD")"
+
+es.exe -path "$WIN_DIR" -n 100 'ext:cs'
+rg.exe -n 'someFunction' "$WIN_DIR"
+ls.exe "$WIN_DIR"
+```
+
+Avoid recursive Linux `find`, `ls`, and `grep` on Windows mounts. Use normal Linux tools for WSL-native paths. Fall back when Windows tools are unavailable. Everything results may include ignored files and depend on its index being current.
+
+## Vanilla game files
+
+If you need to reference vanilla game files you can find them extracted in K:/projects/wh3dump/ , the shaders branch in the folder has material shaders the game uses.
