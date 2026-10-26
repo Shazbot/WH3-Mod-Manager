@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import { z } from "zod";
 import { encodeDdsMipAsPng } from "../esfMap/dds";
-import { inspectDdsLayout } from "../utility/ddsLayout";
+import { DDS_MAX_PIXELS, inspectDdsLayout } from "../utility/ddsLayout";
 import { AutomationError, type AutomationDiagnostic } from "./errors";
 import { findAutomationPackEntry, readAutomationPack, readAutomationPayload } from "./packAccess";
 import type { AutomationContext } from "./operations";
@@ -74,8 +74,11 @@ export const runPackTextureInspect = async (
     if (!texture.previewSupported)
       throw new AutomationError("UNSUPPORTED", texture.previewUnsupportedReason ?? "Unsupported DDS preview format");
     if (!selectedMip?.present) throw new AutomationError("VALIDATION", "Selected DDS mip/surface payload is truncated");
-    if (selectedMip.width * selectedMip.height > 16_777_216)
-      throw new AutomationError("VALIDATION", "Preview exceeds the 16,777,216-pixel limit; select a smaller mip");
+    if (selectedMip.width * selectedMip.height > DDS_MAX_PIXELS)
+      throw new AutomationError(
+        "VALIDATION",
+        `Preview exceeds the ${DDS_MAX_PIXELS.toLocaleString("en-US")}-pixel limit; select a smaller mip`,
+      );
     let image: ReturnType<typeof encodeDdsMipAsPng>;
     try {
       image = encodeDdsMipAsPng(bytes, request.mipLevel, request.surface);

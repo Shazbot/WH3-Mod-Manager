@@ -20,9 +20,9 @@ const rootHelp = `Usage:
   whmm pack search <packPath> <query> [--max-results <number>]
   whmm pack create <outputPath> [--input <jsonFile>]
   whmm pack write <packPath> --output <outputPath> --input <jsonFile>
-  whmm pack validate <packPath> [--full-payloads] [--with-vanilla] [--game-data <directory>] [--input <jsonFile>]
+  whmm pack validate <packPath> [--baseline <pack>] [--full-payloads] [--with-vanilla] [--game-data <directory>] [--input <jsonFile>]
   whmm pack clone <packPath> --output <outputPath>
-  whmm pack diff <beforePath> <afterPath> [--details]
+  whmm pack diff <beforePath> <afterPath> [--details] [--no-moves]
   whmm pack subset <sourcePackPath> --include <glob> --output <outputPath> [--input <jsonFile>]
   whmm pack table read <packPath> <tablePath>
   whmm pack table query <packPath> <tablePath> --input <jsonFile>
@@ -47,8 +47,10 @@ Flags:
   --strict             Reject incomplete requested closure
   --with-vanilla       Resolve against base game packs from manifest.txt
   --game-data <dir>    Game data directory (otherwise WHMM_GAME_DATA_PATH or WHMM config)
+  --baseline <pack>    Compare validate diagnostics with a baseline pack
   --include-vanilla    Copy vanilla dependencies in selfContained mode
   --details            Include bounded semantic file-diff details
+  --no-moves           Report identical renamed files as separate additions and removals
   --semantic-offset    Semantic detail offset (default 0)
   --semantic-limit     Semantic detail page size (default 100)
   --overwrite          Atomically replace an existing output file
@@ -81,8 +83,10 @@ const options = {
   "no-content": { type: "boolean" as const },
   "max-results": { type: "string" as const },
   "full-payloads": { type: "boolean" as const },
+  baseline: { type: "string" as const },
   "verify-sha256": { type: "boolean" as const },
   details: { type: "boolean" as const },
+  "no-moves": { type: "boolean" as const },
   "semantic-offset": { type: "string" as const },
   "semantic-limit": { type: "string" as const },
   include: { type: "string" as const, multiple: true },
@@ -281,6 +285,7 @@ const buildRequest = async (
         ...common,
         operation: "pack_validate",
         packPath: first,
+        ...(values.baseline === undefined ? {} : { baselinePackPath: values.baseline }),
         ...(values["full-payloads"] ? { fullPayloads: true } : {}),
       };
     }
@@ -299,6 +304,7 @@ const buildRequest = async (
     if (action === "diff") {
       ensurePositionals(command, 4);
       if (values.details) common.details = true;
+      if (values["no-moves"]) common.detectMoves = false;
       if (values["path-prefix"] !== undefined) common.pathPrefix = values["path-prefix"];
       if (values.glob !== undefined) common.glob = values.glob;
       const semanticOffset = numericOption(values["semantic-offset"], "semantic-offset");

@@ -219,19 +219,26 @@ Direct loads use embedded RMV2 materials; WSModel loads use their explicit LOD/p
 
 `asset resolve` traverses supported embedded texture slots and labels incoming RMV2 edges with `loadMode: direct` or `wsmodel`. Engine references include the animation-to-LOD row chain. `asset references` groups direct loaders before WSModel bindings and reports target-specific loader counts. Supported rigid dependencies also participate in subset closure.
 
-`pack diff --details` includes bounded RMV2 semantic records for LODs, parts, material types, geometry, textures, and parameters. The geometry counters report changed vertices, positions, UV vertex/channel pairs, and indices. Texture records pair by numeric slot ID and occurrence, with before/after array indexes retained as evidence; additions and removals are paged with the other semantic records. Use `--semantic-offset`, `--semantic-limit`, or `--report` for additional records.
+`pack diff` detects exact logical-content moves by comparing size and SHA-256 after path matches. It pairs duplicate candidates by sorted path; pairs from a duplicate group carry `ambiguous: true`. Moved entries use `status: "moved"` with `from` and `to`; `summary.movedCount` reports them, and they are excluded from `summary.added` and `summary.removed`. Set `detectMoves: false` in JSON/MCP or pass `--no-moves` to retain separate additions and removals.
+
+With `--details`, changed DDS paths include header field changes and per-surface, per-mip RGBA error statistics. `maxError` and `rmse` are in 8-bit channel byte units; sRGB values are compared as decoded samples without linearization. Same-format block compressed images also report byte-identical 4x4 blocks, including edge blocks. Pixel comparisons support BC1, BC2, BC3, and BC7 when dimensions and surface counts match. Different dimensions produce a header-only comparison. Unsupported layouts, volume textures, and truncated data include a diagnostic and do not claim a complete pixel result. Mips above the shared 16,777,216-pixel limit are skipped while smaller mips continue; the semantic record is marked incomplete. DDS mip comparisons use the existing `--semantic-offset`, `--semantic-limit`, and `--report` paging. Diff still hashes every selected logical payload; DDS decoding is limited to changed DDS paths and runs only with `--details`, so detailed comparisons can add substantial CPU and memory cost on large texture packs.
+
+`pack diff --details` also includes bounded RMV2 semantic records for LODs, parts, material types, geometry, textures, and parameters. The geometry counters report changed vertices, positions, UV vertex/channel pairs, and indices. Texture records pair by numeric slot ID and occurrence, with before/after array indexes retained as evidence; additions and removals are paged with the other semantic records. Use `--semantic-offset`, `--semantic-limit`, or `--report` for additional records.
 
 `pack validate` always parses RMV2 structure, even when `--full-payloads` is omitted. Malformed structure is an error; unsupported models or parts are warnings and make `validationComplete` false. `unresolvedRigidTextureCount` counts missing or ambiguous embedded texture paths. To resolve those paths against the base game, use `--with-vanilla` (optionally `--game-data <directory>`). For an explicit load order, pass a JSON input containing `vanillaPackPaths` and `packPaths`; each list is ordered from lower to higher priority, supporting packs take priority over vanilla packs, and the validated target pack is highest. Duplicate provider paths retain their last occurrence and highest role. A warning that WS material bindings are unused is emitted only when a direct loader and a valid explicit WS geometry/LOD/part/material binding both point to the same RMV2 model; matching filenames alone do not establish a binding.
 
+Pass `--baseline <pack>` (or `baselinePackPath` in JSON/MCP) to compare diagnostics from the validated target against another pack. Both packs use the same validation and load-order options, and both are treated as the highest-priority target in turn. Diagnostics match as a duplicate-aware multiset of code, severity, path, and message; moved paths are not remapped. The result pages `baselineComparison.added` and `.resolved` independently using `--offset` and `--limit`, reports `unchanged`, per-code before/after/delta counts, and sets `regressed` when any new warning or error appears. In baseline mode the regular diagnostics array contains only the added diagnostic page, while `valid` and `validationComplete` still describe the complete target validation. `--report` writes all target diagnostics and the unpaged comparison. Existing target errors continue to make CLI exit with code 5 and MCP report an error even when the added page is empty.
+
 ```json
 {
+  "baselinePackPath": "/absolute/path/to/base.pack",
   "vanillaPackPaths": ["/absolute/path/to/data.pack", "/absolute/path/to/variantmeshes.pack"],
   "packPaths": ["/absolute/path/to/base_mod.pack", "/absolute/path/to/texture_override.pack"]
 }
 ```
 
 ```sh
-node dist/cli/main.js pack validate /absolute/path/to/edited.pack --input validate.json --format json
+node dist/cli/main.js pack validate /absolute/path/to/edited.pack --baseline /absolute/path/to/base.pack --with-vanilla --format json
 node dist/cli/main.js pack diff /absolute/path/to/base.pack /absolute/path/to/edited.pack --details --semantic-limit 100 --format json
 ```
 

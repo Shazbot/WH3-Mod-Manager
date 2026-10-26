@@ -1,7 +1,7 @@
 import { deflateSync } from "node:zlib";
-import { inspectDdsLayout } from "../utility/ddsLayout";
+import { DDS_MAX_PIXELS, inspectDdsLayout } from "../utility/ddsLayout";
 
-interface DdsRgbaImage {
+export interface DdsRgbaImage {
   width: number;
   height: number;
   pixels: Buffer;
@@ -495,7 +495,12 @@ const decodeDxt5 = (buffer: Buffer, width: number, height: number, dataOffset = 
   return { width, height, pixels };
 };
 
-const decodeDds = (buffer: Buffer, mipLevel = 0, surface = 0, maxPixels = Number.POSITIVE_INFINITY): DdsRgbaImage => {
+export const decodeDds = (
+  buffer: Buffer,
+  mipLevel = 0,
+  surface = 0,
+  maxPixels = Number.POSITIVE_INFINITY,
+): DdsRgbaImage => {
   const layout = inspectDdsLayout(buffer);
   if (!Number.isInteger(mipLevel) || mipLevel < 0 || mipLevel >= layout.mipCount)
     throw new Error(`Invalid DDS mip level ${mipLevel}`);
@@ -507,7 +512,7 @@ const decodeDds = (buffer: Buffer, mipLevel = 0, surface = 0, maxPixels = Number
   if (offset + mip.byteLength > buffer.length)
     throw new Error(`Truncated DDS data for mip ${mipLevel}, surface ${surface}`);
   if (mip.width * mip.height > maxPixels)
-    throw new Error("DDS preview exceeds the 16,777,216-pixel limit; select a smaller mip");
+    throw new Error(`DDS preview exceeds the ${maxPixels.toLocaleString("en-US")}-pixel limit; select a smaller mip`);
   if (layout.format.startsWith("BC1_")) return decodeDxt1(buffer, mip.width, mip.height, offset);
   if (layout.format.startsWith("BC2_")) return decodeDxt3(buffer, mip.width, mip.height, offset);
   if (layout.format.startsWith("BC3_")) return decodeDxt5(buffer, mip.width, mip.height, offset);
@@ -605,6 +610,6 @@ export const encodeDdsAsPng = (buffer: Buffer, width?: number, height?: number):
 
 /** Exports the actual stored mip, without resizing or generating mipmaps. */
 export const encodeDdsMipAsPng = (buffer: Buffer, mipLevel = 0, surface = 0): EncodedDdsPng => {
-  const image = decodeDds(buffer, mipLevel, surface, 16_777_216);
+  const image = decodeDds(buffer, mipLevel, surface, DDS_MAX_PIXELS);
   return { width: image.width, height: image.height, png: encodePng(image.pixels, image.width, image.height) };
 };

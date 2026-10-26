@@ -19,6 +19,8 @@ import {
   type Rmv2Part,
 } from "../packCore";
 import { decodePackedTextBuffer } from "../utility/packFileViewing";
+import { decodeDds } from "../esfMap/dds";
+import { DDS_MAX_PIXELS, inspectDdsLayout, type DdsLayout } from "../utility/ddsLayout";
 import { AutomationError, throwIfAborted, yieldToEventLoop, type AutomationDiagnostic } from "./errors";
 import { getAutomationSchemaProvider, readAutomationPack, readAutomationPayload } from "./packAccess";
 import { loadPackedTable, tableRowsToJson, type TableRow } from "./tables";
@@ -33,6 +35,7 @@ export const packDiffSchema = z
     glob: z.string().optional(),
     fileTypes: z.array(z.string().min(1)).max(256).optional(),
     details: z.boolean().default(false),
+    detectMoves: z.boolean().default(true),
     semanticOffset: z.number().int().min(0).default(0),
     semanticLimit: z.number().int().min(1).max(1000).default(100),
     offset: z.number().int().min(0).default(0),
@@ -102,6 +105,253 @@ const hashEntry = async (
   if (!entry.is_compressed) return { sha256: await hashStream(pack.path, entry), logicalSize: entry.file_size };
   const payload = await readAutomationPayload(pack, entry, context);
   return { sha256: createHash("sha256").update(payload).digest("hex"), logicalSize: payload.length };
+};
+
+const changedHeaderField = (before: unknown, after: unknown) => ({
+  before,
+  after,
+  changed: JSON.stringify(before) !== JSON.stringify(after),
+});
+
+const ddsHeaderDiff = (beforeBytes: Buffer, before: DdsLayout, afterBytes: Buffer, after: DdsLayout) => {
+  const dx10 = (bytes: Buffer, layout: DdsLayout) =>
+    layout.fourCc === "DX10"
+      ? {
+          dxgiFormat: layout.dxgiFormat,
+          resourceDimension: layout.resourceDimension,
+          arraySize: layout.arraySize,
+          cube: layout.isCubemap,
+          miscFlags2: bytes.length >= 148 ? bytes.readUInt32LE(144) : null,
+        }
+      : null;
+  const srgb = (layout: DdsLayout) => /_SRGB(?:_|$)/i.test(layout.format);
+  const beforeDx10 = dx10(beforeBytes, before);
+  const afterDx10 = dx10(afterBytes, after);
+  return {
+    format: changedHeaderField(
+      { format: before.format, fourCc: before.fourCc, dxgiFormat: before.dxgiFormat },
+      { format: after.format, fourCc: after.fourCc, dxgiFormat: after.dxgiFormat },
+    ),
+    sRGB: changedHeaderField(srgb(before), srgb(after)),
+    dx10Header: changedHeaderField(beforeDx10, afterDx10),
+    width: changedHeaderField(before.width, after.width),
+    height: changedHeaderField(before.height, after.height),
+    declaredMipCount: changedHeaderField(before.declaredMipCount, after.declaredMipCount),
+    effectiveMipCount: changedHeaderField(before.mipCount, after.mipCount),
+    arraySize: changedHeaderField(before.arraySize, after.arraySize),
+    cubemap: changedHeaderField(before.isCubemap, after.isCubemap),
+    volume: changedHeaderField(
+      { isVolume: before.resourceDimension === "3D", depth: before.depth },
+      { isVolume: after.resourceDimension === "3D", depth: after.depth },
+    ),
+  };
+};
+
+const rgbaError = (before: Buffer, after: Buffer, width: number, height: number) => {
+  const sums = [0, 0, 0, 0];
+  const maxima = [0, 0, 0, 0];
+  let differingTexels = 0;
+  const pixels = width * height;
+  for (let pixel = 0; pixel < pixels; pixel += 1) {
+    const offset = pixel * 4;
+    let differs = false;
+    for (let channel = 0; channel < 4; channel += 1) {
+      const error = Math.abs(before[offset + channel] - after[offset + channel]);
+      if (error) differs = true;
+      if (error > maxima[channel]) maxima[channel] = error;
+      sums[channel] += error * error;
+    }
+    if (differs) differingTexels += 1;
+  }
+  const stats = (channel: number) => ({
+    maxError: maxima[channel],
+    rmse: Math.sqrt(sums[channel] / pixels),
+  });
+  const allMax = Math.max(...maxima);
+  const allSum = sums.reduce((total, value) => total + value, 0);
+  return {
+    channels: { r: stats(0), g: stats(1), b: stats(2), a: stats(3) },
+    overall: { maxError: allMax, rmse: Math.sqrt(allSum / (pixels * 4)) },
+    differingTexels,
+  };
+};
+
+const identicalBlocks = (
+  beforeBytes: Buffer,
+  before: DdsLayout,
+  afterBytes: Buffer,
+  after: DdsLayout,
+  mipLevel: number,
+  surface: number,
+) => {
+  const mipBefore = before.mips[mipLevel];
+  const mipAfter = after.mips[mipLevel];
+  if (
+    !mipBefore ||
+    !mipAfter ||
+    !before.blockBytes ||
+    !after.blockBytes ||
+    before.blockBytes !== after.blockBytes ||
+    !before.chainBytes ||
+    !after.chainBytes
+  )
+    return undefined;
+  const blockCount = Math.ceil(mipBefore.width / 4) * Math.ceil(mipBefore.height / 4);
+  const beforeStart = mipBefore.offset + surface * before.chainBytes;
+  const afterStart = mipAfter.offset + surface * after.chainBytes;
+  if (beforeStart + mipBefore.byteLength > beforeBytes.length || afterStart + mipAfter.byteLength > afterBytes.length)
+    return undefined;
+  let identicalCount = 0;
+  for (let block = 0; block < blockCount; block += 1) {
+    const offsetBefore = beforeStart + block * before.blockBytes;
+    const offsetAfter = afterStart + block * after.blockBytes;
+    if (
+      beforeBytes
+        .subarray(offsetBefore, offsetBefore + before.blockBytes)
+        .equals(afterBytes.subarray(offsetAfter, offsetAfter + after.blockBytes))
+    )
+      identicalCount += 1;
+  }
+  return { identical: identicalCount, total: blockCount };
+};
+
+const semanticDdsDiff = async (
+  beforePack: CorePack,
+  beforeEntry: CorePackEntry,
+  afterPack: CorePack,
+  afterEntry: CorePackEntry,
+  context: AutomationContext,
+  diagnostics: AutomationDiagnostic[],
+) => {
+  try {
+    const [beforeBytes, afterBytes] = await Promise.all([
+      readAutomationPayload(beforePack, beforeEntry, context),
+      readAutomationPayload(afterPack, afterEntry, context),
+    ]);
+    const before = inspectDdsLayout(beforeBytes);
+    const after = inspectDdsLayout(afterBytes);
+    const header = ddsHeaderDiff(beforeBytes, before, afterBytes, after);
+    const issue = (code: string, message: string) =>
+      diagnostics.push(diagnostic(code, message, "warning", beforeEntry.name));
+    const skip = (reason: string, code?: string) => {
+      if (code) issue(code, reason);
+      return {
+        type: "dds" as const,
+        available: true,
+        complete: false,
+        header,
+        pixelComparison: "skipped" as const,
+        reason,
+        mipComparisons: [],
+        mipComparisonCount: 0,
+      };
+    };
+    if (before.width !== after.width || before.height !== after.height)
+      return skip("Pixel comparison requires equal width and height");
+    if (before.surfaceCount !== after.surfaceCount)
+      return skip(
+        "Pixel comparison requires the same number of array/cubemap surfaces",
+        "DDS_PIXEL_COMPARISON_SKIPPED",
+      );
+    if (
+      before.resourceDimension !== after.resourceDimension ||
+      before.isCubemap !== after.isCubemap ||
+      before.arraySize !== after.arraySize
+    )
+      return skip(
+        "Pixel comparison requires compatible array, cubemap, and resource dimensions",
+        "DDS_PIXEL_COMPARISON_SKIPPED",
+      );
+    if (before.resourceDimension === "3D" || after.resourceDimension === "3D")
+      return skip("Pixel comparison of volume textures is unsupported", "UNSUPPORTED_DDS_PIXEL_COMPARISON");
+    if (!before.previewSupported || !after.previewSupported || !before.layoutSupported || !after.layoutSupported)
+      return skip(
+        `Pixel comparison is unsupported for ${!before.previewSupported ? before.format : after.format}`,
+        "UNSUPPORTED_DDS_PIXEL_COMPARISON",
+      );
+    if (before.complete === false || after.complete === false)
+      issue("TRUNCATED_DDS_PIXEL_COMPARISON", "One or both DDS mip/surface chains are truncated");
+
+    const mipComparisons: Array<Record<string, unknown>> = [];
+    const skippedMips: Array<{ mipLevel: number; surface?: number; reason: string }> = [];
+    let complete = before.complete !== false && after.complete !== false;
+    const mipCount = Math.min(before.mipCount, after.mipCount);
+    if (before.mipCount !== after.mipCount) {
+      complete = false;
+      for (let mipLevel = mipCount; mipLevel < Math.max(before.mipCount, after.mipCount); mipLevel += 1)
+        skippedMips.push({ mipLevel, reason: "Mip is present in only one texture" });
+    }
+    const sameBlockFormat = before.format === after.format && before.blockBytes !== null && after.blockBytes !== null;
+    for (let mipLevel = 0; mipLevel < mipCount; mipLevel += 1) {
+      throwIfAborted(context.signal);
+      const beforeMip = before.mips[mipLevel];
+      const afterMip = after.mips[mipLevel];
+      if (!beforeMip?.present || !afterMip?.present) {
+        complete = false;
+        skippedMips.push({ mipLevel, reason: "Mip payload is truncated or unavailable" });
+        continue;
+      }
+      if (beforeMip.width * beforeMip.height > DDS_MAX_PIXELS || afterMip.width * afterMip.height > DDS_MAX_PIXELS) {
+        complete = false;
+        skippedMips.push({
+          mipLevel,
+          reason: `Mip exceeds the ${DDS_MAX_PIXELS.toLocaleString("en-US")} pixel limit`,
+        });
+        continue;
+      }
+      for (let surface = 0; surface < before.surfaceCount; surface += 1) {
+        if ((surface & 15) === 0) await yieldToEventLoop(context.signal);
+        try {
+          const [beforeImage, afterImage] = await Promise.all([
+            Promise.resolve(decodeDds(beforeBytes, mipLevel, surface, DDS_MAX_PIXELS)),
+            Promise.resolve(decodeDds(afterBytes, mipLevel, surface, DDS_MAX_PIXELS)),
+          ]);
+          const blockComparison = sameBlockFormat
+            ? identicalBlocks(beforeBytes, before, afterBytes, after, mipLevel, surface)
+            : undefined;
+          mipComparisons.push({
+            mipLevel,
+            surface,
+            width: beforeMip.width,
+            height: beforeMip.height,
+            ...rgbaError(beforeImage.pixels, afterImage.pixels, beforeMip.width, beforeMip.height),
+            ...(blockComparison
+              ? { identicalBlocks: blockComparison.identical, totalBlocks: blockComparison.total }
+              : {}),
+          });
+        } catch (error) {
+          complete = false;
+          const reason = error instanceof Error ? error.message : String(error);
+          skippedMips.push({ mipLevel, surface, reason });
+          issue("DDS_PIXEL_COMPARISON_FAILED", reason);
+        }
+      }
+    }
+    if (before.mipCount !== after.mipCount)
+      issue("DDS_MIP_COUNT_MISMATCH", "Only mip levels present on both textures were compared");
+    return {
+      type: "dds" as const,
+      available: true,
+      complete,
+      header,
+      pixelComparison: mipComparisons.length ? (complete ? "complete" : "partial") : "skipped",
+      ...(mipComparisons.length ? {} : { reason: "No common mip payloads could be decoded" }),
+      mipComparisonCount: mipComparisons.length,
+      mipComparisons,
+      skippedMips,
+    };
+  } catch (error) {
+    if (error instanceof AutomationError && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code)) throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    diagnostics.push(diagnostic("DDS_PARSE_FAILED", message, "warning", beforeEntry.name));
+    return {
+      type: "dds" as const,
+      available: false,
+      complete: false,
+      pixelComparison: "skipped" as const,
+      reason: message,
+    };
+  }
 };
 
 const semanticSchemaMatches = (before: ParsedDbTable, after: ParsedDbTable): boolean =>
@@ -566,6 +816,10 @@ const semanticDiffForFile = async (
 ) => {
   const beforeNormalized = normalizePackFilePathKey(beforeEntry.name);
   const afterNormalized = normalizePackFilePathKey(afterEntry.name);
+  if (beforeNormalized.endsWith(".dds") || afterNormalized.endsWith(".dds")) {
+    if (!includeDetails) return undefined;
+    return semanticDdsDiff(beforePack, beforeEntry, afterPack, afterEntry, context, diagnostics);
+  }
   const beforeIsTable = beforeNormalized.endsWith(".loc") || Boolean(parseDBTablePath(beforeNormalized));
   const afterIsTable = afterNormalized.endsWith(".loc") || Boolean(parseDBTablePath(afterNormalized));
   if (beforeIsTable || afterIsTable) {
@@ -729,7 +983,15 @@ const metadataDifferences = (
 };
 
 const semanticRecordPreview = (semantic: Record<string, unknown>, offset: number, limit: number) => {
-  const recordGroups = ["added", "deleted", "removed", "modified", "unsupportedAdded", "unsupportedRemoved"] as const;
+  const recordGroups = [
+    "added",
+    "deleted",
+    "removed",
+    "modified",
+    "unsupportedAdded",
+    "unsupportedRemoved",
+    "mipComparisons",
+  ] as const;
   const records: Array<{ kind: string; record: unknown }> = [];
   for (const kind of recordGroups) {
     const items = semantic[kind];
@@ -740,13 +1002,19 @@ const semanticRecordPreview = (semantic: Record<string, unknown>, offset: number
     Number(semantic.deletedCount ?? semantic.removedCount ?? 0) +
     Number(semantic.modifiedCount ?? 0) +
     Number(semantic.unsupportedAddedCount ?? 0) +
-    Number(semantic.unsupportedRemovedCount ?? 0);
+    Number(semantic.unsupportedRemovedCount ?? 0) +
+    Number(semantic.mipComparisonCount ?? 0);
   return {
     type: semantic.type,
     mode: semantic.mode,
     semanticScope: semantic.semanticScope,
     available: semantic.available,
     complete: semantic.complete,
+    header: semantic.header,
+    pixelComparison: semantic.pixelComparison,
+    reason: semantic.reason,
+    skippedMips: semantic.skippedMips,
+    mipComparisonCount: semantic.mipComparisonCount,
     addedCount: semantic.addedCount,
     deletedCount: semantic.deletedCount,
     removedCount: semantic.removedCount,
@@ -793,9 +1061,22 @@ export const runPackDiff = async (request: DiffRequest, context: AutomationConte
   let removedCount = 0;
   let changedCount = 0;
   let identicalCount = 0;
+  let movedCount = 0;
   let logicalSizeDelta = 0;
   let storedSizeDelta = 0;
 
+  const records: Array<{
+    key: string;
+    beforeEntry?: CorePackEntry;
+    afterEntry?: CorePackEntry;
+    beforeHash?: { sha256: string; logicalSize: number };
+    afterHash?: { sha256: string; logicalSize: number };
+    status: "added" | "removed" | "changed" | "identical" | "moved";
+    from?: string;
+    to?: string;
+    ambiguous?: boolean;
+    suppressed?: boolean;
+  }> = [];
   let comparedEntries = 0;
   for (const key of allKeys) {
     throwIfAborted(context.signal);
@@ -811,15 +1092,62 @@ export const runPackDiff = async (request: DiffRequest, context: AutomationConte
         : beforeHash!.sha256 === afterHash!.sha256
           ? "identical"
           : "changed";
+    logicalSizeDelta += (afterHash?.logicalSize ?? 0) - (beforeHash?.logicalSize ?? 0);
+    storedSizeDelta += (afterEntry?.file_size ?? 0) - (beforeEntry?.file_size ?? 0);
+    records.push({ key, beforeEntry, afterEntry, beforeHash, afterHash, status });
+  }
+
+  if (request.detectMoves) {
+    const candidates = new Map<string, { removed: typeof records; added: typeof records }>();
+    for (const record of records) {
+      if (record.status !== "added" && record.status !== "removed") continue;
+      const content = record.status === "removed" ? record.beforeHash! : record.afterHash!;
+      const contentKey = `${content.logicalSize}\0${content.sha256}`;
+      const group = candidates.get(contentKey) ?? { removed: [], added: [] };
+      group[record.status].push(record);
+      candidates.set(contentKey, group);
+    }
+    for (const group of candidates.values()) {
+      const pairCount = Math.min(group.removed.length, group.added.length);
+      const ambiguous = group.removed.length > 1 || group.added.length > 1;
+      for (let index = 0; index < pairCount; index += 1) {
+        const removed = group.removed[index];
+        const added = group.added[index];
+        removed.suppressed = true;
+        added.status = "moved";
+        added.beforeEntry = removed.beforeEntry;
+        added.beforeHash = removed.beforeHash;
+        added.from = removed.beforeEntry!.name;
+        added.to = added.afterEntry!.name;
+        added.ambiguous = ambiguous;
+      }
+    }
+  }
+
+  const emittedRecords = records.filter((record) => !record.suppressed);
+  if (request.detectMoves)
+    emittedRecords.sort((left, right) =>
+      normalizePackFilePathKey((left.afterEntry ?? left.beforeEntry)!.name).localeCompare(
+        normalizePackFilePathKey((right.afterEntry ?? right.beforeEntry)!.name),
+      ),
+    );
+
+  let emittedCount = 0;
+  for (const record of emittedRecords) {
+    throwIfAborted(context.signal);
+    if ((emittedCount++ & 127) === 0) await yieldToEventLoop(context.signal);
+    const { beforeEntry, afterEntry, beforeHash, afterHash, status } = record;
     if (status === "added") addedCount += 1;
     else if (status === "removed") removedCount += 1;
     else if (status === "changed") changedCount += 1;
-    else identicalCount += 1;
-    logicalSizeDelta += (afterHash?.logicalSize ?? 0) - (beforeHash?.logicalSize ?? 0);
-    storedSizeDelta += (afterEntry?.file_size ?? 0) - (beforeEntry?.file_size ?? 0);
+    else if (status === "identical") identicalCount += 1;
+    else movedCount += 1;
     const item: Record<string, unknown> = {
       path: (afterEntry ?? beforeEntry)!.name,
       status,
+      ...(status === "moved"
+        ? { from: record.from, to: record.to, ...(record.ambiguous ? { ambiguous: true } : {}) }
+        : {}),
       ...(request.details
         ? {
             before: beforeEntry
@@ -881,13 +1209,15 @@ export const runPackDiff = async (request: DiffRequest, context: AutomationConte
       removed: removedCount,
       changed: changedCount,
       identical: identicalCount,
+      ...(request.detectMoves ? { movedCount } : {}),
       total: files.length,
       logicalSizeDelta,
       storedSizeDelta,
       metadata,
       packMetadataChanged: Object.keys(metadata).length > 0,
     },
-    hasChanges: addedCount > 0 || removedCount > 0 || changedCount > 0 || Object.keys(metadata).length > 0,
+    hasChanges:
+      addedCount > 0 || removedCount > 0 || changedCount > 0 || movedCount > 0 || Object.keys(metadata).length > 0,
     total: files.length,
     ...page,
     files: preview,

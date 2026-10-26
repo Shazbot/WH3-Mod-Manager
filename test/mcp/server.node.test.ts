@@ -152,11 +152,15 @@ describe("WH3 MCP stdio server", () => {
       });
       expect(listed.tools.find((tool) => tool.name === "pack_validate")?.inputSchema).toMatchObject({
         properties: {
+          baselinePackPath: { type: "string" },
           packPaths: { type: "array" },
           vanillaPackPaths: { type: "array" },
           withVanilla: { type: "boolean" },
           gameDataPath: { type: "string" },
         },
+      });
+      expect(listed.tools.find((tool) => tool.name === "pack_diff")?.inputSchema).toMatchObject({
+        properties: { detectMoves: { type: "boolean" }, details: { type: "boolean" } },
       });
       for (const name of [
         "pack_subset",
@@ -203,7 +207,7 @@ describe("WH3 MCP stdio server", () => {
     try {
       const result = await session.client.callTool({
         name: "pack_validate",
-        arguments: { packPath: modPath, withVanilla: true, gameDataPath: dataRoot },
+        arguments: { packPath: modPath, baselinePackPath: modPath, withVanilla: true, gameDataPath: dataRoot },
       });
       const content = result.content as Array<{ type: string; text?: string }>;
       const response = JSON.parse(content.find((item) => item.type === "text")!.text!);
@@ -215,12 +219,25 @@ describe("WH3 MCP stdio server", () => {
             { path: basePath, kind: "vanilla" },
             { path: modPath, kind: "mod" },
           ],
+          baselineComparison: { added: { total: 0 }, resolved: { total: 0 }, unchanged: 0, regressed: false },
         },
       });
       const cli = JSON.parse(
         execFileSync(
           process.execPath,
-          [cliEntry, "pack", "validate", modPath, "--with-vanilla", "--game-data", dataRoot, "--format", "json"],
+          [
+            cliEntry,
+            "pack",
+            "validate",
+            modPath,
+            "--baseline",
+            modPath,
+            "--with-vanilla",
+            "--game-data",
+            dataRoot,
+            "--format",
+            "json",
+          ],
           { encoding: "utf8" },
         ),
       );

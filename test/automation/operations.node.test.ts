@@ -338,7 +338,8 @@ describe("built CLI smoke test", () => {
     expect(help.status, help.stderr).toBe(0);
     expect(help.stdout).toContain("Usage:");
     expect(help.stdout).toContain("rigid patch <packPath> <filePath>");
-    expect(help.stdout).toContain("pack validate <packPath> [--full-payloads] [--input <jsonFile>]");
+    expect(help.stdout).toContain("pack validate <packPath> [--baseline <pack>] [--full-payloads]");
+    expect(help.stdout).toContain("pack diff <beforePath> <afterPath> [--details] [--no-moves]");
 
     const probe = spawnSync(
       process.execPath,

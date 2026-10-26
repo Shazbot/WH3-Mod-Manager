@@ -37,6 +37,8 @@ export interface DdsLayout {
   mips: DdsMipLayout[];
 }
 
+export const DDS_MAX_PIXELS = 16_777_216;
+
 const dxgiBc: Record<number, [string, number, boolean]> = {};
 for (const [base, family, bytes, preview] of [
   [70, "BC1", 8, true],

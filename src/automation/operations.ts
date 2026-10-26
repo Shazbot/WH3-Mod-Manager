@@ -227,7 +227,10 @@ export const operationSchemas = {
     .object({
       operation: z.literal("pack_validate"),
       packPath: z.string().min(1),
+      baselinePackPath: z.string().min(1).optional(),
       fullPayloads: z.boolean().default(false),
+      offset: pageShape.offset,
+      limit: pageShape.limit,
       packPaths: z.array(z.string().min(1)).max(512).optional(),
       ...vanillaInputs,
       reportPath: z.string().min(1).optional(),
@@ -880,11 +883,13 @@ const runPatchTable: OperationHandler<"pack_patch_table"> = async (request, cont
 
 const runValidate: OperationHandler<"pack_validate"> = async (request, context) => {
   const pack = await readIndex(request.packPath, context);
+  const baselinePack = request.baselinePackPath ? await readIndex(request.baselinePackPath, context) : undefined;
   const canonicalPath = (value: string) => {
     const resolved = path.resolve(value);
     return process.platform === "win32" ? resolved.toLowerCase() : resolved;
   };
   const targetKey = canonicalPath(pack.path);
+  const excludedPackKeys = new Set([targetKey, ...(baselinePack ? [canonicalPath(baselinePack.path)] : [])]);
   const requestedProviders: Array<{ path: string; kind: "vanilla" | "mod" }> = [];
   for (const [paths, kind] of [
     [request.vanillaPackPaths, "vanilla"],
@@ -899,7 +904,8 @@ const runValidate: OperationHandler<"pack_validate"> = async (request, context) 
   const lastProviderIndex = new Map(requestedProviders.map((provider, index) => [canonicalPath(provider.path), index]));
   const uniqueProviders = requestedProviders.filter(
     (provider, index) =>
-      canonicalPath(provider.path) !== targetKey && lastProviderIndex.get(canonicalPath(provider.path)) === index,
+      !excludedPackKeys.has(canonicalPath(provider.path)) &&
+      lastProviderIndex.get(canonicalPath(provider.path)) === index,
   );
   const vanillaPackPaths = uniqueProviders
     .filter((provider) => provider.kind === "vanilla")
@@ -1127,8 +1133,97 @@ const runValidate: OperationHandler<"pack_validate"> = async (request, context) 
     ),
     diagnostics,
   };
-  const reportPath = await withReport(context, request.reportPath, referenceEnvironment.sourcePaths, data);
-  return { data: { ...data, ...(reportPath ? { reportPath } : {}) }, diagnostics };
+  if (!baselinePack) {
+    const reportPath = await withReport(context, request.reportPath, referenceEnvironment.sourcePaths, data);
+    return { data: { ...data, ...(reportPath ? { reportPath } : {}) }, diagnostics };
+  }
+
+  const baselineRequest = {
+    ...request,
+    packPath: baselinePack.path,
+    baselinePackPath: undefined,
+    packPaths: supportingPackPaths,
+    vanillaPackPaths,
+    reportPath: undefined,
+  } as Request<"pack_validate">;
+  const baselineResult = await runValidate(baselineRequest, context);
+  const diagnosticKey = (item: AutomationDiagnostic) =>
+    JSON.stringify([item.code, item.severity, item.path ?? null, item.message]);
+  const baselineCounts = new Map<string, number>();
+  for (const item of baselineResult.diagnostics) {
+    const key = diagnosticKey(item);
+    baselineCounts.set(key, (baselineCounts.get(key) ?? 0) + 1);
+  }
+  const added: AutomationDiagnostic[] = [];
+  for (const item of diagnostics) {
+    const key = diagnosticKey(item);
+    const count = baselineCounts.get(key) ?? 0;
+    if (count) baselineCounts.set(key, count - 1);
+    else added.push(item);
+  }
+  const targetCounts = new Map<string, number>();
+  for (const item of diagnostics) {
+    const key = diagnosticKey(item);
+    targetCounts.set(key, (targetCounts.get(key) ?? 0) + 1);
+  }
+  const resolved: AutomationDiagnostic[] = [];
+  for (const item of baselineResult.diagnostics) {
+    const key = diagnosticKey(item);
+    const count = targetCounts.get(key) ?? 0;
+    if (count) targetCounts.set(key, count - 1);
+    else resolved.push(item);
+  }
+  const unchanged = diagnostics.length - added.length;
+  const codeSet = new Set([
+    ...baselineResult.diagnostics.map((item) => item.code),
+    ...diagnostics.map((item) => item.code),
+  ]);
+  const perCode = [...codeSet].sort().map((code) => {
+    const before = baselineResult.diagnostics.filter((item) => item.code === code).length;
+    const after = diagnostics.filter((item) => item.code === code).length;
+    return { code, before, after, delta: after - before };
+  });
+  const regressed = added.some((item) => item.severity === "error" || item.severity === "warning");
+  const addedPage = page(added, request.offset, request.limit);
+  const resolvedPage = page(resolved, request.offset, request.limit);
+  const baselineComparison = {
+    added: addedPage,
+    resolved: resolvedPage,
+    unchanged,
+    perCode,
+    regressed,
+  };
+  const fullPage = (items: AutomationDiagnostic[]) => ({
+    total: items.length,
+    offset: 0,
+    limit: Math.max(items.length, 1),
+    items,
+    nextOffset: null,
+    hasMore: false,
+  });
+  const fullComparison = {
+    added: fullPage(added),
+    resolved: fullPage(resolved),
+    unchanged,
+    perCode,
+    regressed,
+  };
+  const reportData = { ...data, diagnostics, baselineComparison: fullComparison };
+  const reportPath = await withReport(
+    context,
+    request.reportPath,
+    [...new Set([...referenceEnvironment.sourcePaths, baselinePack.path])],
+    reportData,
+  );
+  return {
+    data: {
+      ...data,
+      diagnostics: addedPage.items,
+      baselineComparison,
+      ...(reportPath ? { reportPath } : {}),
+    },
+    diagnostics: addedPage.items,
+  };
 };
 
 const runClone: OperationHandler<"pack_clone"> = async (request, context) => {

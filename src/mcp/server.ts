@@ -31,9 +31,10 @@ const descriptions: Record<OperationName, string> = {
   pack_write_files: "Add, replace, or remove pack files into a validated output pack.",
   pack_patch_table: "Insert, update, or delete DB or LOC rows in a copy-on-write output pack.",
   pack_validate:
-    "Validate pack structure, RMV2 models, and optional logical payloads; resolve RMV2 textures through explicit load order.",
+    "Validate pack structure, RMV2 models, and optional logical payloads; optionally compare target diagnostics with a baseline pack.",
   pack_clone: "Clone a pack byte-for-byte, optionally verifying its SHA-256 hash.",
-  pack_diff: "Compare two packs by logical file hashes and supported DB, LOC, XML-reference, and RMV2 semantics.",
+  pack_diff:
+    "Compare two packs by logical file hashes, exact-content moves, DDS mip pixels, and supported DB, LOC, XML-reference, and RMV2 semantics.",
   asset_resolve_references: "Resolve asset and DB row roots into a bounded forward reference graph.",
   asset_find_references: "Scan explicit packs for reverse references to an asset or DB table.",
   pack_subset: "Create a subset pack from selected files or DB rows and a declared dependency closure.",
