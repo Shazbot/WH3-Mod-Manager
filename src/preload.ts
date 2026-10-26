@@ -132,8 +132,6 @@ const api = {
     ipcRenderer.on("setStartArgs", callback),
   packsInSave: (callback: (event: Electron.IpcRendererEvent, packNames: string[]) => void) =>
     ipcRenderer.on("packsInSave", callback),
-  enableModsByName: (callback: (event: Electron.IpcRendererEvent, packNames: string[]) => void) =>
-    ipcRenderer.on("enableModsByName", callback),
   sendApiExists: () => ipcRenderer.send("sendApiExists"),
   rendererMainMounted: () => ipcRenderer.send("rendererMainMounted"),
   viewerIsReady: () => ipcRenderer.send("viewerIsReady"),
@@ -496,9 +494,6 @@ const api = {
   },
   terminateGame: () => ipcRenderer.send("terminateGame"),
 
-  setSchemaData: (
-    callback: (event: Electron.IpcRendererEvent, DBNameToDBVersions: Record<string, DBVersion[]>) => void,
-  ) => ipcRenderer.on("setSchemaData", callback),
   setPackDataStore: (
     callback: (
       event: Electron.IpcRendererEvent,

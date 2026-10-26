@@ -4,7 +4,7 @@ This is a map of how WHMM's windows talk to the Electron main process: the mecha
 
 Counts in this document come from the source as of 2026-10-26:
 
-- `src/preload.ts`: 240 `window.api` methods, 98 `invoke` channels, 73 `send` channels, 69 event subscriptions.
+- `src/preload.ts`: 238 `window.api` methods, 98 `invoke` channels, 73 `send` channels, 67 event subscriptions.
 - Main process: 179 handlers (106 `handle`, 73 `on`) and 66 channels it emits to windows.
 
 ## Processes and windows
@@ -26,7 +26,7 @@ Counts in this document come from the source as of 2026-10-26:
 | Side                 | File                                                                                                                                                                                         |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Renderer API         | `src/preload.ts`: the `api` object, assigned with `window.api = api` (the `contextBridge` call is commented out). Typed as `window.api?: api` in `src/index.d.ts`.                           |
-| Event → Redux wiring | `src/rendererMain.ts` (56 subscriptions), plus `rendererViewer.ts`, `rendererSkills.ts`, `rendererTechTrees.ts`. Components subscribe to their own feature events, e.g. `DBDuplication.tsx`. |
+| Event → Redux wiring | `src/rendererMain.ts` (55 subscriptions), plus `rendererViewer.ts`, `rendererSkills.ts`, `rendererTechTrees.ts`. Components subscribe to their own feature events, e.g. `DBDuplication.tsx`. |
 | Main handlers        | `src/ipcMainListeners.ts` (159 handlers, all inside `registerIpcMainListeners()`), `src/wh3AssetHostIpc.ts` (10), `src/workshopModOptimizer/visualCheckIpc.ts` (6), `src/index.ts` (4)       |
 
 ## The three message kinds
@@ -86,7 +86,7 @@ Legend:
 
 - **I** `compareModsByteForByte`, `updateCustomModSources`, `getCustomModFolderStatuses`, `copyModsToNewCustomFolder`, `syncWorkshopModsToCustomFolder`
 - **S** `readMods`, `getAllModData`, `getCustomizableMods`, `exportModsToClipboard`, `exportModNamesToClipboard`, `openPack`, `copyModToData`, `copyToData`, `copyToDataAsSymbolicLink`, `cleanData`, `cleanSymbolicLinksInData`, `deletePack`, `makePackBackup`, `fakeUpdatePack`, `mergeMods`, `reMerge`
-- **E** `modsPopulated`, `addMod`, `removeMod`, `setModData`, `setPackHeaderData`, `setModLoadOrderRules`, `setCurrentlyReadingMod`, `setLastModThatWasRead`, `setDataModLastChangedLocal`, `setOutdatedPackFiles`, `setOverwrittenDataPackedFiles`, `setCustomizableMods`, `importModsFromUsedMods`, `createdMergedPack`, `enableModsByName` (subscribed in `rendererMain.ts`, but nothing sends it)
+- **E** `modsPopulated`, `addMod`, `removeMod`, `setModData`, `setPackHeaderData`, `setModLoadOrderRules`, `setCurrentlyReadingMod`, `setLastModThatWasRead`, `setDataModLastChangedLocal`, `setOutdatedPackFiles`, `setOverwrittenDataPackedFiles`, `setCustomizableMods`, `importModsFromUsedMods`, `createdMergedPack`
 
 ### Steam Workshop
 
@@ -116,7 +116,7 @@ Legend:
 
 - **I** `reloadPackForViewer`, `getVanillaPackFileTree`, `searchVanillaPackFiles`, `getPackFilesList`, `getViewerPackCatalog`, `readFileFromPack`, `getDBNameToDBVersions`, `getDefaultTableVersions`
 - **S** `requestOpenModInViewer`, `viewerIsReady`, `viewerClosedPack`, `setViewerActivePack`, `getPackData`, `getPackDataWithLocs`, `getTableReferences`
-- **E** `openModInViewer`, `viewerPackChangedOnDisk`, `setPacksData`, `setPacksDataRead`, `setPackDataStore`, `appendPackDataStore`, `setDBNameToDBVersions`, `vanillaDbCacheBuildProgress`, `setSchemaData` (subscribed, but nothing sends it)
+- **E** `openModInViewer`, `viewerPackChangedOnDisk`, `setPacksData`, `setPacksDataRead`, `setPackDataStore`, `appendPackDataStore`, `setDBNameToDBVersions`, `vanillaDbCacheBuildProgress`
 
 ### Pack viewer: editing, saving, import and export
 

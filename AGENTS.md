@@ -35,6 +35,38 @@ Do not modify `docs/DESIGN.md` unless the task explicitly requests a design-syst
 
 For non-UI work, do not read `docs/DESIGN.md` unless relevant.
 
+## Subsystem documentation
+
+Before exploring code for these areas, read the matching doc in `docs/`:
+
+- `IPC.md`: main ↔ renderer channels by feature, message conventions, adding a channel.
+- `FLOWS.md`: node-graph flows: format, node catalogue, manual vs launch execution, adding a node type.
+- `CACHES.md`: every disk and memory cache: location, key, invalidation, adding a cache.
+- `WH3_ASSET_HOST.md`: WH3AssetHost pipe protocol, optimize/check modes, versioning.
+- `HEADLESS.md`: headless CLI and MCP pack tools.
+- `NATIVE_PATCHES.md`: native patch manifests, flow templates, launch behaviour.
+
+When a change alters what one of these docs describes, update the doc in the same change.
+
+## Codebase Memory MCP
+
+Use Codebase Memory MCP for architecture discovery and persistent project knowledge.
+
+- At task start, consult `manage_adr(mode="get")` when architectural context is relevant.
+- Use `get_architecture` and targeted graph queries to locate subsystems, entry points, dependencies, and callers before broad filesystem searches.
+- Check `index_status` when freshness is uncertain. Verify important findings against source code, which takes precedence over stored memory.
+- Do not reindex unnecessarily.
+
+## Maintaining architectural memory
+
+- After changes affecting subsystem responsibilities, interfaces, data flows, dependencies, or architectural constraints, update the relevant ADR sections.
+- The ADR is over 8,000 characters, so `manage_adr(mode="set_sections")` is rejected ("merged ADR exceeds 8000 chars"). Read it with `manage_adr(mode="get")`, edit only the relevant sections, and write the whole document back with `manage_adr(mode="update")`. If the ADR ever drops below that size, `set_sections` works again; section names are bare headings such as `"STACK"`, without `##`.
+- Preserve unrelated sections and valid historical decisions. Clearly supersede obsolete information.
+- Record verified behavior, relevant source paths, and known design rationale. Do not invent historical decisions.
+- Skip memory updates for changes that do not affect architecture.
+- After major branch switches or merges, verify that the index and architectural memory reflect the current branch.
+- Treat version-controlled architecture documentation as authoritative over CBM's local ADR.
+
 ## Implementation
 
 - Follow existing project patterns and conventions.

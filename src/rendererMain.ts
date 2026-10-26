@@ -117,10 +117,6 @@ window.api?.packsInSave((event, packNames: string[]) => {
   store.dispatch(enableModsByName(packNames));
 });
 
-window.api?.enableModsByName((event, packNames: string[]) => {
-  store.dispatch(enableModsByName(packNames));
-});
-
 window.api?.importModsFromUsedMods((event, packNames: string[]) => {
   store.dispatch(importModsFromUsedMods(packNames));
 });
