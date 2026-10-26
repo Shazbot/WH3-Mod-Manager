@@ -49,12 +49,12 @@ Use `--input <json-file>` for complex requests. The file contains operation fiel
 
 The CLI and MCP server keep a 128 MiB retained-memory cache by default, with at most eight open cache readers. Set `--cache-memory-mib` to an integer from 1 through 1024. The reported memory limit bounds the cache's conservative retained-size estimate; it does not measure total Node.js heap use.
 
-Disk caching is opt-in. `--cache-dir` enables a managed headless namespace for typed DB tables and exact ordered vanilla localization sets. `--whmm-cache-dir` points to an existing GUI cache directory and is read-only; only proven v4 exact-source DB/LOC caches are eligible. Older v3 files, missing proof, mismatched identities/order, unsupported tables, or corrupt caches are treated as misses and rebuilt from source when possible.
+Disk caching is opt-in. `--cache-dir` enables a managed headless namespace for typed DB tables and exact ordered vanilla localization sets. `--whmm-cache-dir` points to the WHMM app's user data folder, where the GUI writes its `vanilla-db-cache-<game>.bin` and `vanilla-loc-cache-*.bin` files (`%APPDATA%\wh3mm` on Windows; see `docs/CACHES.md`), and is read-only; only proven v4 exact-source DB/LOC caches are eligible. Older v3 files, missing proof, mismatched identities/order, unsupported tables, or corrupt caches are treated as misses and rebuilt from source when possible.
 
 ```sh
 node dist/cli/main.js pack table query /absolute/path/to/mod.pack db/main_units_tables/data --input query.json --format json \
   --cache-dir /absolute/path/to/whmm-cache --cache-memory-mib 256 --cache-stats
-node dist/cli/main.js unit resolve --input unit.json --format json --whmm-cache-dir /absolute/path/to/WHMM/cache
+node dist/cli/main.js unit resolve --input unit.json --format json --whmm-cache-dir /absolute/path/to/wh3mm-user-data
 node dist/cli/main.js unit resolve --input unit.json --format json --no-cache
 ```
 
@@ -66,12 +66,12 @@ For MCP, point the cache options at paths visible to the same Node runtime as th
 "args": [
   "C:\\Users\\Example\\src\\whmm\\dist\\mcp\\server.js",
   "--read-root", "D:\\SteamLibrary\\steamapps\\common\\Total War WARHAMMER III\\data",
-  "--read-root", "C:\\Users\\Example\\AppData\\Roaming\\WHMM\\cache",
+  "--read-root", "C:\\Users\\Example\\AppData\\Roaming\\wh3mm",
   "--read-root", "C:\\Users\\Example\\AppData\\Local\\WHMM\\headless-cache",
   "--write-root", "C:\\Users\\Example\\Documents\\WH3ModOutput",
   "--write-root", "C:\\Users\\Example\\AppData\\Local\\WHMM\\headless-cache",
   "--cache-dir", "C:\\Users\\Example\\AppData\\Local\\WHMM\\headless-cache",
-  "--whmm-cache-dir", "C:\\Users\\Example\\AppData\\Roaming\\WHMM\\cache",
+  "--whmm-cache-dir", "C:\\Users\\Example\\AppData\\Roaming\\wh3mm",
   "--cache-stats"
 ]
 ```
@@ -81,11 +81,11 @@ Under WSL, use Linux paths and keep cache roots within the configured read/write
 ```sh
 node dist/mcp/server.js \
   --read-root "/mnt/c/Program Files (x86)/Steam/steamapps/common/Total War WARHAMMER III/data" \
-  --read-root /mnt/k/whmm-user/cache \
+  --read-root /mnt/c/Users/Example/AppData/Roaming/wh3mm \
   --read-root /mnt/k/wh3mods/output \
   --write-root /mnt/k/wh3mods/output \
   --cache-dir /mnt/k/wh3mods/output/headless-cache \
-  --whmm-cache-dir /mnt/k/whmm-user/cache --cache-stats
+  --whmm-cache-dir /mnt/c/Users/Example/AppData/Roaming/wh3mm --cache-stats
 ```
 
 Readonly queries, unit/localization lookups, and reference traversal can use typed cached rows. Byte-sensitive operations such as patch, write, create, clone, diff, validate, and subset continue to use original pack payloads; graph results, merged winners, and rendered localization are not retained in the cache.

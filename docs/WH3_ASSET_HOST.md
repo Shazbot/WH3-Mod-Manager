@@ -4,25 +4,25 @@
 
 This document describes the contract between WHMM and the host. It covers both sides, so you can change either one without reverse-engineering the other.
 
-| Side | Where |
-| --- | --- |
-| WHMM client, pipe mode | `src/wh3AssetHostProtocol.ts` (framing), `src/wh3AssetHostClient.ts` (client), `src/wh3AssetHostIpc.ts` (lifecycle and Electron IPC), `src/wh3AssetHostPacks.ts`, `src/wh3AssetHostVanillaCache.ts` |
-| WHMM client, one-shot mode | `src/workshopModOptimizer/hostRunner.ts` (process runner, stdout parser), `optimizer.ts` (optimize), `visualCheck.ts` (check) |
-| Host | `K:\projects\assedFork`, folder `Tools/WH3AssetHost/`: `Program.cs`, `AssetHostPipeServer.cs`, `AssetHostProtocol.cs`, `NamedPipeFrameProtocol.cs`, `HostMissingSkeletonDecision.cs`, `PaintedVariantExporter.cs`, `Optimize/*.cs` |
-| Bundled build | `tools/WH3AssetHost/WH3AssetHost.exe` plus `host-build.txt` (commit, version, size, sha256) |
+| Side                       | Where                                                                                                                                                                                                                              |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| WHMM client, pipe mode     | `src/wh3AssetHostProtocol.ts` (framing), `src/wh3AssetHostClient.ts` (client), `src/wh3AssetHostIpc.ts` (lifecycle and Electron IPC), `src/wh3AssetHostPacks.ts`, `src/wh3AssetHostVanillaCache.ts`                                |
+| WHMM client, one-shot mode | `src/workshopModOptimizer/hostRunner.ts` (process runner, stdout parser), `optimizer.ts` (optimize), `visualCheck.ts` (check)                                                                                                      |
+| Host                       | `K:\projects\assedFork`, folder `Tools/WH3AssetHost/`: `Program.cs`, `AssetHostPipeServer.cs`, `AssetHostProtocol.cs`, `NamedPipeFrameProtocol.cs`, `HostMissingSkeletonDecision.cs`, `PaintedVariantExporter.cs`, `Optimize/*.cs` |
+| Bundled build              | `tools/WH3AssetHost/WH3AssetHost.exe` plus `host-build.txt` (commit, version, size, sha256)                                                                                                                                        |
 
 The host source is on the fork's `feature/pack-optimizer-host` branch. To find the exact source of the bundled exe, read the commit in `host-build.txt`: `git -C <assedFork> show <commit>:Tools/WH3AssetHost/<file>`.
 
 ## Modes
 
-| Command line | Used for | Transport |
-| --- | --- | --- |
-| `WH3AssetHost serve --pipe <name> [--parent-pid <pid>]` | Model previews, animation catalogs, unit painter | Named pipe, length-prefixed JSON frames |
-| `WH3AssetHost optimize --request <file.json> [--parent-pid <pid>]` | Workshop mod optimization and consumer probes | Request file in; JSON lines on stdout |
-| `WH3AssetHost check --request <file.json> [--parent-pid <pid>]` | Visual asset check of one pack | Request file in; JSON lines on stdout |
-| `WH3AssetHost optimize --check-dds` | Proves the native DirectXTex shim loads | One stdout `result` line with status `dds-ok` |
-| `WH3AssetHost --version` (also `optimize --version`) | Capability versions for cache keys | One plain text line |
-| `WH3AssetHost export --pack ... --asset ... --output ...` | Legacy single-export command line; WHMM does not use it | stdout JSON |
+| Command line                                                       | Used for                                                | Transport                                     |
+| ------------------------------------------------------------------ | ------------------------------------------------------- | --------------------------------------------- |
+| `WH3AssetHost serve --pipe <name> [--parent-pid <pid>]`            | Model previews, animation catalogs, unit painter        | Named pipe, length-prefixed JSON frames       |
+| `WH3AssetHost optimize --request <file.json> [--parent-pid <pid>]` | Workshop mod optimization and consumer probes           | Request file in; JSON lines on stdout         |
+| `WH3AssetHost check --request <file.json> [--parent-pid <pid>]`    | Visual asset check of one pack                          | Request file in; JSON lines on stdout         |
+| `WH3AssetHost optimize --check-dds`                                | Proves the native DirectXTex shim loads                 | One stdout `result` line with status `dds-ok` |
+| `WH3AssetHost --version` (also `optimize --version`)               | Capability versions for cache keys                      | One plain text line                           |
+| `WH3AssetHost export --pack ... --asset ... --output ...`          | Legacy single-export command line; WHMM does not use it | stdout JSON                                   |
 
 Every mode writes a log under `%LOCALAPPDATA%\WH3AssetHost\Logs\WH3AssetHost-<date>.log`. The logs roll daily and at 10 MiB, and the last 7 are kept. Set `WH3ASSETHOST_LOG_LEVEL=Debug` to get per-request timing.
 
@@ -53,13 +53,13 @@ To update the bundled host, run `scripts/update-wh3-asset-host.ps1 [-AssetEditor
 
 Each message is one frame: a **u32 little-endian payload length** followed by that many bytes of **strict UTF-8 JSON**. Both sides enforce the same limits (`WH3_ASSET_HOST_MAX_FRAME_BYTES` / `AssetHostProtocol.MaxFramePayloadBytes`):
 
-| Rule | Error code |
-| --- | --- |
-| Payload must be at least 1 byte | `EmptyFrame` |
-| Payload must be at most 8 MiB (raised from 1 MiB for large animation catalogs) | `FrameTooLarge` |
-| Pipe must not end in the middle of a frame | `TruncatedFrame` |
-| Payload must be valid UTF-8 | `InvalidUtf8` (WHMM) / `MalformedRequest` (host) |
-| Payload must parse as JSON | `MalformedJson` |
+| Rule                                                                           | Error code                                       |
+| ------------------------------------------------------------------------------ | ------------------------------------------------ |
+| Payload must be at least 1 byte                                                | `EmptyFrame`                                     |
+| Payload must be at most 8 MiB (raised from 1 MiB for large animation catalogs) | `FrameTooLarge`                                  |
+| Pipe must not end in the middle of a frame                                     | `TruncatedFrame`                                 |
+| Payload must be valid UTF-8                                                    | `InvalidUtf8` (WHMM) / `MalformedRequest` (host) |
+| Payload must parse as JSON                                                     | `MalformedJson`                                  |
 
 On the host, `EmptyFrame` and `FrameTooLarge` get one error response, then the connection closes; a truncated frame closes it without a response. Bad UTF-8 or bad JSON inside a valid frame only fails that request; the connection stays open. On WHMM, any framing error fails the connection and rejects every pending request.
 
@@ -74,7 +74,7 @@ Request:
 Response:
 
 ```json
-{ "protocolVersion": 1, "requestId": "7", "success": true, "command": "exportModel", "result": { }, "error": null }
+{ "protocolVersion": 1, "requestId": "7", "success": true, "command": "exportModel", "result": {}, "error": null }
 ```
 
 - `requestId` is a non-empty string. WHMM uses an incrementing counter.
@@ -113,11 +113,11 @@ Some entries are **feature flags, not commands**: `paintedVariantRgba`, `painted
 
 #### `initialize`
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| `packPaths`* | string[] | Absolute paths, **lowest priority first**. When two packs contain the same file, the last pack wins. WHMM sends every vanilla pack in manifest order, then enabled mods in load order, with duplicates removed (the highest-priority copy is kept). |
-| `outputRoot`* | string | Absolute path. WHMM uses `<userData>/model-previews`, which it deletes and recreates once per app run. |
-| `vanillaPackFilesCachePath` | string | WHMM's `vanilla-pack-files-cache.bin` (format `WVFC`). The host reads vanilla indexes from it instead of reopening every pack. |
+| Field                       | Type     | Notes                                                                                                                                                                                                                                               |
+| --------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packPaths`*                | string[] | Absolute paths, **lowest priority first**. When two packs contain the same file, the last pack wins. WHMM sends every vanilla pack in manifest order, then enabled mods in load order, with duplicates removed (the highest-priority copy is kept). |
+| `outputRoot`*               | string   | Absolute path. WHMM uses `<userData>/model-previews`, which it deletes and recreates once per app run.                                                                                                                                              |
+| `vanillaPackFilesCachePath` | string   | WHMM's `vanilla-pack-files-cache.bin` (format `WVFC`). The host reads vanilla indexes from it instead of reopening every pack.                                                                                                                      |
 
 Result: `{ outputRoot, packPaths }`.
 
@@ -133,14 +133,14 @@ Errors: `NotInitialized`, `MissingAssetPath`, `AnimationCatalogFailed`.
 
 #### `exportModel`
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| `assetPath`* | string | Virtual path of the `.rigid_model_v2`, `.wsmodel` or `.variantmeshdefinition` |
-| `outputPath`* | string | Must end in `.glb` or `.gltf`. WHMM uses `<previewId>\model.glb`. |
-| `animationPaths` | string[] | Ignored when `animationSelections` is non-empty |
-| `animationSelections` | `{ path, packIndex?, fragmentPath?, metadataPath? }[]` | Takes precedence; its `path`s become the animation list |
-| `variantSelections` | `{ slotPath, choiceIndex }[]` | Explicit choices for VMD slots |
-| `exportMaterials`, `includeSkeleton`, `mirrorMesh` | bool | Default `true`. The host also accepts the aliases `materials`, `skeleton`, `mirror`. |
+| Field                                              | Type                                                   | Notes                                                                                |
+| -------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `assetPath`*                                       | string                                                 | Virtual path of the `.rigid_model_v2`, `.wsmodel` or `.variantmeshdefinition`        |
+| `outputPath`*                                      | string                                                 | Must end in `.glb` or `.gltf`. WHMM uses `<previewId>\model.glb`.                    |
+| `animationPaths`                                   | string[]                                               | Ignored when `animationSelections` is non-empty                                      |
+| `animationSelections`                              | `{ path, packIndex?, fragmentPath?, metadataPath? }[]` | Takes precedence; its `path`s become the animation list                              |
+| `variantSelections`                                | `{ slotPath, choiceIndex }[]`                          | Explicit choices for VMD slots                                                       |
+| `exportMaterials`, `includeSkeleton`, `mirrorMesh` | bool                                                   | Default `true`. The host also accepts the aliases `materials`, `skeleton`, `mirror`. |
 
 Result (`ExportResult`): `{ success, primaryFile, auxiliaryFiles: string[], warnings: [{ code, message }], errors: [{ code, message, details? }] }`. `primaryFile` is an absolute path.
 
@@ -158,13 +158,13 @@ Additional errors: `InvalidBatchItems`, `BatchTooLarge`.
 
 #### `exportPaintedVariant`
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| `assetPath`* | string | The model or VMD being repainted |
-| `outputDirectory`* | string | Relative directory for the generated files |
-| `variantName`* | string | Namespace for the new variant. WHMM builds it from the pack and asset names. |
-| `textures`* | `{ sourceVirtualPath*, rgbaPath*, width*, height* }[]` | 1–64 entries. `rgbaPath` is a relative `.rgba` file holding exactly `width*height*4` bytes (max 64 MiB). Each side must be 1–16384. |
-| `variantSelections` | `{ slotPath, choiceIndex }[]` | |
+| Field               | Type                                                   | Notes                                                                                                                               |
+| ------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `assetPath`*        | string                                                 | The model or VMD being repainted                                                                                                    |
+| `outputDirectory`*  | string                                                 | Relative directory for the generated files                                                                                          |
+| `variantName`*      | string                                                 | Namespace for the new variant. WHMM builds it from the pack and asset names.                                                        |
+| `textures`*         | `{ sourceVirtualPath*, rgbaPath*, width*, height* }[]` | 1–64 entries. `rgbaPath` is a relative `.rgba` file holding exactly `width*height*4` bytes (max 64 MiB). Each side must be 1–16384. |
+| `variantSelections` | `{ slotPath, choiceIndex }[]`                          |                                                                                                                                     |
 
 Result: `{ success, variantMeshVirtualPath?, files: string[], warnings: string[], errors: [{ code, message, details? }] }`.
 
@@ -197,15 +197,26 @@ Result: `{ shuttingDown: true }`. The host disposes its runtime, ends the loop a
 During an export, the host can find that a model's skeleton is missing. When that happens it pauses the export **in the middle of the request** and sends:
 
 ```json
-{ "protocolVersion": 1, "requestId": "decision-<guid>", "command": "decisionRequest",
-  "decisionType": "missingSkeleton", "skeletonName": "...", "message": "..." }
+{
+  "protocolVersion": 1,
+  "requestId": "decision-<guid>",
+  "command": "decisionRequest",
+  "decisionType": "missingSkeleton",
+  "skeletonName": "...",
+  "message": "..."
+}
 ```
 
 WHMM's reply carries the same `requestId`:
 
 ```json
-{ "protocolVersion": 1, "requestId": "decision-<guid>", "command": "decisionResponse",
-  "success": true, "action": "continueWithoutSkeleton" }
+{
+  "protocolVersion": 1,
+  "requestId": "decision-<guid>",
+  "command": "decisionResponse",
+  "success": true,
+  "action": "continueWithoutSkeleton"
+}
 ```
 
 `action` is `continueWithoutSkeleton` or `cancelExport`. In WHMM:
@@ -241,12 +252,12 @@ These modes never start the pipe server. Each run handles one job:
 
 ### Exit codes
 
-| Code | Meaning |
-| --- | --- |
-| 0 | Succeeded (includes `--version` and `--check-dds`) |
-| 1 | Failed |
-| 2 | Invalid arguments or request |
-| 3 | Cancelled |
+| Code | Meaning                                            |
+| ---- | -------------------------------------------------- |
+| 0    | Succeeded (includes `--version` and `--check-dds`) |
+| 1    | Failed                                             |
+| 2    | Invalid arguments or request                       |
+| 3    | Cancelled                                          |
 
 `runHost()` in `hostRunner.ts` maps a run to one outcome:
 
@@ -263,13 +274,13 @@ Background runs set below-normal process priority.
 
 ### stdout lines
 
-| `type` | When | Fields |
-| --- | --- | --- |
-| `progress` | During a run, at most every 100 ms per stage, plus on every stage change and stage completion | `stage, item?, current, total` |
-| `result` | Final line of `optimize` (succeeded or cancelled) | `status, outputPackPath, reportPath, vmdCount, atlasedMeshCount, generatedTextureCount, removedFileCount, skippedMeshCount, elapsedSeconds, warnings?, consumerPackCount, externallyUsedFileCount, frozenFileCount, hostVersion, consumerPacks?, outputVersion, summary?` |
-| `probe` | Only line of `optimize` with `probeOnly` | `hostVersion, consumers[], elapsedSeconds, outputVersion, scanVersion, sources?, packsScanned, scanCacheHits, scanSeconds` |
-| `check` | Final line of `check` (succeeded or cancelled) | `status, hostVersion, findings[], summary, reportPath, elapsedSeconds, vmdCount, wsModelCount, rigidCount, materialCount` |
-| `error` | Final line of a failed run | `message, exceptionType` |
+| `type`     | When                                                                                          | Fields                                                                                                                                                                                                                                                                    |
+| ---------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `progress` | During a run, at most every 100 ms per stage, plus on every stage change and stage completion | `stage, item?, current, total`                                                                                                                                                                                                                                            |
+| `result`   | Final line of `optimize` (succeeded or cancelled)                                             | `status, outputPackPath, reportPath, vmdCount, atlasedMeshCount, generatedTextureCount, removedFileCount, skippedMeshCount, elapsedSeconds, warnings?, consumerPackCount, externallyUsedFileCount, frozenFileCount, hostVersion, consumerPacks?, outputVersion, summary?` |
+| `probe`    | Only line of `optimize` with `probeOnly`                                                      | `hostVersion, consumers[], elapsedSeconds, outputVersion, scanVersion, sources?, packsScanned, scanCacheHits, scanSeconds`                                                                                                                                                |
+| `check`    | Final line of `check` (succeeded or cancelled)                                                | `status, hostVersion, findings[], summary, reportPath, elapsedSeconds, vmdCount, wsModelCount, rigidCount, materialCount`                                                                                                                                                 |
+| `error`    | Final line of a failed run                                                                    | `message, exceptionType`                                                                                                                                                                                                                                                  |
 
 The nested objects:
 
@@ -283,21 +294,21 @@ The nested objects:
 
 The file is camelCase JSON; comments and trailing commas are allowed. Fields:
 
-| Field | Notes |
-| --- | --- |
-| `schemaVersion`* | Must be `1` |
-| `gameDirectory`* | The folder that holds `manifest.txt`, or the install folder that has a `data` subfolder |
-| `vanillaFileIndexPath`* | WHMM's `vanilla-pack-files-cache.bin` |
-| `sourcePackPath`* | The pack to optimize. For a batch probe, use the first source. |
-| `outputPackPath`*, `reportPath`* | Not needed with `probeOnly`. The output must end in `.pack` and must differ from the source and from the report. |
-| `options`* | Not needed with `probeOnly`. Booleans: `mergeCompatibleMeshes`, `shareAtlasesAcrossVmds`, `optimizeGeometry`, `atlasAllVmds`, `scoreAllGameUnits`, `lodAwareAtlasPlanning`, `crossRigidOnly`, `crossRigidMerges`, `buildAtlases`, `downscaleTextures`, `sharedTextureRepack`, `compactTextures`, `dropUnreadAlpha`, `compressRigidModels`. Strings: `armyScope` (`subculture`/`culture`), `siblingScope` (`model`/`pack`). An omitted field keeps the optimizer's default. |
-| `consumerPackPaths` | The other enabled mods, in load order, first loads first. The source and the output must not be listed, and neither may any pack named like an optimizer output of this source. All are read-only. |
-| `sourceLoadOrderIndex` | Required when there are consumers: how many consumers load before the source (0..count) |
-| `dependencyPackPaths` | Consumers that have a declared dependency with the source, in either direction. A file the source references but does not contain is looked up here before the game packs. |
-| `cacheDirectory` | The optimizer's vanilla consumer cache and `probe-scan` cache |
-| `dbSchemaPath` | RPFM schema, e.g. WHMM's bundled `schema_wh3.json.zst`. A game patch that changes table versions then needs only a WHMM schema update, not a new host. |
-| `probeOnly` | Report only which consumers matter; nothing is optimized |
-| `probeSources` | With `probeOnly`: probe several sources in one run. `consumerPackPaths` must then list the whole load order, sources included, with no duplicates. |
+| Field                            | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schemaVersion`*                 | Must be `1`                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `gameDirectory`*                 | The folder that holds `manifest.txt`, or the install folder that has a `data` subfolder                                                                                                                                                                                                                                                                                                                                                                                    |
+| `vanillaFileIndexPath`*          | WHMM's `vanilla-pack-files-cache.bin`                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `sourcePackPath`*                | The pack to optimize. For a batch probe, use the first source.                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `outputPackPath`_, `reportPath`_ | Not needed with `probeOnly`. The output must end in `.pack` and must differ from the source and from the report.                                                                                                                                                                                                                                                                                                                                                           |
+| `options`*                       | Not needed with `probeOnly`. Booleans: `mergeCompatibleMeshes`, `shareAtlasesAcrossVmds`, `optimizeGeometry`, `atlasAllVmds`, `scoreAllGameUnits`, `lodAwareAtlasPlanning`, `crossRigidOnly`, `crossRigidMerges`, `buildAtlases`, `downscaleTextures`, `sharedTextureRepack`, `compactTextures`, `dropUnreadAlpha`, `compressRigidModels`. Strings: `armyScope` (`subculture`/`culture`), `siblingScope` (`model`/`pack`). An omitted field keeps the optimizer's default. |
+| `consumerPackPaths`              | The other enabled mods, in load order, first loads first. The source and the output must not be listed, and neither may any pack named like an optimizer output of this source. All are read-only.                                                                                                                                                                                                                                                                         |
+| `sourceLoadOrderIndex`           | Required when there are consumers: how many consumers load before the source (0..count)                                                                                                                                                                                                                                                                                                                                                                                    |
+| `dependencyPackPaths`            | Consumers that have a declared dependency with the source, in either direction. A file the source references but does not contain is looked up here before the game packs.                                                                                                                                                                                                                                                                                                 |
+| `cacheDirectory`                 | The optimizer's vanilla consumer cache and `probe-scan` cache                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `dbSchemaPath`                   | RPFM schema, e.g. WHMM's bundled `schema_wh3.json.zst`. A game patch that changes table versions then needs only a WHMM schema update, not a new host.                                                                                                                                                                                                                                                                                                                     |
+| `probeOnly`                      | Report only which consumers matter; nothing is optimized                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `probeSources`                   | With `probeOnly`: probe several sources in one run. `consumerPackPaths` must then list the whole load order, sources included, with no duplicates.                                                                                                                                                                                                                                                                                                                         |
 
 The host writes `<output>.optimizing` and `<report>.optimizing` first, then moves them into place. On cancel it deletes the temp files. On failure it deletes the temp output but keeps the report next to the target.
 
@@ -310,14 +321,14 @@ Texture atlas consolidation and cross-rigid merging are implemented in `Editors.
 
 ### `check` request file
 
-| Field | Notes |
-| --- | --- |
-| `schemaVersion`* | `1` |
-| `gameDirectory`*, `vanillaFileIndexPath`*, `sourcePackPath`* | As for `optimize` |
-| `reportPath` | Optional text report, written via `<report>.checking` |
-| `cacheDirectory` | Shared with the optimizer |
-| `dbSchemaPath` | Enables `usedByGame`. A finding reachable only from unused variant meshes drops one severity level. Without a schema, `usedByGame` is `null`. |
-| `dependencyPackPaths` | Other enabled mods, in load order. A reference one of them provides is not reported as missing. |
+| Field                                                        | Notes                                                                                                                                         |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schemaVersion`*                                             | `1`                                                                                                                                           |
+| `gameDirectory`_, `vanillaFileIndexPath`_, `sourcePackPath`* | As for `optimize`                                                                                                                             |
+| `reportPath`                                                 | Optional text report, written via `<report>.checking`                                                                                         |
+| `cacheDirectory`                                             | Shared with the optimizer                                                                                                                     |
+| `dbSchemaPath`                                               | Enables `usedByGame`. A finding reachable only from unused variant meshes drops one severity level. Without a schema, `usedByGame` is `null`. |
+| `dependencyPackPaths`                                        | Other enabled mods, in load order. A reference one of them provides is not reported as missing.                                               |
 
 `check` writes nothing except the optional report.
 
@@ -354,4 +365,5 @@ Request files carry their own `schemaVersion` (1 for both `optimize` and `check`
    - one-shot mode: `test/workshopModOptimizer.node.test.ts`, with fixture `test/fixtures/optimizerHostStdout.jsonl`
 
    Both clients take injectable `spawnProcess`/`connectPipe` (pipe) or `spawnProcess`/`runHost` (one-shot), so these tests do not need the real exe.
+
 5. Update this document.
