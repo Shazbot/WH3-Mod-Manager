@@ -334,6 +334,40 @@ describe("Unit Viewer loc lookup", () => {
     expect(getLoc("other")).toBeUndefined();
     expect(reads).toEqual(["wanted", "other"]);
   });
+
+  it.each(["present", "empty", "missing"])("reads a repeated %s key only once per source", (key) => {
+    const reads: string[] = [];
+    const entries: Record<string, string> = { present: "value", empty: "" };
+    const getLoc = createLocLookup([
+      {
+        get: (key) => {
+          reads.push(key);
+          return entries[key];
+        },
+      },
+    ]);
+
+    expect(getLoc(key)).toBe(entries[key]);
+    expect(getLoc(key)).toBe(entries[key]);
+    expect(reads).toEqual([key]);
+  });
+
+  it("does not carry cached values or misses into a new lookup", () => {
+    const vanilla = { shared: "vanilla", blanked: "vanilla text" };
+    const mod: Record<string, string> = { shared: "old mod", blanked: "" };
+    const oldLookup = createLocLookup([trieOf(vanilla), trieOf(mod)]);
+    expect(oldLookup("shared")).toBe("old mod");
+    expect(oldLookup("missing")).toBeUndefined();
+    expect(oldLookup("blanked")).toBe("");
+
+    mod.shared = "new mod";
+    mod.missing = "new value";
+    const newLookup = createLocLookup([trieOf(vanilla), trieOf(mod)]);
+    expect(newLookup("shared")).toBe("new mod");
+    expect(newLookup("missing")).toBe("new value");
+    expect(newLookup("blanked")).toBe("");
+    expect(createLocLookup([trieOf(mod), trieOf(vanilla)])("shared")).toBe("vanilla");
+  });
 });
 
 describe("Unit Viewer catalog", () => {
@@ -1030,6 +1064,44 @@ describe("Unit Viewer catalog", () => {
         },
       ],
     });
+  });
+
+  it("keeps faction color filtering, ordering and per-unit objects independent", () => {
+    const colours = {
+      uniform_colour_primary: "16711680",
+      uniform_colour_secondary: "65280",
+      uniform_colour_tertiary: "255",
+    };
+    const built = buildUnitViewerData(
+      {
+        main_units_tables: ["restricted", "unrestricted", "other"].map((unit) => ({ unit, land_unit: "land" })),
+        land_units_tables: [{ key: "land", man_entity: "entity" }],
+        battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100" }],
+        unit_variants_tables: [{ unit: "land", variant: "variant" }],
+        variants_tables: [{ variant_name: "variant", variant_filename: "units/human" }],
+        factions_tables: [
+          { key: "faction_z", subculture: "other", ...colours },
+          { key: "faction_invalid", subculture: "selected", ...colours, uniform_colour_tertiary: "" },
+          { key: "faction_explicit", subculture: "", ...colours },
+          { key: "faction_a", subculture: "selected", ...colours },
+        ],
+        units_custom_battle_permissions_tables: [
+          { unit: "restricted", faction: "faction_a" },
+          { unit: "restricted", faction: "faction_explicit" },
+        ],
+      },
+      () => undefined,
+    );
+    const restricted = built.units.get("restricted")?.painterVariantContext?.factionColours;
+    const unrestricted = built.units.get("unrestricted")?.painterVariantContext?.factionColours;
+    const other = built.units.get("other")?.painterVariantContext?.factionColours;
+    expect(restricted?.map((colour) => colour.faction)).toEqual(["faction_a", "faction_explicit"]);
+    expect(unrestricted?.map((colour) => colour.faction)).toEqual(["faction_a", "faction_explicit", "faction_z"]);
+    expect(other).toEqual(unrestricted);
+    expect(other).not.toBe(unrestricted);
+    expect(other?.[0]).not.toBe(unrestricted?.[0]);
+    unrestricted![0].primary = "#000000";
+    expect(other?.[0].primary).toBe("#ff0000");
   });
 
   it("resolves character XP with campaign and agent-specific rows taking precedence", () => {

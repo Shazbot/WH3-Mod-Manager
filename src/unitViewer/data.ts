@@ -35,6 +35,8 @@ export interface UnitViewerLocTrie {
  *
  * Takes tries in pack order and consults them in reverse, so a later pack still shadows an earlier
  * one exactly as it did when it overwrote the earlier entry.
+ * Requested values, including misses, are cached for this lookup's build. The sources stay fixed
+ * during derivation, and repeated keys would otherwise search and read the vanilla disk cache again.
  *
  * Note this returns "" for a key a pack maps to an empty string, where the flattened map dropped
  * those keys outright. Callers fall back with `||`, which treats the two the same; a caller using
@@ -42,11 +44,17 @@ export interface UnitViewerLocTrie {
  */
 export const createLocLookup = (triesInPackOrder: Array<UnitViewerLocTrie | undefined>) => {
   const tries = triesInPackOrder.filter((trie): trie is UnitViewerLocTrie => !!trie).toReversed();
+  const values = new Map<string, string | undefined>();
   return (key: string) => {
+    if (values.has(key)) return values.get(key);
     for (const trie of tries) {
       const value = trie.get(key);
-      if (value != undefined) return value;
+      if (value != undefined) {
+        values.set(key, value);
+        return value;
+      }
     }
+    values.set(key, undefined);
     return undefined;
   };
 };
@@ -715,6 +723,17 @@ export const buildUnitViewerData = (
   const uiGroupKeyByUnit = new Map<string, string>();
   const collator = new Intl.Collator("en");
 
+  // Normalize and sort once; each unit selects its own faction/subculture subset below.
+  const preparedFactionColours = Array.from(factions.entries())
+    .flatMap(([faction, row]) => {
+      const subculture = asString(row.subculture);
+      const primary = readFactionUniformColour(row, "uniform_colour_primary");
+      const secondary = readFactionUniformColour(row, "uniform_colour_secondary");
+      const tertiary = readFactionUniformColour(row, "uniform_colour_tertiary");
+      return primary && secondary && tertiary ? [{ faction, subculture, primary, secondary, tertiary }] : [];
+    })
+    .sort((first, second) => collator.compare(first.faction, second.faction));
+
   const mountNameByUnit = new Map<string, string>();
   for (const [mountedUnit, mountRows] of customBattleMountsByMountedUnit) {
     for (const row of mountRows) {
@@ -804,23 +823,14 @@ export const buildUnitViewerData = (
         ...variantColourRows.map((row) => asString(row.subculture)),
       ].filter(Boolean),
     );
-    const factionColours = Array.from(factions.entries())
-      .flatMap(([faction, row]) => {
-        const subculture = asString(row.subculture);
-        if (
-          previewSubcultures.size > 0 &&
-          !previewSubcultures.has(subculture) &&
-          !availableVariantFactions.includes(faction)
-        ) {
-          return [];
-        }
-        const primary = readFactionUniformColour(row, "uniform_colour_primary");
-        const secondary = readFactionUniformColour(row, "uniform_colour_secondary");
-        const tertiary = readFactionUniformColour(row, "uniform_colour_tertiary");
-        if (!primary || !secondary || !tertiary) return [];
-        return [{ faction, subculture, primary, secondary, tertiary }];
-      })
-      .sort((first, second) => collator.compare(first.faction, second.faction));
+    const factionColours = preparedFactionColours
+      .filter(
+        ({ faction, subculture }) =>
+          previewSubcultures.size === 0 ||
+          previewSubcultures.has(subculture) ||
+          availableVariantFactions.includes(faction),
+      )
+      .map((colour) => ({ ...colour }));
     const variantColours = variantColourRows.flatMap((row) => {
       const primary = readUnitVariantColour(row, "primary");
       const secondary = readUnitVariantColour(row, "secondary");

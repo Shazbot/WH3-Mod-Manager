@@ -108,6 +108,7 @@ These live for one session and are not listed above:
 - the parsed packs in `appData.packsData` and `packReadRegistry`;
 - the open vanilla DB and loc readers;
 - each feature's `cached*Data` object, which is checked against the same signature as its disk file;
+- Unit Viewer localization lookups memoize only requested values and misses; every build creates a fresh lookup;
 - the per-run `FlowExecutionContext`;
 - the startpos region template cache in `esfMap/loader.ts`;
 - the renderer's table-prep cache (`PackTablesTableView.tsx`).
