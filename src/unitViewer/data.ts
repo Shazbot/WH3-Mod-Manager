@@ -1,6 +1,5 @@
 import { stripGameMarkup } from "../utility/localizationText";
 import type {
-  UnitViewerAbility,
   UnitViewerCatalogGroup,
   UnitViewerUiGroup,
   UnitViewerConstants,
@@ -495,7 +494,7 @@ const buildAbility = (
   additionalEffectsByAbility: Map<string, Array<Record<string, string>>>,
   additionalEffects: Map<string, Record<string, string>>,
   getLoc: (key: string) => string | undefined,
-): UnitViewerAbility | undefined => {
+) => {
   const ability = abilities.get(key);
   const special = specialAbilities.get(key);
   if (!ability && !special) return undefined;
@@ -580,6 +579,18 @@ const buildAbility = (
       additionalUiEffects,
     },
   };
+};
+
+type BuiltUnitViewerAbility = NonNullable<ReturnType<typeof buildAbility>>;
+
+// buildAbility currently creates these nested tooltip branches; update this clone if its result grows.
+const cloneBuiltUnitViewerAbility = (ability: BuiltUnitViewerAbility): BuiltUnitViewerAbility => {
+  const copy = Object.assign({}, ability);
+  copy.tooltip = Object.assign({}, ability.tooltip);
+  copy.tooltip.stats = Object.assign({}, ability.tooltip.stats);
+  copy.tooltip.bonuses = ability.tooltip.bonuses.map((bonus) => Object.assign({}, bonus));
+  copy.tooltip.additionalUiEffects = ability.tooltip.additionalUiEffects.map((effect) => Object.assign({}, effect));
+  return copy;
 };
 
 export interface BuiltUnitViewerData {
@@ -746,6 +757,35 @@ export const buildUnitViewerData = (
     }
   }
 
+  const cachedAbilities = new Map<string, Map<boolean, BuiltUnitViewerAbility | undefined>>();
+  const getBuiltAbility = (key: string, isSpell: boolean): BuiltUnitViewerAbility | undefined => {
+    let cachedBySpell = cachedAbilities.get(key);
+    if (cachedBySpell?.has(isSpell)) {
+      const cached = cachedBySpell.get(isSpell);
+      return cached ? cloneBuiltUnitViewerAbility(cached) : undefined;
+    }
+
+    const built = buildAbility(
+      key,
+      isSpell,
+      abilities,
+      specialAbilities,
+      abilityPhases,
+      phases,
+      phaseStatEffects,
+      uiUnitStats,
+      additionalEffectsByAbility,
+      additionalEffects,
+      getLoc,
+    );
+    if (!cachedBySpell) {
+      cachedBySpell = new Map();
+      cachedAbilities.set(key, cachedBySpell);
+    }
+    cachedBySpell.set(isSpell, built);
+    return built ? cloneBuiltUnitViewerAbility(built) : undefined;
+  };
+
   for (const main of indexRows(tables.main_units_tables, "unit").values()) {
     const key = asString(main.unit);
     const landUnitKey = asString(main.land_unit);
@@ -768,22 +808,8 @@ export const buildUnitViewerData = (
       .flatMap((row) => abilitiesByGroup.get(asString(row.ability_group)) || [])
       .map((row) => asString(row.unit_special_abilities));
     const unitAbilities = Array.from(new Set([...directAbilityKeys, ...spellAbilityKeys]))
-      .map((abilityKey) =>
-        buildAbility(
-          abilityKey,
-          spellAbilityKeys.includes(abilityKey),
-          abilities,
-          specialAbilities,
-          abilityPhases,
-          phases,
-          phaseStatEffects,
-          uiUnitStats,
-          additionalEffectsByAbility,
-          additionalEffects,
-          getLoc,
-        ),
-      )
-      .filter((ability): ability is UnitViewerAbility => !!ability)
+      .map((abilityKey) => getBuiltAbility(abilityKey, spellAbilityKeys.includes(abilityKey)))
+      .filter((ability): ability is BuiltUnitViewerAbility => !!ability)
       .sort(
         (first, second) =>
           collator.compare(first.tooltip.name, second.tooltip.name) || collator.compare(first.key, second.key),
@@ -830,7 +856,13 @@ export const buildUnitViewerData = (
           previewSubcultures.has(subculture) ||
           availableVariantFactions.includes(faction),
       )
-      .map((colour) => ({ ...colour }));
+      .map((colour) => ({
+        faction: colour.faction,
+        subculture: colour.subculture,
+        primary: colour.primary,
+        secondary: colour.secondary,
+        tertiary: colour.tertiary,
+      }));
     const variantColours = variantColourRows.flatMap((row) => {
       const primary = readUnitVariantColour(row, "primary");
       const secondary = readUnitVariantColour(row, "secondary");

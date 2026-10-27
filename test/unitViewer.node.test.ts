@@ -425,6 +425,154 @@ describe("Unit Viewer catalog", () => {
     ]);
   });
 
+  it("memoizes abilities per spell state within a build and returns independent tooltip values", () => {
+    const tables: UnitViewerTableRows = {
+      main_units_tables: [
+        { unit: "unit_a", land_unit: "land_a", num_men: "1" },
+        { unit: "unit_b", land_unit: "land_b", num_men: "1" },
+        { unit: "unit_spell", land_unit: "land_spell", num_men: "1" },
+      ],
+      land_units_tables: [
+        { key: "land_a", man_entity: "entity", primary_melee_weapon: "weapon" },
+        { key: "land_b", man_entity: "entity", primary_melee_weapon: "weapon" },
+        { key: "land_spell", man_entity: "entity", primary_melee_weapon: "weapon" },
+      ],
+      battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "100" }],
+      melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
+      land_units_to_unit_abilites_junctions_tables: [
+        { land_unit: "land_a", ability: "shared" },
+        { land_unit: "land_b", ability: "shared" },
+      ],
+      special_ability_groups_to_units_junctions_tables: [{ unit: "land_spell", ability_group: "spell_group" }],
+      special_ability_groups_to_unit_abilities_junctions_tables: [
+        { special_ability_groups: "spell_group", unit_special_abilities: "shared" },
+      ],
+      unit_abilities_tables: [
+        { key: "shared", type: "type", source_type: "source", overpower_option: "option", icon_name: "icon" },
+      ],
+      unit_special_abilities_tables: [
+        { key: "shared", passive: "true", target_intercept_range: "5", recharge_time: "10" },
+      ],
+      special_ability_to_special_ability_phase_junctions_tables: [{ special_ability: "shared", phase: "phase" }],
+      special_ability_phases_tables: [{ id: "phase", fatigue_change_ratio: "0" }],
+      special_ability_phase_stat_effects_tables: [{ phase: "phase", stat: "scalar_speed", how: "mult", value: "1.2" }],
+      ui_unit_stats_tables: [{ key: "scalar_speed", icon: "stats/speed.png" }],
+      unit_abilities_to_additional_ui_effects_juncs_tables: [
+        { ability: "shared", effect: "second" },
+        { ability: "shared", effect: "first" },
+      ],
+      unit_abilities_additional_ui_effects_tables: [
+        { key: "second", sort_order: "2", effect_state: "enabled" },
+        { key: "first", sort_order: "1", effect_state: "disabled" },
+      ],
+    };
+    const firstLocs: Record<string, string> = {
+      unit_abilities_onscreen_name_shared: "Shared ability",
+      unit_abilities_tooltip_text_shared: "Current description",
+      unit_ability_source_types_name_source: "Current source",
+      unit_ability_types_onscreen_name_type: "Current type",
+      unit_stat_localisations_onscreen_name_scalar_speed: "Speed",
+      unit_abilities_additional_ui_effects_localised_text_first: "First effect",
+      unit_abilities_additional_ui_effects_localised_text_second: "Second effect",
+    };
+    const firstLocReads = new Map<string, number>();
+    const built = buildUnitViewerData(tables, (key) => {
+      firstLocReads.set(key, (firstLocReads.get(key) || 0) + 1);
+      return firstLocs[key];
+    });
+    const first = built.units.get("unit_a")!.abilities[0]!;
+    const second = built.units.get("unit_b")!.abilities[0]!;
+    const spell = built.units.get("unit_spell")!.abilities[0]!;
+
+    expect(firstLocReads.get("unit_abilities_onscreen_name_shared")).toBe(2);
+    expect([first.isSpell, second.isSpell, spell.isSpell]).toEqual([false, false, true]);
+    expect(first).toMatchObject({
+      key: "shared",
+      passive: true,
+      isSpell: false,
+      tooltip: {
+        key: "shared",
+        name: "Shared ability",
+        description: "Current description",
+        sourceTypeName: "Current source",
+        loreGroupName: "",
+        abilityTypeName: "Current type",
+        overpowerOption: "option",
+        iconPath: "ui\\battle ui\\ability_icons\\icon.png",
+        stats: { range: 5, cooldown: 10 },
+        bonuses: [
+          {
+            key: "phase:scalar_speed:mult",
+            compareKey: "scalar_speed:mult",
+            label: "Speed",
+            valueText: "+20%",
+            numericValue: 20,
+            valueSuffix: "%",
+            isPositive: true,
+            iconPath: "stats\\speed.png",
+          },
+        ],
+        additionalUiEffects: [
+          { key: "first", text: "First effect", sortOrder: 1, effectState: "disabled" },
+          { key: "second", text: "Second effect", sortOrder: 2, effectState: "enabled" },
+        ],
+      },
+    });
+    for (const other of [second, spell]) {
+      expect(first).not.toBe(other);
+      expect(first.tooltip).not.toBe(other.tooltip);
+      expect(first.tooltip.stats).not.toBe(other.tooltip.stats);
+      expect(first.tooltip.bonuses).not.toBe(other.tooltip.bonuses);
+      expect(first.tooltip.bonuses[0]).not.toBe(other.tooltip.bonuses[0]);
+      expect(first.tooltip.additionalUiEffects).not.toBe(other.tooltip.additionalUiEffects);
+      expect(first.tooltip.additionalUiEffects[0]).not.toBe(other.tooltip.additionalUiEffects[0]);
+    }
+
+    first.tooltip.stats.cooldown = 99;
+    first.tooltip.bonuses[0]!.label = "Changed speed";
+    first.tooltip.additionalUiEffects[0]!.text = "Changed effect";
+    expect(second.tooltip.stats.cooldown).toBe(10);
+    expect(second.tooltip.bonuses[0]?.label).toBe("Speed");
+    expect(second.tooltip.additionalUiEffects[0]?.text).toBe("First effect");
+    expect(spell.tooltip.stats.cooldown).toBe(10);
+    expect(spell.tooltip.bonuses[0]?.label).toBe("Speed");
+    expect(spell.tooltip.additionalUiEffects[0]?.text).toBe("First effect");
+
+    tables.unit_abilities_tables![0]!.type = "updated_type";
+    tables.unit_special_abilities_tables![0]!.recharge_time = "15";
+    tables.special_ability_phase_stat_effects_tables![0]!.value = "1.4";
+    const nextLocs: Record<string, string> = {
+      unit_abilities_onscreen_name_shared: "Updated ability",
+      unit_abilities_tooltip_text_shared: "Updated description",
+      unit_ability_source_types_name_source: "Updated source",
+      unit_ability_types_onscreen_name_updated_type: "Updated type",
+      unit_stat_localisations_onscreen_name_scalar_speed: "Updated speed",
+      unit_abilities_additional_ui_effects_localised_text_first: "Updated first effect",
+      unit_abilities_additional_ui_effects_localised_text_second: "Updated second effect",
+    };
+    const nextLocReads = new Map<string, number>();
+    const rebuilt = buildUnitViewerData(tables, (key) => {
+      nextLocReads.set(key, (nextLocReads.get(key) || 0) + 1);
+      return nextLocs[key];
+    });
+    const rebuiltAbility = rebuilt.units.get("unit_a")!.abilities[0]!;
+    expect(nextLocReads.get("unit_abilities_onscreen_name_shared")).toBe(2);
+    expect(rebuiltAbility).toMatchObject({
+      tooltip: {
+        name: "Updated ability",
+        description: "Updated description",
+        sourceTypeName: "Updated source",
+        abilityTypeName: "Updated type",
+        stats: { cooldown: 15 },
+        bonuses: [{ label: "Updated speed", numericValue: 40, valueText: "+40%" }],
+        additionalUiEffects: [
+          { key: "first", text: "Updated first effect" },
+          { key: "second", text: "Updated second effect" },
+        ],
+      },
+    });
+  });
+
   it("deduplicates subculture roster rows and retains unassigned main units", () => {
     const tables: UnitViewerTableRows = {
       main_units_tables: [
