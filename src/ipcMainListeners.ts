@@ -355,9 +355,8 @@ import { getVanillaPackPathsInLoadOrder } from "./utility/vanillaPackPaths";
 import {
   getPackedFileNamesFromCacheEntry,
   getCurrentPackFilesCacheEntry,
-  getVanillaPackFilesCacheEntry,
+  getCurrentVanillaPackFilesCacheEntry,
   getCachedVanillaPackIndexFromEntry,
-  loadVanillaPackFilesCache,
   rememberPackFileNames,
   saveVanillaPackFilesCache,
 } from "./vanillaPackFilesCache";
@@ -5944,14 +5943,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             tags: ["mod"],
           };
           if (appData.packsData.every((iterPack) => iterPack.path != dataPackPath)) {
-            const vanillaCache = await loadVanillaPackFilesCache();
             let vanillaStat: { size: number; mtimeMs: number } | null = null;
             try {
               vanillaStat = await fs.promises.stat(dataPackPath);
             } catch {
               // pack doesn't exist, skip
             }
-            const cacheEntry = vanillaStat ? getVanillaPackFilesCacheEntry(vanillaCache, dataPackPath) : undefined;
+            const cacheEntry = vanillaStat ? await getCurrentVanillaPackFilesCacheEntry(dataPackPath) : undefined;
             const cachedPackIndex = cacheEntry ? getCachedVanillaPackIndexFromEntry(cacheEntry) : undefined;
             const cacheHit =
               !!cachedPackIndex &&

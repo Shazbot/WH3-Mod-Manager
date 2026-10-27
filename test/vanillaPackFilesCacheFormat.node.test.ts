@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   decodeVanillaPackFilesCache,
+  decodeVanillaPackFilesCacheRecord,
   encodeVanillaPackFilesCache,
   inspectVanillaPackFilesCache,
+  indexVanillaPackFilesCache,
   type VanillaPackFilesCache,
 } from "../src/vanillaPackFilesCacheFormat";
 
@@ -59,6 +61,64 @@ describe("vanilla pack files compact binary format", () => {
     const encoded = encodeVanillaPackFilesCache(cache);
     encoded.writeUInt32LE(99, 4);
     expect(decodeVanillaPackFilesCache(encoded)).toBeUndefined();
+  });
+
+  it("rejects invalid directory versions, record bounds, and entry-count limits", () => {
+    const encoded = encodeVanillaPackFilesCache({ version: 4, entries: {} });
+    const oldVersion = Buffer.from(encoded);
+    oldVersion.writeUInt32LE(99, 4);
+    expect(indexVanillaPackFilesCache(oldVersion)).toBeUndefined();
+
+    const tooManyEntries = Buffer.from(encoded);
+    tooManyEntries.writeUInt32LE(100_001, 8);
+    expect(indexVanillaPackFilesCache(tooManyEntries)).toBeUndefined();
+
+    const withEntry = encodeVanillaPackFilesCache({
+      version: 4,
+      entries: { "C:\\game\\data.pack": { size: 1, lastChangedLocal: 1, packedFileNames: [] } },
+    });
+    const invalidRecordLength = Buffer.from(withEntry);
+    invalidRecordLength.writeUInt32LE(0xffffffff, 13);
+    expect(indexVanillaPackFilesCache(invalidRecordLength)).toBeUndefined();
+    expect(inspectVanillaPackFilesCache(invalidRecordLength)).toBeUndefined();
+  });
+
+  it("rejects an oversized selected file count while keeping record indexing lightweight", () => {
+    const packPath = "C:\\game\\data.pack";
+    const encoded = encodeVanillaPackFilesCache({
+      version: 4,
+      entries: { [packPath]: { size: 1, lastChangedLocal: 1, packedFileNames: [] } },
+    });
+    const record = indexVanillaPackFilesCache(encoded)!.get(packPath)!;
+    const tooManyNames = Buffer.from(encoded);
+    const nameCountOffset = record.dataOffset + 4 + Buffer.byteLength(packPath, "utf8") + 8 + 8;
+    tooManyNames.writeUInt32LE(5_000_001, nameCountOffset);
+
+    expect(indexVanillaPackFilesCache(tooManyNames)).toBeUndefined();
+    expect(decodeVanillaPackFilesCacheRecord(tooManyNames, record)).toBeUndefined();
+    expect(decodeVanillaPackFilesCache(tooManyNames)).toBeUndefined();
+  });
+
+  it("enforces the aggregate file-count limit while indexing record prefixes only", () => {
+    const firstPath = "C:\\game\\first.pack";
+    const secondPath = "C:\\game\\second.pack";
+    const encoded = encodeVanillaPackFilesCache({
+      version: 4,
+      entries: {
+        [firstPath]: { size: 1, lastChangedLocal: 1, packedFileNames: [] },
+        [secondPath]: { size: 1, lastChangedLocal: 1, packedFileNames: [] },
+      },
+    });
+    const records = indexVanillaPackFilesCache(encoded)!;
+    const tooManyFiles = Buffer.from(encoded);
+    const firstNameCountOffset = records.get(firstPath)!.dataOffset + 4 + Buffer.byteLength(firstPath, "utf8") + 8 + 8;
+    const secondNameCountOffset =
+      records.get(secondPath)!.dataOffset + 4 + Buffer.byteLength(secondPath, "utf8") + 8 + 8;
+    tooManyFiles.writeUInt32LE(3_000_000, firstNameCountOffset);
+    tooManyFiles.writeUInt32LE(2_000_001, secondNameCountOffset);
+
+    expect(indexVanillaPackFilesCache(tooManyFiles)).toBeUndefined();
+    expect(decodeVanillaPackFilesCache(tooManyFiles)).toBeUndefined();
   });
 
   it("tracks all-WEM packs without dropping their files from the complete cache", () => {

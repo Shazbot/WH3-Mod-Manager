@@ -5,9 +5,10 @@ import * as nodePath from "path";
 
 import type { PackHeader, PackedFile } from "./packFileTypes";
 import {
+  decodeVanillaPackFilesCacheRecord,
   decodeVanillaPackFilesCache,
   encodeVanillaPackFilesCache,
-  inspectVanillaPackFilesCache,
+  indexVanillaPackFilesCache,
   VANILLA_PACK_FILES_CACHE_VERSION,
   type CachedVanillaPackIndex,
   type VanillaCachedPackHeader,
@@ -15,6 +16,7 @@ import {
   type VanillaPackFilesCache,
   type VanillaPackFilesCacheEntry,
   type VanillaPackFilesCacheMetadataEntry,
+  type VanillaPackFilesCacheRecord,
 } from "./vanillaPackFilesCacheFormat";
 import { getVanillaPackPathsInLoadOrder } from "./utility/vanillaPackPaths";
 
@@ -33,7 +35,14 @@ const CACHE_COMPRESSION_LEVEL = 1;
 let vanillaPackFilesCache: VanillaPackFilesCache | null = null;
 let vanillaPackFilesCacheMetadata: Map<string, VanillaPackFilesCacheMetadataEntry> | null = null;
 let cacheLoadPromise: Promise<VanillaPackFilesCache> | undefined;
-let cacheMetadataLoadPromise: Promise<Map<string, VanillaPackFilesCacheMetadataEntry>> | undefined;
+interface LazyVanillaPackFilesCache {
+  bytes: Buffer;
+  records: Map<string, VanillaPackFilesCacheRecord>;
+  recordsByNormalizedPath: Map<string, VanillaPackFilesCacheRecord>;
+  decodedEntries: Map<string, VanillaPackFilesCacheEntry | null>;
+}
+let vanillaPackFilesCacheIndex: LazyVanillaPackFilesCache | null | undefined;
+let cacheIndexLoadPromise: Promise<LazyVanillaPackFilesCache | null> | undefined;
 let cacheWriteTimer: ReturnType<typeof setTimeout> | undefined;
 let cacheWritePromise: Promise<void> = Promise.resolve();
 
@@ -71,36 +80,64 @@ const metadataFromCache = (cache: VanillaPackFilesCache): Map<string, VanillaPac
     ]),
   );
 
+const loadVanillaPackFilesCacheIndex = async (): Promise<LazyVanillaPackFilesCache | null> => {
+  if (vanillaPackFilesCache) return null;
+  if (vanillaPackFilesCacheIndex !== undefined) return vanillaPackFilesCacheIndex;
+  if (cacheIndexLoadPromise) return cacheIndexLoadPromise;
+
+  const loadPromise = (async (): Promise<LazyVanillaPackFilesCache | null> => {
+    const cacheFilePath = getCacheFilePath();
+    if (!cacheFilePath) return null;
+
+    try {
+      const compressed = await fs.promises.readFile(cacheFilePath);
+      const bytes = Buffer.from(await zstdDecompress(compressed));
+      const records = indexVanillaPackFilesCache(bytes);
+      if (!records) return null;
+      const recordsByNormalizedPath = new Map<string, VanillaPackFilesCacheRecord>();
+      for (const record of records.values()) {
+        const normalizedPath = normalizeCachePath(record.packPath);
+        if (!recordsByNormalizedPath.has(normalizedPath)) recordsByNormalizedPath.set(normalizedPath, record);
+      }
+      return { bytes, records, recordsByNormalizedPath, decodedEntries: new Map() };
+    } catch {
+      return null;
+    }
+  })();
+  cacheIndexLoadPromise = loadPromise;
+  try {
+    vanillaPackFilesCacheIndex = await loadPromise;
+    return vanillaPackFilesCacheIndex;
+  } finally {
+    if (cacheIndexLoadPromise === loadPromise) cacheIndexLoadPromise = undefined;
+  }
+};
+
 const loadVanillaPackFilesCacheMetadata = async (): Promise<Map<string, VanillaPackFilesCacheMetadataEntry>> => {
   if (vanillaPackFilesCache) {
     vanillaPackFilesCacheMetadata ??= metadataFromCache(vanillaPackFilesCache);
     return vanillaPackFilesCacheMetadata;
   }
   if (vanillaPackFilesCacheMetadata) return vanillaPackFilesCacheMetadata;
-  if (cacheMetadataLoadPromise) return cacheMetadataLoadPromise;
-
-  cacheMetadataLoadPromise = (async () => {
-    const cacheFilePath = getCacheFilePath();
-    if (!cacheFilePath) return new Map<string, VanillaPackFilesCacheMetadataEntry>();
-
-    try {
-      const compressed = await fs.promises.readFile(cacheFilePath);
-      const decompressed = Buffer.from(await zstdDecompress(compressed));
-      const inspected = inspectVanillaPackFilesCache(decompressed);
-      if (!inspected) return new Map<string, VanillaPackFilesCacheMetadataEntry>();
-
-      return new Map([...inspected.entries()].map(([packPath, metadata]) => [normalizeCachePath(packPath), metadata]));
-    } catch {
-      return new Map<string, VanillaPackFilesCacheMetadataEntry>();
-    }
-  })();
-
-  try {
-    vanillaPackFilesCacheMetadata = await cacheMetadataLoadPromise;
+  const index = await loadVanillaPackFilesCacheIndex();
+  if (vanillaPackFilesCache) {
+    vanillaPackFilesCacheMetadata ??= metadataFromCache(vanillaPackFilesCache);
     return vanillaPackFilesCacheMetadata;
-  } finally {
-    cacheMetadataLoadPromise = undefined;
   }
+  if (vanillaPackFilesCacheMetadata) return vanillaPackFilesCacheMetadata;
+  vanillaPackFilesCacheMetadata = index
+    ? new Map(
+        [...index.records.values()].map((record) => [
+          normalizeCachePath(record.packPath),
+          {
+            size: record.size,
+            lastChangedLocal: record.lastChangedLocal,
+            hasExpandedIndex: record.hasExpandedIndex,
+          },
+        ]),
+      )
+    : new Map<string, VanillaPackFilesCacheMetadataEntry>();
+  return vanillaPackFilesCacheMetadata;
 };
 
 const findEntry = (
@@ -140,18 +177,18 @@ export const loadVanillaPackFilesCache = async (): Promise<VanillaPackFilesCache
   if (cacheLoadPromise) return cacheLoadPromise;
 
   cacheLoadPromise = (async () => {
-    const cacheFilePath = getCacheFilePath();
-    if (!cacheFilePath) {
+    const index = await loadVanillaPackFilesCacheIndex();
+    if (!index) {
       vanillaPackFilesCache = emptyCache();
       return vanillaPackFilesCache;
     }
 
     try {
-      const compressed = await fs.promises.readFile(cacheFilePath);
-      const decompressed = Buffer.from(await zstdDecompress(compressed));
-      const parsed = decodeVanillaPackFilesCache(decompressed);
+      const parsed = decodeVanillaPackFilesCache(index.bytes);
       if (!parsed) {
         vanillaPackFilesCache = emptyCache();
+        vanillaPackFilesCacheMetadata = metadataFromCache(vanillaPackFilesCache);
+        vanillaPackFilesCacheIndex = null;
         return vanillaPackFilesCache;
       }
 
@@ -160,8 +197,12 @@ export const loadVanillaPackFilesCache = async (): Promise<VanillaPackFilesCache
       ) as Record<string, VanillaPackFilesCacheEntry>;
       vanillaPackFilesCache = { version: CACHE_VERSION, entries };
       vanillaPackFilesCacheMetadata = metadataFromCache(vanillaPackFilesCache);
+      // Once the complete cache is hydrated, retain only its decoded entries.
+      vanillaPackFilesCacheIndex = null;
     } catch {
       vanillaPackFilesCache = emptyCache();
+      vanillaPackFilesCacheMetadata = metadataFromCache(vanillaPackFilesCache);
+      vanillaPackFilesCacheIndex = null;
     }
     return vanillaPackFilesCache;
   })();
@@ -174,6 +215,8 @@ export const loadVanillaPackFilesCache = async (): Promise<VanillaPackFilesCache
 };
 
 const writeCacheNow = async (): Promise<void> => {
+  // A pure lazy read does not make the cache dirty. Mutations hydrate the full
+  // cache before applying their update, so a pending write always has a complete view.
   if (!vanillaPackFilesCache) return;
   const cacheFilePath = getCacheFilePath();
   if (!cacheFilePath) return;
@@ -205,6 +248,9 @@ const queueCacheWrite = (): void => {
 
 /** Flushes pending cache updates. Most pack reads use the debounced write path. */
 export const saveVanillaPackFilesCache = async (): Promise<void> => {
+  // If a remember call is still hydrating the cache, let its update apply before
+  // the write is queued. With only lazy reads, this remains a no-op.
+  if (cacheLoadPromise) await cacheLoadPromise;
   if (cacheWriteTimer) {
     clearTimeout(cacheWriteTimer);
     cacheWriteTimer = undefined;
@@ -308,10 +354,27 @@ export const getCurrentVanillaPackFilesCacheEntry = async (
     return undefined;
   }
 
-  const cache = await loadVanillaPackFilesCache();
-  const entry = getVanillaPackFilesCacheEntry(cache, packPath);
+  const entry = await getCacheEntryForPack(packPath);
   if (!entry || entry.size !== stat.size || entry.lastChangedLocal !== stat.mtimeMs) return undefined;
   return hasValidExpandedIndex(entry) ? entry : undefined;
+};
+
+const getCacheEntryForPack = async (packPath: string): Promise<VanillaPackFilesCacheEntry | undefined> => {
+  if (vanillaPackFilesCache) return getVanillaPackFilesCacheEntry(vanillaPackFilesCache, packPath);
+
+  const index = await loadVanillaPackFilesCacheIndex();
+  if (vanillaPackFilesCache) return getVanillaPackFilesCacheEntry(vanillaPackFilesCache, packPath);
+  if (!index) return undefined;
+
+  const normalizedPath = normalizeCachePath(packPath);
+  const record = index.records.get(packPath) ?? index.recordsByNormalizedPath.get(normalizedPath);
+  if (!record) return undefined;
+  const cached = index.decodedEntries.get(record.packPath);
+  if (cached !== undefined) return cached ?? undefined;
+
+  const entry = decodeVanillaPackFilesCacheRecord(index.bytes, record);
+  index.decodedEntries.set(record.packPath, entry ?? null);
+  return entry;
 };
 
 /**
@@ -345,8 +408,7 @@ export const getCurrentPackFilesCacheEntry = async (
     return undefined;
   }
 
-  const cache = await loadVanillaPackFilesCache();
-  const entry = getVanillaPackFilesCacheEntry(cache, packPath);
+  const entry = await getCacheEntryForPack(packPath);
   if (!entry || entry.size !== stat.size || entry.lastChangedLocal !== stat.mtimeMs || !isCacheEntry(entry))
     return undefined;
   return entry;
