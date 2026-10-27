@@ -18,18 +18,18 @@ node dist/cli/main.js pack read /absolute/path/to/example.pack scripts/example.l
 
 Globs match complete internal paths. `*.dds` matches only root-level files; use `**/*.dds` to find DDS files in nested folders too. Quote glob patterns so your shell passes them to the CLI unchanged. Use forward slashes in patterns even when the returned pack paths contain backslashes.
 
-Use `--with-vanilla` on commands that resolve supporting assets: `pack validate`, `pack subset`, `asset resolve`, `asset references`, `asset materials`, `loc lookup`, and `unit resolve`. For example, validate a mod whose textures are supplied by the base game without writing an input JSON file:
+Use `--with-vanilla` on commands that resolve supporting assets: `pack validate`, `pack subset`, `pack textures`, `pack diff --affected-units`, `asset users`, `asset resolve`, `asset references`, `asset materials`, `loc lookup`, and `unit resolve`. For example, validate a mod whose textures are supplied by the base game without writing an input JSON file:
 
 ```sh
 node dist/cli/main.js pack validate /mods/example.pack --with-vanilla --format json
 node dist/cli/main.js pack validate /mods/example.pack --with-vanilla --game-data '/games/Total War WARHAMMER III/data' --format json
 ```
 
-Game data discovery uses, in order, `--game-data` (`gameDataPath` in JSON/MCP), `WHMM_GAME_DATA_PATH`, then the WH3 data folder saved in WHMM's user configuration (`wh3mm/config.json` under the platform application config directory). If discovery fails, supply the directory explicitly. A supplied `gameDataPath` also loads the manifest without requiring the flag. No Steam library scan is performed. Under WSL, use paths readable by WSL; a Windows-configured game path may need an explicit WSL path.
+Game data discovery checks, in order, explicit `--game-data` (`gameDataPath` in JSON/MCP), `WHMM_GAME_DATA_PATH`, native WHMM settings (`wh3mm/config.json`), Windows WHMM settings under WSL, then Steam libraries. Under WSL, saved Windows paths are converted to WSL paths automatically. Steam discovery reads library metadata and `appmanifest_1142710.acf` to find the game install directory. Explicit overrides are authoritative; unavailable automatic candidates are skipped. If discovery cannot find readable data, pass `--game-data <directory>` or set `WHMM_GAME_DATA_PATH`.
 
-Only packs listed in that directory's `manifest.txt` are included, in manifest order; unrelated mod packs in the data directory are excluded. Explicit `vanillaPackPaths` precede the manifest packs, supporting mods take priority over vanilla, and the target of `pack validate` remains highest. Missing or empty manifests fail explicitly. MCP and JSON requests use `"withVanilla": true` with the same discovery and filesystem permissions; configured read roots must allow the config (for saved-path discovery), manifest, and base game packs. The flag adds resolution providers; subset copying still requires `--include-vanilla` in `selfContained` mode. Other command-specific fields still use `--input` as before.
+Only packs listed in that directory's `manifest.txt` are included, in manifest order; unrelated mod packs in the data directory are excluded. Missing or empty manifests fail explicitly. Explicit `vanillaPackPaths` precede the manifest packs, supporting mods take priority over vanilla, and the target pack is highest. For affected diffs, the before and after target packs are loaded in separate environments. MCP and JSON requests use `"withVanilla": true` with the same discovery and filesystem permissions; configured read roots must allow the settings/config metadata, manifest, and base game packs. The flag adds resolution providers; subset copying still requires `--include-vanilla` in `selfContained` mode. Other command-specific fields still use `--input` as before.
 
-The CLI defaults to readable text. Use `--format json` for the full `{ ok, data, diagnostics }` or `{ ok: false, error }` envelope; result data goes to stdout and diagnostics go to stderr. Exit codes are `0` success, `1` unexpected error, `2` invalid arguments, `3` I/O or access failure, `4` unsupported operation/format, `5` validation or conflict, and `130` cancellation.
+The CLI defaults to readable text. Use `--format json` for the full `{ ok, data, diagnostics }` or `{ ok: false, error }` envelope; result data goes to stdout and diagnostics go to stderr. `pack diff --affected-units --format checklist` prints compact review rows. Progress is enabled on interactive stderr; use `--progress` in scripts or `--no-progress` to suppress it. Throttled messages identify loading, comparison, indexing, traversal, and enrichment phases and leave JSON stdout unchanged. Exit codes are `0` success, `1` unexpected error, `2` invalid arguments, `3` I/O or access failure, `4` unsupported operation/format, `5` validation or conflict, and `130` cancellation.
 
 Use `--input <json-file>` for complex requests. The file contains operation fields; the command supplies the operation name and positional pack/table paths. Use it with `pack validate` to supply supporting `packPaths` and `vanillaPackPaths`, or use `--with-vanilla` to include base game packs automatically. For example, `pack table query` accepts:
 
@@ -49,7 +49,16 @@ Use `--input <json-file>` for complex requests. The file contains operation fiel
 
 The CLI and MCP server keep a 128 MiB retained-memory cache by default, with at most eight open cache readers. Set `--cache-memory-mib` to an integer from 1 through 1024. The reported memory limit bounds the cache's conservative retained-size estimate; it does not measure total Node.js heap use.
 
-Disk caching is opt-in. `--cache-dir` enables a managed headless namespace for typed DB tables and exact ordered vanilla localization sets. `--whmm-cache-dir` points to the WHMM app's user data folder, where the GUI writes its `vanilla-db-cache-<game>.bin` and `vanilla-loc-cache-*.bin` files (`%APPDATA%\wh3mm` on Windows; see `docs/CACHES.md`), and is read-only; only proven v4 exact-source DB/LOC caches are eligible. Older v3 files, missing proof, mismatched identities/order, unsupported tables, or corrupt caches are treated as misses and rebuilt from source when possible.
+CLI disk caching is enabled by default under `%LOCALAPPDATA%\wh3mm` on Windows, `$XDG_CACHE_HOME/wh3mm` (or `~/.cache/wh3mm`) on Linux, and `~/Library/Caches/wh3mm` on macOS. Managed files live in that root's `headless/` namespace. `--cache-dir` overrides the root; unavailable default persistence falls back to memory with a notice. MCP keeps a bounded memory cache across requests and requires an explicit, policy-authorized `--cache-dir` for persistence. It does not select a disk directory outside its configured roots. `--whmm-cache-dir` points to the WHMM app's user data folder (`%APPDATA%\wh3mm` on Windows; see `docs/CACHES.md`) and remains read-only. It can reuse proven v4 exact-source DB/LOC caches and the GUI's v7 `visuals/vanilla.bin` / `visuals/mods.bin` unit/variant catalog. Catalog reuse checks source identity, schema hash, table version and row count; ambiguous subfile contributions fall back to source DB rows. Older, mismatched, unsupported, or corrupt caches are misses.
+
+Visual reference metadata is stored in `headless/visuals/references/<pack-path-hash>.bin` under `--cache-dir`, with the shared format in `src/visuals/referenceCache.ts`. Each pack is independent: changing one mod preserves unchanged vanilla and other-mod metadata. The key includes canonical source identity (including ctime/device/inode), parser revision, and logical-payload limit. Stored data contains raw XML references and RMV2 material/texture slots, without geometry or payload buffers. Ownership, dependency graphs, unit matches, and load-order winners are rebuilt for each request, so reordering packs does not reuse a stale resolved answer. Source snapshots are checked before returning success. `--cache-stats` includes a `visuals` section with catalog hits, reference hits/misses, source parses, and persistent writes.
+
+For repeated unit-impact queries, use both cache flags:
+
+```sh
+node dist/cli/main.js asset users /mods/example.pack textures/unit.dds --with-vanilla --format json \
+  --cache-dir /tmp/whmm-headless-cache --whmm-cache-dir /path/to/wh3mm --cache-stats
+```
 
 ```sh
 node dist/cli/main.js pack table query /absolute/path/to/mod.pack db/main_units_tables/data --input query.json --format json \
@@ -88,7 +97,9 @@ node dist/mcp/server.js \
   --whmm-cache-dir /mnt/c/Users/Example/AppData/Roaming/wh3mm --cache-stats
 ```
 
-Readonly queries, unit/localization lookups, and reference traversal can use typed cached rows. Byte-sensitive operations such as patch, write, create, clone, diff, validate, and subset continue to use original pack payloads; graph results, merged winners, and rendered localization are not retained in the cache.
+Readonly queries, unit/localization lookups, and reference traversal can use typed cached rows. Byte-sensitive operations such as patch, write, create, clone, diff hashing, validate, and subset continue to use original pack payloads. `pack diff --affected-units` may reuse source-identity-checked DB/LOC rows and raw reference metadata for its unit analysis; both target states keep fresh indexes and separate environments. Graph results, merged winners, and rendered localization are not retained in the cache.
+
+Fresh immutable pack indexes may be shared within a request after reauthorizing and checking the current file identity. This avoids duplicating vanilla indexes between diff states; affected diffs do not use retained indexes from earlier requests. Localization cache hydration opens only packs contributing LOC files.
 
 For example, create a pack with a text file and a source file using `create.json`:
 
@@ -221,6 +232,32 @@ Direct loads use embedded RMV2 materials; WSModel loads use their explicit LOD/p
 
 `pack diff` detects exact logical-content moves by comparing size and SHA-256 after path matches. It pairs duplicate candidates by sorted path; pairs from a duplicate group carry `ambiguous: true`. Moved entries use `status: "moved"` with `from` and `to`; `summary.movedCount` reports them, and they are excluded from `summary.added` and `summary.removed`. Set `detectMoves: false` in JSON/MCP or pass `--no-moves` to retain separate additions and removals.
 
+Add `--affected-units` (or set `affectedUnits: true`) to trace changed visual files through before/after unit roots and correlate full DB/LOC row deltas with unit evidence. Supply ordered support mods with `packPaths`, plus `vanillaPackPaths` or `--with-vanilla` when needed; each state uses its own target pack as highest priority. Added, removed, changed, and moved files contribute both relevant paths. The result unions before/after unit states with path reasons, then groups the checklist by faction and evidence source: explicit custom-battle permission, visual fallback, unscoped, or unknown. Unsupported changed types and bounded incomplete analysis are reported in `affectedUnits.analysis`. Affected-unit paging uses `--semantic-offset` and `--semantic-limit` (or `semanticOffset` and `semanticLimit`); file-result paging uses the separate `--offset` and `--limit`. The full affected set is built before paging, and `--report` contains all affected units. An unchanged diff returns an empty complete affected-unit result without scanning unit roots.
+
+Visual impact now starts from the changed paths. A request-local incoming-reference index joins effective XML/model references to lightweight unit roots, then enriches matched units. Before/after ownership stays separate. A cold index must still inspect relevant source files; warm runs reuse raw per-pack visual metadata. Queries for model/VMD/wsmodel changes skip RMV2 texture-slot scans, while texture changes require them. DB/LOC changes still evaluate full unit source evidence before pagination. Indexing has separate source/edge limits, so unrelated graph edges do not consume the changed-path traversal budget.
+
+Use `--max-depth`, `--max-nodes`, `--max-edges`, and `--max-roots` with affected diffs; CLI values override `affectedMaxDepth`, `affectedMaxNodes`, `affectedMaxEdges`, and `affectedMaxRoots` in JSON. Diff defaults are 32 depth, 100,000 nodes, 500,000 traversal edges, and 100,000 roots. The maximum traversal edge budget is 5,000,000. `--max-scan-sources` and `--max-index-edges` control indexing (`affectedMaxScanSources` / `affectedMaxIndexEdges`, each defaulting to 1,000,000 with a 5,000,000 maximum). Limits and unreadable sources leave explicit incomplete coverage. Proven partial users remain in the result; `changedPathCoverage`, `unresolvedPaths`, and `limitReasons` identify follow-up work. A zero count with incomplete coverage does not establish that nothing is affected.
+
+`--format checklist` prints one row per affected unit with its key, name, role, explicit custom-battle factions, and changed files. Rows are ranked by aggregate unique changed-path bytes, using the larger before/after logical size for each path. This measures review priority, not measured performance impact. JSON keeps `checklist.units` and full evidence. Unmapped assets remain visible for review; campaign hints are candidates, and `campaignOnly` is not asserted from a filename or missing battle permission alone.
+
+```sh
+node dist/cli/main.js pack diff /mods/before.pack /mods/after.pack --affected-units --with-vanilla \
+  --format checklist --progress --max-edges 1000000 --report /tmp/unit-impact.json
+```
+
+Put ordered support packs and explicit vanilla packs in a JSON input when needed:
+
+```json
+{
+  "packPaths": ["/mods/base.pack", "/mods/override.pack"],
+  "vanillaPackPaths": ["/game/data/variants.pack", "/game/data/textures.pack"]
+}
+```
+
+```sh
+node dist/cli/main.js pack diff /mods/before.pack /mods/after.pack --affected-units --input diff-load-order.json --limit 25 --semantic-limit 25 --report /tmp/affected-units.json --format json
+```
+
 With `--details`, changed DDS paths include header field changes and per-surface, per-mip RGBA error statistics. `maxError` and `rmse` are in 8-bit channel byte units; sRGB values are compared as decoded samples without linearization. Same-format block compressed images also report byte-identical 4x4 blocks, including edge blocks. Pixel comparisons support BC1, BC2, BC3, and BC7 when dimensions and surface counts match. Different dimensions produce a header-only comparison. Unsupported layouts, volume textures, and truncated data include a diagnostic and do not claim a complete pixel result. Mips above the shared 16,777,216-pixel limit are skipped while smaller mips continue; the semantic record is marked incomplete. DDS mip comparisons use the existing `--semantic-offset`, `--semantic-limit`, and `--report` paging. Diff still hashes every selected logical payload; DDS decoding is limited to changed DDS paths and runs only with `--details`, so detailed comparisons can add substantial CPU and memory cost on large texture packs.
 
 `pack diff --details` also includes bounded RMV2 semantic records for LODs, parts, material types, geometry, textures, and parameters. The geometry counters report changed vertices, positions, UV vertex/channel pairs, and indices. Texture records pair by numeric slot ID and occurrence, with before/after array indexes retained as evidence; additions and removals are paged with the other semantic records. Use `--semantic-offset`, `--semantic-limit`, or `--report` for additional records.
@@ -267,9 +304,20 @@ Missing or ambiguous embedded textures are warnings and are counted in `unresolv
 node dist/cli/main.js rigid patch /absolute/path/to/source.pack 'variantmeshes/models/unit.rigid_model_v2' --output /absolute/path/to/unit-patch.pack --input rigid-patch.json --format json
 ```
 
-The MCP tools are `rigid_inspect`, `asset_materials`, `pack_validate`, `pack_diff`, and `rigid_patch` with the same operation fields. `rigid_patch` requires an allowed write root and creates no output when validation or cancellation fails.
+The MCP tools include `rigid_inspect`, `asset_materials`, `pack_validate`, `pack_diff`, `pack_textures`, `asset_users`, `unit_resolve`, `pack_search`, and `rigid_patch` with the same operation fields. `rigid_patch` requires an allowed write root and creates no output when validation or cancellation fails.
 
-## DDS inspection and mip previews
+## DDS inventories and mip previews
+
+`pack textures` inventories target-pack DDS files by default. `--effective` inventories the effective DDS providers across the target, ordered support packs, and vanilla providers; specifying support or vanilla packs, `gameDataPath`, or `--with-vanilla` also selects effective mode. The target remains highest priority. Use `--glob`, `--offset`, `--limit`, and `--report` to filter and page results; totals and format, dimension, and power-of-two breakdowns always cover the full selected set. Records include dimensions, format, declared/effective mip count, array/depth/cubemap details, stored and logical sizes, and estimated DDS payload bytes. The payload value is a layout estimate, not measured VRAM. Invalid or unsupported DDS files remain visible with diagnostics; unknown estimates are `null`.
+
+```sh
+node dist/cli/main.js pack textures /mods/example.pack --glob '**/*.dds' --limit 50 --report /tmp/textures.json --format json
+node dist/cli/main.js pack textures /mods/example.pack --with-vanilla --format json
+```
+
+The MCP tool is `pack_textures` with the same filters, provider lists, paging, and report fields.
+
+`pack texture inspect` reads one DDS header and optionally exports a mip preview:
 
 ```sh
 node dist/cli/main.js pack texture inspect /absolute/path/to/example.pack 'textures/unit_diffuse.dds' --format json
@@ -308,10 +356,13 @@ node dist/cli/main.js loc lookup --input lookup.json --format json
 
 Set `searchBy` to `dbKey` and `query` to a DB key to get its translations, or use `locKey` to look up a localization ID. Matching defaults to case-insensitive `exact`; `contains` is optional. `tables` narrows DB correlation, while unmatched localization IDs remain visible with an empty `dbReferences` array. `translationFound: false` distinguishes missing translations from existing empty text. Per-result DB references default to 100 (`referenceLimit`, maximum 1000); counts and truncation flags remain available. Explicit reports include all matching references.
 
-`unit_resolve` accepts the same pack lists, query, matching, pagination, and report fields. `searchBy` is `key` (main-unit or land-unit key, default) or `text` (translated land-unit name). Save its input as `unit.json` and run:
+`unit_resolve` accepts the same pack lists, query, matching, pagination, and report fields. `searchBy` is `key` (main-unit or land-unit key, default), `text` (translated land-unit name), `variant` (variant name), or `mesh` (normalized VMD, wsmodel, or rigid-model path). Mesh lookups follow incoming references to the relevant unit roots; they do not require a manual VMD search. `match` defaults to exact and can be set to `contains` for a basename or partial path. For example:
 
 ```sh
 node dist/cli/main.js unit resolve --input unit.json --report /absolute/path/to/unit-report.json --format json
+node dist/cli/main.js unit resolve /mods/example.pack wh_main_emp_inf_swordsmen --search-by key --match exact --format json
+node dist/cli/main.js unit resolve /mods/example.pack visual_swordsmen --search-by variant --match contains --format json
+node dist/cli/main.js unit resolve /mods/example.pack 'variantmeshes/variantmeshdefinitions/units/swordsmen.variantmeshdefinition' --search-by mesh --match contains --format json
 ```
 
 The unit result includes:
@@ -332,7 +383,35 @@ Both operations are also registered as MCP tools with the same typed inputs and 
 
 DB and LOC queries use the bundled schema and exact typed values. I64 values are decimal strings. Filters in one query are combined with AND. An explicit table version must match a known schema version; an unknown schema/version is reported as unsupported. Table patches reject unknown schemas, invalid field types, ambiguous row selectors, and duplicate resulting keys. LOC identity uses only its key column.
 
+`pack search` checks filenames and supported text payloads, and also searches typed DB field values by default. DB hits have `kind: "db"` and include the file, table, row identity/index, field, and typed value. Unsupported or malformed DB tables are skipped with diagnostics. Use `--no-content` (or `content: false`) to search filenames only; this skips text and DB values.
+
 `asset_resolve_references` and `asset_find_references` accept explicit ordered pack lists. Mod packs are ordered lowest priority to highest priority; for asset paths the last matching mod pack wins, and vanilla packs are lower priority than mods. Use `withVanilla: true` or CLI `--with-vanilla` for saved-path discovery. A `gameDataPath` may be used to read its `manifest.txt`; manifest paths are confined to that directory. Graph traversal is bounded to depth 32, 10,000 nodes, and 50,000 edges. Results mark incomplete or unsupported coverage rather than treating unknown references as missing or resolved.
+
+`asset users <targetPack> <assetPath>` (MCP `asset_users`) returns units that use the requested asset through supported incoming dependency chains. It includes variant, mount, engine, extra-engine, and character-uniform candidates, with chain paths, provider ownership, main/land keys, localized names, faction and custom-battle evidence, campaign rules, and conditional character-art candidates. `packPaths` supplies ordered support mods; vanilla options follow the same precedence rules, and the target is highest. Provider rows identify target/support ownership and effective, shadowed, or ambiguous files. The traversal is bounded and returns incomplete diagnostics when roots, indexing, traversal work, or chain walks exceed their limits.
+
+Use repeatable `--unit <key>` options to select exact main-unit or land-unit keys (case-insensitive), and `--root-glob <pattern>` to select roots by a case-insensitive glob over the normalized full internal path. These filters can be combined. Unit filtering happens before per-unit joins; the root glob is applied after root discovery. The JSON result reports both filters, the target/support/vanilla pack scope, and total/selected/scanned unit and root counts. Filtered results describe only that requested scope; an unfiltered search still covers only the packs listed in the result, not every installed mod or game pack.
+
+Batch lookups share pack loading and incoming-reference indexing. JSON/MCP `asset_users` accepts `targetPaths` instead of `targetPath`; `unit_resolve` accepts `queries` instead of `query`. Each list accepts 1–1000 entries and keeps results associated with its input. Existing single-input response shapes remain available. On the CLI, use `--paths-from <file>` with a pack positional argument and no single query/path. The UTF-8 file may contain blank lines and CRLF line endings, is limited to 1 MiB and 1000 nonblank lines, and is checked through the filesystem policy. Combine JSON load-order options with the list file, but omit JSON query/path fields. `--max-scan-sources` / `--max-index-edges` map to `maxScanSources` / `maxIndexEdges` on asset and unit queries.
+
+```sh
+node dist/cli/main.js asset users /mods/example.pack --paths-from assets.txt --with-vanilla --format json
+node dist/cli/main.js unit resolve /mods/example.pack --paths-from models.txt --search-by mesh --format json
+node dist/cli/main.js unit resolve /mods/example.pack ak_teb_guard_kossars_head_03 --search-by mesh --match contains --format json
+```
+
+`pack_search` accepts either `query` or `queries` (1–1000 strings) in JSON/MCP and scans each file once, associating matches with the matching queries. `regex: true` applies regular expressions; CLI `--regex` supports alternatives such as `'head_03|body_01'`. Filter before reading contents with `--glob '**/*.variantmeshdefinition'` or its search alias `--file-glob`; conflicting aliases are rejected. `--no-content` searches filenames only.
+
+The graph budgets can be raised or narrowed directly on the CLI: `--max-depth` (0–32, default 32), `--max-nodes` (1–10,000, default 10,000), `--max-edges` (1–50,000, default 50,000), `--max-roots` (1–10,000, default 10,000), `--max-work-nodes` (1–1,000,000, default 100,000), and `--max-work-edges` (1–5,000,000, default 500,000). CLI values override the same fields in `--input` JSON. Roots are deduplicated, filtered, and ranked before `maxRoots`: the exact requested path comes first, then roots whose effective provider is the target pack, other mod roots, and vanilla roots. Equal-rank roots retain discovery order.
+
+`usageComplete` reports whether root discovery and dependency traversal covered the requested unit/root and pack scope. `metadataComplete` reports whether rich roster, localization, recruitment, and character-art details for matched users are complete; `metadataCoverage` lists missing tables and diagnostics. The existing `complete` field is their conjunction. Missing `main_units`, `land_units`, or `unit_variants` data leaves usage incomplete because those tables define the unit/root mapping. Missing optional mount, engine, variant, or model references leave usage incomplete when a selected unit actually references unresolved data. Missing optional roster or recruitment tables can leave metadata incomplete without making the visual-user traversal incomplete.
+
+Root discovery reuses eligible GUI visuals catalog contributions and lightweight source joins. Full localization, recruitment, and source-row reports are built only for matched units; a catalog match must be confirmed by the source evidence. With `--cache-dir`, subsequent requests reuse parsed dependencies from unchanged packs instead of reading all model/XML payloads again. Cold requests still parse missing metadata, and fresh pack indexing plus graph assembly still have a cost on a large vanilla load list.
+
+Unit scans keep sparse visual/DB/LOC path maps instead of duplicating every unrelated game-file entry. Explicit paths outside those types retain accurate provider lookup through on-demand indexing.
+
+```sh
+node dist/cli/main.js asset users /mods/example.pack textures/unit_diffuse.dds --with-vanilla --limit 100 --format json
+```
 
 An explicit DB file or row root uses the rows from that file's effective same-path pack provider, even when another table subfile wins cross-subfile row precedence. Outbound DB references use the effective cross-subfile rows selected by the shared normalized-filename precedence rule, matching GUI behavior.
 

@@ -139,7 +139,7 @@ describe("WH3 MCP stdio server", () => {
     const session = await connect();
     try {
       const listed = await session.client.listTools();
-      expect(listed.tools).toHaveLength(21);
+      expect(listed.tools).toHaveLength(23);
       const info = listed.tools.find((tool) => tool.name === "pack_info");
       expect(info?.description).toContain("pack header");
       expect(info?.inputSchema).toMatchObject({
@@ -160,7 +160,20 @@ describe("WH3 MCP stdio server", () => {
         },
       });
       expect(listed.tools.find((tool) => tool.name === "pack_diff")?.inputSchema).toMatchObject({
-        properties: { detectMoves: { type: "boolean" }, details: { type: "boolean" } },
+        properties: { detectMoves: { type: "boolean" }, details: { type: "boolean" }, affectedUnits: { type: "boolean" } },
+      });
+      expect(listed.tools.find((tool) => tool.name === "pack_textures")?.inputSchema).toMatchObject({
+        required: ["packPath"],
+        properties: { effective: { type: "boolean" }, glob: { type: "string" }, withVanilla: { type: "boolean" } },
+      });
+      expect(listed.tools.find((tool) => tool.name === "asset_users")?.inputSchema).toMatchObject({
+        required: ["packPath"],
+        properties: { packPaths: { type: "array" }, targetPath: { type: "string" }, targetPaths: { type: "array" },
+          maxNodes: { type: "integer" }, maxScanSources: { type: "integer" }, maxIndexEdges: { type: "integer" } },
+      });
+      expect(listed.tools.find((tool) => tool.name === "unit_resolve")?.inputSchema).toMatchObject({
+        properties: { query: { type: "string" }, queries: { type: "array" }, searchBy: { type: "string" },
+          maxScanSources: { type: "integer" }, maxIndexEdges: { type: "integer" } },
       });
       for (const name of [
         "pack_subset",
@@ -169,6 +182,8 @@ describe("WH3 MCP stdio server", () => {
         "asset_materials",
         "localization_lookup",
         "unit_resolve",
+        "asset_users",
+        "pack_textures",
       ]) {
         expect(listed.tools.find((tool) => tool.name === name)?.inputSchema).toMatchObject({
           properties: { withVanilla: { type: "boolean" }, gameDataPath: { type: "string" } },
@@ -304,6 +319,31 @@ describe("WH3 MCP stdio server", () => {
     }
   });
 
+  it("forwards MCP progress notifications when the caller requests a progress token", async () => {
+    const beforePath = path.join(allowedRoot, "progress-before.pack");
+    const afterPath = path.join(allowedRoot, "progress-after.pack");
+    await writeRawPack(beforePath, [{ name: "one.txt", buffer: Buffer.from("before") }], metadata());
+    await writeRawPack(afterPath, [{ name: "one.txt", buffer: Buffer.from("after") }], metadata());
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createMcpServer({ readRoots: [allowedRoot], writeRoots: [], maxResponseBytes: 1024 * 1024 });
+    const client = new Client({ name: "whmm-progress-test", version: "1.0.0" });
+    try {
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      const updates: Array<{ progress: number; total?: number }> = [];
+      const response = await client.callTool({ name: "pack_diff", arguments: { beforePath, afterPath } }, {
+        onprogress: (update) => updates.push({ progress: update.progress, total: update.total }),
+      });
+      expect(response.isError).not.toBe(true);
+      expect(updates.length).toBeGreaterThan(0);
+      expect(updates.every((update) => update.total === undefined || update.progress <= update.total)).toBe(true);
+      expect(updates.map((update) => update.progress)).toEqual([...updates.map((update) => update.progress)].sort((a, b) => a - b));
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
   it("creates, queries, and writes a pack; MCP and CLI return equivalent pack metadata", async () => {
     const session = await connect();
     try {
@@ -427,6 +467,27 @@ describe("WH3 MCP stdio server", () => {
       );
       expect(cli.status, cli.stderr).toBe(0);
       expect(JSON.parse(cli.stdout)).toEqual(responseEnvelope(result));
+
+      const inventory = await session.client.callTool({ name: "pack_textures", arguments: { packPath } });
+      expect(inventory.isError, JSON.stringify(inventory.structuredContent)).not.toBe(true);
+      const inventoryCli = spawnSync(process.execPath, [cliEntry, "pack", "textures", packPath, "--format", "json"], {
+        cwd: projectRoot,
+        encoding: "utf8",
+      });
+      expect(inventoryCli.status, inventoryCli.stderr).toBe(0);
+      expect(JSON.parse(inventoryCli.stdout)).toEqual(responseEnvelope(inventory));
+
+      const users = await session.client.callTool({
+        name: "asset_users",
+        arguments: { packPath, targetPath: "textures/test.dds" },
+      });
+      expect(users.isError, JSON.stringify(users.structuredContent)).not.toBe(true);
+      const usersCli = spawnSync(process.execPath, [cliEntry, "asset", "users", packPath, "textures/test.dds", "--format", "json"], {
+        cwd: projectRoot,
+        encoding: "utf8",
+      });
+      expect(usersCli.status, usersCli.stderr).toBe(0);
+      expect(JSON.parse(usersCli.stdout)).toEqual(responseEnvelope(users));
     } finally {
       await session.close();
     }

@@ -2,6 +2,9 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
+import { execFile } from "node:child_process";
+import { createVisualsCacheSession, type VisualsCacheStats, type VisualsCacheSource } from "../visuals/referenceCache";
+import type { VisualsPackCacheEntry } from "../visuals/cache";
 import type { DBVersion } from "../packFileTypes";
 import {
   DEFAULT_MAX_LOGICAL_PAYLOAD_BYTES,
@@ -92,11 +95,12 @@ export interface AutomationCacheStats {
   retainedBytes: number;
   readerCount: number;
   maxReaders: number;
-  entries: { packIndexes: number; typedTables: number; dbReaders: number; locReaders: number };
+  entries: { packIndexes: number; typedTables: number; dbReaders: number; locReaders: number; visuals: number };
   hits: { packIndexes: number; typedTables: number; dbReaders: number; locReaders: number };
   misses: { packIndexes: number; typedTables: number; dbReaders: number; locReaders: number };
   sourceFallbacks: number;
   persistentWrites: number;
+  visuals: VisualsCacheStats;
 }
 
 export interface AutomationCacheRequestOptions {
@@ -107,6 +111,8 @@ export interface AutomationCacheRequestOptions {
   /** Writes, patching, validation, diff, clone, and subset may still share raw indexes only when true. */
   useIndexCache?: boolean;
   useTypedCache?: boolean;
+  /** Raw visual metadata may be reused by affected diffs while indexes/tables stay fresh. */
+  useVisualsCache?: boolean;
 }
 
 export interface AutomationCacheRequestScope {
@@ -117,6 +123,10 @@ export interface AutomationCacheRequestScope {
     packPaths: readonly string[],
     order?: ExactVanillaLocFileOrder,
   ): Promise<RawLocalizationLookupLease | undefined>;
+  getVisualsCatalog(pack: CorePack): Promise<VisualsPackCacheEntry | undefined>;
+  getVisualReference<T>(pack: CorePack, entry: CorePackEntry, kind: string,
+    validate: (value: unknown) => value is T, load: () => Promise<T>): Promise<T>;
+  flushVisuals(): Promise<void>;
   close(): void;
 }
 
@@ -142,7 +152,7 @@ export interface AutomationCacheServiceOptions {
 
 interface RetainedEntry {
   key: string;
-  kind: "index" | "table" | "dbReader" | "locReader";
+  kind: "index" | "table" | "dbReader" | "locReader" | "visuals";
   bytes: number;
   value: unknown;
   close?: () => void;
@@ -169,13 +179,14 @@ class RetainedBudget {
       [...this.entries.values()].filter((entry) => entry.kind === "dbReader" || entry.kind === "locReader").length
     );
   }
-  counts(): { packIndexes: number; typedTables: number; dbReaders: number; locReaders: number } {
+  counts(): AutomationCacheStats["entries"] {
     const entries = [...this.entries.values()];
     return {
       packIndexes: entries.filter((entry) => entry.kind === "index").length,
       typedTables: entries.filter((entry) => entry.kind === "table").length,
       dbReaders: entries.filter((entry) => entry.kind === "dbReader").length,
       locReaders: entries.filter((entry) => entry.kind === "locReader").length,
+      visuals: entries.filter((entry) => entry.kind === "visuals").length,
     };
   }
 
@@ -480,6 +491,7 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
     sourceFallbacks: 0,
     persistentWrites: 0,
   };
+  const visualStats: VisualsCacheStats = { catalogHits: 0, referenceHits: 0, referenceMisses: 0, sourceParses: 0, persistentWrites: 0 };
   let closed = false;
   let warningSent = false;
   let defaultSchemaSnapshot: LoadedSchemaSnapshot | undefined;
@@ -819,17 +831,22 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
     hits: { ...counters.hits },
     misses: { ...counters.misses },
     sourceFallbacks: counters.sourceFallbacks,
-    persistentWrites: counters.persistentWrites,
+    persistentWrites: counters.persistentWrites + visualStats.persistentWrites,
+    visuals: { ...visualStats },
   });
 
   const makeScope = (request: AutomationCacheRequestOptions): AutomationCacheRequestScope => {
     const releases = new Set<() => void>();
     const scopedIdentity = new Map<string, CanonicalFileIdentity>();
     const scopedSources = new WeakMap<CorePack, CanonicalFileIdentity>();
+    const scopedIndexes = new Map<string, CorePack>();
     const useIndexCache = request.useIndexCache !== false;
     const useTypedCache = request.useTypedCache !== false;
     const payloadLimit = request.maxLogicalPayloadBytes ?? DEFAULT_MAX_LOGICAL_PAYLOAD_BYTES;
     const cachePayloadAllowed = payloadLimit === DEFAULT_MAX_LOGICAL_PAYLOAD_BYTES;
+    const useVisualsCache = request.useVisualsCache ?? useTypedCache;
+    const catalogPaths = new Map<string, Promise<string>>();
+    let usedVisuals = false;
     let scopeClosed = false;
 
     const checkOpen = () => {
@@ -1410,6 +1427,34 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
       }
     };
 
+    const visualSession = createVisualsCacheSession({
+      cacheDir, whmmCacheDir, payloadLimit, policy: request.policy, checkCancelled: checkOpen, stats: visualStats,
+      onPersistenceUnavailable: () => warnOnce("Headless cache persistence is unavailable under the configured write roots; using readable cache, memory, or source data."),
+      retained: (key) => budget.get(key)?.value,
+      retain: (key, value, bytes, sourcePath) => {
+        budget.admit({ key, kind: "visuals", value: deepFreeze(value), bytes, pins: 0, metadata: { sourcePath } });
+      },
+      async mapCatalogPath(filePath) {
+        if (process.platform !== "linux" || !(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) ||
+            !/^(?:[a-z]:[\\/]|\\\\)/i.test(filePath)) return filePath;
+        let pending = catalogPaths.get(filePath);
+        if (!pending) {
+          pending = new Promise<string>((resolve, reject) => {
+            execFile("wslpath", ["-u", "--", filePath], { encoding: "utf8", timeout: 5000, signal: request.signal },
+              (error, stdout) => error ? reject(error) : resolve(stdout.trim()));
+          });
+          catalogPaths.set(filePath, pending);
+        }
+        return pending;
+      },
+    });
+    const visualSource = async (pack: CorePack): Promise<VisualsCacheSource> => {
+      checkOpen();
+      const identity = scopedSources.get(pack);
+      if (!identity) throw new AutomationError("CONFLICT", "Visual source has no request snapshot", { packPath: pack.path });
+      return { path: identity.path, identity: identityString(identity), size: Number(identity.size),
+        mtimeMs: Number(identity.mtimeNs) / 1e6, ctimeMs: Number(identity.ctimeNs) / 1e6 };
+    };
     const scope: AutomationCacheRequestScope = {
       async readPackIndex(packPath) {
         checkOpen();
@@ -1423,6 +1468,10 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
           throw new AutomationError("CONFLICT", "Pack changed during the request", { packPath: canonicalPath });
         }
         if (!firstIdentity) scopedIdentity.set(canonicalPath, identity);
+        // This request already read a fresh immutable snapshot. Reauthorize and compare
+        // identity above, then share it across states even when retained index caching is off.
+        const scopedIndex = scopedIndexes.get(canonicalPath);
+        if (scopedIndex) { counters.hits.packIndexes++; return scopedIndex; }
         const key = `index:${currentIdentity}:${DEFAULT_GAME}:${maxIndexBytes}`;
         budget.dropWhere(
           (entry) =>
@@ -1435,6 +1484,7 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
           const pack = retained.value as CorePack;
           counters.hits.packIndexes++;
           scopedSources.set(pack, identity);
+          scopedIndexes.set(canonicalPath, pack);
           packIdentityByObject.set(pack, identityString(identity));
           return pack;
         }
@@ -1447,6 +1497,7 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
         }
         await assertIdentityStillCurrent(identity);
         scopedSources.set(pack, identity);
+        scopedIndexes.set(canonicalPath, pack);
         packIdentityByObject.set(pack, identityString(identity));
         if (useIndexCache) {
           const bytes = estimatePackBytes(pack);
@@ -1480,8 +1531,31 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
       },
       getReadonlyTable: readReadonlyTable,
       getVanillaRawLoc: readVanillaLoc,
+      async getVisualsCatalog(pack) {
+        if (!useVisualsCache) return undefined;
+        usedVisuals = true;
+        const schema = await getSchemaForRequest();
+        if (!schema.cacheable) return undefined;
+        return visualSession.catalog(await visualSource(pack), schema.hash);
+      },
+      async getVisualReference(pack, entry, kind, validate, load) {
+        if (!useVisualsCache) return load();
+        usedVisuals = true;
+        // Hits read no source payload. The scope validates every source snapshot at flush,
+        // before the registry returns success; source misses retain readAutomationPayload's
+        // before/after checks. Avoid two Windows filesystem opens for every cached edge file.
+        return visualSession.reference(await visualSource(pack), entry.name, kind, validate, load);
+      },
+      async flushVisuals() {
+        if (!useVisualsCache || !usedVisuals) return;
+        for (const identity of scopedIdentity.values()) await assertIdentityStillCurrent(identity);
+        await visualSession.flush();
+      },
       close() {
         if (scopeClosed) return;
+        visualSession.discard();
+        catalogPaths.clear();
+        scopedIndexes.clear();
         scopeClosed = true;
         for (const release of [...releases]) release();
         releases.clear();
@@ -1505,7 +1579,7 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
       budget.dropWhere((entry) => {
         if (entry.kind === "index")
           return (entry.metadata as { sourcePath?: string } | undefined)?.sourcePath === canonical;
-        if (entry.kind === "table")
+        if (entry.kind === "table" || entry.kind === "visuals")
           return (entry.metadata as { sourcePath?: string } | undefined)?.sourcePath === canonical;
         if (entry.kind === "dbReader")
           return (entry.metadata as { sourcePath?: string } | undefined)?.sourcePath === canonical;

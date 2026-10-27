@@ -2,13 +2,14 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { z } from "zod";
 import { vanillaInputs, discoverGameDataPath } from "./vanilla";
-import { getSupportedVisualReferenceDetails, type VisualReferenceDetail } from "../visuals/dependencies";
+import { getSupportedVisualReferenceDetails, type VisualReferenceDetail, type VisualReferenceExtraction } from "../visuals/dependencies";
 import { toVariantMeshDefinitionPath } from "../visuals/paths";
+import { getVisualsFileExtension } from "../visuals/cache";
 import { getFilenameRelativePathMatch, parseFilenameRelativePaths } from "../utility/filenameRelativePaths";
 import { getCanonicalLogicalTableName, shouldReplaceEffectiveDbRowWinner } from "../utility/effectiveDbRow";
 import { parseDBTablePath } from "../utility/packFileHelpers";
 import { normalizePackFilePath, normalizePackFilePathKey } from "../utility/packFilePathUtils";
-import { parseRmv2, Rmv2CodecError, type CorePack, type CorePackEntry } from "../packCore";
+import { parseRmv2, Rmv2CodecError, type CorePack, type CorePackEntry, type Rmv2Texture } from "../packCore";
 import { decodePackedTextBuffer } from "../utility/packFileViewing";
 import { AutomationError, throwIfAborted, yieldToEventLoop, type AutomationDiagnostic } from "./errors";
 import { normalizeInternalPackPath } from "./filesystem";
@@ -97,6 +98,42 @@ export interface EffectiveDbRow {
   identity?: string;
 }
 
+export interface CachedRmv2ReferenceModel {
+  lods: Array<{
+    lodIndex: number;
+    parts: Array<{
+      lodIndex: number;
+      partIndex: number;
+      complete: boolean;
+      unsupportedReason?: string;
+      materialTypeId: number;
+      materialTypeName: string;
+      textures?: Rmv2Texture[];
+    }>;
+  }>;
+}
+
+const cachedXmlSchema = z.object({
+  valid: z.boolean(), error: z.string().optional(),
+  references: z.array(z.object({
+    path: z.string(), extension: z.enum(["variantmeshdefinition", "wsmodel", "rigid_model_v2", "xml.material", "dds"]),
+    location: z.string(), sourceField: z.string(),
+    relationship: z.enum(["variant-mesh-reference", "model", "geometry", "material", "texture"]),
+  }).passthrough()).max(50000),
+  unsupportedReferences: z.array(z.object({ path: z.string(), location: z.string(), sourceField: z.string() }).passthrough()).max(50000),
+});
+const cachedRigidSchema = z.object({ lods: z.array(z.object({
+  lodIndex: z.number().int().min(0),
+  parts: z.array(z.object({
+    lodIndex: z.number().int().min(0), partIndex: z.number().int().min(0), complete: z.boolean(),
+    unsupportedReason: z.string().optional(), materialTypeId: z.number(), materialTypeName: z.string(),
+    textures: z.array(z.object({ typeId: z.number().nullable(), typeName: z.string().nullable(), path: z.string(),
+      legacy: z.boolean(), source: z.enum(["weightedTexture", "terrainTexturePath"]) })).optional(),
+  })).max(50000),
+})).max(256) });
+const isCachedXml = (value: unknown): value is VisualReferenceExtraction => cachedXmlSchema.safeParse(value).success;
+const isCachedRigid = (value: unknown): value is CachedRmv2ReferenceModel => cachedRigidSchema.safeParse(value).success;
+
 export interface ReferenceEnvironment {
   context: AutomationContext;
   sourcePaths: string[];
@@ -108,6 +145,10 @@ export interface ReferenceEnvironment {
   dbEffectiveFilesCache: Map<string, DbFileRef[]>;
   dbRowsCache: Map<string, Promise<EffectiveDbRow[]>>;
   dbExactRowsCache: Map<string, Promise<EffectiveDbRow[]>>;
+  referenceTextCache: Map<string, Promise<VisualReferenceExtraction>>;
+  referenceRmv2Cache: Map<string, Promise<CachedRmv2ReferenceModel>>;
+  usedVisualCatalog?: boolean;
+  visualsOnly?: boolean;
   rowById: Map<string, EffectiveDbRow>;
 }
 
@@ -154,6 +195,7 @@ export const prepareReferenceEnvironment = async (
   explicitVanillaPackPaths: readonly string[] = [],
   gameDataPath?: string,
   withVanilla = false,
+  visualsOnly = false,
 ): Promise<ReferenceEnvironment> => {
   gameDataPath ??= withVanilla ? await discoverGameDataPath(context) : undefined;
   const diagnostics: AutomationDiagnostic[] = [];
@@ -211,13 +253,14 @@ export const prepareReferenceEnvironment = async (
         throwIfAborted(context.signal);
         if ((indexedEntries++ & 127) === 0) await yieldToEventLoop(context.signal);
         const key = normalizePackFilePathKey(entry.name);
+        const parsed = key.startsWith("db\\") ? parseDBTablePath(key) : undefined;
+        if (visualsOnly && !getVisualsFileExtension(key) && parsed?.dbFolder !== "db" && !key.endsWith(".loc")) continue;
         const group = provider.entriesByPath.get(key) ?? [];
         group.push(entry);
         provider.entriesByPath.set(key, group);
         const candidates = assetCandidates.get(key) ?? [];
         candidates.push({ provider, entry });
         assetCandidates.set(key, candidates);
-        const parsed = parseDBTablePath(key);
         if (parsed?.dbFolder === "db") {
           const logicalTable = getCanonicalLogicalTableName(`db\\${parsed.dbName}`);
           const files = dbFiles.get(logicalTable) ?? [];
@@ -240,11 +283,14 @@ export const prepareReferenceEnvironment = async (
     providers,
     diagnostics,
     complete: true,
+    visualsOnly,
     assetCandidates,
     dbFiles,
     dbEffectiveFilesCache: new Map(),
     dbRowsCache: new Map(),
     dbExactRowsCache: new Map(),
+    referenceTextCache: new Map(),
+    referenceRmv2Cache: new Map(),
     rowById: new Map(),
   };
 };
@@ -269,6 +315,18 @@ export const resolveReferenceAsset = (
     key = normalizePackFilePathKey(safePath);
     candidates = environment.assetCandidates.get(key) ?? [];
   }
+  // Unit queries keep sparse maps, but explicit/unsupported paths must still report their
+  // real providers. Index those rare paths on demand rather than retaining every game file.
+  if (environment.visualsOnly && !environment.assetCandidates.has(key) && !getVisualsFileExtension(key) &&
+      !key.startsWith("db\\") && !key.endsWith(".loc")) {
+    for (const provider of environment.providers) {
+      const entries = provider.pack.entries.filter((entry) => normalizePackFilePathKey(entry.name) === key);
+      if (!entries.length) continue;
+      provider.entriesByPath.set(key, entries);
+      for (const entry of entries) candidates.push({ provider, entry });
+    }
+    environment.assetCandidates.set(key, candidates);
+  }
   if (!candidates.length)
     return {
       path: safePath,
@@ -290,6 +348,66 @@ export const resolveReferenceAsset = (
   };
 };
 
+/** Load the compact XML reference record through the shared bounded cache. Callers that
+ * scan many files should leave retainInEnvironment false so the request-local convenience
+ * map does not become an unbounded second copy of the cache. */
+export const loadVisualReferenceExtraction = async (
+  environment: ReferenceEnvironment,
+  provider: ReferenceProvider,
+  entry: CorePackEntry,
+  retainInEnvironment = true,
+): Promise<VisualReferenceExtraction> => {
+  const cacheKey = `${provider.pack.path}\0${normalizePackFilePathKey(entry.name)}`;
+  let cached = retainInEnvironment ? environment.referenceTextCache.get(cacheKey) : undefined;
+  if (!cached) {
+    const load = async () => {
+      const bytes = await readAutomationPayload(provider.pack, entry, environment.context);
+      return getSupportedVisualReferenceDetails(decodePackedTextBuffer(bytes));
+    };
+    cached = environment.context.cacheRequest?.getVisualReference
+      ? environment.context.cacheRequest.getVisualReference(provider.pack, entry, "xml", isCachedXml, load)
+      : load();
+    if (retainInEnvironment) environment.referenceTextCache.set(cacheKey, cached);
+  }
+  return cached;
+};
+
+/** Compact texture-only RMV2 metadata, shared with the bounded per-pack cache. */
+export const loadRigidReferenceModel = async (
+  environment: ReferenceEnvironment,
+  provider: ReferenceProvider,
+  entry: CorePackEntry,
+  retainInEnvironment = true,
+): Promise<CachedRmv2ReferenceModel> => {
+  const cacheKey = `${provider.pack.path}\0${normalizePackFilePathKey(entry.name)}`;
+  let cached = retainInEnvironment ? environment.referenceRmv2Cache.get(cacheKey) : undefined;
+  if (!cached) {
+    const load = async () => {
+      const bytes = await readAutomationPayload(provider.pack, entry, environment.context);
+      const parsed = parseRmv2(bytes, { textureSlotsOnly: true });
+      return {
+        lods: parsed.lods.map((lod) => ({
+          lodIndex: lod.lodIndex,
+          parts: lod.parts.map((part) => ({
+            lodIndex: part.lodIndex,
+            partIndex: part.partIndex,
+            complete: part.complete,
+            ...(part.unsupportedReason ? { unsupportedReason: part.unsupportedReason } : {}),
+            materialTypeId: part.materialTypeId,
+            materialTypeName: part.materialTypeName,
+            ...(part.textures ? { textures: part.textures.map((texture) => ({ ...texture })) } : {}),
+          })),
+        })),
+      };
+    };
+    cached = environment.context.cacheRequest?.getVisualReference
+      ? environment.context.cacheRequest.getVisualReference(provider.pack, entry, "rmv2", isCachedRigid, load)
+      : load();
+    if (retainInEnvironment) environment.referenceRmv2Cache.set(cacheKey, cached);
+  }
+  return cached;
+};
+
 const loadedSchemaCompatible = (first: ReadonlyTableData, next: ReadonlyTableData) =>
   first.isLoc === next.isLoc &&
   first.schema.version === next.schema.version &&
@@ -304,7 +422,7 @@ const tableLogicalName = (packedPath: string): string | undefined => {
   return parsed?.dbFolder === "db" ? getCanonicalLogicalTableName(`db\\${parsed.dbName}`) : undefined;
 };
 
-const getEffectiveDbFileRefs = (environment: ReferenceEnvironment, canonical: string): DbFileRef[] => {
+export const getEffectiveDbFileRefs = (environment: ReferenceEnvironment, canonical: string): DbFileRef[] => {
   const cached = environment.dbEffectiveFilesCache.get(canonical);
   if (cached) return cached;
   const allFileRefs = environment.dbFiles.get(canonical) ?? [];
@@ -904,10 +1022,9 @@ class ReferenceGraphBuilder {
       await this.processRigidModel(id, depth, provider, entry);
       return;
     }
-    let extraction;
+    let extraction: VisualReferenceExtraction;
     try {
-      const bytes = await readAutomationPayload(provider.pack, entry, this.environment.context);
-      extraction = getSupportedVisualReferenceDetails(decodePackedTextBuffer(bytes));
+      extraction = await loadVisualReferenceExtraction(this.environment, provider, entry);
     } catch (error) {
       if (error instanceof AutomationError && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code)) throw error;
       node.coverage = "unreadable";
@@ -985,8 +1102,7 @@ class ReferenceGraphBuilder {
     if (!node) return;
     let model;
     try {
-      const bytes = await readAutomationPayload(provider.pack, entry, this.environment.context);
-      model = parseRmv2(bytes);
+      model = await loadRigidReferenceModel(this.environment, provider, entry);
     } catch (error) {
       if (error instanceof AutomationError && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(error.code)) throw error;
       this.environment.complete = false;
@@ -1296,7 +1412,17 @@ export const buildReferenceGraph = async (
   environment: ReferenceEnvironment,
   roots: readonly ReferenceGraphRoot[],
   options: ReferenceGraphOptions,
-): Promise<ReferenceGraphResult> => new ReferenceGraphBuilder(environment, options).run(roots);
+): Promise<ReferenceGraphResult> => {
+  const builder = new ReferenceGraphBuilder(environment, options);
+  let result: ReferenceGraphResult | undefined;
+  // Drain small root groups into the same builder so shared assets stay memoized and roots
+  // cannot consume the node budget before their dependency chains are visited.
+  for (let offset = 0; offset < roots.length; offset += 32) {
+    result = await builder.run(roots.slice(offset, offset + 32));
+    if (result.coverage.hitLimit) break;
+  }
+  return result ?? builder.run([]);
+};
 
 export const findRigidLoaderEdges = async (
   environment: ReferenceEnvironment,

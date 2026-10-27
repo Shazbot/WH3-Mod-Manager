@@ -74,7 +74,9 @@ const legacyBc: Record<string, [string, number, boolean]> = {
 };
 
 /** Mip offsets are for surface zero; each other array/cube surface starts one chainBytes later. */
-export const inspectDdsLayout = (buffer: Buffer): DdsLayout => {
+export const inspectDdsLayout = (buffer: Buffer, logicalLength = buffer.length): DdsLayout => {
+  if (!Number.isSafeInteger(logicalLength) || logicalLength < buffer.length)
+    throw new Error(`Invalid DDS logical length: ${logicalLength}`);
   if (buffer.length < 128 || buffer.toString("ascii", 0, 4) !== "DDS ")
     throw new Error("Invalid DDS file: missing or truncated header");
   if (buffer.readUInt32LE(4) !== 124 || buffer.readUInt32LE(76) !== 32)
@@ -171,7 +173,7 @@ export const inspectDdsLayout = (buffer: Buffer): DdsLayout => {
         offset,
         byteLength,
         rowPitch,
-        present: offset + byteLength <= buffer.length,
+        present: offset + byteLength <= logicalLength,
       });
       offset += byteLength;
     }
@@ -210,9 +212,9 @@ export const inspectDdsLayout = (buffer: Buffer): DdsLayout => {
     previewUnsupportedReason,
     chainBytes,
     expectedBytes,
-    actualBytes: buffer.length,
-    complete: expectedBytes === null ? null : expectedBytes <= buffer.length,
-    trailingBytes: expectedBytes === null || expectedBytes > buffer.length ? null : buffer.length - expectedBytes,
+    actualBytes: logicalLength,
+    complete: expectedBytes === null ? null : expectedBytes <= logicalLength,
+    trailingBytes: expectedBytes === null || expectedBytes > logicalLength ? null : logicalLength - expectedBytes,
     mips,
   };
 };

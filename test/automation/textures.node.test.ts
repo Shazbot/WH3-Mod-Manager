@@ -1,12 +1,12 @@
-import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { inflateSync } from "node:zlib";
+import { inflateSync, zstdCompressSync } from "node:zlib";
 import { afterAll, describe, expect, it } from "vitest";
 import { createAutomationContext, executeAutomationRequest } from "../../src/automation/registry";
 import { inspectDdsLayout } from "../../src/utility/ddsLayout";
 import { encodeDdsMipAsPng } from "../../src/esfMap/dds";
-import { writeRawPack } from "../../src/packCore";
+import { readPackIndex, readRawPayloadPrefix, writeRawPack } from "../../src/packCore";
 
 const root = mkdtempSync(path.join(os.tmpdir(), "whmm-textures-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -198,5 +198,131 @@ describe("DDS texture inspection", () => {
     expect(JSON.parse(readFileSync(reportPath, "utf8"))).toMatchObject({
       texture: { mipCount: 4, format: "BC1_UNORM" },
     });
+  });
+});
+
+describe("DDS texture inventory", () => {
+  it("keeps whole-scan totals and full reports while paging individual textures", async () => {
+    const packPath = path.join(root, "inventory.pack");
+    const reportPath = path.join(root, "inventory.json");
+    const zeroMips = dds(4, 4, 1);
+    zeroMips.writeUInt32LE(0, 28);
+    const buffers = [dds(), dds(9, 5, 4, 72, 2), zeroMips];
+    await writeRawPack(packPath, buffers.map((buffer, index) => ({ name: `textures\\${index}.dds`, buffer })), metadata);
+    const result = await executeAutomationRequest({ operation: "pack_textures", packPath, limit: 1, reportPath });
+    expect(result).toMatchObject({ ok: true, data: {
+      complete: true, total: 3, hasMore: true, nextOffset: 1,
+      totals: {
+        files: 3, storedBytes: 596, logicalBytes: 596, estimatedDdsPayloadBytes: 192,
+        unknownEstimates: 0, unknownLogicalSizes: 0, powerOfTwo: 2, nonPowerOfTwo: 1,
+        dimensions: { "8x4": 1, "9x5": 1, "4x4": 1 },
+      },
+      files: [{ filePath: "textures\\0.dds", width: 8, height: 4, format: "BC1_UNORM" }],
+    } });
+    const report = JSON.parse(readFileSync(reportPath, "utf8"));
+    expect(report.files).toHaveLength(3);
+    expect(report.files[1]).toMatchObject({ isPowerOfTwo: false, arraySize: 2, surfaces: 2, estimatedDdsPayloadBytes: 144 });
+    expect(report.files[2]).toMatchObject({ declaredMipCount: 0, effectiveMipCount: 1 });
+    expect(await executeAutomationRequest({ operation: "pack_textures", packPath, glob: "textures/1.dds" }))
+      .toMatchObject({ ok: true, data: { total: 1, totals: { files: 1, nonPowerOfTwo: 1, estimatedDdsPayloadBytes: 144 } } });
+  });
+
+  it("inspects complete and truncated layouts using a bounded header plus logical size", async () => {
+    const buffer = dds(256, 256, 9, 72, 2);
+    const packPath = await pack("inventory-prefix.pack", buffer);
+    const index = readPackIndex(packPath, { game: "wh3" });
+    const header = readRawPayloadPrefix(index, index.entries[0], 148);
+    expect(header).toEqual(buffer.subarray(0, 148));
+    expect(header.length).toBe(148);
+    expect(inspectDdsLayout(header, buffer.length)).toEqual(inspectDdsLayout(buffer));
+    expect(inspectDdsLayout(header, buffer.length - 1)).toMatchObject({ complete: false });
+    expect(() => readRawPayloadPrefix(index, { ...index.entries[0], is_compressed: true }, 148)).toThrow(/compressed/);
+    expect(await executeAutomationRequest({ operation: "pack_textures", packPath }))
+      .toMatchObject({ ok: true, data: { complete: true, files: [{ complete: true, logicalSize: buffer.length }] } });
+  });
+
+  it("retains malformed, truncated and unknown formats without inventing estimates", async () => {
+    const packPath = path.join(root, "inventory-unsupported.pack");
+    const unknown = dds(4, 4, 1, 12345);
+    const truncated = dds().subarray(0, 164);
+    const invalid = Buffer.from("not a DDS");
+    await writeRawPack(packPath, [
+      { name: "textures\\unknown.dds", buffer: unknown },
+      { name: "textures\\truncated.dds", buffer: truncated },
+      { name: "textures\\invalid.dds", buffer: invalid },
+    ], metadata);
+    const result = await executeAutomationRequest({ operation: "pack_textures", packPath });
+    expect(result).toMatchObject({ ok: true, data: {
+      complete: false, total: 3,
+      totals: { logicalBytes: unknown.length + truncated.length + invalid.length, unknownEstimates: 2, unknownLogicalSizes: 0 },
+      files: [
+        { status: "invalid", logicalSize: invalid.length, estimatedDdsPayloadBytes: null },
+        { complete: false, estimatedDdsPayloadBytes: 40 },
+        { format: "DXGI_12345", layoutSupported: false, estimatedDdsPayloadBytes: null },
+      ],
+    } });
+    expect(result.diagnostics?.map((item) => item.code)).toEqual(expect.arrayContaining([
+      "INVALID_DDS", "TRUNCATED_DDS_CHAIN", "UNSUPPORTED_DDS_LAYOUT",
+    ]));
+  });
+
+  it("uses effective target/support/vanilla providers when vanilla is enabled", async () => {
+    const vanilla = path.join(root, "inventory-vanilla.pack");
+    const support = path.join(root, "inventory-support.pack");
+    const target = path.join(root, "inventory-target.pack");
+    await writeRawPack(vanilla, [
+      { name: "textures\\shared.dds", buffer: dds(16, 16, 1) },
+      { name: "textures\\vanilla.dds", buffer: dds(4, 4, 1) },
+    ], metadata);
+    await writeRawPack(support, [
+      { name: "textures\\shared.dds", buffer: dds(8, 8, 1) },
+      { name: "textures\\support.dds", buffer: dds(4, 4, 1) },
+    ], metadata);
+    await writeRawPack(target, [
+      { name: "textures\\shared.dds", buffer: dds(4, 4, 1) },
+      { name: "textures\\target.dds", buffer: dds(4, 4, 1) },
+    ], metadata);
+    writeFileSync(path.join(root, "manifest.txt"), "inventory-vanilla.pack\n");
+    expect(await executeAutomationRequest({ operation: "pack_textures", packPath: target }))
+      .toMatchObject({ ok: true, data: { scope: "target", total: 2 } });
+    const request = { operation: "pack_textures", packPath: target, packPaths: [support], withVanilla: true, gameDataPath: root };
+    expect(await executeAutomationRequest(request)).toMatchObject({ ok: true, data: {
+      scope: "effective", complete: true, total: 4, totals: { estimatedDdsPayloadBytes: 32 },
+      files: [
+        { filePath: "textures\\shared.dds", packPath: target, role: "target", width: 4 },
+        { filePath: "textures\\support.dds", packPath: support, role: "support", providerKind: "mod" },
+        { filePath: "textures\\target.dds", packPath: target },
+        { filePath: "textures\\vanilla.dds", packPath: vanilla, providerKind: "vanilla" },
+      ],
+    } });
+    expect(await executeAutomationRequest(request, createAutomationContext({ readRoots: [target] })))
+      .toMatchObject({ ok: false, error: { code: "IO_ACCESS" } });
+  });
+
+  it("decompresses through the existing codec and preserves known invalid-payload sizes", async () => {
+    const packPath = path.join(root, "inventory-compressed.pack");
+    const valid = dds();
+    const invalid = Buffer.from("invalid DDS");
+    await writeRawPack(packPath, [
+      { name: "textures\\valid.dds", buffer: zstdCompressSync(valid), is_compressed: true },
+      { name: "textures\\invalid.dds", buffer: zstdCompressSync(invalid), is_compressed: true },
+    ], metadata);
+    expect(await executeAutomationRequest({ operation: "pack_textures", packPath })).toMatchObject({ ok: true, data: {
+      complete: false,
+      totals: { files: 2, logicalBytes: valid.length + invalid.length, unknownLogicalSizes: 0, unknownEstimates: 1, estimatedDdsPayloadBytes: 40 },
+      files: [{ status: "invalid", logicalSize: invalid.length }, { compressed: true, complete: true, logicalSize: valid.length }],
+    } });
+  });
+
+  it("includes volume depth in dimensions and power-of-two classification", async () => {
+    const volume = Buffer.concat([dds(4, 4, 1), Buffer.alloc(16)]);
+    volume.writeUInt32LE(3, 24);
+    volume.writeUInt32LE(0x200000, 112);
+    const packPath = await pack("inventory-volume.pack", volume);
+    expect(await executeAutomationRequest({ operation: "pack_textures", packPath })).toMatchObject({ ok: true, data: {
+      complete: true,
+      totals: { powerOfTwo: 0, nonPowerOfTwo: 1, estimatedDdsPayloadBytes: 24, dimensions: { "4x4x3": 1 } },
+      files: [{ dimensions: "4x4x3", resourceDimension: "3D", depth: 3, isPowerOfTwo: false, complete: true }],
+    } });
   });
 });

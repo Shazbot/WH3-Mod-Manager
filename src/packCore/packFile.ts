@@ -176,6 +176,29 @@ export const readRawPayload = (pack: Pick<CorePack, "path">, entry: CorePackEntr
   }
 };
 
+/** Reads a bounded prefix of an uncompressed entry without allocating its stored payload. */
+export const readRawPayloadPrefix = (
+  pack: Pick<CorePack, "path">,
+  entry: CorePackEntry,
+  maxBytes: number,
+): Buffer => {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new Error(`Invalid payload prefix size: ${maxBytes}`);
+  if (entry.is_compressed) throw new Error(`Cannot read a raw prefix from compressed payload ${entry.name}`);
+  if (!Number.isSafeInteger(entry.start_pos) || entry.start_pos < 0) {
+    throw new Error(`Invalid payload offset for ${entry.name}: ${entry.start_pos}`);
+  }
+  if (!Number.isSafeInteger(entry.file_size) || entry.file_size < 0) {
+    throw new Error(`Invalid payload size for ${entry.name}: ${entry.file_size}`);
+  }
+  const length = Math.min(entry.file_size, maxBytes);
+  const fd = fs.openSync(pack.path, "r");
+  try {
+    return length === 0 ? Buffer.alloc(0) : readExactly(fd, length, entry.start_pos, pack.path);
+  } finally {
+    fs.closeSync(fd);
+  }
+};
+
 /** Reads a logical payload, decompressing when the index marks it compressed. */
 export const readPayload = async (
   pack: Pick<CorePack, "path" | "game">,

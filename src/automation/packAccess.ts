@@ -4,6 +4,7 @@ import {
   DEFAULT_MAX_LOGICAL_PAYLOAD_BYTES,
   readPackIndex,
   readPayload,
+  readRawPayloadPrefix,
   type CorePack,
   type CorePackEntry,
 } from "../packCore";
@@ -61,6 +62,26 @@ export const readAutomationPayload = async (
     const unsupportedCode = error && typeof error === "object" && "code" in error && error.code === "UNSUPPORTED_CODEC";
     const code = unsupportedCode || /not available|unsupported codec/i.test(message) ? "UNSUPPORTED" : "VALIDATION";
     throw new AutomationError(code, message, { filePath: entry.name });
+  }
+};
+
+/** Bounded uncompressed prefix reader with the same path and snapshot checks as full reads. */
+export const readAutomationPayloadPrefix = async (
+  pack: CorePack,
+  entry: CorePackEntry,
+  maxBytes: number,
+  context: AutomationContext,
+): Promise<Buffer> => {
+  if (entry.is_compressed) throw new AutomationError("INVALID_ARGUMENT", "A raw payload prefix requires an uncompressed entry");
+  try {
+    await context.cacheRequest?.assertPackSnapshot(pack);
+    const canonicalPath = await context.policy.assertReadPath(pack.path);
+    const prefix = readRawPayloadPrefix({ path: canonicalPath }, entry, maxBytes);
+    await context.cacheRequest?.assertPackSnapshot(pack);
+    return prefix;
+  } catch (error) {
+    if (error instanceof AutomationError) throw error;
+    throw new AutomationError("IO_ACCESS", error instanceof Error ? error.message : String(error), { filePath: entry.name });
   }
 };
 

@@ -4,7 +4,7 @@ import * as nodePath from "path";
 import * as VDF from "@node-steam/vdf";
 
 type SteamLibraryFolders = {
-  libraryfolders?: Record<string, { path?: string }>;
+  libraryfolders?: Record<string, { path?: string } | string>;
 };
 
 const uniquePaths = (paths: string[]) => [...new Set(paths)];
@@ -61,11 +61,12 @@ export const findSteamInstallPath = async (
   return undefined;
 };
 
-const parseLibraryFolders = (contents: string): string[] => {
+export const parseLibraryFolders = (contents: string): string[] => {
   try {
     const parsed = VDF.parse(contents) as SteamLibraryFolders;
-    return Object.values(parsed.libraryfolders ?? {})
-      .map((entry) => entry.path)
+    return Object.entries(parsed.libraryfolders ?? {})
+      .filter(([key]) => /^\d+$/.test(key))
+      .map(([, entry]) => typeof entry === "string" ? entry : entry.path)
       .filter((libraryPath): libraryPath is string => Boolean(libraryPath))
       .map((libraryPath) => libraryPath.replaceAll("\\\\", "\\").replaceAll("//", "/"));
   } catch {

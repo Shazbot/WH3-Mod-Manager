@@ -53,6 +53,7 @@ export {
   readPackIndex,
   readPayload,
   readRawPayload,
+  readRawPayloadPrefix,
   rewritePackFromIndex,
   writeRawPack,
 } from "./packFile";

@@ -50,6 +50,8 @@ import { packSubsetSchema, runPackSubset } from "./subset";
 import { localizationLookupSchema, runLocalizationLookup } from "./localization";
 import { unitResolveSchema, runUnitResolve } from "./units";
 import { packTextureInspectSchema, runPackTextureInspect } from "./textures";
+import { packTexturesSchema, runPackTextures } from "./textures";
+import { assetUsersSchema, runAssetUsers } from "./assetUsers";
 import { rigidInspectSchema, runRigidInspect } from "./rigid";
 import { assetMaterialsSchema, inspectWsModelBindings, runAssetMaterials } from "./materials";
 import { rigidPatchSchema, runRigidPatch } from "./rigidPatch";
@@ -162,7 +164,8 @@ export const operationSchemas = {
     .object({
       operation: z.literal("pack_search"),
       packPath: z.string().min(1),
-      query: z.string().min(1).max(2048),
+      query: z.string().min(1).max(2048).optional(),
+      queries: z.array(z.string().min(1).max(2048)).min(1).max(1000).optional(),
       caseSensitive: z.boolean().default(false),
       regex: z.boolean().default(false),
       fileGlob: z.string().optional(),
@@ -253,6 +256,8 @@ export const operationSchemas = {
   localization_lookup: localizationLookupSchema,
   unit_resolve: unitResolveSchema,
   pack_texture_inspect: packTextureInspectSchema,
+  pack_textures: packTexturesSchema,
+  asset_users: assetUsersSchema,
   rigid_inspect: rigidInspectSchema,
   asset_materials: assetMaterialsSchema,
   rigid_patch: rigidPatchSchema,
@@ -264,10 +269,21 @@ export type AutomationContext = {
   schemaProvider?: TableSchemaProvider;
   maxLogicalPayloadBytes?: number;
   signal?: AbortSignal;
+  progress?: (update: AutomationProgress) => void;
   cache?: AutomationCacheService;
   /** Per-operation scope attached by executeAutomationRequest. */
   cacheRequest?: AutomationCacheRequestScope;
 };
+export interface AutomationProgress {
+  stage: string;
+  completed?: number;
+  total?: number;
+  state?: "before" | "after";
+  units?: number;
+  paths?: number;
+  edges?: number;
+  message?: string;
+}
 export type OperationOutput<T = unknown> = { data: T; diagnostics: AutomationDiagnostic[] };
 type Request<K extends OperationName> = z.output<(typeof operationSchemas)[K]>;
 type OperationHandler<K extends OperationName> = (
@@ -425,11 +441,15 @@ const runReadFile: OperationHandler<"pack_read_file"> = async (request, context)
 
 const runSearch: OperationHandler<"pack_search"> = async (request, context) => {
   const pack = await readIndex(request.packPath, context);
-  const matcher = createSearchMatcher(request.query, {
+  if (Boolean(request.query) === Boolean(request.queries))
+    throw new AutomationError("INVALID_ARGUMENT", "pack search requires exactly one of query or queries");
+  const queries = request.queries ?? [request.query!];
+  const matchers = queries.map((query) => createSearchMatcher(query, {
     caseSensitive: request.caseSensitive,
     regex: request.regex,
-  });
-  if (!matcher.isValidRegex)
+  }));
+  const batched = Boolean(request.queries);
+  if (matchers.some((matcher) => !matcher.isValidRegex))
     throw new AutomationError("INVALID_ARGUMENT", "Search regular expression is invalid or too long");
   const diagnostics: AutomationDiagnostic[] = [];
   const results: Array<Record<string, unknown>> = [];
@@ -443,35 +463,90 @@ const runSearch: OperationHandler<"pack_search"> = async (request, context) => {
     throwIfAborted(context.signal);
     if ((searchEntries++ & 127) === 0) await yieldToEventLoop(context.signal);
     if (request.fileGlob && !isPackedPathMatch(entry.name, undefined, request.fileGlob)) continue;
-    if (matcher.test(entry.name)) addResult({ kind: "filename", filePath: entry.name });
-    if (!request.content || !isTextPackedFilePath(entry.name.replace(/\//g, "\\").toLowerCase())) continue;
-    if (entry.file_size > (context.maxLogicalPayloadBytes ?? DEFAULT_MAX_LOGICAL_PAYLOAD_BYTES)) {
+    const filenameQueries = queries.filter((_query, index) => matchers[index].test(entry.name));
+    if (filenameQueries.length) addResult({ kind: "filename", filePath: entry.name, ...(batched ? { queries: filenameQueries } : {}) });
+    if (!request.content) continue;
+    const isText = isTextPackedFilePath(entry.name.replace(/\//g, "\\").toLowerCase());
+    const parsedTablePath = parseDBTablePath(normalizeInternalPackPath(entry.name).toLowerCase());
+    if (isText && entry.file_size > (context.maxLogicalPayloadBytes ?? DEFAULT_MAX_LOGICAL_PAYLOAD_BYTES)) {
       diagnostics.push(
         diagnostic("SKIPPED_TOO_LARGE", "Text entry exceeds the configured read limit", "warning", entry.name),
       );
       continue;
     }
-    let content: Buffer;
-    try {
-      content = await readLogical(pack, entry, context);
-    } catch (error) {
-      if (error instanceof AutomationError && error.code === "CANCELLED") throw error;
-      diagnostics.push(
-        diagnostic("SKIPPED_UNREADABLE", error instanceof Error ? error.message : String(error), "warning", entry.name),
-      );
-      continue;
+    if (isText) {
+      let content: Buffer;
+      try {
+        content = await readLogical(pack, entry, context);
+      } catch (error) {
+        if (error instanceof AutomationError && ["CANCELLED", "IO_ACCESS"].includes(error.code)) throw error;
+        diagnostics.push(
+          diagnostic("SKIPPED_UNREADABLE", error instanceof Error ? error.message : String(error), "warning", entry.name),
+        );
+        continue;
+      }
+      const decoded = decodePackedTextBuffer(content);
+      const matchGroups = new Map<string, { match: Record<string, unknown>; queries: string[] }>();
+      let textTruncated = false;
+      for (let index = 0; index < matchers.length; index++) {
+        const matches = scanTextForMatches(decoded, matchers[index], { maxMatches: 100 });
+        textTruncated ||= Boolean(matches.truncated);
+        for (const match of matches) {
+          throwIfAborted(context.signal);
+          const signature = JSON.stringify(match);
+          const group = matchGroups.get(signature) ?? { match: match as unknown as Record<string, unknown>, queries: [] };
+          group.queries.push(queries[index]);
+          matchGroups.set(signature, group);
+        }
+      }
+      for (const { match, queries: matchedQueries } of matchGroups.values())
+        addResult({ kind: "text", filePath: entry.name, ...match, ...(batched ? { queries: matchedQueries } : {}) });
+      if (textTruncated)
+        diagnostics.push(
+          diagnostic("TRUNCATED_FILE_MATCHES", "Additional matches in this entry were omitted", "info", entry.name),
+        );
+    } else if (parsedTablePath?.dbFolder === "db") {
+      try {
+        const loaded = await readAutomationReadonlyTable(pack, entry, context);
+        if (loaded.isLoc) continue;
+        const keyFields = loaded.schema.fields.filter((field) => field.is_key);
+        for (let rowIndex = 0; rowIndex < loaded.rows.length; rowIndex++) {
+          throwIfAborted(context.signal);
+          if ((rowIndex & 255) === 0) await yieldToEventLoop(context.signal);
+          const row = loaded.rows[rowIndex];
+          const rowIdentity = Object.fromEntries(keyFields.map((field) => [field.name, row[field.name]]));
+          for (const [field, typedValue] of Object.entries(row)) {
+            if (typedValue === null || typedValue === undefined) continue;
+            const value = typeof typedValue === "string" ? typedValue : JSON.stringify(typedValue);
+            const matchedQueries = queries.filter((_query, index) => matchers[index].test(value));
+            if (matchedQueries.length)
+              addResult({
+                kind: "db",
+                filePath: entry.name,
+                table: parsedTablePath.dbName,
+                rowIndex,
+                rowIdentity: keyFields.length ? rowIdentity : { rowIndex },
+                field,
+                typedValue,
+                ...(batched ? { queries: matchedQueries } : {}),
+              });
+          }
+        }
+      } catch (error) {
+        if (error instanceof AutomationError && ["CANCELLED", "IO_ACCESS"].includes(error.code)) throw error;
+        const unsupported = error instanceof AutomationError && error.code === "UNSUPPORTED";
+        diagnostics.push(
+          diagnostic(
+            unsupported ? "SKIPPED_UNSUPPORTED_DB" : "SKIPPED_INVALID_DB",
+            error instanceof Error ? error.message : String(error),
+            "warning",
+            entry.name,
+          ),
+        );
+      }
     }
-    const matches = scanTextForMatches(decodePackedTextBuffer(content), matcher, { maxMatches: 100 });
-    for (const match of matches) {
-      throwIfAborted(context.signal);
-      addResult({ kind: "text", filePath: entry.name, ...match });
-    }
-    if (matches.truncated)
-      diagnostics.push(
-        diagnostic("TRUNCATED_FILE_MATCHES", "Additional matches in this entry were omitted", "info", entry.name),
-      );
   }
-  const fullResult = { packPath: pack.path, query: request.query, results, truncated };
+  const fullResult = { packPath: pack.path, ...(batched ? { queries } : { query: request.query }), results, truncated };
   const reportPath = await withReport(context, request.reportPath, [pack.path], fullResult);
   return { data: { ...fullResult, ...(reportPath ? { reportPath } : {}) }, diagnostics };
 };
@@ -1266,6 +1341,8 @@ export const operationRegistry: OperationRegistry = {
   localization_lookup: { schema: operationSchemas.localization_lookup, execute: runLocalizationLookup },
   unit_resolve: { schema: operationSchemas.unit_resolve, execute: runUnitResolve },
   pack_texture_inspect: { schema: operationSchemas.pack_texture_inspect, execute: runPackTextureInspect },
+  pack_textures: { schema: operationSchemas.pack_textures, execute: runPackTextures },
+  asset_users: { schema: operationSchemas.asset_users, execute: runAssetUsers },
   rigid_inspect: { schema: operationSchemas.rigid_inspect, execute: runRigidInspect },
   asset_materials: { schema: operationSchemas.asset_materials, execute: runAssetMaterials },
   rigid_patch: { schema: operationSchemas.rigid_patch, execute: runRigidPatch },
@@ -1278,6 +1355,7 @@ export const createAutomationContext = (
     schemaProvider?: TableSchemaProvider;
     maxLogicalPayloadBytes?: number;
     signal?: AbortSignal;
+    progress?: (update: AutomationProgress) => void;
     cache?: AutomationCacheService;
   } = {},
 ): AutomationContext => ({
@@ -1289,6 +1367,7 @@ export const createAutomationContext = (
   ...(options.schemaProvider ? { schemaProvider: options.schemaProvider } : {}),
   ...(options.maxLogicalPayloadBytes ? { maxLogicalPayloadBytes: options.maxLogicalPayloadBytes } : {}),
   ...(options.signal ? { signal: options.signal } : {}),
+  ...(options.progress ? { progress: options.progress } : {}),
   ...(options.cache ? { cache: options.cache } : {}),
 });
 

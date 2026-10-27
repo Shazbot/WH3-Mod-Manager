@@ -65,17 +65,19 @@ export const executeAutomationRequest = async (
   try {
     throwIfAborted(context.signal);
     const bypassCache = bypassAutomationCaches.has(operationName);
-    if (context.cache && !bypassCache) {
+    const affectedDiff = operationName === "pack_diff" && Boolean((parsed.data as { affectedUnits?: boolean }).affectedUnits);
+    if (context.cache && (!bypassCache || affectedDiff)) {
       cacheRequest = context.cache.beginRequest({
         policy: context.policy,
         signal: context.signal,
         schemaProvider: context.schemaProvider,
         maxLogicalPayloadBytes: context.maxLogicalPayloadBytes,
         useIndexCache: !bypassCache,
-        useTypedCache: !bypassCache,
+        useTypedCache: !bypassCache || affectedDiff,
+        useVisualsCache: !bypassCache || affectedDiff,
       });
     }
-    const requestContext: AutomationContext = bypassCache
+    const requestContext: AutomationContext = bypassCache && !affectedDiff
       ? { ...context, cache: undefined, cacheRequest: undefined }
       : { ...context, ...(cacheRequest ? { cacheRequest } : {}) };
     const data = parsed.data as Record<string, unknown>;
@@ -88,6 +90,7 @@ export const executeAutomationRequest = async (
       context: AutomationContext,
     ) => Promise<{ data: unknown; diagnostics: AutomationDiagnostic[] }>;
     const result = await execute(parsed.data, requestContext);
+    await cacheRequest?.flushVisuals();
     if (context.cache) for (const outputPath of outputs) context.cache.invalidatePath(outputPath);
     return { ok: true, data: result.data, diagnostics: result.diagnostics };
   } catch (error) {

@@ -52,6 +52,7 @@ import {
 import { extractBinAnimClipPaths, pickBinStandingEntry } from "./visuals/twAnimBin";
 import { findTechAnimationFallback, parseTwAnimSkeleton } from "./visuals/twAnimSkeleton";
 import { loadUnitViewerDiskCache, saveUnitViewerDiskCache } from "./unitViewer/cache";
+import { findUnitViewerAssetFiles, getUnitViewerAssetCandidates } from "./unitViewer/assets";
 import { buildVariantMeshCatalog, type VariantMeshCatalog } from "./visuals/variantMesh";
 import {
   buildBuildingsData,
@@ -3204,13 +3205,6 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
    */
   const unitViewerBuilds = createSerializedBuilds();
 
-  const getUnitViewerAssetCandidates = (normalizedPath: string) => {
-    const withoutExtension = normalizedPath.replace(/\.(png|webp|jpe?g)$/i, "");
-    return Array.from(
-      new Set([normalizedPath, `${withoutExtension}.png`, `${withoutExtension}.webp`, `${withoutExtension}.jpg`]),
-    );
-  };
-
   const cacheUnitViewerAsset = (
     session: UnitViewerSession,
     normalizedPath: string,
@@ -3325,13 +3319,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       if (outstanding.size === 0) break;
       const pack = await getOrLoadPackFromAppData(packPath);
       if (!pack) continue;
-      const fileNamesByAsset = new Map<string, string>();
-      for (const normalized of outstanding.keys()) {
-        const indexedFile = getUnitViewerAssetCandidates(normalized)
-          .map((candidate) => findPackedFileCaseInsensitive(pack, candidate))
-          .find((candidate): candidate is PackedFile => !!candidate);
-        if (indexedFile) fileNamesByAsset.set(normalized, indexedFile.name);
-      }
+      const fileNamesByAsset = findUnitViewerAssetFiles(pack.packedFiles, outstanding.keys());
       if (fileNamesByAsset.size === 0) continue;
       await readFromExistingPack(pack, {
         filesToRead: Array.from(fileNamesByAsset.values()),
