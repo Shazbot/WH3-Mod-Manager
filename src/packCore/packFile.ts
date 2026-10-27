@@ -199,6 +199,111 @@ export const readRawPayloadPrefix = (
   }
 };
 
+export interface RawPayloadRangeReader {
+  /** Logical, uncompressed entry length. */
+  readonly length: number;
+  readRange(offset: number, length: number): Promise<Buffer>;
+  close(): Promise<void>;
+}
+
+const DEFAULT_MAX_PAYLOAD_RANGE_BYTES = 1024 * 1024;
+
+/** Opens one uncompressed entry for bounded random-access reads. The file handle is owned by
+ * the caller and must be closed; each range is checked against both the entry and file size. */
+export interface RawPackReadSession {
+  readonly descriptor: number;
+  readonly fileSize: number;
+  readPayload(entry: CorePackEntry, maxLogicalPayloadBytes?: number): Promise<Buffer>;
+  rangeReader(entry: CorePackEntry, maxRangeBytes?: number): RawPayloadRangeReader;
+  close(): Promise<void>;
+}
+
+/** A scan owns one handle, so payload reads cannot be redirected by replacing its source path. */
+export const openRawPackReadSession = async (pack: Pick<CorePack, "path">): Promise<RawPackReadSession> => {
+  const handle = await fs.promises.open(pack.path, "r");
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile()) throw new Error(`Pack path is not a regular file: ${pack.path}`);
+    let closed = false;
+    const checkEntry = (entry: CorePackEntry) => {
+      if (closed) throw new Error(`Pack reader is closed for ${pack.path}`);
+      if (!Number.isSafeInteger(entry.start_pos) || entry.start_pos < 0 ||
+          !Number.isSafeInteger(entry.file_size) || entry.file_size < 0)
+        throw new Error(`Invalid payload offset or size for ${entry.name}`);
+      const end = entry.start_pos + entry.file_size;
+      if (!Number.isSafeInteger(end) || end > stat.size)
+        throw new Error(`Payload ${entry.name} ends at ${end}, beyond file size ${stat.size}`);
+    };
+    return {
+      descriptor: handle.fd,
+      fileSize: stat.size,
+      async readPayload(entry, maxBytes = DEFAULT_MAX_LOGICAL_PAYLOAD_BYTES) {
+        checkEntry(entry);
+        if (!Number.isSafeInteger(maxBytes) || maxBytes < 0 || entry.file_size > maxBytes)
+          throw new Error(`Stored payload ${entry.name} exceeds configured ${maxBytes} byte limit`);
+        const raw = readExactly(handle.fd, entry.file_size, entry.start_pos, pack.path);
+        const logical = entry.is_compressed ? await decompressPackedPayload(raw, entry.name, maxBytes) : raw;
+        if (logical.length > maxBytes) throw new Error(`Logical payload ${entry.name} exceeds configured ${maxBytes} byte limit`);
+        return logical;
+      },
+      rangeReader(entry, maxBytes = DEFAULT_MAX_PAYLOAD_RANGE_BYTES) {
+        checkEntry(entry);
+        if (entry.is_compressed) throw new Error(`Cannot range-read compressed payload ${entry.name}`);
+        if (!Number.isSafeInteger(maxBytes) || maxBytes < 0)
+          throw new Error(`Invalid maximum payload range size: ${maxBytes}`);
+        let rangeClosed = false;
+        return {
+          length: entry.file_size,
+          async readRange(offset, length) {
+            checkEntry(entry);
+            if (rangeClosed) throw new Error(`Range reader is closed for ${entry.name}`);
+            if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(length) || length < 0)
+              throw new Error(`Invalid payload range for ${entry.name}: offset ${offset}, length ${length}`);
+            if (length > maxBytes) throw new Error(`Payload range for ${entry.name} exceeds configured ${maxBytes} byte limit`);
+            const end = offset + length;
+            if (!Number.isSafeInteger(end) || end > entry.file_size)
+              throw new Error(`Payload range for ${entry.name} ends at ${end}, beyond entry size ${entry.file_size}`);
+            try { return readExactly(handle.fd, length, entry.start_pos + offset, pack.path); }
+            catch (error) {
+              if (error instanceof Error && error.message.includes("short read"))
+                throw new Error(`Short read for ${entry.name} at offset ${entry.start_pos + offset}`);
+              throw error;
+            }
+          },
+          async close() { rangeClosed = true; },
+        };
+      },
+      async close() {
+        if (closed) return;
+        closed = true;
+        await handle.close();
+      },
+    };
+  } catch (error) {
+    await handle.close().catch(() => undefined);
+    throw error;
+  }
+};
+
+export const openRawPayloadRangeReader = async (
+  pack: Pick<CorePack, "path">,
+  entry: CorePackEntry,
+  maxRangeBytes = DEFAULT_MAX_PAYLOAD_RANGE_BYTES,
+): Promise<RawPayloadRangeReader> => {
+  if (entry.is_compressed) throw new Error(`Cannot range-read compressed payload ${entry.name}`);
+  if (!Number.isSafeInteger(maxRangeBytes) || maxRangeBytes < 0)
+    throw new Error(`Invalid maximum payload range size: ${maxRangeBytes}`);
+  const session = await openRawPackReadSession(pack);
+  try {
+    const reader = session.rangeReader(entry, maxRangeBytes);
+    return { length: reader.length, readRange: reader.readRange,
+      close: async () => { await reader.close(); await session.close(); } };
+  } catch (error) {
+    await session.close();
+    throw error;
+  }
+};
+
 /** Reads a logical payload, decompressing when the index marks it compressed. */
 export const readPayload = async (
   pack: Pick<CorePack, "path" | "game">,

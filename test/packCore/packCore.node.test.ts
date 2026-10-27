@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -7,6 +7,7 @@ import {
   parseDbTable,
   parseTypeBufferExact,
   patchDbTableCells,
+  openRawPayloadRangeReader,
   readPackIndex,
   readPayload,
   readRawPayload,
@@ -69,6 +70,38 @@ describe("shared pack core", () => {
     expect(rewritten.header.byteMask).toBe(0x43);
     expect(rewritten.entries[0].file_name_hash).toBe(0xf1234567);
     expect(readRawPayload(rewritten, rewritten.entries[0])).toEqual(storedPayload);
+  });
+
+  it("range-reads only exact uncompressed entry bounds and rejects short reads", async () => {
+    const packPath = path.join(tempRoot, "range-reader.pack");
+    await writeRawPack(packPath, [
+      { name: "data\\one.bin", buffer: Buffer.from([1, 2, 3, 4]) },
+      { name: "data\\compressed.bin", buffer: Buffer.from([5, 6]), is_compressed: true },
+    ], defaultMetadata);
+    const pack = readPackIndex(packPath, { game: "wh3" });
+    const entry = pack.entries[0];
+    const reader = await openRawPayloadRangeReader({ path: packPath }, entry);
+    try {
+      expect(reader.length).toBe(4);
+      expect(await reader.readRange(1, 2)).toEqual(Buffer.from([2, 3]));
+      await expect(reader.readRange(3, 2)).rejects.toThrow(/beyond entry size/);
+    } finally {
+      await reader.close();
+    }
+    await expect(reader.readRange(0, 1)).rejects.toThrow(/closed/);
+    await expect(openRawPayloadRangeReader({ path: packPath }, pack.entries[1])).rejects.toThrow(/compressed/);
+    await expect(openRawPayloadRangeReader({ path: packPath }, { ...entry, start_pos: pack.fileSize })).rejects.toThrow(/beyond file size/);
+
+    const shortReadPath = path.join(tempRoot, "range-reader-short.pack");
+    await writeRawPack(shortReadPath, [{ name: "data\\short.bin", buffer: Buffer.from([1, 2, 3, 4]) }], defaultMetadata);
+    const shortPack = readPackIndex(shortReadPath, { game: "wh3" });
+    const shortReader = await openRawPayloadRangeReader({ path: shortReadPath }, shortPack.entries[0]);
+    try {
+      truncateSync(shortReadPath, shortPack.entries[0].start_pos + 1);
+      await expect(shortReader.readRange(0, 4)).rejects.toThrow(/Short read/);
+    } finally {
+      await shortReader.close();
+    }
   });
 
   it("rejects malformed counts, payload bounds, and truncated headers", async () => {

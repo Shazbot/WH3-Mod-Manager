@@ -50,6 +50,7 @@ export interface VisualsCacheSession {
   reference<T>(source: VisualsCacheSource, filePath: string, kind: string,
     validate: (value: unknown) => value is T, load: () => Promise<T>): Promise<T>;
   flush(): Promise<void>;
+  flushSource(identity: string): Promise<void>;
   discard(): void;
 }
 
@@ -113,6 +114,28 @@ export const createVisualsCacheSession = (options: {
     packs.set(source.identity, pending);
     return pending;
   };
+  const flushSource = async (identity: string): Promise<void> => {
+    const pending = packs.get(identity);
+    if (!pending) return;
+    const record = await pending;
+    options.checkCancelled();
+    const text = JSON.stringify(record.value);
+    options.retain(`visuals-references:${record.source.identity}:${options.payloadLimit}:${VISUAL_REFERENCE_PARSER_REVISION}`,
+      record.value, Buffer.byteLength(text) * 4 + 2048, record.source.path);
+    if (record.dirty && options.cacheDir && Buffer.byteLength(text) <= MAX_CACHE_BYTES) {
+      try {
+        const outputPath = path.join(options.cacheDir, "headless", "visuals", "references", `${hash(record.source.path)}.bin`);
+        await options.policy.assertReadTargetPath(outputPath);
+        const allowed = await options.policy.assertWritePath(outputPath);
+        await mkdir(path.dirname(allowed), { recursive: true });
+        await options.policy.withAtomicOutput({ outputPath: allowed, sourcePaths: [record.source.path], overwrite: true,
+          produce: async (temporaryPath) => { await writeFile(temporaryPath,
+            zstdCompressSync(Buffer.from(text), { params: { [constants.ZSTD_c_compressionLevel]: 1 } })); } });
+        options.stats.persistentWrites++;
+      } catch (error) { fatal(error); options.onPersistenceUnavailable?.(); }
+    }
+    packs.delete(identity);
+  };
   return {
     async catalog(source, schemaHash) {
       if (!options.whmmCacheDir) return undefined;
@@ -161,27 +184,10 @@ export const createVisualsCacheSession = (options: {
       return value;
     },
     async flush() {
-      for (const pending of packs.values()) {
-        const record = await pending;
-        options.checkCancelled();
-        const text = JSON.stringify(record.value);
-        options.retain(`visuals-references:${record.source.identity}:${options.payloadLimit}:${VISUAL_REFERENCE_PARSER_REVISION}`,
-          record.value, Buffer.byteLength(text) * 4 + 2048, record.source.path);
-        if (!record.dirty || !options.cacheDir || Buffer.byteLength(text) > MAX_CACHE_BYTES) continue;
-        try {
-          const outputPath = path.join(options.cacheDir, "headless", "visuals", "references", `${hash(record.source.path)}.bin`);
-          await options.policy.assertReadTargetPath(outputPath);
-          const allowed = await options.policy.assertWritePath(outputPath);
-          await mkdir(path.dirname(allowed), { recursive: true });
-          await options.policy.withAtomicOutput({ outputPath: allowed, sourcePaths: [record.source.path], overwrite: true,
-            produce: async (temporaryPath) => { await writeFile(temporaryPath,
-              zstdCompressSync(Buffer.from(text), { params: { [constants.ZSTD_c_compressionLevel]: 1 } })); } });
-          options.stats.persistentWrites++;
-        } catch (error) { fatal(error); options.onPersistenceUnavailable?.(); }
-      }
-      packs.clear();
+      for (const identity of packs.keys()) await flushSource(identity);
       catalogFiles.clear();
     },
+    flushSource,
     discard() { packs.clear(); catalogFiles.clear(); fileTimes.clear(); },
   };
 };

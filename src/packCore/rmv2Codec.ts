@@ -109,10 +109,46 @@ export interface ParseRmv2Options {
   textureSlotsOnly?: boolean;
 }
 
+export interface Rmv2RangeSource {
+  /** Logical uncompressed payload length. */
+  length: number;
+  readRange(offset: number, length: number): Buffer | Promise<Buffer>;
+}
+
+export interface ParseRmv2MetadataOptions {
+  /** Lower these limits in tests or constrained callers; values above the hard caps are rejected. */
+  maxMetadataBlockBytes?: number;
+  maxMetadataBytes?: number;
+  /** Called between bounded reads so callers can stop long scans. */
+  checkCancelled?: () => void;
+}
+
+export interface Rmv2TextureMetadataPart {
+  lodIndex: number;
+  partIndex: number;
+  complete: boolean;
+  unsupportedReason?: string;
+  materialTypeId: number;
+  materialTypeName: string;
+  textures?: Rmv2Texture[];
+}
+
+export interface Rmv2TextureMetadataFile {
+  version: 6 | 7 | 8;
+  skeletonName: string;
+  lods: Array<{ lodIndex: number; parts: Rmv2TextureMetadataPart[] }>;
+  validationComplete: boolean;
+  metadataBytesRead: number;
+}
+
 const FILE_HEADER_SIZE = 140;
 const COMMON_HEADER_SIZE = 80;
 const MAX_LOD_COUNT = 256;
 const MAX_PART_COUNT = 100_000;
+const MAX_RMV2_METADATA_BLOCK_BYTES = 1024 * 1024;
+const MAX_RMV2_METADATA_BYTES = 32 * 1024 * 1024;
+const RMV2_MATERIAL_RANGE_FAST_PATH_BYTES = 64 * 1024;
+const MAX_RMV2_PROGRESSIVE_STRING_RECORDS = 4096;
 const MATERIAL_NAMES: Readonly<Record<number, string>> = {
   22: "bow_wave",
   26: "non_renderable",
@@ -279,6 +315,52 @@ interface MaterialRead {
   alphaMode?: Rmv2Part["alphaMode"];
 }
 
+interface WeightedMaterialHeader {
+  vertexFormatId: number;
+  name: string;
+  counts: {
+    attachments: number;
+    textures: number;
+    strings: number;
+    floats: number;
+    ints: number;
+    vec4s: number;
+  };
+}
+
+const readWeightedMaterialHeader = (
+  bytes: Buffer,
+  materialOffset: number,
+  materialLimit: number,
+  requireMaterialBytes: (offset: number, length: number, label: string) => void,
+): WeightedMaterialHeader => {
+  const fixedSize = 860;
+  requireMaterialBytes(materialOffset, fixedSize, "weighted material header");
+  const vertexFormatId = bytes.readUInt16LE(materialOffset);
+  const name = readFixedString(bytes, materialOffset + 2, 32, "material part name");
+  const counts = {
+    attachments: bytes.readUInt32LE(materialOffset + 712),
+    textures: bytes.readUInt32LE(materialOffset + 716),
+    strings: bytes.readUInt32LE(materialOffset + 720),
+    floats: bytes.readUInt32LE(materialOffset + 724),
+    ints: bytes.readUInt32LE(materialOffset + 728),
+    vec4s: bytes.readUInt32LE(materialOffset + 732),
+  };
+  const maxRecords = (label: string, count: number, minimumSize: number) => {
+    if (count > Math.floor((materialLimit - materialOffset - fixedSize) / minimumSize) + 1) {
+      malformed(`${label} count cannot fit in the material span`, { count, materialOffset, materialLimit });
+    }
+    if (count > 1_000_000) malformed(`${label} count exceeds the safe limit`, { count });
+  };
+  maxRecords("Attachment", counts.attachments, 84);
+  maxRecords("Texture", counts.textures, 260);
+  maxRecords("String parameter", counts.strings, 6);
+  maxRecords("Float parameter", counts.floats, 8);
+  maxRecords("Int parameter", counts.ints, 8);
+  maxRecords("Vec4 parameter", counts.vec4s, 20);
+  return { vertexFormatId, name, counts };
+};
+
 const readMaterial = (
   bytes: Buffer,
   materialOffset: number,
@@ -329,30 +411,13 @@ const readMaterial = (
     });
   }
 
+  const { vertexFormatId, name, counts } = readWeightedMaterialHeader(
+    local,
+    materialOffset,
+    materialLimit,
+    requireMaterialBytes,
+  );
   const fixedSize = 860;
-  requireMaterialBytes(materialOffset, fixedSize, "weighted material header");
-  const vertexFormatId = local.readUInt16LE(materialOffset);
-  const name = readFixedString(local, materialOffset + 2, 32, "material part name");
-  const counts = {
-    attachments: local.readUInt32LE(materialOffset + 712),
-    textures: local.readUInt32LE(materialOffset + 716),
-    strings: local.readUInt32LE(materialOffset + 720),
-    floats: local.readUInt32LE(materialOffset + 724),
-    ints: local.readUInt32LE(materialOffset + 728),
-    vec4s: local.readUInt32LE(materialOffset + 732),
-  };
-  const maxRecords = (label: string, count: number, minimumSize: number) => {
-    if (count > Math.floor((materialLimit - materialOffset - fixedSize) / minimumSize) + 1) {
-      malformed(`${label} count cannot fit in the material span`, { count, materialOffset, materialLimit });
-    }
-    if (count > 1_000_000) malformed(`${label} count exceeds the safe limit`, { count });
-  };
-  maxRecords("Attachment", counts.attachments, 84);
-  maxRecords("Texture", counts.textures, 260);
-  maxRecords("String parameter", counts.strings, 6);
-  maxRecords("Float parameter", counts.floats, 8);
-  maxRecords("Int parameter", counts.ints, 8);
-  maxRecords("Vec4 parameter", counts.vec4s, 20);
 
   let cursor = materialOffset + fixedSize;
   const readRecordSpan = (count: number, size: number, label: string) => {
@@ -667,53 +732,77 @@ const scanGeometry = (
     }));
 };
 
-const parsePart = (
+interface CommonPartHeader {
+  materialTypeId: number;
+  renderFlags: number;
+  sectionSize: number;
+  vertexOffset: number;
+  vertexCount: number;
+  indexOffset: number;
+  indexCount: number;
+  min: [number, number, number];
+  max: [number, number, number];
+}
+
+const readCommonPartHeader = (common: Buffer, partOffset: number): CommonPartHeader => {
+  if (common.length !== COMMON_HEADER_SIZE) malformed("Common part header is truncated", { partOffset });
+  const materialTypeId = common.readUInt16LE(0);
+  const renderFlags = common.readUInt16LE(2);
+  const sectionSize = asSafeLength(common.readUInt32LE(4), "mesh section size", partOffset + 4);
+  const vertexOffset = asSafeLength(common.readUInt32LE(8), "vertex offset", partOffset + 8);
+  const vertexCount = asSafeLength(common.readUInt32LE(12), "vertex count", partOffset + 12);
+  const indexOffset = asSafeLength(common.readUInt32LE(16), "index offset", partOffset + 16);
+  const indexCount = asSafeLength(common.readUInt32LE(20), "index count", partOffset + 20);
+  if (sectionSize < COMMON_HEADER_SIZE)
+    malformed("Mesh section is shorter than its common header", { partOffset, sectionSize });
+  const min: [number, number, number] = [
+    readFloat(common, 24, "bounding box"),
+    readFloat(common, 28, "bounding box"),
+    readFloat(common, 32, "bounding box"),
+  ];
+  const max: [number, number, number] = [
+    readFloat(common, 36, "bounding box"),
+    readFloat(common, 40, "bounding box"),
+    readFloat(common, 44, "bounding box"),
+  ];
+  return { materialTypeId, renderFlags, sectionSize, vertexOffset, vertexCount, indexOffset, indexCount, min, max };
+};
+
+interface PartMaterialGeometry {
+  material?: MaterialRead;
+  unsupportedReason?: string;
+  layout?: VertexLayout;
+  stride?: number;
+  vertexBytes: number;
+  indexBytes: number;
+}
+
+const readPartMaterialAndValidateGeometry = (
   bytes: Buffer,
+  materialOffset: number,
+  materialLimit: number,
   partOffset: number,
+  header: CommonPartHeader,
   lodIndex: number,
   partIndex: number,
   version: 6 | 7 | 8,
   textureSlotsOnly: boolean,
-): Rmv2Part => {
-  const common = span(bytes, partOffset, COMMON_HEADER_SIZE, "common part header");
-  const materialTypeId = common.bytes.readUInt16LE(0);
-  const renderFlags = common.bytes.readUInt16LE(2);
-  const sectionSize = asSafeLength(common.bytes.readUInt32LE(4), "mesh section size", partOffset + 4);
-  const vertexOffset = asSafeLength(common.bytes.readUInt32LE(8), "vertex offset", partOffset + 8);
-  const vertexCount = asSafeLength(common.bytes.readUInt32LE(12), "vertex count", partOffset + 12);
-  const indexOffset = asSafeLength(common.bytes.readUInt32LE(16), "index offset", partOffset + 16);
-  const indexCount = asSafeLength(common.bytes.readUInt32LE(20), "index count", partOffset + 20);
-  if (sectionSize < COMMON_HEADER_SIZE)
-    malformed("Mesh section is shorter than its common header", { partOffset, sectionSize });
-  ensureRange(bytes, partOffset, sectionSize, "mesh section");
-  const sectionEnd = partOffset + sectionSize;
-
-  const min: [number, number, number] = [
-    readFloat(common.bytes, 24, "bounding box"),
-    readFloat(common.bytes, 28, "bounding box"),
-    readFloat(common.bytes, 32, "bounding box"),
-  ];
-  const max: [number, number, number] = [
-    readFloat(common.bytes, 36, "bounding box"),
-    readFloat(common.bytes, 40, "bounding box"),
-    readFloat(common.bytes, 44, "bounding box"),
-  ];
-  const materialStart = partOffset + COMMON_HEADER_SIZE;
-  const materialEndLimit = partOffset + vertexOffset;
-  if (vertexOffset < COMMON_HEADER_SIZE || materialEndLimit > sectionEnd)
+): PartMaterialGeometry => {
+  const { materialTypeId, sectionSize, vertexOffset, vertexCount, indexOffset, indexCount } = header;
+  if (vertexOffset < COMMON_HEADER_SIZE || vertexOffset > sectionSize)
     malformed("Vertex offset is outside the mesh section", { partOffset, vertexOffset, sectionSize });
   let material: MaterialRead | undefined;
   let unsupportedReason: string | undefined;
   try {
-    material = readMaterial(bytes, materialStart, materialEndLimit, materialTypeId, textureSlotsOnly);
+    material = readMaterial(bytes, materialOffset, materialLimit, materialTypeId, textureSlotsOnly);
   } catch (error) {
     if (error instanceof Rmv2CodecError && error.code === "UNSUPPORTED") unsupportedReason = error.message;
     else throw error;
   }
-  if (material && material.materialEnd > materialEndLimit)
+  if (material && material.materialEnd > materialLimit)
     malformed("Material records overlap the vertex buffer", {
       materialEnd: material.materialEnd,
-      vertexStart: materialEndLimit,
+      vertexStart: materialLimit,
     });
 
   const layout = material ? VERTEX_LAYOUTS[material.vertexFormatId] : undefined;
@@ -738,8 +827,37 @@ const parsePart = (
   if (!Number.isSafeInteger(indexBytes) || indexOffset + indexBytes > sectionSize)
     malformed("Index buffer is outside the mesh section", { partOffset, indexOffset, indexCount, sectionSize });
 
-  const vertices = span(bytes, materialEndLimit, indexOffset - vertexOffset, "vertex buffer");
-  const indices = span(bytes, partOffset + indexOffset, indexBytes, "index buffer");
+  return { material, unsupportedReason, layout, stride, vertexBytes: indexOffset - vertexOffset, indexBytes };
+};
+
+const parsePart = (
+  bytes: Buffer,
+  partOffset: number,
+  lodIndex: number,
+  partIndex: number,
+  version: 6 | 7 | 8,
+  textureSlotsOnly: boolean,
+): Rmv2Part => {
+  const common = span(bytes, partOffset, COMMON_HEADER_SIZE, "common part header");
+  const header = readCommonPartHeader(common.bytes, partOffset);
+  const { materialTypeId, renderFlags, sectionSize, vertexOffset, vertexCount, indexOffset, indexCount, min, max } = header;
+  ensureRange(bytes, partOffset, sectionSize, "mesh section");
+  const metadata = readPartMaterialAndValidateGeometry(
+    bytes,
+    partOffset + COMMON_HEADER_SIZE,
+    partOffset + vertexOffset,
+    partOffset,
+    header,
+    lodIndex,
+    partIndex,
+    version,
+    textureSlotsOnly,
+  );
+  const { material, unsupportedReason, layout, stride } = metadata;
+  const materialStart = partOffset + COMMON_HEADER_SIZE;
+
+  const vertices = span(bytes, partOffset + vertexOffset, metadata.vertexBytes, "vertex buffer");
+  const indices = span(bytes, partOffset + indexOffset, metadata.indexBytes, "index buffer");
   let uvRanges: Rmv2UvRange[] | undefined;
   if (!textureSlotsOnly) {
     if (layout && stride !== undefined) uvRanges = scanGeometry(bytes, vertices, layout, stride, vertexCount);
@@ -787,8 +905,8 @@ const parsePart = (
       indices,
       sectionPadding: span(
         bytes,
-        partOffset + indexOffset + indexBytes,
-        sectionSize - indexOffset - indexBytes,
+        partOffset + indexOffset + metadata.indexBytes,
+        sectionSize - indexOffset - metadata.indexBytes,
         "mesh section padding",
       ),
     },
@@ -908,5 +1026,284 @@ export const parseRmv2 = (bytes: Buffer, options: ParseRmv2Options = {}): Rmv2Fi
       header: span(bytes, 0, FILE_HEADER_SIZE, "file header"),
       lodHeaders: span(bytes, FILE_HEADER_SIZE, lodHeaderBytes, "LOD headers"),
     },
+  };
+};
+
+interface MetadataReadBudget {
+  blockBytes: number;
+}
+
+const rangeBounds = (offset: number, length: number, sourceLength: number, label: string): void => {
+  if (
+    !Number.isSafeInteger(offset) ||
+    !Number.isSafeInteger(length) ||
+    offset < 0 ||
+    length < 0 ||
+    offset > sourceLength ||
+    length > sourceLength - offset
+  )
+    malformed(`${label} is outside the RMV2 payload`, { offset, length, payloadLength: sourceLength });
+};
+
+const rangeRecordBytes = (count: number, stride: number, label: string): number => {
+  const result = count * stride;
+  if (!Number.isSafeInteger(result)) malformed(`${label} span is too large`, { count, stride });
+  return result;
+};
+
+const readRangeMaterialBytes = async (
+  partOffset: number,
+  materialOffset: number,
+  availableLength: number,
+  materialTypeId: number,
+  readPartRange: (offset: number, length: number, label: string) => Promise<Buffer>,
+): Promise<Buffer> => {
+  const materialTypeName = MATERIAL_NAMES[materialTypeId] ?? null;
+  const readMaterialRange = (relativeOffset: number, length: number, label: string) => {
+    rangeBounds(relativeOffset, length, availableLength, label);
+    return readPartRange(materialOffset + relativeOffset, length, label);
+  };
+  if (materialTypeName === "custom_terrain") {
+    if (availableLength < 256) malformed("custom terrain material exceeds the material span", { partOffset, availableLength });
+    return readMaterialRange(0, 256, "custom terrain material");
+  }
+  if (materialTypeName === "TerrainTiles") {
+    if (availableLength < 88) malformed("terrain tile material exceeds the material span", { partOffset, availableLength });
+    return readMaterialRange(0, 88, "terrain tile material");
+  }
+  if (!materialTypeName || !WEIGHTED_MATERIAL_NAMES.has(materialTypeName)) return Buffer.alloc(0);
+
+  const fixedSize = 860;
+  if (availableLength < fixedSize)
+    malformed("weighted material header exceeds the material span", { partOffset, availableLength });
+  // Typical materials fit in a small span. One bounded read avoids many tiny reads on mounted
+  // game-data packs; unusually large spans use the progressive parser below and skip padding.
+  if (availableLength <= RMV2_MATERIAL_RANGE_FAST_PATH_BYTES)
+    return readMaterialRange(0, availableLength, "weighted material span");
+  const headerBytes = await readMaterialRange(0, fixedSize, "weighted material header");
+  const requireHeaderBytes = (offset: number, length: number, label: string) => {
+    if (offset < 0 || !Number.isSafeInteger(offset + length) || offset + length > availableLength)
+      malformed(`${label} exceeds the material span`, { offset, length, availableLength });
+    ensureRange(headerBytes, offset, length, label);
+  };
+  const { counts } = readWeightedMaterialHeader(headerBytes, 0, availableLength, requireHeaderBytes);
+  const attachmentBytes = rangeRecordBytes(counts.attachments, 84, "attachment points");
+  const textureBytes = rangeRecordBytes(counts.textures, 260, "texture records");
+  const stringHeaderBytes = rangeRecordBytes(counts.strings, 6, "string parameter headers");
+  const numericBytes =
+    rangeRecordBytes(counts.floats, 8, "float parameters") +
+    rangeRecordBytes(counts.ints, 8, "integer parameters") +
+    rangeRecordBytes(counts.vec4s, 20, "vec4 parameters");
+  const fixedRecordBytes = attachmentBytes + textureBytes;
+  const minimumLength = fixedSize + fixedRecordBytes + stringHeaderBytes + numericBytes;
+  if (!Number.isSafeInteger(fixedRecordBytes) || !Number.isSafeInteger(numericBytes) || !Number.isSafeInteger(minimumLength))
+    malformed("Material records exceed the supported integer range", { partOffset });
+  if (minimumLength > availableLength)
+    malformed("Material records exceed the material span", { partOffset, minimumLength, availableLength });
+
+  const chunks: Buffer[] = [headerBytes];
+  let cursor = fixedSize;
+  if (fixedRecordBytes > 0) {
+    chunks.push(await readMaterialRange(cursor, fixedRecordBytes, "material records"));
+    cursor += fixedRecordBytes;
+  }
+  if (counts.strings > MAX_RMV2_PROGRESSIVE_STRING_RECORDS)
+    unsupported("RMV2 material has too many progressive string records", {
+      count: counts.strings,
+      maximum: MAX_RMV2_PROGRESSIVE_STRING_RECORDS,
+    });
+  for (let index = 0; index < counts.strings; index++) {
+    const header = await readMaterialRange(cursor, 6, "string parameter header");
+    const length = header.readInt16LE(4);
+    if (length < 0) malformed("String parameter has a negative byte length", { offset: cursor + 4, length });
+    const recordEnd = cursor + 6 + length;
+    if (!Number.isSafeInteger(recordEnd) || recordEnd > availableLength)
+      malformed("String parameter value exceeds the material span", { offset: cursor + 6, length });
+    chunks.push(header);
+    if (length > 0) chunks.push(await readMaterialRange(cursor + 6, length, "string parameter value"));
+    cursor = recordEnd;
+  }
+  if (numericBytes > 0) {
+    chunks.push(await readMaterialRange(cursor, numericBytes, "numeric material parameters"));
+    cursor += numericBytes;
+  }
+  return Buffer.concat(chunks, cursor);
+};
+
+/** Parse only registered RMV2 texture metadata from a logical, uncompressed random-access source.
+ * Geometry, index buffers, and section padding are skipped using validated lengths. */
+export const parseRmv2TextureMetadata = async (
+  source: Rmv2RangeSource,
+  options: ParseRmv2MetadataOptions = {},
+): Promise<Rmv2TextureMetadataFile> => {
+  if (!Number.isSafeInteger(source.length) || source.length < 0)
+    malformed("RMV2 payload length is invalid", { length: source.length });
+  const maxBlockBytes = options.maxMetadataBlockBytes ?? MAX_RMV2_METADATA_BLOCK_BYTES;
+  const maxTotalBytes = options.maxMetadataBytes ?? MAX_RMV2_METADATA_BYTES;
+  if (!Number.isSafeInteger(maxBlockBytes) || maxBlockBytes < 0 || maxBlockBytes > MAX_RMV2_METADATA_BLOCK_BYTES)
+    throw new Error(`maxMetadataBlockBytes must be between 0 and ${MAX_RMV2_METADATA_BLOCK_BYTES}`);
+  if (!Number.isSafeInteger(maxTotalBytes) || maxTotalBytes < 0 || maxTotalBytes > MAX_RMV2_METADATA_BYTES)
+    throw new Error(`maxMetadataBytes must be between 0 and ${MAX_RMV2_METADATA_BYTES}`);
+
+  let metadataBytesRead = 0;
+  const readExact = async (
+    offset: number,
+    length: number,
+    label: string,
+    block?: MetadataReadBudget,
+  ): Promise<Buffer> => {
+    options.checkCancelled?.();
+    rangeBounds(offset, length, source.length, label);
+    const nextTotal = metadataBytesRead + length;
+    const nextBlock = block ? block.blockBytes + length : 0;
+    if (!Number.isSafeInteger(nextTotal) || nextTotal > maxTotalBytes)
+      unsupported("RMV2 texture metadata exceeds its cumulative read budget", {
+        requestedBytes: nextTotal,
+        maximumBytes: maxTotalBytes,
+      });
+    if (block && (!Number.isSafeInteger(nextBlock) || nextBlock > maxBlockBytes))
+      unsupported("RMV2 part metadata exceeds its per-block read budget", {
+        partBytes: nextBlock,
+        maximumBytes: maxBlockBytes,
+      });
+    const bytes = await source.readRange(offset, length);
+    if (!Buffer.isBuffer(bytes) || bytes.length !== length)
+      malformed(`Short read for ${label}`, { offset, requestedBytes: length, actualBytes: Buffer.isBuffer(bytes) ? bytes.length : null });
+    metadataBytesRead = nextTotal;
+    if (block) block.blockBytes = nextBlock;
+    return bytes;
+  };
+
+  if (source.length < 4) malformed("Invalid RMV2 file signature", { payloadLength: source.length });
+  const fileHeader = await readExact(0, FILE_HEADER_SIZE, "RMV2 file header");
+  if (fileHeader.toString("ascii", 0, 4) !== "RMV2")
+    malformed("Invalid RMV2 file signature", { signature: fileHeader.toString("ascii", 0, 4) });
+  const versionValue = fileHeader.readUInt32LE(4);
+  if (versionValue !== 6 && versionValue !== 7 && versionValue !== 8)
+    unsupported(`Unsupported RMV2 version ${versionValue}`, { version: versionValue });
+  const version = versionValue as 6 | 7 | 8;
+  const lodCount = asSafeLength(fileHeader.readUInt32LE(8), "LOD count", 8);
+  if (lodCount > MAX_LOD_COUNT) malformed("LOD count exceeds the safe limit", { lodCount, maximum: MAX_LOD_COUNT });
+  const lodHeaderSize = version === 6 ? 20 : 28;
+  const lodHeaderBytes = lodCount * lodHeaderSize;
+  if (!Number.isSafeInteger(lodHeaderBytes)) malformed("LOD header span is too large", { lodCount, lodHeaderSize });
+  const lodHeadersEnd = FILE_HEADER_SIZE + lodHeaderBytes;
+  if (!Number.isSafeInteger(lodHeadersEnd)) malformed("LOD header span is too large", { lodCount, lodHeaderSize });
+  const lodHeaderBuffer = await readExact(FILE_HEADER_SIZE, lodHeaderBytes, "LOD headers");
+  const lods: Array<{ lodIndex: number; meshCount: number; totalVertexBytes: number; totalIndexBytes: number; firstMeshOffset: number;
+    parts: Rmv2TextureMetadataPart[] }> = [];
+  let totalParts = 0;
+  for (let lodIndex = 0; lodIndex < lodCount; lodIndex++) {
+    const offset = lodIndex * lodHeaderSize;
+    const meshCount = asSafeLength(lodHeaderBuffer.readUInt32LE(offset), "LOD mesh count", FILE_HEADER_SIZE + offset);
+    const totalVertexBytes = asSafeLength(lodHeaderBuffer.readUInt32LE(offset + 4), "LOD vertex bytes", FILE_HEADER_SIZE + offset + 4);
+    const totalIndexBytes = asSafeLength(lodHeaderBuffer.readUInt32LE(offset + 8), "LOD index bytes", FILE_HEADER_SIZE + offset + 8);
+    const firstMeshOffset = asSafeLength(lodHeaderBuffer.readUInt32LE(offset + 12), "LOD first mesh offset", FILE_HEADER_SIZE + offset + 12);
+    finite(lodHeaderBuffer.readFloatLE(offset + 16), "LOD distance", FILE_HEADER_SIZE + offset + 16);
+    totalParts += meshCount;
+    if (totalParts > MAX_PART_COUNT)
+      malformed("RMV2 mesh count exceeds the safe limit", { totalParts, maximum: MAX_PART_COUNT });
+    lods.push({ lodIndex, meshCount, totalVertexBytes, totalIndexBytes, firstMeshOffset, parts: [] });
+  }
+
+  const ranges: Array<{ start: number; end: number }> = [];
+  for (const lod of lods) {
+    if (lod.meshCount === 0) {
+      if (lod.totalVertexBytes !== 0 || lod.totalIndexBytes !== 0)
+        malformed("Empty LOD has nonzero geometry byte totals", {
+          lodIndex: lod.lodIndex,
+          totalVertexBytes: lod.totalVertexBytes,
+          totalIndexBytes: lod.totalIndexBytes,
+        });
+      continue;
+    }
+    if (lod.firstMeshOffset < lodHeadersEnd)
+      malformed("LOD mesh data overlaps the RMV2 headers", {
+        lodIndex: lod.lodIndex,
+        firstMeshOffset: lod.firstMeshOffset,
+        headersEnd: lodHeadersEnd,
+      });
+    let cursor = lod.firstMeshOffset;
+    let vertexBytes = 0;
+    let indexBytes = 0;
+    for (let partIndex = 0; partIndex < lod.meshCount; partIndex++) {
+      const block: MetadataReadBudget = { blockBytes: 0 };
+      const commonBytes = await readExact(cursor, COMMON_HEADER_SIZE, "common part header", block);
+      const header = readCommonPartHeader(commonBytes, cursor);
+      const sectionEnd = cursor + header.sectionSize;
+      if (!Number.isSafeInteger(sectionEnd) || sectionEnd > source.length)
+        malformed("Mesh section is outside the RMV2 payload", {
+          offset: cursor,
+          length: header.sectionSize,
+          payloadLength: source.length,
+        });
+      if (header.vertexOffset < COMMON_HEADER_SIZE || header.vertexOffset > header.sectionSize)
+        malformed("Vertex offset is outside the mesh section", {
+          partOffset: cursor,
+          vertexOffset: header.vertexOffset,
+          sectionSize: header.sectionSize,
+        });
+      const materialAvailableLength = header.vertexOffset - COMMON_HEADER_SIZE;
+      const materialBytes = await readRangeMaterialBytes(
+        cursor,
+        cursor + COMMON_HEADER_SIZE,
+        materialAvailableLength,
+        header.materialTypeId,
+        (offset, length, label) => readExact(offset, length, label, block),
+      );
+      const materialGeometry = readPartMaterialAndValidateGeometry(
+        materialBytes,
+        0,
+        materialAvailableLength,
+        cursor,
+        header,
+        lod.lodIndex,
+        partIndex,
+        version,
+        true,
+      );
+      lod.parts.push({
+        lodIndex: lod.lodIndex,
+        partIndex,
+        complete: materialGeometry.unsupportedReason === undefined,
+        ...(materialGeometry.unsupportedReason ? { unsupportedReason: materialGeometry.unsupportedReason } : {}),
+        materialTypeId: header.materialTypeId,
+        materialTypeName: MATERIAL_NAMES[header.materialTypeId] ?? "unknown",
+        ...(materialGeometry.material?.textures ? { textures: materialGeometry.material.textures } : {}),
+      });
+      vertexBytes += materialGeometry.vertexBytes;
+      indexBytes += materialGeometry.indexBytes;
+      if (!Number.isSafeInteger(vertexBytes) || !Number.isSafeInteger(indexBytes))
+        malformed("LOD mesh range overflows the supported integer range", { lodIndex: lod.lodIndex });
+      cursor = sectionEnd;
+    }
+    if (vertexBytes !== lod.totalVertexBytes)
+      malformed("LOD vertex byte total does not match its mesh records", {
+        lodIndex: lod.lodIndex,
+        header: lod.totalVertexBytes,
+        actual: vertexBytes,
+      });
+    if (indexBytes !== lod.totalIndexBytes)
+      malformed("LOD index byte total does not match its mesh records", {
+        lodIndex: lod.lodIndex,
+        header: lod.totalIndexBytes,
+        actual: indexBytes,
+      });
+    ranges.push({ start: lod.firstMeshOffset, end: cursor });
+  }
+
+  ranges.sort((a, b) => a.start - b.start);
+  let previousEnd = lodHeadersEnd;
+  for (const range of ranges) {
+    if (range.start < previousEnd) malformed("LOD mesh ranges overlap", { range, previousEnd });
+    previousEnd = range.end;
+  }
+  const resultLods = lods.map(({ lodIndex, parts }) => ({ lodIndex, parts }));
+  return {
+    version,
+    skeletonName: readFixedString(fileHeader, 12, 128, "skeleton name"),
+    lods: resultLods,
+    validationComplete: resultLods.every((lod) => lod.parts.every((part) => part.complete)),
+    metadataBytesRead,
   };
 };

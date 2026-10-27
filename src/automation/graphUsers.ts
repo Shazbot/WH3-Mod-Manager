@@ -11,6 +11,7 @@ import {
   type ReferenceProvider,
 } from "./references";
 import type { UnitVisualRoot } from "./units";
+import { withAutomationPackReadSession } from "./packAccess";
 
 export interface VisualRootChain {
   root: UnitVisualRoot;
@@ -53,11 +54,12 @@ export const createIncomingVisualReferenceIndex = async (
   limits: { maxSources: number; maxIndexEdges: number },
 ): Promise<IncomingVisualReferenceIndex> => {
   const targetExtensions = new Set(targetPaths.map(pathExtension));
+  const ddsTargets = targetPaths.filter((targetPath) => pathExtension(targetPath) === "dds");
+  const requestedDdsKeys = new Set(ddsTargets.map(normalizePackFilePathKey));
   const supportedTargets = new Set([...supportedSourceExtensions, "dds"]);
-  const hasSupportedTargets = [...targetExtensions].some((extension) => Boolean(extension && supportedTargets.has(extension)));
-  const needsTextures = targetExtensions.has("dds");
-  const sourceExtensions = new Set<string>(hasSupportedTargets ? ["variantmeshdefinition", "wsmodel", "xml.material"] : []);
-  if (needsTextures) sourceExtensions.add("rigid_model_v2");
+  const hasNonDdsSupportedTargets = [...targetExtensions].some(
+    (extension) => Boolean(extension && extension !== "dds" && supportedSourceExtensions.has(extension)),
+  );
   const incoming = new Map<string, IncomingVisualReferenceEdge[]>();
   const edgeByPair = new Map<string, IncomingVisualReferenceEdge>();
   const diagnostics: IncomingVisualReferenceIndex["diagnostics"] = [];
@@ -83,12 +85,29 @@ export const createIncomingVisualReferenceIndex = async (
     diagnosticKeys.add(signature);
     diagnostics.push({ code, message, severity: "warning", ...(sourcePath ? { path: sourcePath } : {}) });
   };
+  let needsTextures = false;
+  for (const targetPath of ddsTargets) {
+    const key = normalizePackFilePathKey(targetPath);
+    const resolution = resolveReferenceAsset(environment, targetPath, false);
+    resolutionCache.set(key, resolution);
+    if (resolution.status === "missing") continue;
+    needsTextures = true;
+    if (resolution.status === "ambiguous")
+      noteIncomplete("INCOMING_REFERENCE_TARGET_AMBIGUOUS", `Multiple effective entries provide ${resolution.path}`, resolution.path);
+  }
+  const sourceExtensions = new Set<string>(
+    hasNonDdsSupportedTargets || needsTextures ? ["variantmeshdefinition", "wsmodel", "xml.material"] : [],
+  );
+  if (needsTextures) sourceExtensions.add("rigid_model_v2");
   let edgeLimitHit = false;
   const addReference = (
     source: { provider: ReferenceProvider; entry: ReferenceEnvironment["providers"][number]["pack"]["entries"][number] },
     detail: VisualReferenceDetail,
   ) => {
     const requestedKey = normalizePackFilePathKey(detail.path);
+    // DDS files are terminal dependencies. Keep only edges that can answer this request before
+    // provider resolution and edge-budget accounting; raw per-pack extraction remains unfiltered.
+    if (detail.extension === "dds" && !requestedDdsKeys.has(requestedKey)) return;
     let resolution = resolutionCache.get(requestedKey);
     if (!resolution) {
       resolution = resolveReferenceAsset(environment, detail.path, false);
@@ -144,52 +163,63 @@ export const createIncomingVisualReferenceIndex = async (
   // array is limited to supported active source paths, not copied pack payloads or parse trees.
   effectiveSources.sort((left, right) => right.provider.order - left.provider.order || left.key.localeCompare(right.key));
   totalCandidatePaths = effectiveSources.length;
-  for (const { key, extension, provider, entry } of effectiveSources) {
-    throwIfAborted(environment.context.signal);
-    if ((scannedGroups++ & 127) === 0) await yieldToEventLoop(environment.context.signal);
-    if (scannedSources >= limits.maxSources) {
-      noteIncomplete("INCOMING_REFERENCE_SOURCE_LIMIT", `Incoming visual indexing reached maxSources (${limits.maxSources})`);
-      break;
-    }
-    scannedSources++;
-    try {
-      if (extension === "rigid_model_v2") {
-        const model = await loadRigidReferenceModel(environment, provider, entry, false);
-        for (const lod of model.lods) for (const part of lod.parts) {
-          if (!part.complete || !part.textures) {
-            noteIncomplete("INCOMING_REFERENCE_RMV2_PART_INCOMPLETE", `LOD ${part.lodIndex} part ${part.partIndex} has unsupported texture coverage`, entry.name);
-            continue;
-          }
-          for (let textureSlotIndex = 0; textureSlotIndex < part.textures.length; textureSlotIndex++) {
-            const texture = part.textures[textureSlotIndex];
-            if (!texture.path.trim()) continue;
-            addReference({ provider, entry }, {
-              path: texture.path,
-              extension: "dds",
-              relationship: "texture",
-              sourceField: texture.typeName ?? "texturePath",
-              location: `lod[${lod.lodIndex}]/part[${part.partIndex}]/texture[${textureSlotIndex}]`,
-            });
-          }
+  let sourceIndex = 0;
+  let stop = false;
+  while (sourceIndex < effectiveSources.length && !stop) {
+    const pack = effectiveSources[sourceIndex].provider.pack;
+    await withAutomationPackReadSession(pack, environment.context, async (session) => {
+      while (sourceIndex < effectiveSources.length && effectiveSources[sourceIndex].provider.pack === pack) {
+        const { extension, provider, entry } = effectiveSources[sourceIndex++];
+        throwIfAborted(environment.context.signal);
+        if ((scannedGroups++ & 127) === 0) await yieldToEventLoop(environment.context.signal);
+        if (scannedSources >= limits.maxSources) {
+          noteIncomplete("INCOMING_REFERENCE_SOURCE_LIMIT", `Incoming visual indexing reached maxSources (${limits.maxSources})`);
+          stop = true;
+          break;
         }
-      } else {
-        const extraction = await loadVisualReferenceExtraction(environment, provider, entry, false);
-        if (!extraction.valid) {
-          noteIncomplete("INCOMING_REFERENCE_XML_UNREADABLE", extraction.error ?? "Visual XML is malformed", entry.name);
-          continue;
+        scannedSources++;
+        try {
+          if (extension === "rigid_model_v2") {
+            const model = await loadRigidReferenceModel(environment, provider, entry, false, session);
+            for (const lod of model.lods) for (const part of lod.parts) {
+              if (!part.complete || !part.textures) {
+                noteIncomplete("INCOMING_REFERENCE_RMV2_PART_INCOMPLETE", `LOD ${part.lodIndex} part ${part.partIndex} has unsupported texture coverage`, entry.name);
+                continue;
+              }
+              for (let textureSlotIndex = 0; textureSlotIndex < part.textures.length; textureSlotIndex++) {
+                const texture = part.textures[textureSlotIndex];
+                if (!texture.path.trim()) continue;
+                addReference({ provider, entry }, {
+                  path: texture.path,
+                  extension: "dds",
+                  relationship: "texture",
+                  sourceField: texture.typeName ?? "texturePath",
+                  location: `lod[${lod.lodIndex}]/part[${part.partIndex}]/texture[${textureSlotIndex}]`,
+                });
+              }
+            }
+          } else {
+            const extraction = await loadVisualReferenceExtraction(environment, provider, entry, false, session);
+            if (!extraction.valid) {
+              noteIncomplete("INCOMING_REFERENCE_XML_UNREADABLE", extraction.error ?? "Visual XML is malformed", entry.name);
+              continue;
+            }
+            for (const detail of extraction.references) addReference({ provider, entry }, detail);
+          }
+        } catch (error) {
+          if (error && typeof error === "object" && "code" in error && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(String(error.code))) throw error;
+          noteIncomplete(extension === "rigid_model_v2" ? "INCOMING_REFERENCE_RMV2_UNREADABLE" : "INCOMING_REFERENCE_XML_UNREADABLE",
+            error instanceof Error ? error.message : String(error), entry.name);
         }
-        for (const detail of extraction.references) addReference({ provider, entry }, detail);
+        if (edgeLimitHit) {
+          noteIncomplete("INCOMING_REFERENCE_EDGE_LIMIT", `Incoming visual indexing reached maxIndexEdges (${limits.maxIndexEdges})`);
+          stop = true;
+          break;
+        }
+        report();
       }
-    } catch (error) {
-      if (error && typeof error === "object" && "code" in error && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(String(error.code))) throw error;
-      noteIncomplete(extension === "rigid_model_v2" ? "INCOMING_REFERENCE_RMV2_UNREADABLE" : "INCOMING_REFERENCE_XML_UNREADABLE",
-        error instanceof Error ? error.message : String(error), entry.name);
-    }
-    if (edgeLimitHit) {
-      noteIncomplete("INCOMING_REFERENCE_EDGE_LIMIT", `Incoming visual indexing reached maxIndexEdges (${limits.maxIndexEdges})`);
-      break;
-    }
-    report();
+    });
+    await environment.context.cacheRequest?.flushVisualsPack(pack);
   }
   report(true);
 

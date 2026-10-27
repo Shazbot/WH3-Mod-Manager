@@ -7,10 +7,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAutomationCacheService, createAutomationContext, executeAutomationRequest } from "../../src/automation/registry";
 import { makeRowFields } from "../../src/automation/tables";
 import { LocVersion, type DBField, type DBVersion } from "../../src/packFileTypes";
-import { serializeDbTable, writeRawPack } from "../../src/packCore";
+import { readPackIndex, serializeDbTable, writeRawPack } from "../../src/packCore";
 import { VISUALS_DATA_CACHE_VERSION } from "../../src/visuals/cache";
 import { canonicalizeExistingPath } from "../../src/vanillaCacheIdentity";
 import { prepareReferenceEnvironment, resolveReferenceAsset } from "../../src/automation/references";
+import { createIncomingVisualReferenceIndex } from "../../src/automation/graphUsers";
+import { withAutomationPayloadRangeReader } from "../../src/automation/packAccess";
 
 const workspaces: string[] = [];
 afterEach(() => { for (const root of workspaces.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -35,8 +37,10 @@ const schemas: Record<string, DBVersion[]> = Object.fromEntries(Object.entries(r
 }]]));
 
 // Minimal registered RMV2 fixture; geometry stays outside cached reference metadata.
-const rigid = (texturePath: string) => {
-  const material = Buffer.alloc(1120); material.write("part", 2); material.writeUInt32LE(1, 716); material.write(texturePath, 864);
+const rigid = (texturePath: string | readonly string[]) => {
+  const texturePaths = typeof texturePath === "string" ? [texturePath] : texturePath;
+  const material = Buffer.alloc(860 + texturePaths.length * 260); material.write("part", 2); material.writeUInt32LE(texturePaths.length, 716);
+  texturePaths.forEach((value, index) => { material.writeInt32LE(0, 860 + index * 260); material.write(value, 864 + index * 260); });
   const vertexOffset = 80 + material.length;
   const vertices = Buffer.alloc(96);
   for (let index = 0; index < 3; index++) vertices.writeUInt16LE(0x3c00, index * 32);
@@ -64,9 +68,11 @@ const fixture = async (options: { compressedTables?: boolean; nullableFaction?: 
     return { name: `db\\${table}_tables\\data`, buffer: options.compressedTables ? zstdCompressSync(buffer) : buffer,
       is_compressed: options.compressedTables };
   }), metadata);
+  const alternateTexture = "textures\\b.dds";
   const assetEntries = (targetTexture = texture) => [
     { name: vmd, buffer: Buffer.from(`<VARIANT_MESH><SLOT><VARIANT_MESH model="${model}" /></SLOT></VARIANT_MESH>`) },
-    { name: model, buffer: rigid(targetTexture) }, { name: targetTexture, buffer: Buffer.from("texture") },
+    { name: model, buffer: rigid([targetTexture, alternateTexture]) },
+    { name: targetTexture, buffer: Buffer.from("texture") }, { name: alternateTexture, buffer: Buffer.from("alternate texture") },
   ];
   await writeRawPack(assets, assetEntries(), metadata);
   const request = { operation: "asset_users", packPath: units, packPaths: [assets], targetPath: texture };
@@ -82,7 +88,7 @@ const fixture = async (options: { compressedTables?: boolean; nullableFaction?: 
   const service = (extras = {}) => createAutomationCacheService({ cacheDir, whmmCacheDir, schemaFingerprint: "fixture-schema", ...extras });
   const context = (cache?: ReturnType<typeof service>, writeRoots: string[] = [root]) => createAutomationContext({ cache,
     schemaProvider: async () => definitions, readRoots: [root], writeRoots });
-  return { root, units, assets, assetEntries, request, cacheDir, whmmCacheDir, guiPath, entry, service, context };
+  return { root, units, assets, assetEntries, request, alternateTexture, cacheDir, whmmCacheDir, guiPath, entry, service, context };
 };
 
 describe("shared visuals catalog and dependency metadata", () => {
@@ -103,6 +109,92 @@ describe("shared visuals catalog and dependency metadata", () => {
     const payload = JSON.parse(zstdDecompressSync(readFileSync(path.join(directory, readdirSync(directory)[0]))).toString());
     expect(JSON.stringify(payload)).not.toContain('"vertices"');
     expect(JSON.stringify(payload)).not.toContain('"raw"');
+  });
+
+  it("keeps raw extraction reusable when a later request asks for a different texture", async () => {
+    const f = await fixture(); const cache = f.service();
+    const first = await executeAutomationRequest(f.request, f.context(cache));
+    const parsesAfterFirst = cache.stats().visuals.sourceParses;
+    const secondRequest = { ...f.request, targetPath: f.alternateTexture };
+    expect(await executeAutomationRequest(secondRequest, f.context(cache))).toEqual(
+      await executeAutomationRequest(secondRequest, f.context()),
+    );
+    expect(first.ok).toBe(true);
+    expect(cache.stats().visuals.sourceParses).toBe(parsesAfterFirst);
+    expect(cache.stats().visuals.referenceHits).toBeGreaterThan(0);
+    await cache.close();
+  });
+
+  it("uses the bounded full-payload parser for compressed RMV2 entries", async () => {
+    const f = await fixture(); const compressedAssets = path.join(f.root, "compressed-assets.pack");
+    const entries = f.assetEntries().map((entry) => entry.name === model
+      ? { ...entry, buffer: zstdCompressSync(entry.buffer), is_compressed: true }
+      : entry);
+    await writeRawPack(compressedAssets, entries, metadata);
+    const expected = await executeAutomationRequest(f.request, f.context());
+    const actual = await executeAutomationRequest({ ...f.request, packPaths: [compressedAssets] }, f.context());
+    expect(JSON.parse(JSON.stringify(actual).replaceAll(compressedAssets, f.assets))).toEqual(expected);
+  });
+
+  it("does not charge unrelated DDS edges against a small incoming-index edge budget", async () => {
+    const f = await fixture(); const packPath = path.join(f.root, "many-textures.pack");
+    const unrelatedCount = 2_000;
+    const xml = `<root>${Array.from({ length: unrelatedCount }, (_, index) =>
+      `<source>textures/unrelated_${index}.dds</source>`).join("")}<source>textures/target.dds</source></root>`;
+    await writeRawPack(packPath, [
+      { name: "variantmeshes\\many.wsmodel", buffer: Buffer.from(xml) },
+      ...Array.from({ length: unrelatedCount }, (_, index) => ({
+        name: `textures\\unrelated_${index}.dds`, buffer: Buffer.from("u"),
+      })),
+      { name: "textures\\target.dds", buffer: Buffer.from("target") },
+    ], metadata);
+    const environment = await prepareReferenceEnvironment(f.context(), [packPath], [], undefined, false, true);
+    const index = await createIncomingVisualReferenceIndex(environment, ["textures/target.dds"], {
+      maxSources: 10,
+      maxIndexEdges: 1,
+    });
+    expect(index).toMatchObject({ complete: true, edges: 1, scannedSources: 1 });
+    expect(index.diagnostics).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "INCOMING_REFERENCE_EDGE_LIMIT" }),
+    ]));
+  });
+
+  it("skips source parsing when a DDS seed has no effective provider", async () => {
+    const f = await fixture();
+    const environment = await prepareReferenceEnvironment(f.context(), [f.units, f.assets], [], undefined, false, true);
+    const index = await createIncomingVisualReferenceIndex(environment, ["textures/missing.dds"], {
+      maxSources: 10,
+      maxIndexEdges: 1,
+    });
+    expect(index).toMatchObject({ complete: true, edges: 0, scannedSources: 0, diagnostics: [] });
+  });
+
+  it("applies filesystem policy and snapshot checks to uncompressed range reads", async () => {
+    const f = await fixture(); const indexed = readPackIndex(f.assets, { game: "wh3" });
+    const modelEntry = indexed.entries.find((item) => item.name === model)!;
+    const deniedRoot = path.join(f.root, "denied-read-root"); mkdirSync(deniedRoot);
+    const denied = createAutomationContext({ readRoots: [deniedRoot], writeRoots: [f.root] });
+    let readCount = 0;
+    await expect(withAutomationPayloadRangeReader(indexed, modelEntry, denied, async (reader) => {
+      readCount++;
+      return reader.readRange(0, 1);
+    })).rejects.toMatchObject({ code: "IO_ACCESS" });
+    expect(readCount).toBe(0);
+
+    const cache = f.service(); const context = f.context(cache);
+    const scope = cache.beginRequest({ policy: context.policy, schemaProvider: context.schemaProvider, useVisualsCache: true });
+    try {
+      const scopedPack = await scope.readPackIndex(f.assets);
+      const scopedEntry = scopedPack.entries.find((item) => item.name === model)!;
+      await expect(withAutomationPayloadRangeReader(scopedPack, scopedEntry, { ...context, cacheRequest: scope }, async (reader) => {
+        await reader.readRange(0, 1);
+        const current = statSync(f.assets);
+        utimesSync(f.assets, current.atime, new Date(current.mtimeMs + 1000));
+      })).rejects.toMatchObject({ code: "CONFLICT" });
+    } finally {
+      scope.close();
+      await cache.close();
+    }
   });
 
   it("uses catalog rows for discovery and falls back for schema, source, or catalog-version changes", async () => {
@@ -183,6 +275,19 @@ describe("shared visuals catalog and dependency metadata", () => {
     expect(result).toMatchObject({ ok: true, data: { affectedUnits: { total: 1 } } });
     expect(cache.stats().visuals.sourceParses).toBe(2);
     expect(cache.stats().visuals.referenceHits).toBeGreaterThan(0); await cache.close();
+  });
+
+  it("distinguishes unsupported source coverage from exhausted traversal budgets", async () => {
+    const f = await fixture();
+    const bad = path.join(f.root, "malformed.pack"), before = path.join(f.root, "before.pack"), after = path.join(f.root, "after.pack");
+    await writeRawPack(bad, [{ name: "broken.wsmodel", buffer: Buffer.from("<broken>") }], metadata);
+    await writeRawPack(before, [{ name: texture, buffer: Buffer.from("before") }], metadata);
+    await writeRawPack(after, [{ name: texture, buffer: Buffer.from("after") }], metadata);
+    const result = await executeAutomationRequest({ operation: "pack_diff", beforePath: before, afterPath: after,
+      packPaths: [f.units, f.assets, bad], affectedUnits: true }, f.context());
+    expect(result).toMatchObject({ ok: true, data: { affectedUnits: { total: 1, complete: false,
+      analysis: { before: { graph: { hitLimit: false } }, after: { graph: { hitLimit: false } } },
+    } } });
   });
 
   it("honors lower payload limits and the retained-memory budget on warm caches", async () => {

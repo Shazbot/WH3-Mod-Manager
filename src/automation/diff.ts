@@ -1418,8 +1418,13 @@ const runAffectedUnitAnalysis = async (
   };
   const keysForState = (stateName: "before" | "after") => new Set([...affected.values()]
     .filter((item) => item.states.some((state) => state.state === stateName)).map((item) => item.unitKey).filter(Boolean));
+  context.progress?.({ stage: "hydration", state: "before", completed: 0, total: 2,
+    units: keysForState("before").size, message: "Loading before-state evidence for matched units" });
   let beforeDetailIndex = await loadMatchedDetail(beforeEnvironment, keysForState("before"), beforeSemanticIndex);
+  context.progress?.({ stage: "hydration", state: "after", completed: 1, total: 2,
+    units: keysForState("after").size, message: "Loading after-state evidence for matched units" });
   let afterDetailIndex = await loadMatchedDetail(afterEnvironment, keysForState("after"), afterSemanticIndex);
+  context.progress?.({ stage: "hydration", completed: 2, total: 2, message: "Matched-unit evidence loaded" });
   const rootSignature = (unitKey: string, landUnitKey: string, rootPath: string, rootKind: string, reason: string) =>
     JSON.stringify([unitKey, landUnitKey, normalizePackFilePathKey(rootPath), rootKind, reason]);
   const unmatchedVisualRoots = (stateName: "before" | "after", detail: Awaited<ReturnType<typeof collectUnitVisualIndex>>) => {
@@ -1728,12 +1733,16 @@ const runAffectedUnitAnalysis = async (
       before: { complete: beforeIncoming.complete && !beforeRootLimit && beforeEnvironment.complete,
         graph: { ...emptyCoverage, edges: beforeIncoming.edges, nodes: beforeUnitRoots.length, scannedSources: beforeIncoming.scannedSources,
           indexedEdges: beforeIncoming.edges, reversePathWalks: beforeTraversal.walks,
-          hitLimit: !beforeIncoming.complete || beforeRootLimit || [...beforeTraversal.coverageByPath.values()].some((item) => !item.complete) },
+          hitLimit: beforeRootLimit || beforeIncoming.diagnostics.some((item) =>
+            item.code === "INCOMING_REFERENCE_SOURCE_LIMIT" || item.code === "INCOMING_REFERENCE_EDGE_LIMIT") ||
+            [...beforeTraversal.coverageByPath.values()].some((item) => item.limitReason?.startsWith("max")) },
         roots: beforeRootScan.roots.length },
       after: { complete: afterIncoming.complete && !afterRootLimit && afterEnvironment.complete,
         graph: { ...emptyCoverage, edges: afterIncoming.edges, nodes: afterUnitRoots.length, scannedSources: afterIncoming.scannedSources,
           indexedEdges: afterIncoming.edges, reversePathWalks: afterTraversal.walks,
-          hitLimit: !afterIncoming.complete || afterRootLimit || [...afterTraversal.coverageByPath.values()].some((item) => !item.complete) },
+          hitLimit: afterRootLimit || afterIncoming.diagnostics.some((item) =>
+            item.code === "INCOMING_REFERENCE_SOURCE_LIMIT" || item.code === "INCOMING_REFERENCE_EDGE_LIMIT") ||
+            [...afterTraversal.coverageByPath.values()].some((item) => item.limitReason?.startsWith("max")) },
         roots: afterRootScan.roots.length },
       changedPaths: changedPaths.length,
       unsupportedChangedFiles,

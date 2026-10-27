@@ -9,11 +9,25 @@ import { getFilenameRelativePathMatch, parseFilenameRelativePaths } from "../uti
 import { getCanonicalLogicalTableName, shouldReplaceEffectiveDbRowWinner } from "../utility/effectiveDbRow";
 import { parseDBTablePath } from "../utility/packFileHelpers";
 import { normalizePackFilePath, normalizePackFilePathKey } from "../utility/packFilePathUtils";
-import { parseRmv2, Rmv2CodecError, type CorePack, type CorePackEntry, type Rmv2Texture } from "../packCore";
+import {
+  parseRmv2,
+  parseRmv2TextureMetadata,
+  Rmv2CodecError,
+  DEFAULT_MAX_LOGICAL_PAYLOAD_BYTES,
+  type CorePack,
+  type CorePackEntry,
+  type Rmv2Texture,
+} from "../packCore";
 import { decodePackedTextBuffer } from "../utility/packFileViewing";
 import { AutomationError, throwIfAborted, yieldToEventLoop, type AutomationDiagnostic } from "./errors";
 import { normalizeInternalPackPath } from "./filesystem";
-import { readAutomationPack, readAutomationPayload, readAutomationReadonlyTable } from "./packAccess";
+import {
+  readAutomationPack,
+  readAutomationPayload,
+  readAutomationReadonlyTable,
+  withAutomationPayloadRangeReader,
+  type AutomationPackReadSession,
+} from "./packAccess";
 import { queryTableRows, type TableFilter, type TableRow } from "./tables";
 import type { ReadonlyTableData } from "./cacheService";
 import type { AutomationContext } from "./operations";
@@ -356,12 +370,13 @@ export const loadVisualReferenceExtraction = async (
   provider: ReferenceProvider,
   entry: CorePackEntry,
   retainInEnvironment = true,
+  session?: AutomationPackReadSession,
 ): Promise<VisualReferenceExtraction> => {
   const cacheKey = `${provider.pack.path}\0${normalizePackFilePathKey(entry.name)}`;
   let cached = retainInEnvironment ? environment.referenceTextCache.get(cacheKey) : undefined;
   if (!cached) {
     const load = async () => {
-      const bytes = await readAutomationPayload(provider.pack, entry, environment.context);
+      const bytes = await (session ? session.readPayload(entry) : readAutomationPayload(provider.pack, entry, environment.context));
       return getSupportedVisualReferenceDetails(decodePackedTextBuffer(bytes));
     };
     cached = environment.context.cacheRequest?.getVisualReference
@@ -378,15 +393,17 @@ export const loadRigidReferenceModel = async (
   provider: ReferenceProvider,
   entry: CorePackEntry,
   retainInEnvironment = true,
+  session?: AutomationPackReadSession,
 ): Promise<CachedRmv2ReferenceModel> => {
   const cacheKey = `${provider.pack.path}\0${normalizePackFilePathKey(entry.name)}`;
   let cached = retainInEnvironment ? environment.referenceRmv2Cache.get(cacheKey) : undefined;
   if (!cached) {
     const load = async () => {
-      const bytes = await readAutomationPayload(provider.pack, entry, environment.context);
-      const parsed = parseRmv2(bytes, { textureSlotsOnly: true });
-      return {
-        lods: parsed.lods.map((lod) => ({
+      const compact = (lods: Array<{ lodIndex: number; parts: Array<{
+        lodIndex: number; partIndex: number; complete: boolean; unsupportedReason?: string;
+        materialTypeId: number; materialTypeName: string; textures?: Rmv2Texture[];
+      }> }>): CachedRmv2ReferenceModel => ({
+        lods: lods.map((lod) => ({
           lodIndex: lod.lodIndex,
           parts: lod.parts.map((part) => ({
             lodIndex: part.lodIndex,
@@ -398,7 +415,22 @@ export const loadRigidReferenceModel = async (
             ...(part.textures ? { textures: part.textures.map((texture) => ({ ...texture })) } : {}),
           })),
         })),
-      };
+      });
+      if (!entry.is_compressed) {
+        const maxLogicalPayloadBytes = environment.context.maxLogicalPayloadBytes ?? DEFAULT_MAX_LOGICAL_PAYLOAD_BYTES;
+        if (entry.file_size > maxLogicalPayloadBytes)
+          throw new AutomationError(
+            "VALIDATION",
+            `Stored payload ${entry.name} exceeds configured ${maxLogicalPayloadBytes} byte limit`,
+          );
+        const readMetadata = (reader: import("../packCore").RawPayloadRangeReader) =>
+          parseRmv2TextureMetadata(reader, { checkCancelled: () => throwIfAborted(environment.context.signal) });
+        const parsed = await (session ? session.withRangeReader(entry, readMetadata)
+          : withAutomationPayloadRangeReader(provider.pack, entry, environment.context, readMetadata));
+        return compact(parsed.lods);
+      }
+      const bytes = await (session ? session.readPayload(entry) : readAutomationPayload(provider.pack, entry, environment.context));
+      return compact(parseRmv2(bytes, { textureSlotsOnly: true }).lods);
     };
     cached = environment.context.cacheRequest?.getVisualReference
       ? environment.context.cacheRequest.getVisualReference(provider.pack, entry, "rmv2", isCachedRigid, load)

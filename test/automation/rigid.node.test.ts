@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { createAutomationContext, executeAutomationRequest } from "../../src/automation/registry";
 import { main } from "../../src/cli/main";
-import { parseRmv2, Rmv2CodecError, writeRawPack } from "../../src/packCore";
+import { parseRmv2, parseRmv2TextureMetadata, Rmv2CodecError, writeRawPack } from "../../src/packCore";
 
 const tempRoot = mkdtempSync(path.join(os.tmpdir(), "whmm-rigid-"));
 afterAll(() => rmSync(tempRoot, { recursive: true, force: true }));
@@ -198,7 +198,153 @@ const withUnsupportedSecondPart = (fixture: Buffer): Buffer => {
   return mixed;
 };
 
+const referenceShape = (model: ReturnType<typeof parseRmv2>) => ({
+  lods: model.lods.map((lod) => ({
+    lodIndex: lod.lodIndex,
+    parts: lod.parts.map((part) => ({
+      lodIndex: part.lodIndex,
+      partIndex: part.partIndex,
+      complete: part.complete,
+      ...(part.unsupportedReason ? { unsupportedReason: part.unsupportedReason } : {}),
+      materialTypeId: part.materialTypeId,
+      materialTypeName: part.materialTypeName,
+      ...(part.textures ? { textures: part.textures } : {}),
+    })),
+  })),
+});
+
+const parseRangeFixture = (bytes: Buffer, length = bytes.length, onRead?: (offset: number, size: number) => void) =>
+  parseRmv2TextureMetadata({
+    length,
+    readRange: (offset, size) => {
+      onRead?.(offset, size);
+      return Buffer.from(bytes.subarray(offset, offset + size));
+    },
+  });
+
 describe("RMV2 codec", () => {
+  it.each([6, 7, 8] as const)("matches texture-slot parsing for version %i using bounded metadata ranges", async (version) => {
+    const fixtures = [
+      makeWeightedFixture({ version }),
+      makeWeightedFixture({ version, format: 6, materialType: 49 }),
+      makeWeightedFixture({ version, format: 5, materialType: 101 }),
+      makeWeightedFixture({ version, format: 99 }),
+      makeWeightedFixture({ version, materialType: 22 }),
+    ];
+    for (const fixture of fixtures) {
+      const ranged = await parseRangeFixture(fixture);
+      expect({ lods: ranged.lods }).toEqual(referenceShape(parseRmv2(fixture, { textureSlotsOnly: true })));
+      expect(ranged.metadataBytesRead).toBeLessThan(fixture.length);
+    }
+  });
+
+  it("skips huge virtual vertex and index ranges while reading only model metadata", async () => {
+    const fixture = makeWeightedFixture({ version: 8, alpha: [] });
+    const commonOffset = fixture.readUInt32LE(152);
+    const vertexOffset = fixture.readUInt32LE(commonOffset + 8);
+    const vertexCount = 4_000_000;
+    const indexOffset = vertexOffset + vertexCount * 32;
+    const sectionSize = indexOffset + 6;
+    fixture.writeUInt32LE(sectionSize, commonOffset + 4);
+    fixture.writeUInt32LE(vertexCount, commonOffset + 12);
+    fixture.writeUInt32LE(indexOffset, commonOffset + 16);
+    fixture.writeUInt32LE(vertexCount * 32, 144);
+    fixture.writeUInt32LE(6, 148);
+    const geometryStart = commonOffset + vertexOffset;
+    const geometryEnd = commonOffset + sectionSize;
+    const logicalLength = geometryEnd;
+    let requestedBytes = 0;
+    const ranged = await parseRmv2TextureMetadata({
+      length: logicalLength,
+      readRange(offset, size) {
+        expect(offset + size <= geometryStart || offset >= geometryEnd).toBe(true);
+        requestedBytes += size;
+        return Buffer.from(fixture.subarray(offset, offset + size));
+      },
+    });
+    expect(ranged.metadataBytesRead).toBe(requestedBytes);
+    expect(requestedBytes).toBeLessThan(4096);
+    expect(requestedBytes).toBeLessThan(logicalLength / 1000);
+    expect(ranged.lods[0].parts[0].textures?.[0].path).toBe("diffuse.dds");
+  });
+
+  it("skips large material padding on the progressive range path", async () => {
+    const fixture = makeWeightedFixture({ version: 8 });
+    const commonOffset = fixture.readUInt32LE(152);
+    const originalVertexOffset = fixture.readUInt32LE(commonOffset + 8);
+    const vertexOffset = originalVertexOffset + 100_000;
+    const indexOffset = vertexOffset + 32;
+    const sectionSize = indexOffset + 6;
+    fixture.writeUInt32LE(sectionSize, commonOffset + 4);
+    fixture.writeUInt32LE(vertexOffset, commonOffset + 8);
+    fixture.writeUInt32LE(indexOffset, commonOffset + 16);
+    const paddingStart = commonOffset + originalVertexOffset;
+    const geometryStart = commonOffset + vertexOffset;
+    const requests: Array<[number, number]> = [];
+    const ranged = await parseRmv2TextureMetadata({
+      length: geometryStart + 38,
+      readRange(offset, size) {
+        requests.push([offset, size]);
+        expect(offset + size <= paddingStart || offset >= geometryStart + 38).toBe(true);
+        return Buffer.from(fixture.subarray(offset, offset + size));
+      },
+    });
+    expect(ranged.lods[0].parts[0].textures?.[0].path).toBe("diffuse.dds");
+    expect(requests.some(([offset, size]) => offset < geometryStart && offset + size > paddingStart)).toBe(false);
+  });
+
+  it("rejects bad material bounds and short reads without probing geometry, and checks cancellation between blocks", async () => {
+    const fixture = makeWeightedFixture({ version: 8 });
+    const commonOffset = fixture.readUInt32LE(152);
+    const vertexOffset = fixture.readUInt32LE(commonOffset + 8);
+    const geometryStart = commonOffset + vertexOffset;
+    const malformed = Buffer.from(fixture);
+    const firstString = commonOffset + 80 + 860 + 4 * 260;
+    malformed.writeInt16LE(0x7fff, firstString + 4);
+    const touchedGeometry: Array<[number, number]> = [];
+    await expect(parseRangeFixture(malformed, malformed.length, (offset, size) => {
+      if (offset < geometryStart + 1 && offset + size > geometryStart) touchedGeometry.push([offset, size]);
+    })).rejects.toMatchObject({ code: "MALFORMED" });
+    expect(touchedGeometry).toEqual([]);
+
+    const badNumericTail = Buffer.from(fixture);
+    badNumericTail.writeUInt32LE(1000, commonOffset + 80 + 724);
+    await expect(parseRangeFixture(badNumericTail, badNumericTail.length, (offset, size) => {
+      if (offset < geometryStart + 1 && offset + size > geometryStart) touchedGeometry.push([offset, size]);
+    })).rejects.toMatchObject({ code: "MALFORMED" });
+    expect(touchedGeometry).toEqual([]);
+
+    await expect(parseRmv2TextureMetadata({
+      length: fixture.length,
+      readRange: (offset, size) => Buffer.from(fixture.subarray(offset, offset + size - 1)),
+    })).rejects.toMatchObject({ code: "MALFORMED" });
+    await expect(parseRangeFixture(fixture, fixture.length - 1)).rejects.toMatchObject({ code: "MALFORMED" });
+    await expect(parseRmv2TextureMetadata({
+      length: fixture.length,
+      readRange: (offset, size) => Buffer.from(fixture.subarray(offset, offset + size)),
+    }, { maxMetadataBlockBytes: 79 })).rejects.toMatchObject({ code: "UNSUPPORTED" });
+
+    const oneLod = makeWeightedFixture({ version: 8 });
+    const oldMeshOffset = oneLod.readUInt32LE(152);
+    const meshBytes = oneLod.subarray(oldMeshOffset);
+    const twoLodMeshOffset = 140 + 2 * 28;
+    const overlappingLods = Buffer.alloc(twoLodMeshOffset + meshBytes.length);
+    oneLod.copy(overlappingLods, 0, 0, 140);
+    oneLod.copy(overlappingLods, 140, 140, 168);
+    oneLod.copy(overlappingLods, 168, 140, 168);
+    overlappingLods.writeUInt32LE(2, 8);
+    overlappingLods.writeUInt32LE(twoLodMeshOffset, 152);
+    overlappingLods.writeUInt32LE(twoLodMeshOffset, 180);
+    meshBytes.copy(overlappingLods, twoLodMeshOffset);
+    await expect(parseRangeFixture(overlappingLods)).rejects.toMatchObject({ code: "MALFORMED" });
+
+    let reads = 0;
+    await expect(parseRmv2TextureMetadata({
+      length: fixture.length,
+      readRange: (offset, size) => Buffer.from(fixture.subarray(offset, offset + size)),
+    }, { checkCancelled: () => { if (++reads > 2) throw new Error("cancelled"); } })).rejects.toThrow("cancelled");
+  });
+
   it.each([6, 7, 8] as const)("reads version %i headers, weighted parameters, UVs, and raw spans", (version) => {
     const fixture = makeWeightedFixture({ version });
     const parsed = parseRmv2(fixture);

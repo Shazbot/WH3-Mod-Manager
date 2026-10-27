@@ -117,7 +117,7 @@ export interface AutomationCacheRequestOptions {
 
 export interface AutomationCacheRequestScope {
   readPackIndex(packPath: string): Promise<CorePack>;
-  assertPackSnapshot(pack: CorePack): Promise<void>;
+  assertPackSnapshot(pack: CorePack, descriptor?: number): Promise<void>;
   getReadonlyTable(packPath: string, packedFilePath: string): Promise<ReadonlyTableData | undefined>;
   getVanillaRawLoc(
     packPaths: readonly string[],
@@ -127,6 +127,7 @@ export interface AutomationCacheRequestScope {
   getVisualReference<T>(pack: CorePack, entry: CorePackEntry, kind: string,
     validate: (value: unknown) => value is T, load: () => Promise<T>): Promise<T>;
   flushVisuals(): Promise<void>;
+  flushVisualsPack(pack: CorePack): Promise<void>;
   close(): void;
 }
 
@@ -286,10 +287,9 @@ const identityString = (identity: CanonicalFileIdentity): string =>
     identity.ino.toString(10),
   ]);
 
-const identityFromDescriptor = (filePath: string, fd: number): CanonicalFileIdentity => {
-  const canonicalPath = fs.realpathSync.native(filePath);
+const identityFromAuthorizedDescriptor = (canonicalPath: string, fd: number): CanonicalFileIdentity => {
   const stats = fs.fstatSync(fd, { bigint: true });
-  if (!stats.isFile()) throw new AutomationError("IO_ACCESS", `Path is not a regular file: ${filePath}`);
+  if (!stats.isFile()) throw new AutomationError("IO_ACCESS", `Path is not a regular file: ${canonicalPath}`);
   return {
     path: canonicalPath,
     size: stats.size,
@@ -300,6 +300,9 @@ const identityFromDescriptor = (filePath: string, fd: number): CanonicalFileIden
     ino: stats.ino,
   };
 };
+
+const identityFromDescriptor = (filePath: string, fd: number): CanonicalFileIdentity =>
+  identityFromAuthorizedDescriptor(fs.realpathSync.native(filePath), fd);
 
 const descriptorMatchesPath = (expected: CanonicalFileIdentity): boolean => {
   let fd: number | undefined;
@@ -1512,9 +1515,15 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
         }
         return pack;
       },
-      async assertPackSnapshot(pack) {
+      async assertPackSnapshot(pack, descriptor) {
         checkOpen();
         const expected = scopedSources.get(pack);
+        if (descriptor !== undefined) {
+          const expectedIdentity = expected ? identityString(expected) : packIdentityByObject.get(pack);
+          if (!expectedIdentity || identityString(identityFromAuthorizedDescriptor(expected?.path ?? pack.path, descriptor)) !== expectedIdentity)
+            throw new AutomationError("CONFLICT", "Open pack source does not match its request snapshot", { packPath: pack.path });
+          return;
+        }
         if (!expected) {
           const snapshotIdentity = packIdentityByObject.get(pack);
           if (!snapshotIdentity)
@@ -1550,6 +1559,11 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
         if (!useVisualsCache || !usedVisuals) return;
         for (const identity of scopedIdentity.values()) await assertIdentityStillCurrent(identity);
         await visualSession.flush();
+      },
+      async flushVisualsPack(pack) {
+        if (!useVisualsCache || !usedVisuals) return;
+        await scope.assertPackSnapshot(pack);
+        await visualSession.flushSource((await visualSource(pack)).identity);
       },
       close() {
         if (scopeClosed) return;

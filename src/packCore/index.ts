@@ -21,6 +21,7 @@ export { decompressPackedPayload } from "./compression";
 export { UnsupportedPackCodecError } from "./compression";
 export {
   parseRmv2,
+  parseRmv2TextureMetadata,
   Rmv2CodecError,
   compareRmv2PartGeometry,
   getRmv2MaterialLayout,
@@ -34,6 +35,10 @@ export {
   type Rmv2MaterialLayout,
   type Rmv2GeometryChangeCounts,
   type ParseRmv2Options,
+  type ParseRmv2MetadataOptions,
+  type Rmv2RangeSource,
+  type Rmv2TextureMetadataFile,
+  type Rmv2TextureMetadataPart,
 } from "./rmv2Codec";
 export {
   dbPreambleMarkers,
@@ -54,6 +59,10 @@ export {
   readPayload,
   readRawPayload,
   readRawPayloadPrefix,
+  openRawPayloadRangeReader,
+  openRawPackReadSession,
+  type RawPackReadSession,
+  type RawPayloadRangeReader,
   rewritePackFromIndex,
   writeRawPack,
 } from "./packFile";
