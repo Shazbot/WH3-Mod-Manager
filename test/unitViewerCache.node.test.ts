@@ -162,6 +162,83 @@ describe("Unit Viewer disk cache", () => {
     await expect(loadUnitViewerDiskCache(directory, "stale")).resolves.toBeUndefined();
   });
 
+  it("deduplicates complete palettes within faction buckets and keeps caller and loaded colours independent", async () => {
+    const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), "whmm-unit-viewer-"));
+    temporaryDirectories.push(directory);
+    const data = makeData();
+    for (const key of ["with-colours", "with-colours-again", "with-empty-colours", "without-colours"]) {
+      data.units.delete(key);
+    }
+
+    const commonColour = {
+      faction: "same_faction",
+      subculture: "same_subculture",
+      primary: "primary",
+      secondary: "secondary",
+      tertiary: "tertiary",
+    };
+    const inputColours = [
+      commonColour,
+      { ...commonColour, subculture: "other_subculture" },
+      { ...commonColour, primary: "other_primary" },
+      { ...commonColour, secondary: "other_secondary" },
+      { ...commonColour, tertiary: "other_tertiary" },
+      { ...commonColour },
+      { faction: "__proto__", subculture: "constructor", primary: "toString", secondary: "", tertiary: "雪" },
+      { faction: "☃️/雪🧪", subculture: "", primary: "", secondary: "🔴", tertiary: "__proto__" },
+      { faction: "", subculture: "constructor", primary: "toString", secondary: "💠", tertiary: "" },
+    ];
+    const baseUnit = data.units.get("unit")!;
+    data.units.set("palette-variants", {
+      ...baseUnit,
+      key: "palette-variants",
+      painterVariantContext: makePainterContext(inputColours),
+    });
+
+    await saveUnitViewerDiskCache(directory, "palette-signature", data);
+    const serialized = await readPayload(directory);
+    expect(serialized.version).toBe(32);
+    expect(serialized.data.factionColourPool).toEqual([
+      commonColour,
+      { ...commonColour, subculture: "other_subculture" },
+      { ...commonColour, primary: "other_primary" },
+      { ...commonColour, secondary: "other_secondary" },
+      { ...commonColour, tertiary: "other_tertiary" },
+      { faction: "__proto__", subculture: "constructor", primary: "toString", secondary: "", tertiary: "雪" },
+      { faction: "☃️/雪🧪", subculture: "", primary: "", secondary: "🔴", tertiary: "__proto__" },
+      { faction: "", subculture: "constructor", primary: "toString", secondary: "💠", tertiary: "" },
+    ]);
+    expect(
+      serialized.data.units.find(([key]: [string]) => key === "palette-variants")[1].painterVariantContext
+        .factionColours,
+    ).toEqual([0, 1, 2, 3, 4, 0, 5, 6, 7]);
+
+    inputColours[0].primary = "caller mutation";
+    inputColours[7].secondary = "caller mutation";
+    const firstLoad = await loadUnitViewerDiskCache(directory, "palette-signature");
+    const firstColours = firstLoad?.units.get("palette-variants")?.painterVariantContext?.factionColours;
+    expect(firstColours?.[0].primary).toBe("primary");
+    expect(firstColours?.[5].primary).toBe("primary");
+    expect(firstColours?.[7].secondary).toBe("🔴");
+    expect(firstColours?.[0]).not.toBe(inputColours[0]);
+    expect(firstColours?.[0]).not.toBe(firstColours?.[5]);
+
+    firstColours![0].primary = "returned mutation";
+    const secondLoad = await loadUnitViewerDiskCache(directory, "palette-signature");
+    const secondColours = secondLoad?.units.get("palette-variants")?.painterVariantContext?.factionColours;
+    expect(secondColours?.[0].primary).toBe("primary");
+    expect(secondColours?.[0]).not.toBe(firstColours?.[0]);
+    expect(secondColours?.[0]).not.toBe(secondColours?.[5]);
+
+    clearUnitViewerMemoryCache();
+    const diskLoad = await loadUnitViewerDiskCache(directory, "palette-signature");
+    const diskColours = diskLoad?.units.get("palette-variants")?.painterVariantContext?.factionColours;
+    expect(diskColours?.[0].primary).toBe("primary");
+    expect(diskColours?.[7].secondary).toBe("🔴");
+    expect(diskColours?.[0]).not.toBe(diskColours?.[5]);
+    expect(diskColours?.[0]).not.toBe(secondColours?.[0]);
+  });
+
   it("rejects old versions and corrupted faction colour pools or references without caching them", async () => {
     const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), "whmm-unit-viewer-"));
     temporaryDirectories.push(directory);

@@ -33,21 +33,28 @@ type UnitViewerDiskPayload = {
 
 let cachedPayload: UnitViewerDiskPayload | undefined;
 
-const factionColourKey = (colour: FactionColour): string =>
-  JSON.stringify([colour.faction, colour.subculture, colour.primary, colour.secondary, colour.tertiary]);
-
 const serializeUnits = (
   units: BuiltUnitViewerData["units"],
   factionColourPool: FactionColour[],
 ): Array<[string, UnitViewerDiskUnit]> => {
-  const factionColourIndex = new Map<string, number>();
+  const factionColourIndexesByFaction = new Map<string, number[]>();
   const getFactionColourIndex = (colour: FactionColour): number => {
-    const key = factionColourKey(colour);
-    const existingIndex = factionColourIndex.get(key);
-    if (existingIndex !== undefined) return existingIndex;
+    const factionIndexes = factionColourIndexesByFaction.get(colour.faction);
+    if (factionIndexes) {
+      for (const index of factionIndexes) {
+        const pooledColour = factionColourPool[index];
+        if (
+          pooledColour.subculture === colour.subculture &&
+          pooledColour.primary === colour.primary &&
+          pooledColour.secondary === colour.secondary &&
+          pooledColour.tertiary === colour.tertiary
+        ) {
+          return index;
+        }
+      }
+    }
 
     const index = factionColourPool.length;
-    factionColourIndex.set(key, index);
     factionColourPool.push({
       faction: colour.faction,
       subculture: colour.subculture,
@@ -55,6 +62,8 @@ const serializeUnits = (
       secondary: colour.secondary,
       tertiary: colour.tertiary,
     });
+    if (factionIndexes) factionIndexes.push(index);
+    else factionColourIndexesByFaction.set(colour.faction, [index]);
     return index;
   };
 
@@ -87,7 +96,18 @@ const deserializeUnit = (unit: UnitViewerDiskUnit, factionColourPool: FactionCol
       ...contextWithoutFactionColours,
       ...(factionColours === undefined
         ? {}
-        : { factionColours: factionColours.map((index) => ({ ...factionColourPool[index] })) }),
+        : {
+            factionColours: factionColours.map((index) => {
+              const colour = factionColourPool[index];
+              return {
+                faction: colour.faction,
+                subculture: colour.subculture,
+                primary: colour.primary,
+                secondary: colour.secondary,
+                tertiary: colour.tertiary,
+              };
+            }),
+          }),
     },
   };
 };
