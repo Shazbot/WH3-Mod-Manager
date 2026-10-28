@@ -19,6 +19,11 @@ import {
   type VanillaPackFilesCacheRecord,
 } from "./vanillaPackFilesCacheFormat";
 import { getVanillaPackPathsInLoadOrder } from "./utility/vanillaPackPaths";
+import {
+  flushModPackFileNamesCache,
+  getModPackFileNamesCacheEntry,
+  rememberModPackFileNamesCacheEntry,
+} from "./modPackFileNamesCache";
 
 export type {
   CachedVanillaPackIndex,
@@ -48,12 +53,17 @@ let cacheWritePromise: Promise<void> = Promise.resolve();
 
 const emptyCache = (): VanillaPackFilesCache => ({ version: CACHE_VERSION, entries: {} });
 
-const getCacheFilePath = (): string | undefined => {
+const getUserDataPath = (): string | undefined => {
   try {
-    return nodePath.join(app.getPath("userData"), CACHE_FILE_NAME);
+    return app.getPath("userData");
   } catch {
     return undefined;
   }
+};
+
+const getCacheFilePath = (): string | undefined => {
+  const userDataPath = getUserDataPath();
+  return userDataPath ? nodePath.join(userDataPath, CACHE_FILE_NAME) : undefined;
 };
 
 /** The path is passed to the out-of-process asset host so it can share this cache. */
@@ -248,7 +258,8 @@ const queueCacheWrite = (): void => {
 
 /** Flushes pending cache updates. Most pack reads use the debounced write path. */
 export const saveVanillaPackFilesCache = async (): Promise<void> => {
-  // If a remember call is still hydrating the cache, let its update apply before
+  await flushModPackFileNamesCache();
+  // If a vanilla index update is still hydrating the cache, let it apply before
   // the write is queued. With only lazy reads, this remains a no-op.
   if (cacheLoadPromise) await cacheLoadPromise;
   if (cacheWriteTimer) {
@@ -408,6 +419,13 @@ export const getCurrentPackFilesCacheEntry = async (
     return undefined;
   }
 
+  if (!isCurrentGameVanillaPackPath(packPath)) {
+    const userDataPath = getUserDataPath();
+    if (!userDataPath) return undefined;
+    const packedFileNames = await getModPackFileNamesCacheEntry(userDataPath, packPath, stat.size, stat.mtimeMs);
+    return packedFileNames ? { size: stat.size, lastChangedLocal: stat.mtimeMs, packedFileNames } : undefined;
+  }
+
   const entry = await getCacheEntryForPack(packPath);
   if (!entry || entry.size !== stat.size || entry.lastChangedLocal !== stat.mtimeMs || !isCacheEntry(entry))
     return undefined;
@@ -473,7 +491,7 @@ export const rememberVanillaPackIndex = (
     });
 };
 
-/** Preserves the manager's old names-only cache behavior for non-vanilla callers. */
+/** Remembers non-vanilla names separately so mod lookups never hydrate the vanilla cache. */
 export const rememberPackFileNames = (
   packPath: string,
   size: number,
@@ -481,33 +499,9 @@ export const rememberPackFileNames = (
   packedFileNames: readonly string[],
 ): void => {
   if (isCurrentGameVanillaPackPath(packPath)) return;
-  const cacheEntry: VanillaPackFilesCacheEntry = {
-    size,
-    lastChangedLocal,
-    packedFileNames: [...packedFileNames],
-  };
-  const cacheKey = nodePath.resolve(packPath);
-
-  const apply = (cache: VanillaPackFilesCache): void => {
-    cache.entries[cacheKey] = cacheEntry;
-    vanillaPackFilesCacheMetadata?.set(normalizeCachePath(cacheKey), {
-      size,
-      lastChangedLocal,
-      hasExpandedIndex: false,
-    });
-    queueCacheWrite();
-  };
-
-  if (vanillaPackFilesCache) {
-    apply(vanillaPackFilesCache);
-    return;
-  }
-
-  void loadVanillaPackFilesCache()
-    .then(apply)
-    .catch((error) => {
-      console.error("Failed to update pack files cache:", error);
-    });
+  const userDataPath = getUserDataPath();
+  if (!userDataPath) return;
+  rememberModPackFileNamesCacheEntry(userDataPath, packPath, size, lastChangedLocal, packedFileNames);
 };
 
 /** Returns names from the expanded cache for callers that only need a list. */
