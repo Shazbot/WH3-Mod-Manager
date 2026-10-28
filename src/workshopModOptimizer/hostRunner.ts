@@ -19,6 +19,8 @@ export const WORKSHOP_OPTIMIZER_HOST_OPTIONS = {
   sharedTextureRepack: true,
   compactTextures: true,
   dropUnreadAlpha: true,
+  // Rebuild LOD1+ of rigids whose LODs AssetEditor's old decimator generated (hosts before output 32 ignore it).
+  remakeEditorLods: true,
   // The host writes the output's rigid models LZ4-compressed the way whmm's staging compressor does, so
   // optimized results need no compression step here.
   compressRigidModels: true,
