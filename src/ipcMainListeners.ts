@@ -696,7 +696,7 @@ let cachedEsfMapData: { signature: string; data: import("./esfMap/types").EsfMap
  *
  * The names are all an icon lookup needs, and reading a pack just to list them costs a full index
  * parse per pack - about 260 of them for wh3. Populates the cache for packs the startup path never
- * touched, so the second call in a session is free.
+ * touched; the existing debounced writer persists those names for later calls and launches.
  */
 const getVanillaPackedFileNames = async (packPath: string): Promise<string[]> => {
   const cachedEntry = await getCurrentPackFilesCacheEntry(packPath);
@@ -709,7 +709,6 @@ const getVanillaPackedFileNames = async (packPath: string): Promise<string[]> =>
   try {
     const stat = await fs.promises.stat(packPath);
     rememberPackFileNames(packPath, stat.size, stat.mtimeMs, packedFileNames);
-    await saveVanillaPackFilesCache();
   } catch {
     // The caller already has the names; a disappearing pack only prevents persistence.
   }
