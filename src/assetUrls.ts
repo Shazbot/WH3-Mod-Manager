@@ -53,8 +53,8 @@ export const unitAssetUrl = (sessionId: string, assetPath: string) =>
  * A GLB exported by WH3AssetHost for the Visuals panel. The id is random per export, so the URL is
  * immutable for the lifetime of that preview and Chromium can cache it safely while Three.js loads it.
  */
-export const modelPreviewAssetUrl = (previewId: string) =>
-  `${ASSET_SCHEME}://${MODEL_PREVIEW_HOST}/${encodeURIComponent(previewId)}/model.glb`;
+export const modelPreviewAssetUrl = (previewId: string, fileName = "model.glb") =>
+  `${ASSET_SCHEME}://${MODEL_PREVIEW_HOST}/${encodeURIComponent(previewId)}/${encodeURIComponent(fileName)}`;
 
 /**
  * A mod's thumbnail, addressed by where it sits on disk.

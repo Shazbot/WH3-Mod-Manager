@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { iconAssetUrl, normalizeAssetPath, unitAssetUrl } from "../src/assetUrls";
+import { iconAssetUrl, modelPreviewAssetUrl, normalizeAssetPath, unitAssetUrl } from "../src/assetUrls";
 
 describe("asset URLs", () => {
   it("survives the characters a pack path is full of", () => {
@@ -24,6 +24,11 @@ describe("asset URLs", () => {
     const [, sessionId, assetPath] = url.pathname.split("/").map((segment) => decodeURIComponent(segment));
     expect(sessionId).toBe("session-1");
     expect(assetPath).toBe("ui\\units\\icons\\unit_a.png");
+  });
+
+  it("points a model preview at the file the host actually wrote", () => {
+    expect(new URL(modelPreviewAssetUrl("p1")).pathname).toBe("/p1/model.glb");
+    expect(new URL(modelPreviewAssetUrl("p1", "animations.glb")).pathname).toBe("/p1/animations.glb");
   });
 
   it("normalises the way pack paths are compared everywhere else", () => {

@@ -577,14 +577,9 @@ const CLIP_PREFETCH_CHUNK_SIZE = DEFAULT_CLIP_CHUNK_SIZE;
 const createPreviewClipCache = (
   contextRef: { current: ClipFetchContext | null },
   optionsRef: { current: readonly PreviewAnimation[] },
-  setWarnings: (update: (current: string[]) => string[]) => void,
 ) =>
   new AnimationClipCache<THREE.AnimationClip>({
     chunkSize: CLIP_PREFETCH_CHUNK_SIZE,
-    onFailure: (key, reason) => {
-      const label = optionsRef.current.find((option) => option.key === key)?.label ?? key;
-      setWarnings((current) => [...current, `Animation ${label} could not be loaded: ${reason}`]);
-    },
     fetchChunk: async (keys) => {
       const fetchContext = contextRef.current;
       if (!fetchContext) throw new Error("No model is loaded.");
@@ -621,6 +616,7 @@ const createPreviewClipCache = (
         console.log("[clip cache] chunk", {
           requested: requested.length,
           loaded: clips.size,
+          failed: failures.size,
           totalMs: Math.round(performance.now() - startedAt),
           hostExportMs: Math.round(result.timings?.hostExportMs ?? 0),
         });
@@ -2630,7 +2626,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       clipCache?.cache.dispose();
       clipCache = {
         key: resourceSessionKey,
-        cache: createPreviewClipCache(clipFetchContextRef, animationOptionsRef, setWarnings),
+        cache: createPreviewClipCache(clipFetchContextRef, animationOptionsRef),
       };
       clipCacheRef.current = clipCache;
     }
@@ -3114,7 +3110,13 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       const clip = await cache.request(selectedAnimationPath);
       if (token !== animationSwapTokenRef.current || primaryAnimationRef.current !== state) return;
       if (!clip) {
-        setWarnings((current) => [...current, "This animation could not be loaded."]);
+        // Only the animation the user picked is reported; background prefetch failures stay in the console.
+        const label =
+          animationOptionsRef.current.find((option) => option.key === selectedAnimationPath)?.label ??
+          selectedAnimationPath;
+        const reason = cache.failureReason(selectedAnimationPath);
+        const message = `Animation ${label} could not be loaded${reason ? `: ${reason}` : "."}`;
+        setWarnings((current) => (current.includes(message) ? current : [...current, message]));
         return;
       }
       clearActions();
@@ -5495,7 +5497,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         </span>
       </div>
       {visibleWarnings.length > 0 && (
-        <div className="shrink-0 border-t border-amber-700/50 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
+        <div className="max-h-16 shrink-0 overflow-y-auto border-t border-amber-700/50 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
           {visibleWarnings.join(" | ")}
         </div>
       )}

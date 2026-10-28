@@ -612,7 +612,7 @@ const exportVisualsModelAnimationsNow = async (
     return {
       success: true as const,
       previewId,
-      url: modelPreviewAssetUrl(previewId),
+      url: modelPreviewAssetUrl(previewId, nodePath.basename(result.primaryFile)),
       // Failed clips come back as "clip{index}|{path}|{reason}".
       warnings: result.warnings?.map((warning) => warning.message) ?? [],
       timings: { queueWaitMs, hostExportMs, totalMs: performance.now() - queuedAtMs },

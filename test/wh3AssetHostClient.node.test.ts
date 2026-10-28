@@ -95,6 +95,7 @@ describe("WH3AssetHostClient", () => {
           "getAnimationCatalog",
           "exportModel",
           "exportModelBatch",
+          "exportAnimations",
           "exportPaintedVariant",
           "paintedVariantRgba",
           "paintedVariantSourceOverride",

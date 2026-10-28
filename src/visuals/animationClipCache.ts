@@ -27,6 +27,7 @@ export const DEFAULT_MAX_CACHED_CLIPS = 200;
 export class AnimationClipCache<T> {
   private readonly clips = new Map<string, T>();
   private readonly failed = new Set<string>();
+  private readonly failureReasons = new Map<string, string>();
   private readonly queue: string[] = [];
   private readonly priority: string[] = [];
   private readonly waiters = new Map<string, Array<(clip: T | undefined) => void>>();
@@ -69,6 +70,11 @@ export class AnimationClipCache<T> {
       this.clips.set(key, clip);
     }
     return clip;
+  }
+
+  /** Why the last fetch of this key produced no clip, if it failed. */
+  failureReason(key: string): string | undefined {
+    return this.failureReasons.get(key);
   }
 
   /** Queues keys for background loading, skipping cached and known-failed ones. Stops at the cache cap. */
@@ -159,11 +165,15 @@ export class AnimationClipCache<T> {
             if (clip !== undefined) this.options.onRelease?.(key, clip);
             continue;
           }
-          if (clip !== undefined) this.store(key, clip);
-          else {
+          if (clip !== undefined) {
+            this.failureReasons.delete(key);
+            this.store(key, clip);
+          } else {
             // A transport error may succeed on retry; a clip the host skipped will not.
             if (!transientFailure) this.failed.add(key);
-            this.options.onFailure?.(key, result.failures?.get(key) ?? "The host produced no clip.");
+            const reason = result.failures?.get(key) ?? "The host produced no clip.";
+            this.failureReasons.set(key, reason);
+            this.options.onFailure?.(key, reason);
           }
           const resolvers = this.waiters.get(key);
           this.waiters.delete(key);

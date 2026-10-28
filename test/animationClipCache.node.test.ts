@@ -83,6 +83,8 @@ describe("AnimationClipCache", () => {
     await expect(cache.request("bad")).resolves.toBeUndefined();
     expect(calls).toHaveLength(1);
     expect(failures).toEqual(["bad"]);
+    expect(cache.failureReason("bad")).toBeTruthy();
+    expect(cache.failureReason("good")).toBeUndefined();
   });
 
   it("retries after a transport error", async () => {
