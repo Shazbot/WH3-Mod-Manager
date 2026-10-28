@@ -7,9 +7,8 @@
  *
  *   ancillaries/vanilla.bin  one payload, keyed on db.pack + the loc packs. No mod list, so
  *                            toggling a mod leaves it valid.
- *   ancillaries/mods.bin     one file, one segment per mod pack, each keyed on that pack's own
- *                            size+mtime. Changing, adding or removing one mod rewrites one segment
- *                            and leaves the rest of the file byte-for-byte identical.
+ *   ancillaries/mods/index.bin and one segment payload per mod pack, each keyed on that pack's own
+ *   size+mtime. Changing one mod rewrites only its payload; inactive payloads stay untouched.
  *
  * What is cached is the **raw rows per source**, not derived output: derivation has to run over the
  * merged row set anyway, so a per-half derived structure could not be merged back together.
@@ -17,6 +16,12 @@
 import { compress as zstdCompress, decompress as zstdDecompress } from "@mongodb-js/zstd";
 import * as fs from "fs";
 import * as nodePath from "path";
+import {
+  clearFeatureModSegmentsMemory,
+  loadFeatureModSegments,
+  saveFeatureModSegments,
+  type FeatureModSegmentsStoreOptions,
+} from "../featureModSegmentsCache";
 import { ANCILLARY_TABLES } from "./data";
 import type { AncillariesTableRows } from "./types";
 
@@ -25,7 +30,6 @@ const ANCILLARIES_CACHE_VERSION = 4;
 /** Subfolder under `app.getPath("userData")`, so the two files stay together. */
 export const ANCILLARIES_CACHE_DIR = "ancillaries";
 const VANILLA_CACHE_FILE = "vanilla.bin";
-const MODS_CACHE_FILE = "mods.bin";
 
 /**
  * How many mod segments to keep.
@@ -53,6 +57,23 @@ export interface AncillariesModSegment extends AncillariesSource {
 
 export type AncillariesModSegments = Record<string, AncillariesModSegment>;
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+const isStringRecord = (value: unknown): value is Record<string, string> =>
+  isRecord(value) && Object.values(value).every((entry) => typeof entry === "string");
+
+const isAncillariesModSegment = (value: unknown): value is AncillariesModSegment =>
+  isRecord(value) &&
+  isRecord(value.tables) &&
+  Object.values(value.tables).every((rows) => Array.isArray(rows)) &&
+  isStringRecord(value.localizations) &&
+  Array.isArray(value.identity) &&
+  value.identity.length === 2 &&
+  value.identity.every((part) => typeof part === "number" && Number.isFinite(part)) &&
+  typeof value.lastUsedMs === "number" &&
+  Number.isFinite(value.lastUsedMs);
+
 export interface AncillariesVanillaSignatureInputs {
   feature: number;
   game: string;
@@ -67,13 +88,7 @@ type VanillaDiskPayload = {
   signatureInputs?: AncillariesVanillaSignatureInputs;
 } & AncillariesSource;
 
-type ModsDiskPayload = {
-  version: number;
-  segments: AncillariesModSegments;
-};
-
 let cachedVanilla: VanillaDiskPayload | undefined;
-let cachedModSegments: AncillariesModSegments | undefined;
 
 const cacheDir = (userDataPath: string) => nodePath.join(userDataPath, ANCILLARIES_CACHE_DIR);
 
@@ -194,13 +209,23 @@ export const saveVanillaAncillariesCache = async (
 /** Segment keys are resolved, lower-cased paths so a differently-spelled path is still a hit. */
 export const modSegmentKey = (packPath: string) => nodePath.resolve(packPath).toLowerCase();
 
-export const loadAncillariesModSegments = async (userDataPath: string): Promise<AncillariesModSegments> => {
-  if (cachedModSegments) return cachedModSegments;
-  const filePath = nodePath.join(cacheDir(userDataPath), MODS_CACHE_FILE);
-  const payload = await readCompressedJson<ModsDiskPayload>(filePath);
-  cachedModSegments = payload?.version === ANCILLARIES_CACHE_VERSION && payload.segments ? payload.segments : {};
-  return cachedModSegments;
-};
+const modSegmentsStore = (userDataPath: string): FeatureModSegmentsStoreOptions<AncillariesModSegment> => ({
+  userDataPath,
+  feature: ANCILLARIES_CACHE_DIR,
+  dataVersion: ANCILLARIES_CACHE_VERSION,
+  maxEntries: MOD_SEGMENT_CAP,
+  isValidSegment: isAncillariesModSegment,
+  getIdentity: (segment: AncillariesModSegment) => ({
+    size: segment.identity[0],
+    mtimeMs: segment.identity[1],
+  }),
+});
+
+export const loadAncillariesModSegments = async (
+  userDataPath: string,
+  requestedPackPaths?: readonly string[],
+): Promise<AncillariesModSegments> =>
+  loadFeatureModSegments<AncillariesModSegment>(modSegmentsStore(userDataPath), requestedPackPaths);
 
 /** Drops the least recently used segments once the file would exceed {@link MOD_SEGMENT_CAP}. */
 export const pruneModSegments = (segments: AncillariesModSegments): AncillariesModSegments => {
@@ -213,15 +238,9 @@ export const pruneModSegments = (segments: AncillariesModSegments): AncillariesM
 export const saveAncillariesModSegments = async (
   userDataPath: string,
   segments: AncillariesModSegments,
-): Promise<AncillariesModSegments> => {
-  const pruned = pruneModSegments(segments);
-  await writeCompressedJson(nodePath.join(cacheDir(userDataPath), MODS_CACHE_FILE), {
-    version: ANCILLARIES_CACHE_VERSION,
-    segments: pruned,
-  } satisfies ModsDiskPayload);
-  cachedModSegments = pruned;
-  return pruned;
-};
+  dirtyPackPaths?: readonly string[],
+): Promise<AncillariesModSegments> =>
+  saveFeatureModSegments<AncillariesModSegment>(modSegmentsStore(userDataPath), segments, dirtyPackPaths);
 
 export const isSameIdentity = (a: PackIdentity | undefined, b: PackIdentity | undefined) =>
   !!a && !!b && a[0] === b[0] && a[1] === b[1];
@@ -279,5 +298,5 @@ export const mergeAncillariesSources = (
 
 export const clearAncillariesMemoryCache = () => {
   cachedVanilla = undefined;
-  cachedModSegments = undefined;
+  clearFeatureModSegmentsMemory(ANCILLARIES_CACHE_DIR);
 };

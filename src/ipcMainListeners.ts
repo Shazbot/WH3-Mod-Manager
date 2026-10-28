@@ -981,11 +981,15 @@ const getVisualsFilesForSession = async (session: VisualsSession): Promise<Visua
     const vanillaCache =
       (await loadVanillaVisualsCache(app.getPath("userData"), session.vanillaCacheSignature)) ??
       createEmptyVisualsDataCache();
-    const modSegments: VisualsModSegments = { ...(await loadVisualsModSegments(app.getPath("userData"))) };
+    const userDataPath = app.getPath("userData");
+    const modSegments: VisualsModSegments = {
+      ...(await loadVisualsModSegments(userDataPath, session.enabledModPaths)),
+    };
     const modPathKeys = new Set(session.enabledModPaths.map(visualsModSegmentKey));
     const contributions: VisualsFileResult[][] = [];
     let didChangeVanillaCache = false;
     let didChangeModSegments = false;
+    const dirtyModPackPaths = new Set<string>();
     for (const packPath of session.fileSearchPackPaths) {
       const identity = await getVisualsPackIdentity(packPath);
       if (!identity) continue;
@@ -1000,8 +1004,10 @@ const getVisualsFilesForSession = async (session: VisualsSession): Promise<Visua
           ? getOrCreateVisualsModSegment(modSegments, identity)
           : getOrCreateVisualsPackCacheEntry(vanillaCache, identity);
         entry.files = getVisualsFilesFromNames(pack.packedFiles.map((file) => file.name));
-        if (isMod) didChangeModSegments = true;
-        else didChangeVanillaCache = true;
+        if (isMod) {
+          didChangeModSegments = true;
+          dirtyModPackPaths.add(packPath);
+        } else didChangeVanillaCache = true;
       }
       if (isMod) {
         (entry as VisualsModSegment).lastUsedMs = Date.now();
@@ -1012,7 +1018,9 @@ const getVisualsFilesForSession = async (session: VisualsSession): Promise<Visua
     if (didChangeVanillaCache) {
       await saveVanillaVisualsCache(app.getPath("userData"), session.vanillaCacheSignature, vanillaCache);
     }
-    if (didChangeModSegments) await saveVisualsModSegments(app.getPath("userData"), modSegments);
+    if (didChangeModSegments) {
+      await saveVisualsModSegments(userDataPath, modSegments, [...dirtyModPackPaths]);
+    }
     const files = mergeVisualsFileContributions(contributions);
     session.visualFiles = files;
     return files;
@@ -4708,7 +4716,14 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   ): Promise<Array<{ packPath: string; source: BuildingsModSegment }>> => {
     if (orderedEnabledMods.length === 0) return [];
 
-    const segments: BuildingsModSegments = { ...(await loadBuildingsModSegments(app.getPath("userData"))) };
+    const userDataPath = app.getPath("userData");
+    const segments: BuildingsModSegments = {
+      ...(await loadBuildingsModSegments(
+        userDataPath,
+        orderedEnabledMods.map((mod) => mod.path),
+      )),
+    };
+    const dirtyPackPaths: string[] = [];
     const identities = new Map(
       await Promise.all(
         orderedEnabledMods.map(async (mod) => [mod.path, await readBuildingsPackIdentity(mod.path)] as const),
@@ -4732,6 +4747,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           identity: identities.get(mod.path) ?? [-1, -1],
           lastUsedMs: Date.now(),
         };
+        dirtyPackPaths.push(mod.path);
       }
       releaseParsedTables(
         stale.map((mod) => packsByPath.get(mod.path)).filter((pack): pack is Pack => !!pack),
@@ -4746,7 +4762,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       const segment = segments[buildingsModSegmentKey(mod.path)];
       if (segment) segment.lastUsedMs = now;
     }
-    const saved = await saveBuildingsModSegments(app.getPath("userData"), segments);
+    const saved = await saveBuildingsModSegments(userDataPath, segments, dirtyPackPaths);
     return orderedEnabledMods
       .map((mod) => ({ packPath: mod.path, source: saved[buildingsModSegmentKey(mod.path)] }))
       .filter(
@@ -5430,7 +5446,14 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   ): Promise<Array<{ packPath: string; source: AncillariesSource }>> => {
     if (orderedEnabledMods.length === 0) return [];
 
-    const segments: AncillariesModSegments = { ...(await loadAncillariesModSegments(app.getPath("userData"))) };
+    const userDataPath = app.getPath("userData");
+    const segments: AncillariesModSegments = {
+      ...(await loadAncillariesModSegments(
+        userDataPath,
+        orderedEnabledMods.map((mod) => mod.path),
+      )),
+    };
+    const dirtyPackPaths: string[] = [];
     const identities = new Map(
       await Promise.all(orderedEnabledMods.map(async (mod) => [mod.path, await readPackIdentity(mod.path)] as const)),
     );
@@ -5454,6 +5477,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           identity: identities.get(mod.path) ?? [-1, -1],
           lastUsedMs: Date.now(),
         };
+        dirtyPackPaths.push(mod.path);
       }
       releaseParsedTables(
         stale.map((mod) => packsByPath.get(mod.path)).filter((pack): pack is Pack => !!pack),
@@ -5470,7 +5494,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       const segment = segments[modSegmentKey(mod.path)];
       if (segment) segment.lastUsedMs = now;
     }
-    const saved = await saveAncillariesModSegments(app.getPath("userData"), segments);
+    const saved = await saveAncillariesModSegments(userDataPath, segments, dirtyPackPaths);
 
     return orderedEnabledMods
       .map((mod) => ({ packPath: mod.path, source: saved[modSegmentKey(mod.path)] }))
@@ -7910,8 +7934,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       const visualsCache =
         (await loadVanillaVisualsCache(app.getPath("userData"), vanillaCacheSignature, vanillaSignatureInputs)) ??
         createEmptyVisualsDataCache();
+      const userDataPath = app.getPath("userData");
       const visualsModSegments: VisualsModSegments = {
-        ...(await loadVisualsModSegments(app.getPath("userData"))),
+        ...(await loadVisualsModSegments(userDataPath, enabledModPaths)),
       };
       const schemaHash = vanillaSignatureInputs.schema;
       const modPathKeys = new Set(enabledModPaths.map(visualsModSegmentKey));
@@ -7985,6 +8010,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
 
       let didChangeVanillaCache = false;
       let didChangeModSegments = false;
+      const dirtyModPackPaths = new Set<string>();
       const fillCachedContribution = (
         packPath: string,
         options: { tables?: boolean; locs?: boolean },
@@ -8005,14 +8031,18 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             schemaHash,
             contribution,
           };
-          if (isMod) didChangeModSegments = true;
-          else didChangeVanillaCache = true;
+          if (isMod) {
+            didChangeModSegments = true;
+            dirtyModPackPaths.add(packPath);
+          } else didChangeVanillaCache = true;
         }
         if (options.locs && !entry.locs) {
           if (!pack) return undefined;
           entry.locs = getVisualsLocContribution(pack);
-          if (isMod) didChangeModSegments = true;
-          else didChangeVanillaCache = true;
+          if (isMod) {
+            didChangeModSegments = true;
+            dirtyModPackPaths.add(packPath);
+          } else didChangeVanillaCache = true;
         }
         return entry;
       };
@@ -8211,7 +8241,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           vanillaSignatureInputs,
         );
       }
-      if (didChangeModSegments) await saveVisualsModSegments(app.getPath("userData"), visualsModSegments);
+      if (didChangeModSegments) {
+        await saveVisualsModSegments(userDataPath, visualsModSegments, [...dirtyModPackPaths]);
+      }
       const sessionId = `visuals_${hash({
         game: appData.currentGame,
         language: appData.currentLanguage || "en",

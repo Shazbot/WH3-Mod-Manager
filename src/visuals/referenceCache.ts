@@ -2,6 +2,12 @@ import { createHash } from "node:crypto";
 import * as path from "node:path";
 import { constants, zstdCompressSync, zstdDecompressSync } from "node:zlib";
 import { stat, mkdir, writeFile } from "node:fs/promises";
+import {
+  getFeatureModSegmentPayloadPathForKey,
+  getFeatureModSegmentsIndexPath,
+  isFeatureModSegmentPayload,
+  parseFeatureModSegmentsIndex,
+} from "../featureModSegmentsCache";
 import { VISUALS_DATA_CACHE_VERSION, type VisualsPackCacheEntry } from "./cache";
 
 /** Independent of the GUI catalog version: these are raw references, never resolved providers. */
@@ -40,15 +46,22 @@ interface CachePolicy {
   assertReadTargetPath(filePath: string): Promise<string>;
   assertWritePath(filePath: string): Promise<string>;
   withAtomicOutput(options: {
-    outputPath: string; sourcePaths: string[]; overwrite: boolean;
+    outputPath: string;
+    sourcePaths: string[];
+    overwrite: boolean;
     produce: (temporaryPath: string) => Promise<void>;
   }): Promise<{ path: string }>;
 }
 
 export interface VisualsCacheSession {
   catalog(source: VisualsCacheSource, schemaHash: string): Promise<VisualsPackCacheEntry | undefined>;
-  reference<T>(source: VisualsCacheSource, filePath: string, kind: string,
-    validate: (value: unknown) => value is T, load: () => Promise<T>): Promise<T>;
+  reference<T>(
+    source: VisualsCacheSource,
+    filePath: string,
+    kind: string,
+    validate: (value: unknown) => value is T,
+    load: () => Promise<T>,
+  ): Promise<T>;
   flush(): Promise<void>;
   flushSource(identity: string): Promise<void>;
   discard(): void;
@@ -86,7 +99,10 @@ export const createVisualsCacheSession = (options: {
       const parsed: unknown = JSON.parse(decoded.toString("utf8"));
       // A disk cache can be replaced during an MCP session; only request-local reads are reused.
       return parsed;
-    } catch (error) { fatal(error); return undefined; }
+    } catch (error) {
+      fatal(error);
+      return undefined;
+    }
   };
   const pack = (source: VisualsCacheSource) => {
     let pending = packs.get(source.identity);
@@ -99,17 +115,31 @@ export const createVisualsCacheSession = (options: {
           if (!root) continue;
           candidate = await read(path.join(root, "visuals", "references", `${hash(source.path)}.bin`));
           const value = candidate as Partial<PackReferences> | undefined;
-          if (value?.version === VISUAL_REFERENCE_CACHE_VERSION && value.revision === VISUAL_REFERENCE_PARSER_REVISION &&
-              value.sourceIdentity === source.identity && value.payloadLimit === options.payloadLimit &&
-              value.references && typeof value.references === "object" && !Array.isArray(value.references)) break;
+          if (
+            value?.version === VISUAL_REFERENCE_CACHE_VERSION &&
+            value.revision === VISUAL_REFERENCE_PARSER_REVISION &&
+            value.sourceIdentity === source.identity &&
+            value.payloadLimit === options.payloadLimit &&
+            value.references &&
+            typeof value.references === "object" &&
+            !Array.isArray(value.references)
+          )
+            break;
           candidate = undefined;
         }
       }
       const value = candidate as PackReferences | undefined;
-      return { source, dirty: false, value: value ?? {
-        version: VISUAL_REFERENCE_CACHE_VERSION, revision: VISUAL_REFERENCE_PARSER_REVISION,
-        sourceIdentity: source.identity, payloadLimit: options.payloadLimit, references: {},
-      } };
+      return {
+        source,
+        dirty: false,
+        value: value ?? {
+          version: VISUAL_REFERENCE_CACHE_VERSION,
+          revision: VISUAL_REFERENCE_PARSER_REVISION,
+          sourceIdentity: source.identity,
+          payloadLimit: options.payloadLimit,
+          references: {},
+        },
+      };
     })();
     packs.set(source.identity, pending);
     return pending;
@@ -120,49 +150,145 @@ export const createVisualsCacheSession = (options: {
     const record = await pending;
     options.checkCancelled();
     const text = JSON.stringify(record.value);
-    options.retain(`visuals-references:${record.source.identity}:${options.payloadLimit}:${VISUAL_REFERENCE_PARSER_REVISION}`,
-      record.value, Buffer.byteLength(text) * 4 + 2048, record.source.path);
+    options.retain(
+      `visuals-references:${record.source.identity}:${options.payloadLimit}:${VISUAL_REFERENCE_PARSER_REVISION}`,
+      record.value,
+      Buffer.byteLength(text) * 4 + 2048,
+      record.source.path,
+    );
     if (record.dirty && options.cacheDir && Buffer.byteLength(text) <= MAX_CACHE_BYTES) {
       try {
-        const outputPath = path.join(options.cacheDir, "headless", "visuals", "references", `${hash(record.source.path)}.bin`);
+        const outputPath = path.join(
+          options.cacheDir,
+          "headless",
+          "visuals",
+          "references",
+          `${hash(record.source.path)}.bin`,
+        );
         await options.policy.assertReadTargetPath(outputPath);
         const allowed = await options.policy.assertWritePath(outputPath);
         await mkdir(path.dirname(allowed), { recursive: true });
-        await options.policy.withAtomicOutput({ outputPath: allowed, sourcePaths: [record.source.path], overwrite: true,
-          produce: async (temporaryPath) => { await writeFile(temporaryPath,
-            zstdCompressSync(Buffer.from(text), { params: { [constants.ZSTD_c_compressionLevel]: 1 } })); } });
+        await options.policy.withAtomicOutput({
+          outputPath: allowed,
+          sourcePaths: [record.source.path],
+          overwrite: true,
+          produce: async (temporaryPath) => {
+            await writeFile(
+              temporaryPath,
+              zstdCompressSync(Buffer.from(text), { params: { [constants.ZSTD_c_compressionLevel]: 1 } }),
+            );
+          },
+        });
         options.stats.persistentWrites++;
-      } catch (error) { fatal(error); options.onPersistenceUnavailable?.(); }
+      } catch (error) {
+        fatal(error);
+        options.onPersistenceUnavailable?.();
+      }
     }
     packs.delete(identity);
   };
   return {
     async catalog(source, schemaHash) {
       if (!options.whmmCacheDir) return undefined;
-      for (const file of ["vanilla.bin", "mods.bin"]) {
-        options.checkCancelled();
-        const filePath = path.join(options.whmmCacheDir, "visuals", file);
+      const mapsToSource = async (storedPackPath: string): Promise<boolean> => {
+        try {
+          const local = await (options.mapCatalogPath?.(storedPackPath) ?? Promise.resolve(storedPackPath));
+          const canonical = await options.policy.assertReadPath(local);
+          const normalized = (value: string) => (process.platform === "win32" ? value.toLowerCase() : value);
+          return normalized(canonical) === normalized(source.path);
+        } catch (error) {
+          fatal(error);
+          return false;
+        }
+      };
+      const matchesSource = async (entry: VisualsPackCacheEntry | undefined, payloadPath: string): Promise<boolean> => {
+        if (
+          !entry?.identity ||
+          typeof entry.identity.packPath !== "string" ||
+          entry.identity.size !== source.size ||
+          Math.abs(entry.identity.mtimeMs - source.mtimeMs) > 0.001 ||
+          entry.tables?.schemaHash !== schemaHash
+        ) {
+          return false;
+        }
+        // GUI v7 entries use size/mtime identity. The actual segment payload mtime also
+        // catches a same-size replacement whose source mtime was deliberately preserved.
+        if (source.ctimeMs > (fileTimes.get(payloadPath) ?? -Infinity) + 0.001) return false;
+        if (path.win32.basename(entry.identity.packPath).toLowerCase() !== path.basename(source.path).toLowerCase()) {
+          return false;
+        }
+        return mapsToSource(entry.identity.packPath);
+      };
+      const readCatalogFile = async (filePath: string) => {
         let pending = catalogFiles.get(filePath);
-        if (!pending) { pending = read(filePath); catalogFiles.set(filePath, pending); }
-        const payload = await pending as { version?: number; entries?: Record<string, VisualsPackCacheEntry>; segments?: Record<string, VisualsPackCacheEntry> } | undefined;
-        if (payload?.version !== VISUALS_DATA_CACHE_VERSION) continue;
-        // GUI v7 has size/mtime identities. A later source change also invalidates it,
-        // including a same-size replacement whose mtime was deliberately preserved.
-        if (source.ctimeMs > (fileTimes.get(filePath) ?? -Infinity) + 0.001) continue;
-        const entries = payload.entries ?? payload.segments;
-        if (!entries || typeof entries !== "object") continue;
-        for (const entry of Object.values(entries)) {
-          if (!entry?.identity || typeof entry.identity.packPath !== "string" || entry.identity.size !== source.size ||
-              Math.abs(entry.identity.mtimeMs - source.mtimeMs) > 0.001 || entry.tables?.schemaHash !== schemaHash) continue;
-          if (path.win32.basename(entry.identity.packPath).toLowerCase() !== path.basename(source.path).toLowerCase()) continue;
-          try {
-            const local = await (options.mapCatalogPath?.(entry.identity.packPath) ?? Promise.resolve(entry.identity.packPath));
-            const canonical = await options.policy.assertReadPath(local);
-            const normalized = (value: string) => process.platform === "win32" ? value.toLowerCase() : value;
-            if (normalized(canonical) !== normalized(source.path)) continue;
+        if (!pending) {
+          pending = read(filePath);
+          catalogFiles.set(filePath, pending);
+        }
+        return pending;
+      };
+
+      // Keep the read-only vanilla catalog path unchanged.
+      const vanillaPath = path.join(options.whmmCacheDir, "visuals", "vanilla.bin");
+      options.checkCancelled();
+      const vanilla = (await readCatalogFile(vanillaPath)) as
+        { version?: number; entries?: Record<string, VisualsPackCacheEntry> } | undefined;
+      if (vanilla?.version === VISUALS_DATA_CACHE_VERSION && vanilla.entries) {
+        for (const entry of Object.values(vanilla.entries)) {
+          options.checkCancelled();
+          if (await matchesSource(entry, vanillaPath)) {
             options.stats.catalogHits++;
             return entry;
-          } catch (error) { fatal(error); }
+          }
+        }
+      }
+
+      // New GUI cache layout: inspect its small index, then read only the matching mod payload.
+      const indexPath = getFeatureModSegmentsIndexPath(options.whmmCacheDir, "visuals");
+      options.checkCancelled();
+      const rawIndex = await readCatalogFile(indexPath);
+      const index = parseFeatureModSegmentsIndex(rawIndex, VISUALS_DATA_CACHE_VERSION);
+      if (index) {
+        for (const indexEntry of Object.values(index.entries)) {
+          options.checkCancelled();
+          if (
+            indexEntry.size !== source.size ||
+            Math.abs(indexEntry.mtimeMs - source.mtimeMs) > 0.001 ||
+            path.win32.basename(indexEntry.sourcePackPath).toLowerCase() !== path.basename(source.path).toLowerCase()
+          ) {
+            continue;
+          }
+          // Use the original spelling from the index for cross-platform mapping. The normalized
+          // key is only for locating the payload file; Linux cannot resolve a Windows path key.
+          if (!(await mapsToSource(indexEntry.sourcePackPath))) continue;
+          const payloadPath = getFeatureModSegmentPayloadPathForKey(
+            options.whmmCacheDir,
+            "visuals",
+            indexEntry.packPath,
+          );
+          const payload = await readCatalogFile(payloadPath);
+          if (!isFeatureModSegmentPayload(payload, indexEntry, VISUALS_DATA_CACHE_VERSION)) continue;
+          const entry = payload.segment as VisualsPackCacheEntry;
+          if (entry.identity?.packPath !== indexEntry.sourcePackPath) continue;
+          if (await matchesSource(entry, payloadPath)) {
+            options.stats.catalogHits++;
+            return entry;
+          }
+        }
+      }
+
+      // Read the former monolithic catalog as a compatibility fallback for older app caches.
+      const legacyModsPath = path.join(options.whmmCacheDir, "visuals", "mods.bin");
+      options.checkCancelled();
+      const legacyMods = (await readCatalogFile(legacyModsPath)) as
+        { version?: number; segments?: Record<string, VisualsPackCacheEntry> } | undefined;
+      if (legacyMods?.version === VISUALS_DATA_CACHE_VERSION && legacyMods.segments) {
+        for (const entry of Object.values(legacyMods.segments)) {
+          options.checkCancelled();
+          if (await matchesSource(entry, legacyModsPath)) {
+            options.stats.catalogHits++;
+            return entry;
+          }
         }
       }
       return undefined;
@@ -172,7 +298,10 @@ export const createVisualsCacheSession = (options: {
       const record = await pack(source);
       const key = `${kind}:${filePath.replace(/\\/g, "/").toLowerCase()}`;
       const candidate = Object.hasOwn(record.value.references, key) ? record.value.references[key] : undefined;
-      if (validate(candidate)) { options.stats.referenceHits++; return candidate; }
+      if (validate(candidate)) {
+        options.stats.referenceHits++;
+        return candidate;
+      }
       options.stats.referenceMisses++;
       options.stats.sourceParses++;
       const value = await load();
@@ -188,6 +317,10 @@ export const createVisualsCacheSession = (options: {
       catalogFiles.clear();
     },
     flushSource,
-    discard() { packs.clear(); catalogFiles.clear(); fileTimes.clear(); },
+    discard() {
+      packs.clear();
+      catalogFiles.clear();
+      fileTimes.clear();
+    },
   };
 };

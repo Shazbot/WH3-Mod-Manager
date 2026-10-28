@@ -9,6 +9,12 @@ import { makeRowFields } from "../../src/automation/tables";
 import { LocVersion, type DBField, type DBVersion } from "../../src/packFileTypes";
 import { readPackIndex, serializeDbTable, writeRawPack } from "../../src/packCore";
 import { VISUALS_DATA_CACHE_VERSION } from "../../src/visuals/cache";
+import {
+  FEATURE_MOD_SEGMENTS_STORE_VERSION,
+  getFeatureModSegmentPayloadPathForKey,
+  getFeatureModSegmentsIndexPath,
+  normalizeFeatureModSegmentPackPath,
+} from "../../src/featureModSegmentsCache";
 import { canonicalizeExistingPath } from "../../src/vanillaCacheIdentity";
 import { prepareReferenceEnvironment, resolveReferenceAsset } from "../../src/automation/references";
 import { createIncomingVisualReferenceIndex } from "../../src/automation/graphUsers";
@@ -111,6 +117,80 @@ describe("shared visuals catalog and dependency metadata", () => {
     expect(JSON.stringify(payload)).not.toContain('"raw"');
   });
 
+  it("reads only a matching lazy GUI mod payload and leaves its index and payload read-only", async () => {
+    const f = await fixture();
+    rmSync(f.guiPath, { force: true });
+    const key = normalizeFeatureModSegmentPackPath(f.units);
+    const indexPath = getFeatureModSegmentsIndexPath(f.whmmCacheDir, "visuals");
+    const payloadPath = getFeatureModSegmentPayloadPathForKey(f.whmmCacheDir, "visuals", key);
+    mkdirSync(path.dirname(payloadPath), { recursive: true });
+    const index = {
+      version: FEATURE_MOD_SEGMENTS_STORE_VERSION,
+      dataVersion: VISUALS_DATA_CACHE_VERSION,
+      entries: {
+        [key]: {
+          packPath: key,
+          sourcePackPath: f.units,
+          size: f.entry.identity.size,
+          mtimeMs: f.entry.identity.mtimeMs,
+          lastUsedMs: 10,
+        },
+      },
+    };
+    const payload = {
+      version: FEATURE_MOD_SEGMENTS_STORE_VERSION,
+      dataVersion: VISUALS_DATA_CACHE_VERSION,
+      packPath: key,
+      sourcePackPath: f.units,
+      size: f.entry.identity.size,
+      mtimeMs: f.entry.identity.mtimeMs,
+      segment: { ...f.entry, lastUsedMs: 10 },
+    };
+    writeFileSync(indexPath, zstdCompressSync(Buffer.from(JSON.stringify(index))));
+    writeFileSync(payloadPath, zstdCompressSync(Buffer.from(JSON.stringify(payload))));
+    const indexBefore = readFileSync(indexPath);
+    const payloadBefore = readFileSync(payloadPath);
+
+    const cache = f.service();
+    await executeAutomationRequest({ ...f.request, targetPath: "textures/not-used.dds" }, f.context(cache));
+
+    expect(cache.stats().visuals.catalogHits).toBe(3);
+    expect(readFileSync(indexPath)).toEqual(indexBefore);
+    expect(readFileSync(payloadPath)).toEqual(payloadBefore);
+    await cache.close();
+
+    const oldDate = new Date(0);
+    utimesSync(payloadPath, oldDate, oldDate);
+    const stale = f.service();
+    await executeAutomationRequest({ ...f.request, targetPath: "textures/not-used.dds" }, f.context(stale));
+    expect(stale.stats().visuals.catalogHits).toBe(0);
+    await stale.close();
+  });
+
+  it("keeps reading legacy GUI mods.bin files when no lazy index exists", async () => {
+    const f = await fixture();
+    rmSync(f.guiPath, { force: true });
+    const key = normalizeFeatureModSegmentPackPath(f.units);
+    const legacyPath = path.join(f.whmmCacheDir, "visuals", "mods.bin");
+    writeFileSync(
+      legacyPath,
+      zstdCompressSync(
+        Buffer.from(
+          JSON.stringify({
+            version: VISUALS_DATA_CACHE_VERSION,
+            segments: { [key]: { ...f.entry, lastUsedMs: 10 } },
+          }),
+        ),
+      ),
+    );
+
+    const cache = f.service();
+    await executeAutomationRequest({ ...f.request, targetPath: "textures/not-used.dds" }, f.context(cache));
+
+    expect(cache.stats().visuals.catalogHits).toBe(3);
+    await cache.close();
+  });
+
   it("keeps raw extraction reusable when a later request asks for a different texture", async () => {
     const f = await fixture(); const cache = f.service();
     const first = await executeAutomationRequest(f.request, f.context(cache));
@@ -133,7 +213,11 @@ describe("shared visuals catalog and dependency metadata", () => {
     await writeRawPack(compressedAssets, entries, metadata);
     const expected = await executeAutomationRequest(f.request, f.context());
     const actual = await executeAutomationRequest({ ...f.request, packPaths: [compressedAssets] }, f.context());
-    expect(JSON.parse(JSON.stringify(actual).replaceAll(compressedAssets, f.assets))).toEqual(expected);
+    const normalizeWireValue = (value: unknown) =>
+      JSON.parse(
+        JSON.stringify(value, (_key, part) => (part === compressedAssets ? f.assets : part)),
+      );
+    expect(normalizeWireValue(actual)).toEqual(normalizeWireValue(expected));
   });
 
   it("does not charge unrelated DDS edges against a small incoming-index edge budget", async () => {

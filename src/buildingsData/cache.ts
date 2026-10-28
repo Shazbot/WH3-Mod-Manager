@@ -7,11 +7,17 @@
  * localisation snapshot in one cache, and one independently reusable segment for every mod pack.
  *
  *   buildings/vanilla.bin  db.pack, UI frame, startpos files, and vanilla locs
- *   buildings/mods.bin     one raw source segment per mod pack
+ *   buildings/mods/index.bin and one versioned payload per mod pack
  */
 import { compress as zstdCompress, decompress as zstdDecompress } from "@mongodb-js/zstd";
 import * as fs from "fs";
 import * as nodePath from "path";
+import {
+  clearFeatureModSegmentsMemory,
+  loadFeatureModSegments,
+  saveFeatureModSegments,
+  type FeatureModSegmentsStoreOptions,
+} from "../featureModSegmentsCache";
 import type { BuildingsCloneSourcePackPaths, BuildingsTableRows } from "./types";
 
 /** Bump whenever the extraction rules or cached shape change. */
@@ -19,7 +25,6 @@ const BUILDINGS_CACHE_VERSION = 4;
 /** Subfolder under `app.getPath("userData")`, so the two files stay together. */
 export const BUILDINGS_CACHE_DIR = "buildings";
 const VANILLA_CACHE_FILE = "vanilla.bin";
-const MODS_CACHE_FILE = "mods.bin";
 
 /** What one source contributes before the rows are merged and derived. */
 export interface BuildingsSource {
@@ -42,6 +47,39 @@ export interface BuildingsModSegment extends BuildingsSource {
 
 export type BuildingsModSegments = Record<string, BuildingsModSegment>;
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+const isStringRecord = (value: unknown): value is Record<string, string> =>
+  isRecord(value) && Object.values(value).every((entry) => typeof entry === "string");
+
+const isBuildingsModSegment = (value: unknown): value is BuildingsModSegment => {
+  if (!isRecord(value) || !isRecord(value.tables) || !isStringRecord(value.localizations)) return false;
+  if (!Object.values(value.tables).every((rows) => Array.isArray(rows))) return false;
+  if (
+    !Array.isArray(value.identity) ||
+    value.identity.length !== 2 ||
+    !value.identity.every((part) => typeof part === "number" && Number.isFinite(part)) ||
+    typeof value.lastUsedMs !== "number" ||
+    !Number.isFinite(value.lastUsedMs)
+  ) {
+    return false;
+  }
+  if (value.buildingFrame !== undefined && typeof value.buildingFrame !== "string") return false;
+  if (value.cloneSourcePackPaths !== undefined) {
+    const clonePaths = value.cloneSourcePackPaths;
+    if (
+      !isRecord(clonePaths) ||
+      !isStringRecord(clonePaths.levels) ||
+      !isStringRecord(clonePaths.cultureVariants) ||
+      !isStringRecord(clonePaths.sets)
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
+
 export interface BuildingsVanillaSignatureInputs {
   feature: number;
   game: string;
@@ -57,16 +95,10 @@ type VanillaDiskPayload = {
   signatureInputs?: BuildingsVanillaSignatureInputs;
 } & BuildingsSource;
 
-type ModsDiskPayload = {
-  version: number;
-  segments: BuildingsModSegments;
-};
-
 /** Keep the same bounded LRU policy as the Ancillaries cache. */
 const MOD_SEGMENT_CAP = 100;
 
 let cachedVanilla: VanillaDiskPayload | undefined;
-let cachedModSegments: BuildingsModSegments | undefined;
 
 const cacheDir = (userDataPath: string) => nodePath.join(userDataPath, BUILDINGS_CACHE_DIR);
 
@@ -201,13 +233,23 @@ export const saveVanillaBuildingsCache = async (
 export const buildingsModSegmentKey = (packPath: string) => nodePath.resolve(packPath).toLowerCase();
 export const modSegmentKey = buildingsModSegmentKey;
 
-export const loadBuildingsModSegments = async (userDataPath: string): Promise<BuildingsModSegments> => {
-  if (cachedModSegments) return cachedModSegments;
-  const filePath = nodePath.join(cacheDir(userDataPath), MODS_CACHE_FILE);
-  const payload = await readCompressedJson<ModsDiskPayload>(filePath);
-  cachedModSegments = payload?.version === BUILDINGS_CACHE_VERSION && payload.segments ? payload.segments : {};
-  return cachedModSegments;
-};
+const modSegmentsStore = (userDataPath: string): FeatureModSegmentsStoreOptions<BuildingsModSegment> => ({
+  userDataPath,
+  feature: BUILDINGS_CACHE_DIR,
+  dataVersion: BUILDINGS_CACHE_VERSION,
+  maxEntries: MOD_SEGMENT_CAP,
+  isValidSegment: isBuildingsModSegment,
+  getIdentity: (segment: BuildingsModSegment) => ({
+    size: segment.identity[0],
+    mtimeMs: segment.identity[1],
+  }),
+});
+
+export const loadBuildingsModSegments = async (
+  userDataPath: string,
+  requestedPackPaths?: readonly string[],
+): Promise<BuildingsModSegments> =>
+  loadFeatureModSegments<BuildingsModSegment>(modSegmentsStore(userDataPath), requestedPackPaths);
 
 /** Drops the least recently used segments once the file would exceed the cap. */
 export const pruneBuildingsModSegments = (segments: BuildingsModSegments): BuildingsModSegments => {
@@ -221,16 +263,9 @@ export const pruneModSegments = pruneBuildingsModSegments;
 export const saveBuildingsModSegments = async (
   userDataPath: string,
   segments: BuildingsModSegments,
-): Promise<BuildingsModSegments> => {
-  const pruned = pruneBuildingsModSegments(segments);
-  await writeCompressedJson(
-    nodePath.join(cacheDir(userDataPath), MODS_CACHE_FILE),
-    { version: BUILDINGS_CACHE_VERSION, segments: pruned } satisfies ModsDiskPayload,
-    "mod",
-  );
-  cachedModSegments = pruned;
-  return pruned;
-};
+  dirtyPackPaths?: readonly string[],
+): Promise<BuildingsModSegments> =>
+  saveFeatureModSegments<BuildingsModSegment>(modSegmentsStore(userDataPath), segments, dirtyPackPaths);
 
 export const isSameBuildingsIdentity = (a: PackIdentity | undefined, b: PackIdentity | undefined) =>
   !!a && !!b && a[0] === b[0] && a[1] === b[1];
@@ -298,5 +333,5 @@ export const mergeBuildingsSources = (
 
 export const clearBuildingsMemoryCache = () => {
   cachedVanilla = undefined;
-  cachedModSegments = undefined;
+  clearFeatureModSegmentsMemory(BUILDINGS_CACHE_DIR);
 };

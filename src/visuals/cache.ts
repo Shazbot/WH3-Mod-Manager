@@ -1,12 +1,17 @@
 import * as nodePath from "path";
 import * as fs from "fs";
+import {
+  clearFeatureModSegmentsMemory,
+  loadFeatureModSegments,
+  saveFeatureModSegments,
+  type FeatureModSegmentsStoreOptions,
+} from "../featureModSegmentsCache";
 
 /** Bump whenever the extraction rules or the cached shape change. */
 export const VISUALS_DATA_CACHE_VERSION = 7;
 /** Subfolder under `app.getPath("userData")`, so the two files stay together. */
 export const VISUALS_CACHE_DIR = "visuals";
 const VANILLA_CACHE_FILE = "vanilla.bin";
-const MODS_CACHE_FILE = "mods.bin";
 
 /** Keep the mod cache bounded while retaining disabled mods for quick re-enabling. */
 const MOD_SEGMENT_CAP = 100;
@@ -97,18 +102,110 @@ export interface VisualsModSegment extends VisualsPackCacheEntry {
 
 export type VisualsModSegments = Record<string, VisualsModSegment>;
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+const isStringPairs = (value: unknown, length: number): value is Array<string[]> =>
+  Array.isArray(value) &&
+  value.every(
+    (entry) => Array.isArray(entry) && entry.length === length && entry.every((part) => typeof part === "string"),
+  );
+
+const isVisualsContribution = (value: unknown): value is VisualsTableContribution => {
+  if (!isRecord(value)) return false;
+  if (!isStringPairs(value.variants, 2) || !Array.isArray(value.unitVariants) || !Array.isArray(value.landUnits))
+    return false;
+  if (!value.landUnits.every((key) => typeof key === "string")) return false;
+  if (
+    !value.unitVariants.every(
+      (row) =>
+        Array.isArray(row) &&
+        row.length >= 3 &&
+        row.slice(0, 3).every((part) => typeof part === "string") &&
+        row.slice(3).every((part) => part === undefined || part === null || typeof part === "string"),
+    )
+  ) {
+    return false;
+  }
+  for (const [key, length] of [
+    ["mainUnits", 2],
+    ["mainUnitLinks", 2],
+    ["unitPermissions", 2],
+    ["factions", 2],
+    ["culturesSubcultures", 2],
+  ] as const) {
+    if (value[key] !== undefined && !isStringPairs(value[key], length)) return false;
+  }
+  if (
+    value.variantDetails !== undefined &&
+    (!Array.isArray(value.variantDetails) ||
+      !value.variantDetails.every(
+        (entry) =>
+          Array.isArray(entry) &&
+          entry.length === 2 &&
+          typeof entry[0] === "string" &&
+          isRecord(entry[1]) &&
+          [
+            "techFolder",
+            "variantFilename",
+            "lowPolyFilename",
+            "mountScale",
+            "scale",
+            "scaleVariation",
+            "superLowPolyFilename",
+          ].every((key) => typeof entry[1][key] === "string"),
+      ))
+  ) {
+    return false;
+  }
+  return true;
+};
+
+const isVisualsModSegment = (value: unknown): value is VisualsModSegment => {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.identity) ||
+    typeof value.identity.packPath !== "string" ||
+    typeof value.identity.size !== "number" ||
+    !Number.isFinite(value.identity.size) ||
+    typeof value.identity.mtimeMs !== "number" ||
+    !Number.isFinite(value.identity.mtimeMs) ||
+    typeof value.lastUsedMs !== "number" ||
+    !Number.isFinite(value.lastUsedMs)
+  ) {
+    return false;
+  }
+  if (value.tables !== undefined) {
+    if (
+      !isRecord(value.tables) ||
+      typeof value.tables.schemaHash !== "string" ||
+      !isVisualsContribution(value.tables.contribution)
+    ) {
+      return false;
+    }
+  }
+  if (value.locs !== undefined && !isStringPairs(value.locs, 2)) return false;
+  if (
+    value.files !== undefined &&
+    (!Array.isArray(value.files) ||
+      !value.files.every(
+        (file) =>
+          isRecord(file) &&
+          typeof file.path === "string" &&
+          ["variantmeshdefinition", "wsmodel", "rigid_model_v2", "xml.material", "dds"].includes(String(file.ext)),
+      ))
+  ) {
+    return false;
+  }
+  return true;
+};
+
 type VanillaDiskPayload = VisualsDataDiskCache & {
   signature: string;
   signatureInputs?: VisualsVanillaSignatureInputs;
 };
 
-type ModsDiskPayload = {
-  version: number;
-  segments: VisualsModSegments;
-};
-
 let cachedVanilla: VanillaDiskPayload | undefined;
-let cachedModSegments: VisualsModSegments | undefined;
 
 const cacheDir = (userDataPath: string) => nodePath.join(userDataPath, VISUALS_CACHE_DIR);
 
@@ -252,16 +349,24 @@ export const getOrCreateVisualsModSegment = (
   return segment;
 };
 
-export const loadVisualsModSegments = async (userDataPath: string): Promise<VisualsModSegments> => {
-  if (cachedModSegments) return cachedModSegments;
-  const filePath = nodePath.join(cacheDir(userDataPath), MODS_CACHE_FILE);
-  const payload = await readVisualsCache<ModsDiskPayload>(filePath);
-  cachedModSegments =
-    payload?.version === VISUALS_DATA_CACHE_VERSION && payload.segments && typeof payload.segments === "object"
-      ? payload.segments
-      : {};
-  return cachedModSegments;
-};
+const modSegmentsStore = (userDataPath: string): FeatureModSegmentsStoreOptions<VisualsModSegment> => ({
+  userDataPath,
+  feature: VISUALS_CACHE_DIR,
+  dataVersion: VISUALS_DATA_CACHE_VERSION,
+  maxEntries: MOD_SEGMENT_CAP,
+  isValidSegment: isVisualsModSegment,
+  getIdentity: (segment: VisualsModSegment) => ({
+    size: segment.identity.size,
+    mtimeMs: segment.identity.mtimeMs,
+  }),
+  getSourcePackPath: (segment: VisualsModSegment) => segment.identity.packPath,
+});
+
+export const loadVisualsModSegments = async (
+  userDataPath: string,
+  requestedPackPaths?: readonly string[],
+): Promise<VisualsModSegments> =>
+  loadFeatureModSegments<VisualsModSegment>(modSegmentsStore(userDataPath), requestedPackPaths);
 
 /** Drops the least recently used segments once the file would exceed the cap. */
 export const pruneVisualsModSegments = (segments: VisualsModSegments): VisualsModSegments => {
@@ -274,19 +379,13 @@ export const pruneVisualsModSegments = (segments: VisualsModSegments): VisualsMo
 export const saveVisualsModSegments = async (
   userDataPath: string,
   segments: VisualsModSegments,
-): Promise<VisualsModSegments> => {
-  const pruned = pruneVisualsModSegments(segments);
-  await writeVisualsCache(nodePath.join(cacheDir(userDataPath), MODS_CACHE_FILE), {
-    version: VISUALS_DATA_CACHE_VERSION,
-    segments: pruned,
-  } satisfies ModsDiskPayload);
-  cachedModSegments = pruned;
-  return pruned;
-};
+  dirtyPackPaths?: readonly string[],
+): Promise<VisualsModSegments> =>
+  saveFeatureModSegments<VisualsModSegment>(modSegmentsStore(userDataPath), segments, dirtyPackPaths);
 
 export const clearVisualsMemoryCache = () => {
   cachedVanilla = undefined;
-  cachedModSegments = undefined;
+  clearFeatureModSegmentsMemory(VISUALS_CACHE_DIR);
 };
 
 /**
