@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   ANCILLARY_TABLES,
   buildAncillariesData,
+  createAncillariesLocLookup,
   dedupeRowsByKey,
   resolveAncillaryText,
 } from "../src/ancillariesData/data";
@@ -24,6 +25,31 @@ const LOC: Record<string, string> = {
   effects_description_effect_unused: "An effect nothing uses",
 };
 const getLoc = (key: string) => LOC[key];
+
+describe("createAncillariesLocLookup", () => {
+  it("memoizes hits, empty overrides, and misses while keeping later packs first", () => {
+    const earlierValues: Record<string, string> = { override: "earlier", empty: "fallback" };
+    const laterValues: Record<string, string> = { override: "later", empty: "" };
+    const earlier = { get: vi.fn((key: string) => earlierValues[key]) };
+    const later = { get: vi.fn((key: string) => laterValues[key]) };
+    const getCachedLoc = createAncillariesLocLookup([earlier, later]);
+
+    expect(getCachedLoc("override")).toBe("later");
+    expect(getCachedLoc("override")).toBe("later");
+    expect(later.get).toHaveBeenCalledTimes(1);
+    expect(earlier.get).not.toHaveBeenCalled();
+
+    expect(getCachedLoc("empty")).toBe("");
+    expect(getCachedLoc("empty")).toBe("");
+    expect(later.get).toHaveBeenCalledTimes(2);
+    expect(earlier.get).not.toHaveBeenCalled();
+
+    expect(getCachedLoc("missing")).toBeUndefined();
+    expect(getCachedLoc("missing")).toBeUndefined();
+    expect(later.get).toHaveBeenCalledTimes(3);
+    expect(earlier.get).toHaveBeenCalledTimes(1);
+  });
+});
 
 /** A minimal but complete set of rows: two categories, one subcategory, two ancillaries. */
 const fixtureTables = (): AncillariesTableRows => {

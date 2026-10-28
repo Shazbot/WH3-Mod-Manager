@@ -470,4 +470,34 @@ describe("createBuildingsLocLookup", () => {
     expect(lookup("shared")).toBe("mod");
     expect(lookup("absent")).toBeUndefined();
   });
+
+  it("memoizes hits and misses while preserving an empty later override", () => {
+    const lookups = new Map<string, number>();
+    const count = (label: string, value: string | undefined) => ({
+      get: (key: string) => {
+        lookups.set(label, (lookups.get(label) ?? 0) + 1);
+        return value;
+      },
+    });
+    const lookup = createBuildingsLocLookup([count("vanilla", "vanilla"), count("mod", "")]);
+
+    expect(lookup("empty-override")).toBe("");
+    expect(lookup("empty-override")).toBe("");
+    expect(lookups.get("mod")).toBe(1);
+    expect(lookups.get("vanilla")).toBeUndefined();
+
+    const misses = new Map<string, number>();
+    const missingLookup = createBuildingsLocLookup([
+      { get: () => (misses.set("first", (misses.get("first") ?? 0) + 1), undefined) },
+      { get: () => (misses.set("second", (misses.get("second") ?? 0) + 1), undefined) },
+    ]);
+    expect(missingLookup("missing")).toBeUndefined();
+    expect(missingLookup("missing")).toBeUndefined();
+    expect(misses).toEqual(
+      new Map([
+        ["first", 1],
+        ["second", 1],
+      ]),
+    );
+  });
 });

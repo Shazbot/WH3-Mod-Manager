@@ -193,7 +193,14 @@ import {
   fillVanillaTablesFromCache,
   readVanillaTablesAsTypedRows,
   searchVanillaDb,
+  type VanillaDbCacheTypedRead,
 } from "./vanillaDbCache/store";
+import {
+  collectVanillaDbTableRowsInPackOrder,
+  formatVanillaDbTypedRowsOrFallback,
+  formatVanillaDbTypedTableRows,
+  type FormattedVanillaDbRows,
+} from "./vanillaDbCache/tableRows";
 import { formatUnitViewerTypedTableRows, prependUnitViewerTableRows } from "./unitViewer/tableRows";
 import { setVanillaDbCacheBuildProgressReporter } from "./vanillaDbCache/progress";
 import bs from "binary-search";
@@ -463,6 +470,20 @@ import { Md10K } from "react-icons/md";
 import { join } from "path";
 import { createLatestWinsQueue } from "./utility/latestWinsQueue";
 import { ensureLegacyWorkshopPack, isLegacyWorkshopBin } from "./utility/legacyWorkshopPack";
+
+const formatVanillaDbRows = (typedRows: VanillaDbCacheTypedRead): FormattedVanillaDbRows => {
+  const rowsByPackedFilePath = new Map<string, Array<Record<string, string>>>();
+  const tablePathsByPrefix = new Map<string, string[]>();
+  for (const prefixRows of typedRows.prefixes) {
+    const tablePaths: string[] = [];
+    for (const table of prefixRows.tables) {
+      tablePaths.push(table.packedFilePath);
+      rowsByPackedFilePath.set(table.packedFilePath, formatVanillaDbTypedTableRows(table.columns, table.rows));
+    }
+    tablePathsByPrefix.set(prefixRows.prefix, tablePaths);
+  }
+  return { rowsByPackedFilePath, tablePathsByPrefix };
+};
 
 declare const VIEWER_WEBPACK_ENTRY: string;
 declare const VIEWER_PRELOAD_WEBPACK_ENTRY: string;
@@ -734,7 +755,9 @@ const getVisualsSchemaHash = (game: SupportedGames): string | undefined => {
   }
 };
 
-const getVisualsTableContribution = (pack: Pack): VisualsTableContribution => {
+const createVisualsTableContribution = (
+  forEachTableRow: (tableName: string, visit: (row: Record<string, string> | AmendedSchemaField[]) => void) => void,
+): VisualsTableContribution => {
   const contribution: VisualsTableContribution = {
     variants: [],
     variantDetails: [],
@@ -747,7 +770,70 @@ const getVisualsTableContribution = (pack: Pack): VisualsTableContribution => {
     culturesSubcultures: [],
   };
 
-  const forEachTableRow = (tableName: string, visit: (schemaFieldRow: AmendedSchemaField[]) => void) => {
+  const value = (row: Record<string, string> | AmendedSchemaField[], fieldName: string) =>
+    Array.isArray(row) ? row.find((field) => field.name === fieldName)?.resolvedKeyValue || "" : row[fieldName] || "";
+
+  forEachTableRow("variants_tables", (row) => {
+    const variantName = value(row, "variant_name");
+    if (!variantName) return;
+    const variantFilename = value(row, "variant_filename");
+    contribution.variants.push([variantName, variantFilename]);
+    contribution.variantDetails!.push([
+      variantName,
+      {
+        techFolder: value(row, "tech_folder"),
+        variantFilename,
+        lowPolyFilename: value(row, "low_poly_filename"),
+        mountScale: value(row, "mount_scale"),
+        scale: value(row, "scale"),
+        scaleVariation: value(row, "scale_variation"),
+        superLowPolyFilename: value(row, "super_low_poly_filename"),
+      },
+    ]);
+  });
+  forEachTableRow("unit_variants_tables", (row) => {
+    const unitKey = value(row, "unit");
+    if (!unitKey) return;
+    contribution.unitVariants.push([
+      unitKey,
+      value(row, "faction"),
+      value(row, "variant"),
+      value(row, "name"),
+      value(row, "unit_card"),
+    ]);
+  });
+  forEachTableRow("main_units_tables", (row) => {
+    const unitKey = value(row, "unit");
+    const landUnitKey = value(row, "land_unit");
+    if (!landUnitKey) return;
+    if (unitKey) contribution.mainUnitLinks!.push([unitKey, landUnitKey]);
+    contribution.mainUnits!.push([landUnitKey, value(row, "caste")]);
+  });
+  forEachTableRow("units_custom_battle_permissions_tables", (row) => {
+    const unitKey = value(row, "unit");
+    const factionKey = value(row, "faction");
+    if (unitKey && factionKey) contribution.unitPermissions!.push([unitKey, factionKey]);
+  });
+  forEachTableRow("factions_tables", (row) => {
+    const factionKey = value(row, "key");
+    if (!factionKey) return;
+    contribution.factions!.push([factionKey, value(row, "subculture")]);
+  });
+  forEachTableRow("cultures_subcultures_tables", (row) => {
+    const subculture = value(row, "subculture");
+    if (!subculture) return;
+    contribution.culturesSubcultures!.push([subculture, value(row, "culture")]);
+  });
+  forEachTableRow("land_units_tables", (row) => {
+    const unitKey = value(row, "key");
+    if (unitKey) contribution.landUnits.push(unitKey);
+  });
+
+  return contribution;
+};
+
+const getVisualsTableContribution = (pack: Pack): VisualsTableContribution =>
+  createVisualsTableContribution((tableName, visit) => {
     for (const packedFile of pack.packedFiles) {
       if (!packedFile.name.startsWith(`db\\${tableName}\\`)) continue;
       const dbVersion = getDBVersion(packedFile);
@@ -758,65 +844,15 @@ const getVisualsTableContribution = (pack: Pack): VisualsTableContribution => {
       ) as AmendedSchemaField[][];
       for (const row of rows) visit(row);
     }
-  };
-
-  forEachTableRow("variants_tables", (row) => {
-    const value = (fieldName: string) => row.find((field) => field.name === fieldName)?.resolvedKeyValue || "";
-    const variantName = value("variant_name");
-    if (!variantName) return;
-    const variantFilename = value("variant_filename");
-    contribution.variants.push([variantName, variantFilename]);
-    contribution.variantDetails!.push([
-      variantName,
-      {
-        techFolder: value("tech_folder"),
-        variantFilename,
-        lowPolyFilename: value("low_poly_filename"),
-        mountScale: value("mount_scale"),
-        scale: value("scale"),
-        scaleVariation: value("scale_variation"),
-        superLowPolyFilename: value("super_low_poly_filename"),
-      },
-    ]);
-  });
-  forEachTableRow("unit_variants_tables", (row) => {
-    const value = (fieldName: string) => row.find((field) => field.name === fieldName)?.resolvedKeyValue || "";
-    const unitKey = value("unit");
-    if (!unitKey) return;
-    contribution.unitVariants.push([unitKey, value("faction"), value("variant"), value("name"), value("unit_card")]);
-  });
-  forEachTableRow("main_units_tables", (row) => {
-    const unitKey = row.find((field) => field.name === "unit")?.resolvedKeyValue;
-    const landUnitKey = row.find((field) => field.name === "land_unit")?.resolvedKeyValue;
-    if (!landUnitKey) return;
-    if (unitKey) contribution.mainUnitLinks!.push([unitKey, landUnitKey]);
-    const caste = row.find((field) => field.name === "caste")?.resolvedKeyValue || "";
-    contribution.mainUnits!.push([landUnitKey, caste]);
-  });
-  forEachTableRow("units_custom_battle_permissions_tables", (row) => {
-    const unitKey = row.find((field) => field.name === "unit")?.resolvedKeyValue;
-    const factionKey = row.find((field) => field.name === "faction")?.resolvedKeyValue;
-    if (unitKey && factionKey) contribution.unitPermissions!.push([unitKey, factionKey]);
-  });
-  forEachTableRow("factions_tables", (row) => {
-    const factionKey = row.find((field) => field.name === "key")?.resolvedKeyValue;
-    if (!factionKey) return;
-    const subculture = row.find((field) => field.name === "subculture")?.resolvedKeyValue || "";
-    contribution.factions!.push([factionKey, subculture]);
-  });
-  forEachTableRow("cultures_subcultures_tables", (row) => {
-    const subculture = row.find((field) => field.name === "subculture")?.resolvedKeyValue;
-    if (!subculture) return;
-    const culture = row.find((field) => field.name === "culture")?.resolvedKeyValue || "";
-    contribution.culturesSubcultures!.push([subculture, culture]);
-  });
-  forEachTableRow("land_units_tables", (row) => {
-    const unitKey = row.find((field) => field.name === "key")?.resolvedKeyValue;
-    if (unitKey) contribution.landUnits.push(unitKey);
   });
 
-  return contribution;
-};
+const getVisualsTableContributionFromTypedRows = (typedRows: FormattedVanillaDbRows): VisualsTableContribution =>
+  createVisualsTableContribution((tableName, visit) => {
+    const prefix = `db\\${tableName}\\`;
+    for (const tablePath of typedRows.tablePathsByPrefix.get(prefix) ?? []) {
+      for (const row of typedRows.rowsByPackedFilePath.get(tablePath) ?? []) visit(row);
+    }
+  });
 
 const getVisualsLocContribution = (pack: Pack): Array<[string, string]> => {
   const trie = getLocsTrie(pack);
@@ -1297,6 +1333,7 @@ const readVanillaTablePacks = async (
   tablePathPrefixes: string[],
   fallbackPackPaths: string[],
   emitToMainWindow: boolean,
+  typedDbRowsOut?: { value?: FormattedVanillaDbRows },
 ): Promise<Pack[] | undefined> => {
   const dbPackPath = nodePath.join(dataFolder, gameToPackWithDBTablesName[appData.currentGame]);
   const vanillaIndex = await getVanillaPackIndex();
@@ -1309,6 +1346,7 @@ const readVanillaTablePacks = async (
   const packPaths = narrowed.length > 0 ? narrowed : fallbackPackPaths;
 
   const stillToRead: string[] = [];
+  const directPacksByPath = new Map<string, Pack>();
   for (const packPath of packPaths) {
     if (nodePath.resolve(packPath) !== nodePath.resolve(dbPackPath)) {
       stillToRead.push(packPath);
@@ -1317,6 +1355,21 @@ const readVanillaTablePacks = async (
     // The file index still comes from the pack, which is cheap; the parse, which is not, comes from
     // the cache. Partly served is no use: the rows below are read per prefix.
     const indexedDbPack = await readPack(packPath, { skipParsingTables: true });
+    if (typedDbRowsOut) {
+      const typedRows = await readVanillaTablesAsTypedRows(indexedDbPack, tablePathPrefixes, getDBVersion);
+      const formattedRows = formatVanillaDbTypedRowsOrFallback(
+        typedRows,
+        formatVanillaDbRows,
+        () => undefined,
+        (error) =>
+          console.log("vanilla db cache: could not format typed vanilla DB rows, falling back to the pack", error),
+      );
+      if (formattedRows) {
+        typedDbRowsOut.value = formattedRows;
+        directPacksByPath.set(packPath, indexedDbPack);
+        continue;
+      }
+    }
     const { unservedPrefixes } = await fillVanillaTablesFromCache(indexedDbPack, tablePathPrefixes, getDBVersion);
     if (unservedPrefixes.length === 0) {
       indexedDbPack.readTables = [...tablePathPrefixes];
@@ -1336,7 +1389,9 @@ const readVanillaTablePacks = async (
   }
 
   const packsByPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
-  const packs = packPaths.map((packPath) => packsByPath.get(packPath)).filter((pack): pack is Pack => !!pack);
+  const packs = packPaths
+    .map((packPath) => directPacksByPath.get(packPath) ?? packsByPath.get(packPath))
+    .filter((pack): pack is Pack => !!pack);
   // Only the packs that carry one of these tables. When the index was unavailable the set above is
   // the caller's whole vanilla filter, and handing a consumer packs with nothing in them would have
   // it build view data per pack for no rows.
@@ -1347,7 +1402,8 @@ const readVanillaTablePacks = async (
   // ships none of these tables: `findUnparsedTablePrefixes` has nothing to report either way, so it
   // cannot tell those apart on its own.
   if (carriers.length === 0) return undefined;
-  if (findUnparsedTablePrefixes(carriers, tablePathPrefixes).length > 0) return undefined;
+  const legacyCarriers = carriers.filter((pack) => !directPacksByPath.has(pack.path));
+  if (findUnparsedTablePrefixes(legacyCarriers, tablePathPrefixes).length > 0) return undefined;
   return carriers;
 };
 
@@ -4434,8 +4490,17 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     packs: Pack[],
     getLoc: (key: string) => string | undefined,
     ownLocEntries?: Record<string, string>,
+    typedVanillaRows?: FormattedVanillaDbRows,
+    typedVanillaPackPath?: string,
   ): BuildingsSource => {
-    const packsTableData = getPacksTableData(packs, buildingTablePrefixes(), false) || [];
+    const typedVanillaPackKey =
+      typedVanillaRows && typedVanillaPackPath ? nodePath.resolve(typedVanillaPackPath).toLowerCase() : undefined;
+    const legacyPacks = typedVanillaPackKey
+      ? packs.filter((pack) => nodePath.resolve(pack.path).toLowerCase() !== typedVanillaPackKey)
+      : packs;
+    const packsTableData =
+      legacyPacks.length > 0 ? getPacksTableData(legacyPacks, buildingTablePrefixes(), false) || [] : [];
+    const packsTableDataByPath = new Map(packsTableData.map((packViewData) => [packViewData.packPath, packViewData]));
     const tables: BuildingsTableRows = {};
     const cloneSourcePackPaths: NonNullable<BuiltBuildingsData["cloneSourcePackPaths"]> = {
       levels: {},
@@ -4444,12 +4509,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     };
     for (const canonicalTableName of BUILDINGS_TABLES) {
       const rows: Array<Record<string, string>> = [];
-      getTableRowData(packsTableData, canonicalTableName, (schemaFieldRow, packViewData) => {
-        const row = schemaRowToRecord(schemaFieldRow);
+      const recordRow = (row: Record<string, string>, packPath: string) => {
         rows.push(row);
         if (canonicalTableName === "building_levels_tables") {
           const levelKey = row.level_name?.trim();
-          if (levelKey) cloneSourcePackPaths.levels[levelKey] = packViewData.packPath;
+          if (levelKey) cloneSourcePackPaths.levels[levelKey] = packPath;
         } else if (canonicalTableName === "building_culture_variants_tables") {
           const building = row.building?.trim() ?? "";
           if (building) {
@@ -4460,13 +4524,32 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                 row.subculture?.trim() ?? "",
                 row.faction?.trim() ?? "",
               )
-            ] = packViewData.packPath;
+            ] = packPath;
           }
         } else if (canonicalTableName === "building_sets_tables") {
           const setKey = row.key?.trim();
-          if (setKey) cloneSourcePackPaths.sets[setKey] = packViewData.packPath;
+          if (setKey) cloneSourcePackPaths.sets[setKey] = packPath;
         }
-      });
+      };
+      const legacyRowsByPackPath = new Map<string, Record<string, string>[]>();
+      for (const pack of legacyPacks) {
+        const packViewData = packsTableDataByPath.get(pack.path);
+        if (!packViewData) continue;
+        const packRows: Array<Record<string, string>> = [];
+        getTableRowData([packViewData], canonicalTableName, (schemaFieldRow) => {
+          packRows.push(schemaRowToRecord(schemaFieldRow));
+        });
+        legacyRowsByPackPath.set(pack.path, packRows);
+      }
+      for (const { row, packPath } of collectVanillaDbTableRowsInPackOrder(
+        canonicalTableName,
+        packs.map((pack) => pack.path),
+        typedVanillaRows ? typedVanillaPackPath : undefined,
+        typedVanillaRows,
+        legacyRowsByPackPath,
+      )) {
+        recordRow(row, packPath);
+      }
       tables[canonicalTableName] = rows;
     }
 
@@ -4600,11 +4683,23 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
 
     console.log("Buildings: rebuilding the vanilla half from the game's packs", { signature });
-    const vanillaPacks = await readVanillaTablePacks(dataFolder, tablePrefixes, [dbPackPath], false);
+    const typedVanillaRows: { value?: FormattedVanillaDbRows } = {};
+    const vanillaPacks = await readVanillaTablePacks(dataFolder, tablePrefixes, [dbPackPath], false, typedVanillaRows);
     if (!vanillaPacks) throw new Error("The game's building tables could not be read, try again");
     const vanillaLocLookups = Object.values(await getVanillaLocLookup(localizationPackPaths));
-    const source = readBuildingsSourceFromPacks(vanillaPacks, createBuildingsLocLookup(vanillaLocLookups));
-    releaseParsedTables(vanillaPacks, tablePrefixes);
+    const source = readBuildingsSourceFromPacks(
+      vanillaPacks,
+      createBuildingsLocLookup(vanillaLocLookups),
+      undefined,
+      typedVanillaRows.value,
+      dbPackPath,
+    );
+    const vanillaPacksToRelease = typedVanillaRows.value
+      ? vanillaPacks.filter(
+          (pack) => nodePath.resolve(pack.path).toLowerCase() !== nodePath.resolve(dbPackPath).toLowerCase(),
+        )
+      : vanillaPacks;
+    releaseParsedTables(vanillaPacksToRelease, tablePrefixes);
     await saveVanillaBuildingsCache(app.getPath("userData"), signature, source, signatureInputs);
     return { source, signature, signatureInputs };
   };
@@ -4681,7 +4776,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const buildingFramePackPath = nodePath.join(dataFolder, BUILDING_FRAME_PACK_NAME);
     const vanilla = await buildBuildingsVanillaSource(dataFolder, buildingFramePackPath);
     const modSources = await buildBuildingsModSources(orderedEnabledMods);
-    const startposSlotTemplateRows = await loadStartposRegionSlotTemplates(enabledMods);
+    const startposSlotTemplateRows = await loadStartposRegionSlotTemplates(enabledMods, app.getPath("userData"));
     const merged = mergeBuildingsSources(vanilla.source, modSources);
     // Startpos is selected as one effective ESF file per campaign, rather than being an additive
     // DB table. Resolve that selection after the independently cached DB segments are merged. Keep
@@ -5172,15 +5267,36 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     packs: Pack[],
     getLoc: (key: string) => string | undefined,
     ownLocEntries?: Record<string, string>,
+    typedVanillaRows?: FormattedVanillaDbRows,
+    typedVanillaPackPath?: string,
   ) => {
-    const packsTableData = getPacksTableData(packs, ANCILLARY_TABLE_PREFIXES, false) || [];
+    const typedVanillaPackKey =
+      typedVanillaRows && typedVanillaPackPath ? nodePath.resolve(typedVanillaPackPath).toLowerCase() : undefined;
+    const legacyPacks = typedVanillaPackKey
+      ? packs.filter((pack) => nodePath.resolve(pack.path).toLowerCase() !== typedVanillaPackKey)
+      : packs;
+    const packsTableData =
+      legacyPacks.length > 0 ? getPacksTableData(legacyPacks, ANCILLARY_TABLE_PREFIXES, false) || [] : [];
+    const packsTableDataByPath = new Map(packsTableData.map((packViewData) => [packViewData.packPath, packViewData]));
     const tables: AncillariesTableRows = {};
     for (const tableName of ANCILLARY_TABLES) {
-      const rows: Array<Record<string, string>> = [];
-      getTableRowData(packsTableData, tableName, (schemaFieldRow) => {
-        rows.push(schemaRowToRecord(schemaFieldRow));
-      });
-      tables[tableName] = rows;
+      const legacyRowsByPackPath = new Map<string, Record<string, string>[]>();
+      for (const pack of legacyPacks) {
+        const packViewData = packsTableDataByPath.get(pack.path);
+        if (!packViewData) continue;
+        const rows: Array<Record<string, string>> = [];
+        getTableRowData([packViewData], tableName, (schemaFieldRow) => {
+          rows.push(schemaRowToRecord(schemaFieldRow));
+        });
+        legacyRowsByPackPath.set(pack.path, rows);
+      }
+      tables[tableName] = collectVanillaDbTableRowsInPackOrder(
+        tableName,
+        packs.map((pack) => pack.path),
+        typedVanillaRows ? typedVanillaPackPath : undefined,
+        typedVanillaRows,
+        legacyRowsByPackPath,
+      ).map(({ row }) => row);
     }
 
     // Capture only the keys this source's own rows can need. Recorded rather than retaining the loc
@@ -5275,7 +5391,14 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
 
     console.log("Ancillaries: rebuilding the vanilla half from the game's packs", { signature });
-    const vanillaPacks = await readVanillaTablePacks(dataFolder, ANCILLARY_TABLE_PREFIXES, [dbPackPath], false);
+    const typedVanillaRows: { value?: FormattedVanillaDbRows } = {};
+    const vanillaPacks = await readVanillaTablePacks(
+      dataFolder,
+      ANCILLARY_TABLE_PREFIXES,
+      [dbPackPath],
+      false,
+      typedVanillaRows,
+    );
     if (!vanillaPacks) {
       throw new Error("The game's ancillary tables could not be read, try again");
     }
@@ -5283,9 +5406,14 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     // so combining the two would give up the cache for the whole build.
     const vanillaLocLookups = Object.values(await getVanillaLocLookup(localizationPackPaths));
     const getLoc = createAncillariesLocLookup(vanillaLocLookups);
-    const source = readAncillariesSourceFromPacks(vanillaPacks, getLoc);
+    const source = readAncillariesSourceFromPacks(vanillaPacks, getLoc, undefined, typedVanillaRows.value, dbPackPath);
 
-    releaseParsedTables(vanillaPacks, ANCILLARY_TABLE_PREFIXES);
+    const vanillaPacksToRelease = typedVanillaRows.value
+      ? vanillaPacks.filter(
+          (pack) => nodePath.resolve(pack.path).toLowerCase() !== nodePath.resolve(dbPackPath).toLowerCase(),
+        )
+      : vanillaPacks;
+    releaseParsedTables(vanillaPacksToRelease, ANCILLARY_TABLE_PREFIXES);
     await saveVanillaAncillariesCache(app.getPath("userData"), signature, source, signatureInputs);
     return source;
   };
@@ -7817,22 +7945,33 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       const retainFreshPacks = (packs: Pack[]) => {
         for (const pack of packs) freshlyReadPacks.set(pack.path, pack);
       };
+      let typedDbContribution: VisualsTableContribution | undefined;
       if (missingDbTables) {
         // The same route the Unit Viewer and Buildings take. variants_tables and land_units_tables
         // are among the larger ones the game ships, and this ran a full parse of them out of the
         // pack every time the schema changed or the visuals cache missed; the vanilla db cache hands
         // back the same rows without touching db.pack. Only prefixes it cannot serve are parsed.
         const indexedDbPack = await readPack(dbPackPath, { skipParsingTables: true });
-        const { unservedPrefixes } = await fillVanillaTablesFromCache(indexedDbPack, tablesToRead, getDBVersion);
-        if (unservedPrefixes.length === 0) {
-          indexedDbPack.readTables = [...tablesToRead];
-          appendPacksData(indexedDbPack);
-          // appendPacksData merges into a pack already held rather than replacing it, so the rows
-          // just filled can land on the retained instance instead of this one. Retain whichever of
-          // the two ends up in packsData, since that is the one carrying them.
-          retainFreshPacks([appData.packsData.find((pack) => pack.path === dbPackPath) ?? indexedDbPack]);
-        } else {
-          retainFreshPacks(await readModsByPath([dbPackPath], { skipParsingTables: false, tablesToRead }, true));
+        const typedRows = await readVanillaTablesAsTypedRows(indexedDbPack, tablesToRead, getDBVersion);
+        typedDbContribution = formatVanillaDbTypedRowsOrFallback(
+          typedRows,
+          (rows) => getVisualsTableContributionFromTypedRows(formatVanillaDbRows(rows)),
+          () => undefined,
+          (error) =>
+            console.log("vanilla db cache: could not format typed Visuals rows, falling back to the pack", error),
+        );
+        if (!typedDbContribution) {
+          const { unservedPrefixes } = await fillVanillaTablesFromCache(indexedDbPack, tablesToRead, getDBVersion);
+          if (unservedPrefixes.length === 0) {
+            indexedDbPack.readTables = [...tablesToRead];
+            appendPacksData(indexedDbPack);
+            // appendPacksData merges into a pack already held rather than replacing it, so the rows
+            // just filled can land on the retained instance instead of this one. Retain whichever of
+            // the two ends up in packsData, since that is the one carrying them.
+            retainFreshPacks([appData.packsData.find((pack) => pack.path === dbPackPath) ?? indexedDbPack]);
+          } else {
+            retainFreshPacks(await readModsByPath([dbPackPath], { skipParsingTables: false, tablesToRead }, true));
+          }
         }
       }
       if (missingModContributions.length > 0) {
@@ -7860,10 +7999,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         const pack =
           freshlyReadPacks.get(packPath) || appData.packsData.find((candidate) => candidate.path === packPath);
         if (options.tables && schemaHash && entry.tables?.schemaHash !== schemaHash) {
-          if (!pack) return undefined;
+          const typedContribution = packPath === dbPackPath ? typedDbContribution : undefined;
+          const contribution = typedContribution ?? (pack ? getVisualsTableContribution(pack) : undefined);
+          if (!contribution) return undefined;
           entry.tables = {
             schemaHash,
-            contribution: getVisualsTableContribution(pack),
+            contribution,
           };
           if (isMod) didChangeModSegments = true;
           else didChangeVanillaCache = true;

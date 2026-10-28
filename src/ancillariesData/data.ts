@@ -325,11 +325,17 @@ export const createAncillariesLocLookup = (
   triesInPackOrder: Array<AncillariesLocTrie | undefined>,
 ): AncillariesGetLoc => {
   const tries = triesInPackOrder.filter((trie): trie is AncillariesLocTrie => !!trie).toReversed();
+  const memo = new Map<string, string | undefined>();
   return (key: string) => {
+    if (memo.has(key)) return memo.get(key);
     for (const trie of tries) {
       const value = trie.get(key);
-      if (value != undefined) return value;
+      if (value != undefined) {
+        memo.set(key, value);
+        return value;
+      }
     }
+    memo.set(key, undefined);
     return undefined;
   };
 };
