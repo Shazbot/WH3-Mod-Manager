@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  KHR_SUPERCOMPRESSION_NONE,
   KHR_SUPERCOMPRESSION_ZSTD,
   KTX2_IDENTIFIER,
   VK_FORMAT_R8G8B8A8_SRGB,
@@ -12,14 +13,16 @@ const makeRawKtx2 = ({
   height = 1024,
   vkFormat = VK_FORMAT_R8G8B8A8_UNORM,
   supercompression = KHR_SUPERCOMPRESSION_ZSTD,
+  levelLength: requestedLevelLength,
 }: {
   width?: number;
   height?: number;
   vkFormat?: number;
   supercompression?: number;
+  levelLength?: number;
 } = {}) => {
   const levelOffset = 104;
-  const levelLength = 16;
+  const levelLength = requestedLevelLength ?? 16;
   const buffer = new ArrayBuffer(levelOffset + levelLength);
   const bytes = new Uint8Array(buffer);
   bytes.set(KTX2_IDENTIFIER);
@@ -51,7 +54,30 @@ describe("WH3 raw KTX2 header detection", () => {
       levelOffset: 104,
       levelLength: 16,
       uncompressedLength: 2048 * 2048 * 4,
+      supercompressionScheme: KHR_SUPERCOMPRESSION_ZSTD,
     });
+  });
+
+  it("accepts uncompressed (scheme 0) textures whose level is the RGBA pixels", () => {
+    const header = parseWh3RawKtx2Header(
+      makeRawKtx2({ width: 4, height: 2, supercompression: KHR_SUPERCOMPRESSION_NONE, levelLength: 4 * 2 * 4 }),
+    );
+
+    expect(header).toEqual({
+      width: 4,
+      height: 2,
+      srgb: false,
+      levelOffset: 104,
+      levelLength: 32,
+      uncompressedLength: 32,
+      supercompressionScheme: KHR_SUPERCOMPRESSION_NONE,
+    });
+  });
+
+  it("rejects uncompressed textures whose stored length differs from the pixel size", () => {
+    expect(() =>
+      parseWh3RawKtx2Header(makeRawKtx2({ width: 4, height: 2, supercompression: KHR_SUPERCOMPRESSION_NONE })),
+    ).toThrow(/stored length 16 differs/);
   });
 
   it("preserves the sRGB distinction", () => {
@@ -63,7 +89,7 @@ describe("WH3 raw KTX2 header detection", () => {
   });
 
   it("rejects malformed raw RGBA8 layouts instead of silently delegating them", () => {
-    expect(() => parseWh3RawKtx2Header(makeRawKtx2({ supercompression: 0 }))).toThrow(
+    expect(() => parseWh3RawKtx2Header(makeRawKtx2({ supercompression: 1 }))).toThrow(
       /Unsupported WH3 raw KTX2 layout/,
     );
   });

@@ -2,6 +2,7 @@ export const KTX2_IDENTIFIER = new Uint8Array([0xab, 0x4b, 0x54, 0x58, 0x20, 0x3
 
 export const VK_FORMAT_R8G8B8A8_UNORM = 37;
 export const VK_FORMAT_R8G8B8A8_SRGB = 43;
+export const KHR_SUPERCOMPRESSION_NONE = 0;
 export const KHR_SUPERCOMPRESSION_ZSTD = 2;
 
 const KTX2_HEADER_BYTES = 12 + 68;
@@ -15,6 +16,8 @@ export type Wh3RawKtx2Header = {
   levelOffset: number;
   levelLength: number;
   uncompressedLength: number;
+  /** 0 = stored raw (level data is the RGBA pixels), 2 = Zstd. */
+  supercompressionScheme: typeof KHR_SUPERCOMPRESSION_NONE | typeof KHR_SUPERCOMPRESSION_ZSTD;
 };
 
 const readUint64 = (view: DataView, offset: number) => {
@@ -27,7 +30,8 @@ const readUint64 = (view: DataView, offset: number) => {
 
 /**
  * Detects the private headless-preview KTX2 flavor emitted by WH3AssetHost:
- * one 2D RGBA8 level with Zstd supercompression.
+ * one 2D RGBA8 level, either stored raw (current hosts) or with Zstd
+ * supercompression (older hosts).
  *
  * Returns undefined for other KTX2 flavors (Basis/UASTC etc.) so Three's
  * normal KTX2Loader can handle them.
@@ -61,7 +65,7 @@ export const parseWh3RawKtx2Header = (buffer: ArrayBuffer): Wh3RawKtx2Header | u
     layerCount !== 0 ||
     faceCount !== 1 ||
     levelCount !== 1 ||
-    supercompressionScheme !== KHR_SUPERCOMPRESSION_ZSTD
+    (supercompressionScheme !== KHR_SUPERCOMPRESSION_NONE && supercompressionScheme !== KHR_SUPERCOMPRESSION_ZSTD)
   ) {
     throw new Error(
       `Unsupported WH3 raw KTX2 layout: ${width}x${height}, depth=${pixelDepth}, layers=${layerCount}, faces=${faceCount}, levels=${levelCount}, supercompression=${supercompressionScheme}.`,
@@ -76,6 +80,13 @@ export const parseWh3RawKtx2Header = (buffer: ArrayBuffer): Wh3RawKtx2Header | u
   if (!Number.isSafeInteger(expectedLength) || uncompressedLength !== expectedLength) {
     throw new Error(
       `Invalid WH3 raw KTX2 RGBA payload size: expected ${expectedLength}, header declares ${uncompressedLength}.`,
+    );
+  }
+
+  // Without supercompression the stored level is the pixel data itself.
+  if (supercompressionScheme === KHR_SUPERCOMPRESSION_NONE && levelLength !== uncompressedLength) {
+    throw new Error(
+      `Invalid WH3 raw KTX2 level: stored length ${levelLength} differs from uncompressed length ${uncompressedLength}.`,
     );
   }
 
@@ -97,5 +108,6 @@ export const parseWh3RawKtx2Header = (buffer: ArrayBuffer): Wh3RawKtx2Header | u
     levelOffset,
     levelLength,
     uncompressedLength,
+    supercompressionScheme,
   };
 };

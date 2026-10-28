@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { KTX2Loader } from "three/examples/jsm/loaders/KTX2Loader.js";
 import { ZSTDDecoder } from "three/examples/jsm/libs/zstddec.module.js";
-import { parseWh3RawKtx2Header, type Wh3RawKtx2Header } from "./wh3RawKtx2";
+import { KHR_SUPERCOMPRESSION_NONE, parseWh3RawKtx2Header, type Wh3RawKtx2Header } from "./wh3RawKtx2";
 
 let zstdDecoderPromise: Promise<ZSTDDecoder> | undefined;
 
@@ -40,16 +40,24 @@ type CachedWh3RawTextureData = {
 };
 
 const hashWh3RawKtx2 = (buffer: ArrayBuffer) => {
-  const bytes = new Uint8Array(buffer);
+  // Hash 32-bit words: raw (uncompressed) textures are tens of MB, so a
+  // per-byte loop would cost as much as the Zstd decode it replaces.
+  const wordCount = buffer.byteLength >>> 2;
+  const words = new Uint32Array(buffer, 0, wordCount);
   let first = 0x811c9dc5;
   let second = 0x9e3779b9;
-  for (let index = 0; index < bytes.length; index += 1) {
-    const value = bytes[index];
+  for (let index = 0; index < wordCount; index += 1) {
+    const value = words[index];
     first = Math.imul(first ^ value, 0x01000193);
     second = Math.imul(second ^ (value + index), 0x85ebca6b);
     second = (second << 13) | (second >>> 19);
   }
-  return `${bytes.length}:${first >>> 0}:${second >>> 0}`;
+  const tail = new Uint8Array(buffer, wordCount << 2);
+  for (let index = 0; index < tail.length; index += 1) {
+    first = Math.imul(first ^ tail[index], 0x01000193);
+    second = Math.imul(second ^ (tail[index] + wordCount), 0x85ebca6b);
+  }
+  return `${buffer.byteLength}:${first >>> 0}:${second >>> 0}`;
 };
 
 /**
@@ -57,8 +65,10 @@ const hashWh3RawKtx2 = (buffer: ArrayBuffer) => {
  * texture format.
  *
  * Basis/UASTC KTX2 files still use Three's normal KTX2Loader. The host's
- * private raw RGBA8 + Zstd KTX2 flavor is decoded directly into a DataTexture,
- * avoiding Three r186's generic raw-KTX2 texture construction path.
+ * private raw RGBA8 KTX2 flavor is wrapped directly in a DataTexture, avoiding
+ * Three r186's generic raw-KTX2 texture construction path. Current hosts store
+ * the level uncompressed (the file bytes are used in place, no decode or copy);
+ * Zstd supercompressed files from older hosts are still decoded.
  */
 export class Wh3Ktx2Loader extends KTX2Loader {
   private timingGeneration = 0;
@@ -182,8 +192,16 @@ export class Wh3Ktx2Loader extends KTX2Loader {
     if (cached) return cached;
 
     const pending = (async (): Promise<CachedWh3RawTextureData> => {
+      const levelData = new Uint8Array(buffer, header.levelOffset, header.levelLength);
+
+      if (header.supercompressionScheme === KHR_SUPERCOMPRESSION_NONE) {
+        // Stored raw: the level is already RGBA8, so use the view in place.
+        if (timingGeneration === this.timingGeneration) this.timing.decodedBytes += levelData.byteLength;
+        return { rgba: levelData, width: header.width, height: header.height, srgb: header.srgb };
+      }
+
       const decoder = await getZstdDecoder();
-      const compressed = new Uint8Array(buffer, header.levelOffset, header.levelLength);
+      const compressed = levelData;
 
       const decodeStartedAt = performance.now();
       const rgba = decoder.decode(compressed, header.uncompressedLength);
