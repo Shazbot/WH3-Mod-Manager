@@ -55,6 +55,7 @@ export interface RawPackWriteEntry {
 export interface RawPackWriteMetadata {
   game: PackGame;
   byteMask: number;
+  /** Accepted for compatibility; the writer derives the header count from the serialized dependency names. */
   refFileCount: number;
   headerBuffer: Buffer;
   dependencies: readonly string[];

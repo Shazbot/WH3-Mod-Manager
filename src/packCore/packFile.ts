@@ -47,6 +47,14 @@ const parseDependencies = (bytes: Buffer, packPath: string): string[] => {
   return dependencies;
 };
 
+const countDependencyNames = (bytes: Buffer, packPath: string): number => {
+  if (bytes.length === 0) return 0;
+  if (bytes[bytes.length - 1] !== 0) fail(packPath, "dependency index is not null terminated");
+  let count = 0;
+  for (const byte of bytes) if (byte === 0) count++;
+  return count;
+};
+
 /** Strictly reads a PFH header and index. No GUI caches or application state are consulted. */
 export const readPackIndex = (packPath: string, context: PackCoreContext): CorePack => {
   const maxIndexBytes = context.maxIndexBytes ?? DEFAULT_MAX_INDEX_BYTES;
@@ -441,10 +449,11 @@ export const writeRawPack = async (
 
   const dependencyBytes = metadata.dependencyBytes ?? createDependencyBytes(metadata.dependencies);
   if (dependencyBytes.length > 0x7fffffff) throw new Error("Dependency index is too large");
+  const dependencyCount = countDependencyNames(dependencyBytes, outputPath);
   const header = Buffer.alloc(PFH_HEADER_SIZE);
   headerSignature.copy(header, 0);
   header.writeInt32LE(byteMask, 4);
-  header.writeInt32LE(metadata.refFileCount, 8);
+  header.writeInt32LE(dependencyCount, 8);
   header.writeInt32LE(dependencyBytes.length, 12);
   header.writeInt32LE(entries.length, 16);
   header.writeInt32LE(fileIndexSize, 20);

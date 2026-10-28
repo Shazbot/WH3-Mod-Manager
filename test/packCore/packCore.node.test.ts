@@ -16,6 +16,7 @@ import {
   type RawPackWriteMetadata,
 } from "../../src/packCore";
 import type { DBVersion } from "../../src/packFileTypes";
+import { readPfH5IndexByDependencyCount } from "./pfh5CountReader";
 
 const projectRoot = path.resolve(__dirname, "../..");
 const tempRoot = mkdtempSync(path.join(os.tmpdir(), "whmm-pack-core-"));
@@ -70,6 +71,32 @@ describe("shared pack core", () => {
     expect(rewritten.header.byteMask).toBe(0x43);
     expect(rewritten.entries[0].file_name_hash).toBe(0xf1234567);
     expect(readRawPayload(rewritten, rewritten.entries[0])).toEqual(storedPayload);
+  });
+
+  it("writes dependency counts from the serialized bytes and rejects unterminated overrides", async () => {
+    const packPath = path.join(tempRoot, "dependency-override.pack");
+    await writeRawPack(
+      packPath,
+      [{ name: "entry.bin", buffer: Buffer.from([1]) }],
+      {
+        ...defaultMetadata,
+        refFileCount: 0,
+        dependencies: ["list-only-one.pack", "list-only-two.pack"],
+        dependencyBytes: Buffer.from("raw-override.pack\0"),
+      },
+    );
+
+    expect(readPfH5IndexByDependencyCount(packPath)).toEqual({
+      dependencyCount: 1,
+      dependencies: ["raw-override.pack"],
+      fileNames: ["entry.bin"],
+    });
+    await expect(
+      writeRawPack(path.join(tempRoot, "unterminated-dependency.pack"), [], {
+        ...defaultMetadata,
+        dependencyBytes: Buffer.from("unterminated.pack"),
+      }),
+    ).rejects.toThrow(/dependency index is not null terminated/);
   });
 
   it("range-reads only exact uncompressed entry bounds and rejects short reads", async () => {

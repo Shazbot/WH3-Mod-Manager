@@ -21,6 +21,7 @@ import { AutomationError } from "../../src/automation/errors";
 import { FilesystemPolicy } from "../../src/automation/filesystem";
 import { parseDbTable, readPackIndex, readRawPayload, serializeDbTable, writeRawPack } from "../../src/packCore";
 import type { DBVersion, Field } from "../../src/packFileTypes";
+import { readPfH5IndexByDependencyCount } from "../packCore/pfh5CountReader";
 
 const projectRoot = path.resolve(__dirname, "../..");
 const tempRoot = mkdtempSync(path.join(os.tmpdir(), "whmm-automation-"));
@@ -275,12 +276,30 @@ describe("headless pack automation", () => {
     expect(existsSync(duplicatePath)).toBe(false);
   });
 
-  it("creates an empty mod pack and rejects source/output aliases", async () => {
+  it("creates mod packs with declared dependencies and rejects source/output aliases", async () => {
     const emptyPath = path.join(tempRoot, "empty.pack");
     expectSuccess(
       await executeAutomationRequest({ operation: "pack_create", outputPath: emptyPath, files: [] }, context),
     );
     expect(readPackIndex(emptyPath, { game: "wh3" }).entries).toEqual([]);
+
+    const dependentPath = path.join(tempRoot, "created-with-dependency.pack");
+    expectSuccess(
+      await executeAutomationRequest(
+        {
+          operation: "pack_create",
+          outputPath: dependentPath,
+          files: [],
+          dependencies: ["provider.pack"],
+        },
+        context,
+      ),
+    );
+    expect(readPfH5IndexByDependencyCount(dependentPath)).toEqual({
+      dependencyCount: 1,
+      dependencies: ["provider.pack"],
+      fileNames: [],
+    });
 
     const sourceBefore = readFileSync(sourcePack);
     const alias = await executeAutomationRequest(

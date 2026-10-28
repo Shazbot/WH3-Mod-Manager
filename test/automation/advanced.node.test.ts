@@ -20,6 +20,7 @@ import {
 } from "../../src/packCore";
 import type { DBField, DBVersion, Field } from "../../src/packFileTypes";
 import { readPackedFileIndexEntry } from "../../src/utility/packFileIndex";
+import { readPfH5IndexByDependencyCount } from "../packCore/pfh5CountReader";
 
 const tempRoot = mkdtempSync(path.join(os.tmpdir(), "whmm-advanced-"));
 const metadata = (trailingBytes = Buffer.alloc(0)) => ({
@@ -563,6 +564,11 @@ describe("advanced headless pack operations", () => {
       expect.objectContaining({ path: "textures\\external.dds" }),
     );
     expect(readPackIndex(externalOut, { game: "wh3" }).entries.map((entry) => entry.name)).toEqual([rootName]);
+    expect(readPfH5IndexByDependencyCount(externalOut)).toEqual({
+      dependencyCount: 1,
+      dependencies: [path.basename(externalPath)],
+      fileNames: [rootName],
+    });
 
     const selfContainedOut = path.join(tempRoot, "subset-self-contained.pack");
     const selfContained = expectData<{ selfContained: boolean; manifest: { includedFiles: { total: number } } }>(
