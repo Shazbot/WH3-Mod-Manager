@@ -16,6 +16,7 @@ const REQUIRED_CAPABILITIES = [
   "getAnimationCatalog",
   "exportModel",
   "exportModelBatch",
+  "exportAnimations",
   "exportPaintedVariant",
   "paintedVariantRgba",
   "paintedVariantSourceOverride",
@@ -101,6 +102,15 @@ export interface Wh3AssetHostExportModelRequest {
   variantSelections?: readonly VariantMeshSelection[];
   exportMaterials?: boolean;
   includeSkeleton?: boolean;
+  mirrorMesh?: boolean;
+}
+
+export interface Wh3AssetHostExportAnimationsRequest {
+  assetPath: string;
+  outputPath: string;
+  /** 1-200 clips. Each is written to the GLB as an animation named `clip{index}`. */
+  animationSelections: readonly Wh3AssetHostAnimationReference[];
+  variantSelections?: readonly VariantMeshSelection[];
   mirrorMesh?: boolean;
 }
 
@@ -400,6 +410,17 @@ export class Wh3AssetHostClient {
         : {}),
     };
     return this.request<Wh3AssetHostExportResult>("exportModel", payload);
+  }
+
+  /** Skeleton nodes plus the requested animations only: no meshes, materials or textures. */
+  exportAnimations(request: Wh3AssetHostExportAnimationsRequest): Promise<Wh3AssetHostExportResult> {
+    return this.request<Wh3AssetHostExportResult>("exportAnimations", {
+      assetPath: request.assetPath,
+      outputPath: request.outputPath,
+      animationSelections: request.animationSelections,
+      variantSelections: request.variantSelections ?? [],
+      mirrorMesh: request.mirrorMesh ?? true,
+    });
   }
 
   exportModels(request: Wh3AssetHostExportModelBatchRequest): Promise<Wh3AssetHostExportModelBatchResult> {

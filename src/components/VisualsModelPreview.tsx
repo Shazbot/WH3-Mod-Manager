@@ -12,6 +12,7 @@ import {
   getUnitPainterFactionMaskBindings,
   openUnitPainterProject,
   exportVisualsModel,
+  exportVisualsModelAnimations,
   exportVisualsModelBatch,
   getVisualsModelAnimationCatalog,
   releaseVisualsModelPreview,
@@ -23,6 +24,7 @@ import {
   type UnitPainterUnitVariantContext,
 } from "../visuals/modelPreviewApi";
 import type { VisualsModelPreviewAnimationReference } from "../visuals/modelPreviewApi";
+import { AnimationClipCache, DEFAULT_CLIP_CHUNK_SIZE } from "../visuals/animationClipCache";
 import { filterVisualsModelPreviewWarnings } from "../visuals/modelPreviewWarnings";
 import UnitPainterTextureEditor from "./UnitPainterTextureEditor";
 import { selectDefaultAnimation, type AnimationSelectionProfile } from "../visuals/animationSelection";
@@ -550,6 +552,93 @@ const disposeMaterial = (material: THREE.Material) => {
     if (value instanceof THREE.Texture) value.dispose();
   }
   material.dispose();
+};
+
+type PrimaryAnimationState = {
+  models: THREE.Object3D[];
+  mixers: THREE.AnimationMixer[];
+  actions: THREE.AnimationAction[];
+  mixerByModel: Map<THREE.Object3D, THREE.AnimationMixer>;
+  bakedAnimationPath: string;
+  /** Engine attachments clone the primary clip, so those previews reload instead of swapping. */
+  needsReload: boolean;
+};
+
+type PreviewClipCache = { key: string; cache: AnimationClipCache<THREE.AnimationClip> };
+type ClipFetchContext = {
+  assetPath: string;
+  mods: Parameters<typeof exportVisualsModel>[1];
+  variantSelections: readonly VariantMeshSelection[];
+};
+
+/** Clips per background host request. */
+const CLIP_PREFETCH_CHUNK_SIZE = DEFAULT_CLIP_CHUNK_SIZE;
+
+const createPreviewClipCache = (
+  contextRef: { current: ClipFetchContext | null },
+  optionsRef: { current: readonly PreviewAnimation[] },
+  setWarnings: (update: (current: string[]) => string[]) => void,
+) =>
+  new AnimationClipCache<THREE.AnimationClip>({
+    chunkSize: CLIP_PREFETCH_CHUNK_SIZE,
+    onFailure: (key, reason) => {
+      const label = optionsRef.current.find((option) => option.key === key)?.label ?? key;
+      setWarnings((current) => [...current, `Animation ${label} could not be loaded: ${reason}`]);
+    },
+    fetchChunk: async (keys) => {
+      const fetchContext = contextRef.current;
+      if (!fetchContext) throw new Error("No model is loaded.");
+      const requested: Array<{ key: string; reference: VisualsModelPreviewAnimationReference }> = [];
+      for (const key of keys) {
+        const reference = optionsRef.current.find((option) => option.key === key)?.reference;
+        if (reference) requested.push({ key, reference });
+      }
+      const clips = new Map<string, THREE.AnimationClip>();
+      const failures = new Map<string, string>();
+      if (requested.length === 0) return { clips, failures };
+      const startedAt = performance.now();
+      const result = await exportVisualsModelAnimations(
+        fetchContext.assetPath,
+        fetchContext.mods,
+        requested.map((entry) => entry.reference),
+        fetchContext.variantSelections,
+      );
+      try {
+        if (!result.success || !result.previewId || !result.url) {
+          throw new Error(result.error || "Failed to export the animations.");
+        }
+        const byName = await loadAnimationClipsFromGlb(result.url);
+        requested.forEach((entry, index) => {
+          const clip = byName.get(`clip${index}`);
+          if (clip) clips.set(entry.key, clip);
+        });
+        for (const warning of result.warnings ?? []) {
+          const [clipName, , reason] = warning.split("|");
+          const index = Number(clipName?.replace("clip", ""));
+          const entry = Number.isInteger(index) ? requested[index] : undefined;
+          if (entry && reason) failures.set(entry.key, reason);
+        }
+        console.log("[clip cache] chunk", {
+          requested: requested.length,
+          loaded: clips.size,
+          totalMs: Math.round(performance.now() - startedAt),
+          hostExportMs: Math.round(result.timings?.hostExportMs ?? 0),
+        });
+        return { clips, failures };
+      } finally {
+        if (result.previewId) void releaseVisualsModelPreview(result.previewId).catch(() => undefined);
+      }
+    },
+  });
+
+/** Reads the clips of an animations-only GLB (no meshes or textures), keyed by their `clip{index}` names. */
+const loadAnimationClipsFromGlb = async (url: string) => {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Failed to read the animations (${response.status}).`);
+  const gltf = await new GLTFLoader().parseAsync(await response.arrayBuffer(), "");
+  const clips = new Map<string, THREE.AnimationClip>();
+  for (const clip of gltf.animations) clips.set(clip.name, clip);
+  return clips;
 };
 
 const disposeObject = (object: THREE.Object3D, preservedPool?: PreviewResourcePool) => {
@@ -1234,6 +1323,15 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const catalogLoadingRef = useRef(true);
   const isPlayingRef = useRef(true);
   const animationSpeedRef = useRef(1);
+  const selectedAnimationPathRef = useRef("");
+  const selectedAnimationReferenceRef = useRef<VisualsModelPreviewAnimationReference | undefined>();
+  const primaryAnimationRef = useRef<PrimaryAnimationState | null>(null);
+  const animationSwapTokenRef = useRef(0);
+  const clipCacheRef = useRef<PreviewClipCache | null>(null);
+  const animationOptionsRef = useRef<PreviewAnimation[]>([]);
+  const clipFetchContextRef = useRef<ClipFetchContext | null>(null);
+  const [previewLoadTick, setPreviewLoadTick] = useState(0);
+  const [animationReloadTick, setAnimationReloadTick] = useState(0);
   const pendingCameraViewRef = useRef<{ assetPath: string; view: CameraView } | null>(null);
   const loadedAnimationCatalogKeyRef = useRef<string>();
   const loadedVariantCatalogKeyRef = useRef<string>();
@@ -1244,6 +1342,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const variantCatalogKey = `${variantMeshSessionType}\0${variantMeshSessionId ?? ""}\0${assetPath}`;
   const selectedAnimation = animationOptions.find((animation) => animation.key === selectedAnimationPath);
   const selectedAnimationReference = selectedAnimation?.reference;
+  selectedAnimationPathRef.current = selectedAnimationPath;
+  animationOptionsRef.current = animationOptions;
+  selectedAnimationReferenceRef.current = selectedAnimationReference;
   const visibleWarnings = filterVisualsModelPreviewWarnings(warnings, isFeaturesForModdersEnabled);
   const paintColorValue = Number.parseInt(paintColor.slice(1), 16);
   const paintHasUnsavedChanges = (paintSessionRef.current?.hasUnsavedChanges ?? false) || paintFactionScopeDirty;
@@ -2499,6 +2600,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     if (pendingCameraViewRef.current?.assetPath !== assetPath) pendingCameraViewRef.current = null;
 
     let isCancelled = false;
+    // Animation changes are swapped in by a separate effect; read the latest selection here.
+    const initialAnimationPath = selectedAnimationPathRef.current;
+    const initialAnimationReference = selectedAnimationReferenceRef.current;
     const ownedGroup = new THREE.Group();
     const ownedModels: THREE.Object3D[] = [];
     const ownedMixers: THREE.AnimationMixer[] = [];
@@ -2516,13 +2620,31 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       previewResourceSessionRef.current = resourceSession;
     }
     const resourcePool = resourceSession.pool;
+    clipFetchContextRef.current = {
+      assetPath,
+      mods: effectiveEnabledMods,
+      variantSelections: comparisonVariants[0]?.selections ?? [],
+    };
+    let clipCache = clipCacheRef.current;
+    if (!clipCache || clipCache.key !== resourceSessionKey || clipCache.cache.isDisposed) {
+      clipCache?.cache.dispose();
+      clipCache = {
+        key: resourceSessionKey,
+        cache: createPreviewClipCache(clipFetchContextRef, animationOptionsRef, setWarnings),
+      };
+      clipCacheRef.current = clipCache;
+    }
+    const animationClipCache = clipCache.cache;
     const loadingPreviewIds = new Set<string>();
 
     const releasePreview = (previewId: string) => {
       void releaseVisualsModelPreview(previewId).catch(() => undefined);
     };
 
+    const mixerByModel = new Map<THREE.Object3D, THREE.AnimationMixer>();
     const cleanupOwnedPreview = () => {
+      if (primaryAnimationRef.current?.models === ownedModels) primaryAnimationRef.current = null;
+      animationSwapTokenRef.current += 1;
       context.afterNextRender = null;
       for (const mixer of ownedMixers) mixer.stopAllAction();
       ownedMixers.forEach((mixer, index) => {
@@ -2604,7 +2726,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           const exportResult = await exportVisualsModel(
             assetPath,
             effectiveEnabledMods,
-            selectedAnimationReference ? [selectedAnimationReference] : [],
+            initialAnimationReference ? [initialAnimationReference] : [],
             comparisonVariants[0].selections,
           );
           singleExportRoundTripMs = performance.now() - exportStartedAt;
@@ -2680,7 +2802,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           const batchResult = await exportVisualsModelBatch(
             assetPath,
             effectiveEnabledMods,
-            selectedAnimationReference ? [selectedAnimationReference] : [],
+            initialAnimationReference ? [initialAnimationReference] : [],
             comparisonVariants.map((variant) => ({ variantSelections: variant.selections })),
           );
           if (!batchResult.success || !batchResult.items) {
@@ -2787,7 +2909,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           }
           placeables.push(placeable);
 
-          if ((companion ? true : selectedAnimationPath) && gltf.animations.length > 0) {
+          if ((companion ? true : initialAnimationPath) && gltf.animations.length > 0) {
             const mixer = new THREE.AnimationMixer(gltf.scene);
             const animation = gltf.animations[0];
             const action = mixer.clipAction(animation);
@@ -2800,7 +2922,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             action.paused = !isPlayingRef.current;
             ownedMixers.push(mixer);
             ownedActions.push(action);
+            if (!companion) mixerByModel.set(gltf.scene, mixer);
             placeable.clip = animation;
+            if (!companion && initialAnimationPath) animationClipCache.seed(initialAnimationPath, animation);
             maxClipDuration = Math.max(maxClipDuration, gltf.animations[0].duration);
           }
         }
@@ -2828,6 +2952,14 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         context.scene.add(ownedGroup);
         context.mixers = ownedMixers;
         context.actions = ownedActions;
+        primaryAnimationRef.current = {
+          models: ownedModels,
+          mixers: ownedMixers,
+          actions: ownedActions,
+          mixerByModel,
+          bakedAnimationPath: initialAnimationPath,
+          needsReload: Boolean(engineScene && engineCompanion),
+        };
         if (maxClipDuration > 0) {
           setClipDuration(maxClipDuration);
           setCurrentTime(0);
@@ -2863,6 +2995,14 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         }
 
         setStatus("ready");
+        setPreviewLoadTick((tick) => tick + 1);
+        // Fetch the rest of the catalog in the background, starting after the current selection.
+        const optionKeys = animationOptionsRef.current.filter((option) => option.reference).map((option) => option.key);
+        const selectedIndex = optionKeys.indexOf(selectedAnimationPathRef.current);
+        animationClipCache.prefetch([
+          ...optionKeys.slice(selectedIndex + 1),
+          ...optionKeys.slice(0, Math.max(0, selectedIndex)),
+        ]);
       } catch (previewError) {
         cleanupOwnedPreview();
         if (!isCancelled) {
@@ -2895,12 +3035,96 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     effectiveEnabledMods,
     isActive,
     paintProjectReloadVersion,
-    selectedAnimationPath,
-    selectedAnimationReference,
+    animationReloadTick,
     unsyncedAnimations,
     variantCatalogDiagnostics,
     variantCatalogReady,
   ]);
+
+  useEffect(
+    () => () => {
+      clipCacheRef.current?.cache.dispose();
+      clipCacheRef.current = null;
+    },
+    [],
+  );
+
+  // Swaps the clip on the loaded primary models without re-exporting geometry, skeleton or textures.
+  useEffect(() => {
+    const state = primaryAnimationRef.current;
+    const context = contextRef.current;
+    animationSwapTokenRef.current += 1;
+    if (!state || !context || !isActive) return;
+    if (state.bakedAnimationPath === selectedAnimationPath) return;
+    if (state.needsReload) {
+      setAnimationReloadTick((tick) => tick + 1);
+      return;
+    }
+
+    const token = animationSwapTokenRef.current;
+    const clearActions = () => {
+      const primaryMixers = new Set(state.mixerByModel.values());
+      for (const action of [...state.actions]) {
+        if (!primaryMixers.has(action.getMixer())) continue;
+        action.stop();
+        action.getMixer().uncacheClip(action.getClip());
+        state.actions.splice(state.actions.indexOf(action), 1);
+      }
+    };
+    const applyClip = (clip: THREE.AnimationClip) => {
+      const primaryCount = state.models.length;
+      for (const model of state.models) {
+        let mixer = state.mixerByModel.get(model);
+        if (!mixer) {
+          mixer = new THREE.AnimationMixer(model);
+          state.mixerByModel.set(model, mixer);
+          state.mixers.push(mixer);
+        }
+        const action = mixer.clipAction(clip);
+        action.setLoop(THREE.LoopRepeat, Infinity);
+        if (unsyncedAnimations && primaryCount > 1 && clip.duration > 0) action.time = Math.random() * clip.duration;
+        action.timeScale = animationSpeedRef.current;
+        action.play();
+        action.paused = !isPlayingRef.current;
+        state.actions.push(action);
+      }
+    };
+
+    if (!selectedAnimationPath) {
+      clearActions();
+      for (const mixer of state.mixerByModel.values()) mixer.update(0);
+      state.bakedAnimationPath = "";
+      setClipDuration(0);
+      setCurrentTime(0);
+      return;
+    }
+    const cache = clipCacheRef.current?.cache;
+    if (!cache) return;
+    const cached = cache.peek(selectedAnimationPath);
+    if (cached) {
+      // Cached clips switch with no IPC or export.
+      clearActions();
+      applyClip(cached);
+      state.bakedAnimationPath = selectedAnimationPath;
+      setClipDuration(cached.duration);
+      setCurrentTime(0);
+      return;
+    }
+    void (async () => {
+      const clip = await cache.request(selectedAnimationPath);
+      if (token !== animationSwapTokenRef.current || primaryAnimationRef.current !== state) return;
+      if (!clip) {
+        setWarnings((current) => [...current, "This animation could not be loaded."]);
+        return;
+      }
+      clearActions();
+      applyClip(clip);
+      state.bakedAnimationPath = selectedAnimationPath;
+      setClipDuration(clip.duration);
+      setCurrentTime(0);
+    })();
+    // Only the selected animation (or a finished model load) should trigger a swap.
+  }, [selectedAnimationPath, previewLoadTick]);
 
   useEffect(() => {
     const defaultFaction = unitVariantContext?.faction || "";

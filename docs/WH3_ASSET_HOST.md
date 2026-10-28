@@ -86,7 +86,7 @@ Response:
 
 The host runs **one serial read → dispatch → write loop**, and dispatch is synchronous. So `initialize`, exports and `shutdown` never overlap; a second request waits until the first one's response is written.
 
-WHMM adds its own ordering on top. Every pack-dependent call (`exportVisualsModel`, `exportVisualsModelBatch`, `getVisualsModelAnimationCatalog`, `exportUnitPainterTextures`) goes through one promise queue (`exportVisualsModel()` in `wh3AssetHostIpc.ts`). This keeps `initialize(A)` + `export(A)` atomic: a mod-list change cannot slip `initialize(B)` in between. Keep new pack-dependent calls on that queue. The missing-skeleton exchange below relies on it too.
+WHMM adds its own ordering on top. Every pack-dependent call (`exportVisualsModel`, `exportVisualsModelBatch`, `exportVisualsModelAnimations`, `getVisualsModelAnimationCatalog`, `exportUnitPainterTextures`) goes through one promise queue (`exportVisualsModel()` in `wh3AssetHostIpc.ts`). This keeps `initialize(A)` + `export(A)` atomic: a mod-list change cannot slip `initialize(B)` in between. Keep new pack-dependent calls on that queue. The missing-skeleton exchange below relies on it too.
 
 ### Session lifecycle
 
@@ -94,7 +94,7 @@ WHMM adds its own ordering on top. Every pack-dependent call (`exportVisualsMode
 2. **`hello`**: WHMM requires `protocolVersion === 1` and a capability list that contains every entry in `REQUIRED_CAPABILITIES` (`wh3AssetHostClient.ts`). Otherwise it fails with `ProtocolVersionMismatch`, `MalformedHello`, or `MissingCapabilities`.
 3. **Warm the vanilla index.** `ensureWh3AssetHostVanillaCache()` builds any missing or stale vanilla pack indexes into `vanillaPackFilesCache` and flushes once, so the host never reads a half-written cache. The host is already running during this step.
 4. **`initialize`**: sent lazily before the first operation, then again whenever the pack list, the output root, or the cache path changes. `Wh3AssetHostPackInitializer` keys these on case-insensitive Windows paths.
-5. **Operations**: `getAnimationCatalog`, `exportModel`, `exportModelBatch`, `exportPaintedVariant`.
+5. **Operations**: `getAnimationCatalog`, `exportModel`, `exportModelBatch`, `exportAnimations`, `exportPaintedVariant`.
 6. **`shutdown`** or dispose. The renderer calls IPC `startWh3AssetHost` and `stopWh3AssetHost` when the Visuals tab becomes active or inactive. App exit (`before-quit` and `exit`) disposes the host.
 
 Each start/stop bumps a lifecycle generation. A request from an older generation never tears down a newer host. If a transport or process failure happens during an operation, WHMM disposes that host and sends `wh3AssetHostReset` to the renderer. The next operation starts a fresh host.
@@ -107,7 +107,7 @@ Each start/stop bumps a lifecycle generation. A request from an older generation
 
 No fields. Result: `{ hostVersion, protocolVersion, capabilities: string[], maxFrameBytes }`.
 
-The host advertises: `hello`, `initialize`, `getAnimationCatalog`, `getVariantMeshComposition`, `exportModel`, `exportModelBatch`, `exportPaintedVariant`, `paintedVariantRgba`, `paintedVariantSourceOverride`, `variantMeshSelections`, `missingSkeletonDecision`, `shutdown`.
+The host advertises: `hello`, `initialize`, `getAnimationCatalog`, `getVariantMeshComposition`, `exportModel`, `exportModelBatch`, `exportAnimations`, `exportPaintedVariant`, `paintedVariantRgba`, `paintedVariantSourceOverride`, `variantMeshSelections`, `missingSkeletonDecision`, `shutdown`.
 
 Some entries are **feature flags, not commands**: `paintedVariantRgba`, `paintedVariantSourceOverride`, `variantMeshSelections`, `missingSkeletonDecision`. WHMM requires every entry except `getVariantMeshComposition` and `variantMeshSelections`.
 
@@ -155,6 +155,26 @@ Same fields as `exportModel`, except `outputPath` and `variantSelections` move i
 Result: `{ exports: ExportResult[] }`, in item order. The response is `success: true` even if individual items failed, so check each `exports[i].success`. WHMM treats the batch as failed if any item failed or if the result count does not match.
 
 Additional errors: `InvalidBatchItems`, `BatchTooLarge`.
+
+#### `exportAnimations`
+
+Writes a GLB with only the model's skeleton nodes and the requested clips: no meshes, skins, materials, images or KTX2 work. It is the same exporter as `exportModel` (same shared-skeleton choice, node names, hierarchy, `mirrorMesh` flipping and SuperView metadata), so the clips bind by node name to a scene loaded from `exportModel`. WHMM uses it to cache the clips of a model and switch animations locally.
+
+| Field                  | Type                                                   | Notes                                                                  |
+| ---------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------- |
+| `assetPath`*           | string                                                 | Same as `exportModel`                                                  |
+| `outputPath`*          | string                                                 | Must end in `.glb` or `.gltf`. WHMM uses `<previewId>\animations.glb`. |
+| `animationSelections`* | `{ path, packIndex?, fragmentPath?, metadataPath? }[]` | 1-200 clips                                                            |
+| `variantSelections`    | `{ slotPath, choiceIndex }[]`                          | Only used to resolve the skeleton of a VMD                             |
+| `mirrorMesh`           | bool                                                   | Default `true`; must match the model export                            |
+
+Result: `ExportResult`. The glTF animation for `animationSelections[i]` is named `clip<i>`. One bad clip does not fail the request: it is left out of the GLB and reported in `warnings` as `{ code: "AnimationFailed" | "AnimationNotFound", message: "clip<i>|<path>|<reason>" }`. Measured on a vanilla humanoid (Karl Franz, 4041-clip catalog): 1 clip ~35-50 ms, 10 clips ~290 ms, 30 clips ~730 ms, 200 clips ~3.5 s (57 MB), versus ~1.9 s for a full `exportModel` of one clip.
+
+Errors: those of `exportModel`, plus `InvalidAnimationSelections` when the list is empty or longer than 200. The export fails (`ExportFailed`) if no skeleton can be resolved.
+
+#### Animation clip cache
+
+`src/visuals/animationClipCache.ts` keeps the clips of the loaded model. `VisualsModelPreview` seeds it with the clip that arrives with the model, then prefetches the rest of the catalog after the scene is ready, 20 clips per `exportVisualsModelAnimations` call, capped at 200 cached clips (least recently used goes first). A selected clip that is not cached is fetched alone, ahead of the queue. A cached clip switches with no IPC. The cache is keyed by `animationCatalogKey` (asset, profile, mods, animation table), so a different model or mod set disposes it, drops queued work and ignores in-flight results.
 
 #### `exportPaintedVariant`
 

@@ -44,6 +44,16 @@ export interface VisualsModelPreviewExportResult {
   timings?: VisualsModelPreviewMainTiming;
 }
 
+export interface VisualsModelPreviewAnimationsExportResult {
+  success: boolean;
+  previewId?: string;
+  url?: string;
+  /** Failed clips are reported as "clip{index}|{path}|{reason}". */
+  warnings?: string[];
+  error?: string;
+  timings?: { queueWaitMs: number; hostExportMs: number; totalMs: number };
+}
+
 export interface VisualsModelPreviewBatchItem {
   variantSelections: readonly VariantMeshSelection[];
 }
@@ -262,6 +272,21 @@ export const exportVisualsModel = async (
     [...animationSelections],
     [...variantSelections],
   )) as VisualsModelPreviewExportResult;
+
+/** Exports skeleton nodes plus the given clips (animations named `clip{index}`); no meshes or textures. */
+export const exportVisualsModelAnimations = async (
+  assetPath: string,
+  enabledMods: readonly VisualsModelPreviewMod[],
+  animationSelections: readonly VisualsModelPreviewAnimationReference[],
+  variantSelections: readonly VariantMeshSelection[] = [],
+): Promise<VisualsModelPreviewAnimationsExportResult> =>
+  (await getRendererIpc().invoke(
+    "exportVisualsModelAnimations",
+    assetPath,
+    enabledMods.map(({ name, path, loadOrder }) => ({ name, path, loadOrder })),
+    [...animationSelections],
+    [...variantSelections],
+  )) as VisualsModelPreviewAnimationsExportResult;
 
 export const exportVisualsModelBatch = async (
   assetPath: string,

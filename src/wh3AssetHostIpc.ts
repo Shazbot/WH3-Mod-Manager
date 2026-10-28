@@ -558,6 +558,82 @@ const exportVisualsModelNow = async (
   }
 };
 
+/** Exports only the skeleton nodes and the requested clips (animations named `clip{index}`). */
+const exportVisualsModelAnimationsNow = async (
+  assetPath: string,
+  enabledModsValue: unknown,
+  animationSelectionsValue: unknown,
+  variantSelectionsValue: unknown,
+  queuedAtMs: number,
+  generation: number,
+) => {
+  const operationStartedAt = performance.now();
+  const queueWaitMs = operationStartedAt - queuedAtMs;
+  const normalized = normalizeVisualsModelAssetPath(assetPath);
+  if (!normalized.success) return normalized;
+
+  const enabledMods = sanitizeEnabledMods(enabledModsValue);
+  const animationSelections = sanitizeAnimationSelections(animationSelectionsValue);
+  if (animationSelections.length === 0) return { success: false as const, error: "No animations were requested." };
+  const variantSelections = sanitizeVariantSelections(variantSelectionsValue);
+  const previewId = randomUUID();
+  const previewDirectory = nodePath.join(getOutputRoot(), previewId);
+  const outputPath = `${previewId}\\animations.glb`;
+  let registered = false;
+  let host: RunningHost | undefined;
+
+  try {
+    host = await prepareVisualsModelHost(enabledMods, generation);
+    const hostExportStartedAt = performance.now();
+    const result = await host.client.exportAnimations({
+      assetPath: normalized.assetPath,
+      outputPath,
+      animationSelections,
+      variantSelections,
+    });
+    const hostExportMs = performance.now() - hostExportStartedAt;
+    assertHostLifecycleActive(generation);
+
+    if (!result.success || !result.primaryFile) {
+      const hostErrors = result.errors
+        ?.map((error) => error.message)
+        .filter(Boolean)
+        .join(" | ");
+      return {
+        success: false as const,
+        error: hostErrors || "WH3AssetHost did not produce an animation GLB for this model.",
+        warnings: result.warnings?.map((warning) => warning.message) ?? [],
+      };
+    }
+
+    registerModelPreviewFile(previewId, result.primaryFile);
+    previews.set(previewId, { directory: nodePath.dirname(result.primaryFile) });
+    registered = true;
+    return {
+      success: true as const,
+      previewId,
+      url: modelPreviewAssetUrl(previewId),
+      // Failed clips come back as "clip{index}|{path}|{reason}".
+      warnings: result.warnings?.map((warning) => warning.message) ?? [],
+      timings: { queueWaitMs, hostExportMs, totalMs: performance.now() - queuedAtMs },
+    };
+  } catch (error) {
+    disposeOperationHost(host);
+    return {
+      success: false as const,
+      error: error instanceof Error ? error.message : "Failed to export the model animations.",
+    };
+  } finally {
+    if (!registered) {
+      try {
+        await fs.promises.rm(previewDirectory, { recursive: true, force: true });
+      } catch {
+        // Failed exports are already surfaced to the caller; leftover temp cleanup is best-effort.
+      }
+    }
+  }
+};
+
 const exportVisualsModelBatchNow = async (
   assetPath: string,
   enabledModsValue: unknown,
@@ -700,6 +776,25 @@ ipcMain.handle(
     const generation = hostLifecycleGeneration;
     return exportVisualsModel(() =>
       exportVisualsModelNow(assetPath, enabledMods, animationPaths, variantSelections, queuedAtMs, generation),
+    );
+  },
+);
+
+ipcMain.removeHandler("exportVisualsModelAnimations");
+ipcMain.handle(
+  "exportVisualsModelAnimations",
+  async (_event, assetPath: string, enabledMods: unknown, animationSelections: unknown, variantSelections: unknown) => {
+    const queuedAtMs = performance.now();
+    const generation = hostLifecycleGeneration;
+    return exportVisualsModel(() =>
+      exportVisualsModelAnimationsNow(
+        assetPath,
+        enabledMods,
+        animationSelections,
+        variantSelections,
+        queuedAtMs,
+        generation,
+      ),
     );
   },
 );
