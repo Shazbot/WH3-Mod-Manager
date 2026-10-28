@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearUnitViewerMemoryCache, loadUnitViewerDiskCache, saveUnitViewerDiskCache } from "../src/unitViewer/cache";
 import { buildUnitViewerData, type UnitViewerTableRows } from "../src/unitViewer/data";
-import type { UnitViewerPainterVariantContext } from "../src/unitViewer/types";
+import type { UnitViewerAbility, UnitViewerPainterVariantContext } from "../src/unitViewer/types";
 
 vi.mock("@mongodb-js/zstd", () => ({
   compress: async (input: Buffer) => input,
@@ -101,6 +101,40 @@ const toComparableModel = (data: ReturnType<typeof buildUnitViewerData> | undefi
   );
 };
 
+const makeAbility = (): UnitViewerAbility => ({
+  key: "shared",
+  passive: true,
+  isSpell: false,
+  tooltip: {
+    key: "shared",
+    name: "Ability",
+    description: "Description",
+    sourceTypeName: "Source",
+    loreGroupName: "Lore",
+    abilityTypeName: "Type",
+    iconPath: "ability.png",
+    loreIconPath: "lore.png",
+    typeIconPath: "type.png",
+    overpowerOption: "option",
+    affectedUnitsText: "Allies",
+    enabledIfText: "Active",
+    stats: { range: 10, cooldown: 20, duration: 3, effectRange: 4, womCost: 5, miscastChance: 6, minRange: 1 },
+    bonuses: [{ key: "bonus", label: "Speed", valueText: "+2", numericValue: 2, isPositive: true }],
+    additionalUiEffects: [{ key: "effect", text: "Effect", sortOrder: 1, effectState: "enabled" }],
+    projectile: {
+      key: "projectile",
+      totalDamage: 10,
+      apDamage: 2,
+      apPct: 20,
+      numProjectiles: 1,
+      explosion: { key: "explosion", radius: 5, totalDamage: 2, apDamage: 1, apPct: 50, duration: 1 },
+      spawnedVortex: { key: "spawned", dps: 3, radius: 4 },
+    },
+    vortex: { key: "vortex", dps: 4, apDps: 2, apPct: 50, duration: 3, radius: 2, movementSpeed: 1, numVortexes: 2 },
+    directDamage: { dpsMin: 1, dpsMax: 2, duration: 3 },
+  },
+});
+
 const readPayload = async (directory: string) =>
   JSON.parse(await fs.promises.readFile(cacheFile(directory), "utf8")) as any;
 
@@ -125,7 +159,7 @@ describe("Unit Viewer disk cache", () => {
     await saveUnitViewerDiskCache(directory, "current", data);
     expect(toComparableModel(data)).toEqual(originalModel);
     const serialized = await readPayload(directory);
-    expect(serialized.version).toBe(32);
+    expect(serialized.version).toBe(33);
     expect(serialized.data.factionColourPool).toHaveLength(3);
     expect(
       serialized.data.units.find(([key]: [string]) => key === "with-colours")[1].painterVariantContext.factionColours,
@@ -197,7 +231,7 @@ describe("Unit Viewer disk cache", () => {
 
     await saveUnitViewerDiskCache(directory, "palette-signature", data);
     const serialized = await readPayload(directory);
-    expect(serialized.version).toBe(32);
+    expect(serialized.version).toBe(33);
     expect(serialized.data.factionColourPool).toEqual([
       commonColour,
       { ...commonColour, subculture: "other_subculture" },
@@ -239,6 +273,159 @@ describe("Unit Viewer disk cache", () => {
     expect(diskColours?.[0]).not.toBe(secondColours?.[0]);
   });
 
+  it("pools complete ability values and restores every nested branch independently", async () => {
+    const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), "whmm-unit-viewer-"));
+    temporaryDirectories.push(directory);
+    const data = makeData();
+    const shared = makeAbility();
+    const different = makeAbility();
+    different.tooltip.stats.cooldown = 99;
+    const spell = makeAbility();
+    spell.isSpell = true;
+    const unit = data.units.get("unit")!;
+    unit.abilities = [shared, different, makeAbility()];
+    data.units.set("second", { ...unit, key: "second", abilities: [makeAbility(), spell] });
+    const expected = toComparableModel(data);
+    await saveUnitViewerDiskCache(directory, "abilities", data);
+    expect(toComparableModel(data)).toEqual(expected);
+    const payload = await readPayload(directory);
+    expect(payload.data.abilityPool).toHaveLength(3);
+    expect(payload.data.units.find(([key]: [string]) => key === "unit")[1].abilities).toEqual([0, 1, 0]);
+    expect(payload.data.units.find(([key]: [string]) => key === "second")[1].abilities).toEqual([0, 2]);
+
+    shared.tooltip.name = "caller change";
+    shared.tooltip.projectile!.explosion!.radius = 123;
+    const first = await loadUnitViewerDiskCache(directory, "abilities");
+    expect(toComparableModel(first)).toEqual(expected);
+    const values = [
+      first!.units.get("unit")!.abilities[0],
+      first!.units.get("unit")!.abilities[2],
+      first!.units.get("second")!.abilities[0],
+    ];
+    const seen = new Set<object>();
+    const verifyIndependent = (value: unknown) => {
+      if (!value || typeof value !== "object") return;
+      expect(seen.has(value)).toBe(false);
+      seen.add(value);
+      Object.values(value).forEach(verifyIndependent);
+    };
+    values.forEach(verifyIndependent);
+    values[0].tooltip.name = "returned change";
+    values[0].tooltip.stats.cooldown = 123;
+    values[0].tooltip.bonuses[0].label = "changed";
+    values[0].tooltip.additionalUiEffects[0].text = "changed";
+    values[0].tooltip.projectile!.explosion!.radius = 123;
+    values[0].tooltip.projectile!.spawnedVortex!.dps = 123;
+    values[0].tooltip.vortex!.dps = 123;
+    values[0].tooltip.directDamage!.dpsMin = 123;
+    const second = await loadUnitViewerDiskCache(directory, "abilities");
+    expect(toComparableModel(second)).toEqual(expected);
+    clearUnitViewerMemoryCache();
+    expect(toComparableModel(await loadUnitViewerDiskCache(directory, "abilities"))).toEqual(expected);
+  });
+
+  it("rejects malformed ability pools and references without poisoning memory", async () => {
+    const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), "whmm-unit-viewer-"));
+    temporaryDirectories.push(directory);
+    const data = makeData();
+    data.units.get("unit")!.abilities = [makeAbility()];
+    await saveUnitViewerDiskCache(directory, "abilities", data);
+    const valid = await readPayload(directory);
+    const cases = [
+      (p: any) => {
+        p.version = 32;
+      },
+      (p: any) => {
+        delete p.data.abilityPool;
+      },
+      (p: any) => {
+        p.data.abilityPool = {};
+      },
+      (p: any) => {
+        p.data.abilityPool = [null];
+      },
+      (p: any) => {
+        p.data.abilityPool[0].passive = "true";
+      },
+      (p: any) => {
+        p.data.abilityPool[0].tooltip.stats.range = "10";
+      },
+      (p: any) => {
+        delete p.data.abilityPool[0].tooltip.bonuses;
+      },
+      (p: any) => {
+        p.data.abilityPool[0].tooltip.bonuses[0].isPositive = 1;
+      },
+      (p: any) => {
+        p.data.abilityPool[0].tooltip.additionalUiEffects[0].text = 1;
+      },
+      (p: any) => {
+        p.data.abilityPool[0].tooltip.projectile.explosion.radius = "5";
+      },
+      (p: any) => {
+        p.data.abilityPool[0].tooltip.projectile.spawnedVortex.dps = null;
+      },
+      (p: any) => {
+        p.data.abilityPool[0].tooltip.vortex = [];
+      },
+      (p: any) => {
+        p.data.abilityPool[0].tooltip.directDamage.dpsMin = "1";
+      },
+      (p: any) => {
+        p.data.abilityPool[0].tooltip.unknown = { nested: true };
+      },
+      (p: any) => {
+        p.data.units[0][1].abilities = {};
+      },
+      ...[-1, 0.5, 1, "0", null].map((value) => (p: any) => {
+        p.data.units[0][1].abilities = [value];
+      }),
+    ];
+    for (const corrupt of cases) {
+      const payload = structuredClone(valid);
+      corrupt(payload);
+      clearUnitViewerMemoryCache();
+      await writePayload(directory, payload);
+      await expect(loadUnitViewerDiskCache(directory, "abilities")).resolves.toBeUndefined();
+      await writePayload(directory, valid);
+      await expect(loadUnitViewerDiskCache(directory, "abilities")).resolves.toBeDefined();
+    }
+  });
+
+  it("keeps an existing cache intact when an ability cannot be serialized", async () => {
+    const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), "whmm-unit-viewer-"));
+    temporaryDirectories.push(directory);
+    const data = makeData();
+    data.units.get("unit")!.abilities = [makeAbility()];
+    await saveUnitViewerDiskCache(directory, "abilities", data);
+    const before = await fs.promises.readFile(cacheFile(directory));
+    const saved = toComparableModel(data);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      (data.units.get("unit")!.abilities[0].tooltip as any).unknown = { nested: true };
+      await expect(saveUnitViewerDiskCache(directory, "abilities", data)).resolves.toBeUndefined();
+      expect(await fs.promises.readFile(cacheFile(directory))).toEqual(before);
+      delete (data.units.get("unit")!.abilities[0].tooltip as any).unknown;
+      const ability = data.units.get("unit")!.abilities[0];
+      const bonuses = ability.tooltip.bonuses;
+      ability.tooltip.bonuses = new Array(1);
+      await expect(saveUnitViewerDiskCache(directory, "abilities", data)).resolves.toBeUndefined();
+      expect(await fs.promises.readFile(cacheFile(directory))).toEqual(before);
+      ability.tooltip.bonuses = bonuses;
+      const abilities = data.units.get("unit")!.abilities;
+      data.units.get("unit")!.abilities = new Array(1);
+      await expect(saveUnitViewerDiskCache(directory, "abilities", data)).resolves.toBeUndefined();
+      expect(await fs.promises.readFile(cacheFile(directory))).toEqual(before);
+      data.units.get("unit")!.abilities = abilities;
+      (data.units.get("unit")!.abilities[0].tooltip as any).cycle = data.units.get("unit")!.abilities[0];
+      await expect(saveUnitViewerDiskCache(directory, "abilities", data)).resolves.toBeUndefined();
+      expect(await fs.promises.readFile(cacheFile(directory))).toEqual(before);
+      expect(toComparableModel(await loadUnitViewerDiskCache(directory, "abilities"))).toEqual(saved);
+    } finally {
+      error.mockRestore();
+    }
+  });
+
   it("rejects old versions and corrupted faction colour pools or references without caching them", async () => {
     const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), "whmm-unit-viewer-"));
     temporaryDirectories.push(directory);
@@ -246,7 +433,7 @@ describe("Unit Viewer disk cache", () => {
     const validPayload = await readPayload(directory);
 
     const corruptPayloads = [
-      { ...validPayload, version: 31 },
+      { ...validPayload, version: 32 },
       { ...validPayload, data: { ...validPayload.data, factionColourPool: {} } },
       {
         ...validPayload,
