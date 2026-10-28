@@ -191,8 +191,10 @@ import {
   closeVanillaDbCacheReaders,
   fillPackedFileFromVanillaCache,
   fillVanillaTablesFromCache,
+  readVanillaTablesAsTypedRows,
   searchVanillaDb,
 } from "./vanillaDbCache/store";
+import { formatUnitViewerTypedTableRows, prependUnitViewerTableRows } from "./unitViewer/tableRows";
 import { setVanillaDbCacheBuildProgressReporter } from "./vanillaDbCache/progress";
 import bs from "binary-search";
 import { compress as zstdCompress, decompress as zstdDecompress } from "@mongodb-js/zstd";
@@ -3398,17 +3400,38 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
 
     const indexedDbPack = await readPack(dbPackPath, { skipParsingTables: true });
-    const { unservedPrefixes } = await fillVanillaTablesFromCache(indexedDbPack, tablesToRead, getDBVersion);
-    if (unservedPrefixes.length === 0) {
-      indexedDbPack.readTables = [...tablesToRead];
-      appendPacksData(indexedDbPack, undefined, false);
-    } else {
-      // A pack readModsByPath did not return is one it never read, and a catalog built without the
-      // game's database pack holds no vanilla units at all - which reads as a real result and would
-      // be cached under a signature that stays valid across restarts.
-      const readDbPacks = await readModsByPath([dbPackPath], { skipParsingTables: false, tablesToRead }, true, false);
-      if (readDbPacks.length === 0) {
-        throw new Error("The game's database pack could not be read for the Unit Viewer");
+    let typedVanillaRows = await readVanillaTablesAsTypedRows(indexedDbPack, tablesToRead, getDBVersion);
+    const formattedVanillaRows = new Map<string, Array<Record<string, string>>>();
+    if (typedVanillaRows) {
+      const typedRowsByPrefix = new Map(
+        typedVanillaRows.prefixes.map((prefixRows) => [prefixRows.prefix, prefixRows.tables]),
+      );
+      try {
+        for (const canonicalTableName of UNIT_VIEWER_TABLES) {
+          const rows = (typedRowsByPrefix.get(`db\\${canonicalTableName}\\`) ?? []).flatMap((table) =>
+            formatUnitViewerTypedTableRows(table.columns, table.rows),
+          );
+          formattedVanillaRows.set(canonicalTableName, rows);
+        }
+      } catch (error) {
+        console.log("vanilla db cache: could not format typed Unit Viewer rows, falling back to the pack", error);
+        typedVanillaRows = undefined;
+        formattedVanillaRows.clear();
+      }
+    }
+    if (!typedVanillaRows) {
+      const { unservedPrefixes } = await fillVanillaTablesFromCache(indexedDbPack, tablesToRead, getDBVersion);
+      if (unservedPrefixes.length === 0) {
+        indexedDbPack.readTables = [...tablesToRead];
+        appendPacksData(indexedDbPack, undefined, false);
+      } else {
+        // A pack readModsByPath did not return is one it never read, and a catalog built without the
+        // game's database pack holds no vanilla units at all - which reads as a real result and would
+        // be cached under a signature that stays valid across restarts.
+        const readDbPacks = await readModsByPath([dbPackPath], { skipParsingTables: false, tablesToRead }, true, false);
+        if (readDbPacks.length === 0) {
+          throw new Error("The game's database pack could not be read for the Unit Viewer");
+        }
       }
     }
     if (enabledMods.length > 0) {
@@ -3420,22 +3443,24 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
 
     const packsByPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
     const dbPack = packsByPath.get(dbPackPath);
-    if (!dbPack) throw new Error("Could not read db.pack for Unit Viewer");
-    // A prefix db.pack carries files for, yet has no parsed rows for, means the rows this build filled
-    // in were dropped again before it got here - by a release from another build over the same tables,
-    // or by a read that never happened. Building on that yields a catalog holding only mod units, and
-    // the disk cache below would then serve it on every start until the mod list changes. Fail instead.
-    const unparsedVanillaPrefixes = findUnparsedTablePrefixes([dbPack], tablesToRead);
-    if (unparsedVanillaPrefixes.length > 0) {
-      throw new Error(
-        `The game's unit tables were not available when the Unit Viewer was built (${unparsedVanillaPrefixes.join(", ")}), try again`,
-      );
+    if (!typedVanillaRows) {
+      if (!dbPack) throw new Error("Could not read db.pack for Unit Viewer");
+      // A prefix db.pack carries files for, yet has no parsed rows for, means the rows this build filled
+      // in were dropped again before it got here - by a release from another build over the same tables,
+      // or by a read that never happened. Building on that yields a catalog holding only mod units, and
+      // the disk cache below would then serve it on every start until the mod list changes. Fail instead.
+      const unparsedVanillaPrefixes = findUnparsedTablePrefixes([dbPack], tablesToRead);
+      if (unparsedVanillaPrefixes.length > 0) {
+        throw new Error(
+          `The game's unit tables were not available when the Unit Viewer was built (${unparsedVanillaPrefixes.join(", ")}), try again`,
+        );
+      }
     }
     const orderedMods = sortByNameAndLoadOrder(enabledMods)
       .toReversed()
       .map((mod) => packsByPath.get(mod.path))
       .filter((pack): pack is Pack => !!pack);
-    const tablePacks = [dbPack, ...orderedMods];
+    const tablePacks = typedVanillaRows ? orderedMods : [dbPack!, ...orderedMods];
     const packsTableData = getPacksTableData(tablePacks, tablesToRead, false) || [];
     const tables: UnitViewerTableRows = {};
     const originPackPathByUnit = new Map<string, string>();
@@ -3452,7 +3477,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           originPackPathByLandUnit.set(row.key, packViewData.packPath);
         }
       });
-      tables[canonicalTableName] = rows;
+      tables[canonicalTableName] = typedVanillaRows
+        ? prependUnitViewerTableRows(formattedVanillaRows.get(canonicalTableName) ?? [], rows)
+        : rows;
     }
     for (const row of tables.main_units_tables || []) {
       const unitKey = row.unit;

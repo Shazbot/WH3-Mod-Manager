@@ -5,9 +5,9 @@ import * as nodePath from "path";
 
 import appData from "../appData";
 import { readPack } from "../packFileSerializer";
-import { DBVersion, Pack, PackedFile, SchemaField } from "../packFileTypes";
+import { DBVersion, Pack, PackedFile, SCHEMA_FIELD_TYPE, SchemaField } from "../packFileTypes";
 import { getCanonicalFileIdentity } from "../vanillaCacheIdentity";
-import { getSchemaFileName, getSchemaForGame } from "../schema";
+import { getSchemaFilePath, getSchemaForGame } from "../schema";
 import { SupportedGames, gameToPackWithDBTablesName } from "../supportedGames";
 import { parseDBTablePath, resolveParsedDBVersion } from "../utility/packFileHelpers";
 import { collator } from "../utility/packFileSorting";
@@ -27,6 +27,7 @@ import { CacheCandidateResult, openCacheCandidate } from "./openPolicy";
 import {
   VanillaDbCacheIntegrityError,
   VanillaDbCacheReader,
+  VanillaDbCacheTypedValue,
   createFileSource,
   createMemorySource,
   openVanillaDbCache,
@@ -64,8 +65,10 @@ let nextBuildId = 0;
  */
 const getSchemaHash = (game: SupportedGames): string | undefined => {
   try {
-    const schemaPath = nodePath.join(__dirname, `../schema/${getSchemaFileName(game)}`);
-    return crypto.createHash("sha1").update(fs.readFileSync(schemaPath)).digest("hex");
+    return crypto
+      .createHash("sha1")
+      .update(fs.readFileSync(getSchemaFilePath(game)))
+      .digest("hex");
   } catch (error) {
     console.log("vanilla db cache: could not hash the schema", error);
     return undefined;
@@ -448,6 +451,145 @@ const describeSchemaDisagreement = (
     }
   }
   return undefined;
+};
+
+export interface VanillaDbCacheTypedColumn {
+  name: string;
+  fieldType: SCHEMA_FIELD_TYPE;
+}
+
+export interface VanillaDbCacheTypedTableRows {
+  /** Prefix that requested this physical table. */
+  prefix: string;
+  /** Full path from the current pack index. */
+  packedFilePath: string;
+  schemaVersion: number;
+  rowCount: number;
+  columns: VanillaDbCacheTypedColumn[];
+  rows: Array<Record<string, VanillaDbCacheTypedValue>>;
+}
+
+export interface VanillaDbCacheTypedPrefixRows {
+  prefix: string;
+  /** Physical files in their order in the current pack index. */
+  tables: VanillaDbCacheTypedTableRows[];
+}
+
+export interface VanillaDbCacheTypedRead {
+  /** Prefixes in request order; an absent prefix is represented by an empty table list. */
+  prefixes: VanillaDbCacheTypedPrefixRows[];
+}
+
+/**
+ * Reads every indexed vanilla DB table under the requested prefixes as typed columns.
+ *
+ * This is a separate, non-mutating path for consumers that can use typed values directly. The live
+ * pack index defines completeness: a missing cached table makes the whole result unavailable, while
+ * a prefix with no indexed table files is a valid empty result. The cache and the consumer's schema
+ * must agree on version, column names, types, and count before any rows are returned.
+ */
+export const readVanillaTablesAsTypedRows = async (
+  pack: Pack,
+  tablePathPrefixes: readonly string[],
+  resolveConsumerSchema: (packedFile: PackedFile) => DBVersion | undefined,
+): Promise<VanillaDbCacheTypedRead | undefined> => {
+  if (!canUseVanillaDbCacheForPack(pack.path)) return undefined;
+  const reader = await getVanillaDbCacheReader();
+  if (!reader || !isSamePackPath(reader.meta.dbPackPath, pack.path)) return undefined;
+
+  const packedFileByName = new Map(pack.packedFiles.map((packedFile) => [packedFile.name, packedFile]));
+  const result: VanillaDbCacheTypedRead = { prefixes: [] };
+
+  try {
+    for (const prefix of tablePathPrefixes) {
+      const tablePaths = getIndexedDbTablePathsForPrefix(pack.packedFiles, prefix);
+      const tables: VanillaDbCacheTypedTableRows[] = [];
+
+      for (const packedFilePath of tablePaths) {
+        const packedFile = packedFileByName.get(packedFilePath);
+        if (!packedFile) return undefined;
+
+        const tableMeta = reader.getTableMeta(packedFilePath);
+        const parsedPath = parseDBTablePath(packedFilePath);
+        if (
+          !tableMeta ||
+          tableMeta.packedFilePath !== packedFilePath ||
+          !parsedPath ||
+          tableMeta.dbName !== parsedPath.dbName ||
+          !Number.isSafeInteger(tableMeta.rowCount) ||
+          tableMeta.rowCount < 0 ||
+          !Number.isSafeInteger(tableMeta.schemaVersion) ||
+          tableMeta.columns.length === 0
+        ) {
+          console.log(`vanilla db cache: ${packedFilePath} has incomplete table metadata, falling back to the pack`);
+          return undefined;
+        }
+
+        const columnNames = new Set<string>();
+        if (
+          tableMeta.columns.some((column) => {
+            if (!column.name || columnNames.has(column.name)) return true;
+            columnNames.add(column.name);
+            return false;
+          })
+        ) {
+          console.log(
+            `vanilla db cache: ${packedFilePath} has duplicate or empty column names, falling back to the pack`,
+          );
+          return undefined;
+        }
+
+        // getDBVersion uses the packed file's version marker. Give it a clone carrying the version
+        // stored with these rows, so schema resolution cannot mutate the live index descriptor.
+        const schemaDescriptor: PackedFile = { ...packedFile, version: tableMeta.packedFileVersion };
+        const schema = resolveConsumerSchema(schemaDescriptor);
+        const schemaColumnNames = schema?.fields.map((field) => field.name) ?? [];
+        if (schema && new Set(schemaColumnNames).size !== schemaColumnNames.length) {
+          console.log(
+            `vanilla db cache: ${packedFilePath} has duplicate consumer schema columns, falling back to the pack`,
+          );
+          return undefined;
+        }
+        const disagreement = describeSchemaDisagreement(schema, tableMeta);
+        if (disagreement || schema?.version !== tableMeta.schemaVersion) {
+          console.log(
+            `vanilla db cache: ${packedFilePath} ${disagreement ?? `would use schema version ${schema?.version} instead of ${tableMeta.schemaVersion}`}, falling back to the pack`,
+          );
+          return undefined;
+        }
+
+        const rows = reader.getTypedTableRows(packedFilePath);
+        if (!rows || rows.length !== tableMeta.rowCount) {
+          console.log(
+            `vanilla db cache: ${packedFilePath} has ${rows?.length ?? "no"} typed rows; expected ${tableMeta.rowCount}, falling back to the pack`,
+          );
+          return undefined;
+        }
+
+        tables.push({
+          prefix,
+          packedFilePath,
+          schemaVersion: tableMeta.schemaVersion,
+          rowCount: tableMeta.rowCount,
+          columns: tableMeta.columns.map(({ name, fieldType }) => ({ name, fieldType })),
+          rows,
+        });
+      }
+
+      result.prefixes.push({ prefix, tables });
+    }
+  } catch (error) {
+    // A checksum failure condemns the cache. Other decoding errors are a miss, but do not throw away
+    // a cache that may still serve another table or feature.
+    if (error instanceof VanillaDbCacheIntegrityError) {
+      await discardCorruptReader(reader, error);
+    } else {
+      console.log("vanilla db cache: typed table read failed, falling back to the pack", error);
+    }
+    return undefined;
+  }
+
+  return result;
 };
 
 /**
