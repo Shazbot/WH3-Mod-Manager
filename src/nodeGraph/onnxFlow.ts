@@ -219,42 +219,57 @@ const normalizeSchemaTableName = (name: string): string =>
     .replace(/[\\/].*$/, "")
     .toLowerCase();
 
-const getSchemaTableNameForAlias = (alias: string, schema: Record<string, DBVersion[]>): string | undefined => {
-  const target = `${alias}_tables`.toLowerCase();
-  return Object.keys(schema).find((name) => normalizeSchemaTableName(name) === target);
+interface OnnxSchemaGraph {
+  names: Map<string, string>;
+  outgoing: Map<string, OnnxJoinStep[]>;
+  incoming: Map<string, Set<string>>;
+  paths: Map<string, OnnxJoinStep[][]>;
+}
+
+// Each inspection selects a fresh schema snapshot. Index it once, rather than scanning every
+// table and reference again at every hop of every candidate-column search.
+const schemaGraphs = new WeakMap<Record<string, DBVersion[]>, OnnxSchemaGraph>();
+const getSchemaGraph = (schema: Record<string, DBVersion[]>): OnnxSchemaGraph => {
+  const cached = schemaGraphs.get(schema);
+  if (cached) return cached;
+  const graph: OnnxSchemaGraph = {
+    names: new Map(Object.keys(schema).map((name) => [normalizeSchemaTableName(name), name])),
+    outgoing: new Map(),
+    incoming: new Map(),
+    paths: new Map(),
+  };
+  for (const [name, versions] of Object.entries(schema)) {
+    const edges = new Map<string, OnnxJoinStep>();
+    for (const version of versions)
+      for (const field of version.fields ?? []) {
+        const reference = field.is_reference;
+        if (!reference?.[0] || !reference[1]) continue;
+        const targetTable = graph.names.get(normalizeSchemaTableName(reference[0]));
+        if (!targetTable) continue;
+        const step = { tableName: name, column: field.name, targetTable, targetColumn: reference[1] };
+        edges.set(`${step.column}\0${step.targetTable}\0${step.targetColumn}`, step);
+        const parents = graph.incoming.get(targetTable) ?? new Set<string>();
+        parents.add(name);
+        graph.incoming.set(targetTable, parents);
+      }
+    graph.outgoing.set(name, [...edges.values()]);
+  }
+  schemaGraphs.set(schema, graph);
+  return graph;
 };
 
+const getSchemaTableNameForAlias = (alias: string, schema: Record<string, DBVersion[]>): string | undefined =>
+  getSchemaGraph(schema).names.get(`${alias}_tables`.toLowerCase());
+
 const getTableFields = (tableName: string, schema: Record<string, DBVersion[]>): DBField[] => {
-  const key = Object.keys(schema).find(
-    (name) => normalizeSchemaTableName(name) === normalizeSchemaTableName(tableName),
-  );
+  const key = getSchemaGraph(schema).names.get(normalizeSchemaTableName(tableName));
   return key ? (schema[key]?.[0]?.fields ?? []) : [];
 };
 
 const getForwardEdges = (schema: Record<string, DBVersion[]>, tableName: string): OnnxJoinStep[] => {
-  const key = Object.keys(schema).find(
-    (name) => normalizeSchemaTableName(name) === normalizeSchemaTableName(tableName),
-  );
-  if (!key) return [];
-  const edges = new Map<string, OnnxJoinStep>();
-  for (const version of schema[key] ?? []) {
-    for (const field of version.fields ?? []) {
-      const reference = field.is_reference;
-      if (!reference || !reference[0] || !reference[1]) continue;
-      const targetTable = Object.keys(schema).find(
-        (candidate) => normalizeSchemaTableName(candidate) === normalizeSchemaTableName(reference[0]),
-      );
-      if (!targetTable) continue;
-      const step = {
-        tableName: key,
-        column: field.name,
-        targetTable,
-        targetColumn: reference[1],
-      };
-      edges.set(`${step.column}\0${step.targetTable}\0${step.targetColumn}`, step);
-    }
-  }
-  return [...edges.values()];
+  const graph = getSchemaGraph(schema);
+  const key = graph.names.get(normalizeSchemaTableName(tableName));
+  return key ? (graph.outgoing.get(key) ?? []) : [];
 };
 
 export const findOnnxForwardPaths = (
@@ -263,14 +278,33 @@ export const findOnnxForwardPaths = (
   schema: Record<string, DBVersion[]>,
   maxDepth = 8,
 ): OnnxJoinStep[][] => {
-  const root = Object.keys(schema).find(
-    (name) => normalizeSchemaTableName(name) === normalizeSchemaTableName(rootTableName),
-  );
-  const target = Object.keys(schema).find(
-    (name) => normalizeSchemaTableName(name) === normalizeSchemaTableName(targetTableName),
-  );
+  const graph = getSchemaGraph(schema);
+  const root = graph.names.get(normalizeSchemaTableName(rootTableName));
+  const target = graph.names.get(normalizeSchemaTableName(targetTableName));
   if (!root || !target) return [];
-  if (normalizeSchemaTableName(root) === normalizeSchemaTableName(target)) return [[]];
+  if (root === target) return [[]];
+  const cacheKey = JSON.stringify([root, target, maxDepth]);
+  const cached = graph.paths.get(cacheKey);
+  if (cached) return cached;
+
+  // A reverse breadth-first pass rules out dead branches before enumerating paths. The
+  // previous DFS explored the entire branching schema repeatedly for unreachable tables.
+  const distance = new Map<string, number>([[target, 0]]);
+  const queue = [target];
+  for (let i = 0; i < queue.length; i++) {
+    const current = queue[i];
+    const depth = distance.get(current)!;
+    if (depth >= maxDepth) continue;
+    for (const parent of graph.incoming.get(current) ?? []) {
+      if (distance.has(parent)) continue;
+      distance.set(parent, depth + 1);
+      queue.push(parent);
+    }
+  }
+  if (!distance.has(root)) {
+    graph.paths.set(cacheKey, []);
+    return [];
+  }
 
   const results: OnnxJoinStep[][] = [];
   const visit = (current: string, path: OnnxJoinStep[], seen: Set<string>) => {
@@ -278,6 +312,8 @@ export const findOnnxForwardPaths = (
     for (const edge of getForwardEdges(schema, current)) {
       const next = normalizeSchemaTableName(edge.targetTable);
       if (seen.has(next)) continue;
+      const remaining = distance.get(edge.targetTable);
+      if (remaining === undefined || path.length + 1 + remaining > maxDepth) continue;
       const nextPath = [...path, edge];
       if (next === normalizeSchemaTableName(target)) {
         results.push(nextPath);
@@ -290,6 +326,7 @@ export const findOnnxForwardPaths = (
     }
   };
   visit(root, [], new Set([normalizeSchemaTableName(root)]));
+  graph.paths.set(cacheKey, results);
   return results;
 };
 
