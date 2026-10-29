@@ -4957,7 +4957,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const loaded = new Map(appData.packsData.map((pack) => [pack.path, pack]));
     const missing = iconPackPaths.filter((packPath) => !loaded.has(packPath));
     if (missing.length > 0) {
-      await readModsByPath(missing, { skipParsingTables: true }, true, false);
+      await readModsByPath(missing, { skipParsingTables: true, skipVanillaIndexCache: true }, true, false);
     }
     const byPath = new Map(appData.packsData.map((pack) => [pack.path, pack]));
     return iconPackPaths.map((packPath) => byPath.get(packPath)).filter((pack): pack is Pack => !!pack);

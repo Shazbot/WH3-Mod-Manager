@@ -2807,7 +2807,9 @@ export const readPack = async (
   } catch (e) {
     console.log(e);
   }
-  const cachedVanillaPackIndex = await getCurrentVanillaPackIndex(modPath);
+  const cachedVanillaPackIndex = packReadingOptions.skipVanillaIndexCache
+    ? undefined
+    : await getCurrentVanillaPackIndex(modPath);
   const canReturnCachedIndex =
     cachedVanillaPackIndex &&
     packReadingOptions.skipParsingTables &&
@@ -2864,7 +2866,9 @@ export const readPack = async (
           ...(entry.file_name_hash === undefined ? {} : { file_name_hash: entry.file_name_hash }),
         })),
       );
-      rememberVanillaPackIndex(modPath, size, lastChangedLocal, pack_files, packHeader, dependencyPacks);
+      if (!packReadingOptions.skipVanillaIndexCache) {
+        rememberVanillaPackIndex(modPath, size, lastChangedLocal, pack_files, packHeader, dependencyPacks);
+      }
     }
     if (!packReadingOptions.skipSorting) pack_files.sort((a, b) => collator.compare(a.name, b.name));
     // Early return if no additional processing needed

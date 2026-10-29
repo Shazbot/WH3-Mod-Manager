@@ -663,6 +663,8 @@ declare global {
 
   interface PackReadingOptions {
     skipParsingTables?: boolean;
+    /** Read the live pack index without loading or updating the expanded vanilla pack cache. */
+    skipVanillaIndexCache?: boolean;
     tablesToRead?: string[];
     readLocs?: boolean;
     readScripts?: boolean;
