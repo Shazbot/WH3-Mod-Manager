@@ -23,6 +23,8 @@ const REQUIRED_CAPABILITIES = [
   "missingSkeletonDecision",
   "shutdown",
 ] as const;
+/** Optional capability: the host can write block-compressed DDS textures next to the preview GLB. */
+export const WH3_ASSET_HOST_DDS_TEXTURES_CAPABILITY = "exportModel.ddsTextures";
 const DEFAULT_CONNECT_TIMEOUT_MS = 5000;
 const DEFAULT_CONNECT_RETRY_DELAY_MS = 50;
 const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
@@ -103,6 +105,8 @@ export interface Wh3AssetHostExportModelRequest {
   exportMaterials?: boolean;
   includeSkeleton?: boolean;
   mirrorMesh?: boolean;
+  /** Write passthrough .dds textures where possible (needs the `exportModel.ddsTextures` capability). */
+  ddsTextures?: boolean;
 }
 
 export interface Wh3AssetHostExportAnimationsRequest {
@@ -127,6 +131,8 @@ export interface Wh3AssetHostExportModelBatchRequest {
   exportMaterials?: boolean;
   includeSkeleton?: boolean;
   mirrorMesh?: boolean;
+  /** Write passthrough .dds textures where possible (needs the `exportModel.ddsTextures` capability). */
+  ddsTextures?: boolean;
 }
 
 export interface Wh3AssetHostExportModelBatchResult {
@@ -258,6 +264,7 @@ const toError = (value: unknown): Error => (value instanceof Error ? value : new
 export const wh3AssetHostPipePath = (pipeName: string): string => `\\\\.\\pipe\\${pipeName}`;
 
 export class Wh3AssetHostClient {
+  private hostCapabilities: ReadonlySet<string> = new Set();
   private readonly options: Required<
     Pick<
       Wh3AssetHostClientOptions,
@@ -381,7 +388,13 @@ export class Wh3AssetHostClient {
         `WH3AssetHost is missing required capabilities: ${missing.join(", ")}.`,
       );
     }
+    this.hostCapabilities = new Set(result.capabilities as string[]);
     return result as unknown as Wh3AssetHostHelloResult;
+  }
+
+  /** Capabilities from the last successful hello(); empty before hello. Used for optional features. */
+  hasCapability(capability: string): boolean {
+    return this.hostCapabilities.has(capability);
   }
 
   initialize(request: Wh3AssetHostInitializeRequest): Promise<Wh3AssetHostInitializeResult> {
@@ -405,6 +418,7 @@ export class Wh3AssetHostClient {
       exportMaterials: request.exportMaterials ?? true,
       includeSkeleton: request.includeSkeleton ?? true,
       mirrorMesh: request.mirrorMesh ?? true,
+      ...(request.ddsTextures ? { ddsTextures: true } : {}),
       ...(request.animationSelections && request.animationSelections.length > 0
         ? { animationSelections: request.animationSelections }
         : {}),
@@ -438,6 +452,7 @@ export class Wh3AssetHostClient {
       exportMaterials: request.exportMaterials ?? true,
       includeSkeleton: request.includeSkeleton ?? true,
       mirrorMesh: request.mirrorMesh ?? true,
+      ...(request.ddsTextures ? { ddsTextures: true } : {}),
       ...(request.animationSelections && request.animationSelections.length > 0
         ? { animationSelections: request.animationSelections }
         : {}),

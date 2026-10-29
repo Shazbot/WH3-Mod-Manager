@@ -3,6 +3,8 @@ import * as THREE from "three";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { Wh3Ktx2Loader } from "../visuals/Wh3Ktx2Loader";
+import { Wh3DdsLoader, registerWh3DdsPlugin } from "../visuals/Wh3DdsLoader";
+import { installWh3TextureEncodingPatches } from "../visuals/wh3TextureEncodingShader";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { IoPause, IoPlay, IoRefresh } from "react-icons/io5";
 import { useAppSelector } from "../hooks";
@@ -364,6 +366,7 @@ type ThreePreviewContext = {
   camera: THREE.PerspectiveCamera;
   renderer: THREE.WebGLRenderer;
   ktx2Loader: Wh3Ktx2Loader;
+  ddsLoader: Wh3DdsLoader;
   controls: OrbitControls;
   grid: THREE.GridHelper;
   mixers: THREE.AnimationMixer[];
@@ -792,7 +795,7 @@ const hashGeometry = (geometry: THREE.BufferGeometry) => {
 };
 
 const texturePoolKey = (texture: THREE.Texture) => {
-  const rawKey = texture.userData.wh3RawKtx2CacheKey;
+  const rawKey = texture.userData.wh3RawKtx2CacheKey ?? texture.userData.wh3DdsCacheKey;
   if (typeof rawKey !== "string") return undefined;
   const sourceVirtualPath =
     typeof texture.userData.wh3SourceVirtualPath === "string"
@@ -800,6 +803,7 @@ const texturePoolKey = (texture: THREE.Texture) => {
       : "";
   return [
     rawKey,
+    texture.userData.wh3TextureEncoding ?? "",
     sourceVirtualPath,
     texture.wrapS,
     texture.wrapT,
@@ -933,8 +937,17 @@ const preloadObjectTextures = (context: ThreePreviewContext, object: THREE.Objec
 
   for (const texture of textures) {
     if (pool.preloadedTextures.has(texture)) continue;
-    context.ktx2Loader.preloadTexture(texture);
+    if (!context.ddsLoader.preloadTexture(context.renderer, texture)) context.ktx2Loader.preloadTexture(texture);
     pool.preloadedTextures.add(texture);
+  }
+};
+
+/** Debug switch: set localStorage `whmm:previewDdsTextures` to "0" to force the RGBA8 KTX2 texture path. */
+const isDdsPreviewEnabled = () => {
+  try {
+    return window.localStorage.getItem("whmm:previewDdsTextures") !== "0";
+  } catch {
+    return true;
   }
 };
 
@@ -1003,7 +1016,16 @@ const getFactionPreviewTextureFileName = (texture: THREE.Texture) => {
   }
 };
 
+const normalizeFactionSourcePath = (value: string) => value.replace(/\\/g, "/").trim().toLowerCase();
+
 const findFactionMaskBinding = (texture: THREE.Texture, bindings: readonly UnitPainterFactionMaskBinding[]) => {
+  // DDS textures carry the pack path of their source file, which identifies the binding exactly.
+  const sourceVirtualPath = texture.userData.wh3SourceVirtualPath;
+  if (typeof sourceVirtualPath === "string" && sourceVirtualPath) {
+    const wanted = normalizeFactionSourcePath(sourceVirtualPath);
+    const bySource = bindings.find((binding) => normalizeFactionSourcePath(binding.baseColourSourcePath) === wanted);
+    if (bySource) return bySource;
+  }
   const previewFileName = getFactionPreviewTextureFileName(texture);
   if (!previewFileName) return undefined;
   const exact = bindings.find((binding) =>
@@ -1016,7 +1038,12 @@ const findFactionMaskBinding = (texture: THREE.Texture, bindings: readonly UnitP
       .pop()
       ?.replace(/\.[^.]+$/, "")
       .toLowerCase();
-    return !!stem && (previewFileName === `${stem}.ktx2` || previewFileName.startsWith(`${stem}_`));
+    return (
+      !!stem &&
+      (previewFileName === `${stem}.ktx2` ||
+        previewFileName === `${stem}.dds` ||
+        previewFileName.startsWith(`${stem}_`))
+    );
   });
 };
 
@@ -1610,6 +1637,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     // delegates standards-compliant Basis/UASTC KTX2 to Three's KTX2Loader.
     const ktx2Loader = new Wh3Ktx2Loader(renderer);
     ktx2Loader.detectSupport(renderer);
+    // Passthrough block-compressed DDS textures (BC1-BC7) are uploaded as-is with their mip chain.
+    const ddsLoader = Wh3DdsLoader.fromRenderer(renderer);
 
     const clearHostSessionCache = () => {
       const resourceSession = previewResourceSessionRef.current;
@@ -1646,6 +1675,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       camera,
       renderer,
       ktx2Loader,
+      ddsLoader,
       controls,
       grid,
       mixers: [],
@@ -2681,6 +2711,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
       setPaintExportStatus("");
       setWarnings([...catalogDiagnostics, ...variantCatalogDiagnostics]);
       context.ktx2Loader.resetTiming();
+      context.ddsLoader.resetTiming();
+      const ddsTexturesRequested = context.ddsLoader.canRequestDdsTextures && isDdsPreviewEnabled();
 
       if (comparisonTooLarge) {
         setStatus("error");
@@ -2724,6 +2756,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             effectiveEnabledMods,
             initialAnimationReference ? [initialAnimationReference] : [],
             comparisonVariants[0].selections,
+            { ddsTextures: ddsTexturesRequested },
           );
           singleExportRoundTripMs = performance.now() - exportStartedAt;
           if (!exportResult.success || !exportResult.previewId || !exportResult.url) {
@@ -2781,6 +2814,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
               effectiveEnabledMods,
               companionReference ? [companionReference] : [],
               [],
+              { ddsTextures: ddsTexturesRequested },
             );
             if (!companionExport.success || !companionExport.previewId || !companionExport.url) {
               warningSet.add(companionExport.error || `Failed to export ${companion.role} model.`);
@@ -2800,6 +2834,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             effectiveEnabledMods,
             initialAnimationReference ? [initialAnimationReference] : [],
             comparisonVariants.map((variant) => ({ variantSelections: variant.selections })),
+            { ddsTextures: ddsTexturesRequested },
           );
           if (!batchResult.success || !batchResult.items) {
             throw new Error(batchResult.error || "Failed to export the slot comparison.");
@@ -2833,6 +2868,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           loadingPreviewIds.add(previewId);
           const gltfLoader = new GLTFLoader();
           gltfLoader.setKTX2Loader(context.ktx2Loader);
+          registerWh3DdsPlugin(gltfLoader, context.ddsLoader);
           const gltfLoadStartedAt = performance.now();
           let gltf: Awaited<ReturnType<typeof gltfLoader.loadAsync>>;
           try {
@@ -2854,6 +2890,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             return;
           }
 
+          installWh3TextureEncodingPatches(gltf.scene);
           internObjectResources(gltf.scene, resourcePool);
           preloadObjectTextures(context, gltf.scene, resourcePool);
           const companion = exportItem.companion;
@@ -2986,6 +3023,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
               firstRenderMs: renderMs,
               main: singleExportResult?.timings,
               ktx2: context.ktx2Loader.getTiming(),
+              dds: context.ddsLoader.getTiming(),
             }).catch(() => undefined);
           };
         }
