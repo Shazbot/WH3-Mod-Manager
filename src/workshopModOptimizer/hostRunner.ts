@@ -21,6 +21,12 @@ export const WORKSHOP_OPTIMIZER_HOST_OPTIONS = {
   dropUnreadAlpha: true,
   // Rebuild LOD1+ of rigids whose LODs AssetEditor's old decimator generated (hosts before output 32 ignore it).
   remakeEditorLods: true,
+  // Remove source files nothing reaches or names: authoring leftovers, backup/test meshes, orphan textures
+  // (hosts before output 33 ignore it).
+  pruneDeadFiles: true,
+  // Move alpha-tested character materials whose base colour is opaque to the non-alpha twin shader
+  // (hosts before output 33 ignore it).
+  switchOpaqueAlphaShaders: true,
   // The host writes the output's rigid models LZ4-compressed the way whmm's staging compressor does, so
   // optimized results need no compression step here.
   compressRigidModels: true,
