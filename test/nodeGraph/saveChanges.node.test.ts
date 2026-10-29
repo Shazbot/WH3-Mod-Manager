@@ -35,7 +35,10 @@ afterEach(async () => {
   }
 });
 
-const executeTextSave = async (executionContext?: ReturnType<typeof createFlowExecutionContext>) => {
+const executeTextSave = async (
+  executionContext?: ReturnType<typeof createFlowExecutionContext>,
+  inputData: any = { type: "Text", text: "saved text" },
+) => {
   outputDirectory = await mkdtemp(path.join(tmpdir(), "whmm-save-changes-"));
   appData.currentGame = "wh3";
   appData.gamesToGameFolderPaths.wh3.gamePath = outputDirectory;
@@ -49,10 +52,7 @@ const executeTextSave = async (executionContext?: ReturnType<typeof createFlowEx
       packedFileName: "output.txt",
       openInWindows: true,
     },
-    inputData: {
-      type: "Text",
-      text: "saved text",
-    },
+    inputData,
     executionContext,
   });
 };
@@ -176,6 +176,17 @@ describe("save changes node", () => {
     expect(result.success).toBe(true);
     expect(shell.openPath).not.toHaveBeenCalled();
   });
+
+  it.each(moviePackOutputInputs)(
+    "opens a saved $name pack for a manual run with an execution context",
+    async ({ inputData }) => {
+      const context = createFlowExecutionContext();
+      context.isManualRun = true;
+      const result = await executeTextSave(context, inputData);
+      expect(result.success).toBe(true);
+      expect(shell.openPath).toHaveBeenCalledWith((result.data as { savedTo: string }).savedTo);
+    },
+  );
 
   it("preserves prior raw native patch contributions when appending to an existing output pack", async () => {
     outputDirectory = await mkdtemp(path.join(tmpdir(), "whmm-save-changes-"));

@@ -9,6 +9,8 @@ export interface PreparedFlow {
   nodeConfigs: Record<string, unknown>;
 }
 export interface FlowExecutionContext {
+  /** Editor runs also use caches; only explicitly manual runs may open saved output files. */
+  isManualRun?: boolean;
   readPackCache: Map<string, Promise<Pack>>;
   /** One compact directory per physical pack, shared by table/file nodes in this execution. */
   packIndexCache: Map<string, Promise<CompactPackIndex>>;

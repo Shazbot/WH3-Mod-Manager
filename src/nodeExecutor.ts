@@ -3955,8 +3955,7 @@ async function executeMergeChangesNode(
 /**
  * Shows the pack the save node just wrote.
  *
- * Only on a manual run - an executionContext means the flow is running unattended at game start,
- * where opening a window or an explorer would be an ambush.
+ * Contexts also cache manual editor runs, so distinguish them explicitly from unattended launches.
  */
 const openSavedFileForManualRun = async (
   filePath: string,
@@ -3964,7 +3963,7 @@ const openSavedFileForManualRun = async (
   executionContext?: FlowExecutionContext,
   openInViewer = false,
 ) => {
-  if (executionContext) return;
+  if (executionContext && !executionContext.isManualRun) return;
 
   if (openInViewer) {
     try {

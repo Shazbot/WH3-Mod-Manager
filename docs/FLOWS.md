@@ -144,7 +144,7 @@ If `isGraphEnabled` is set, players can switch the whole flow off (`graphEnabled
 
 1. `NodeEditor.tsx` calls `prepareGraphForExecution` (`graphSerialization.ts`). This applies option values and other runtime fills in the renderer.
 2. The editor invokes IPC `executeNodeGraph`.
-3. The main process creates a fresh `FlowExecutionContext` and calls `executeNodeGraph`. Per-node results go back to the editor, which uses them for previews.
+3. The main process creates a fresh `FlowExecutionContext`, marks it `isManualRun: true`, and calls `executeNodeGraph`. Per-node results go back to the editor, which uses them for previews. Save Changes uses that explicit flag to allow Open in Windows/Viewer even though manual runs also have a caching context. Automatic launch contexts leave the flag unset and suppress those actions.
 
 A manual Save Changes writes to the game's **`data`** folder, and can open the result in Explorer or the viewer.
 
@@ -233,6 +233,8 @@ The ONNX node accepts `PackFiles` and emits `TableSelection`. Its root-table dro
 It reads a manifest bundle or one packed `.onnx` model from the selected model source pack (an empty selection uses the flow-owning pack). Its controls offer schema column/reference choices, constants, output enablement, destination columns and add/replace/delta modes; advanced JSON mappings remain available for custom paths. Ambiguous paths and unresolved `is_ranged` bindings must be assigned before execution. Linked output rows are cloned per root row while existing shared rows remain intact. The launch execution cache was bumped when this node was added.
 
 The graph shows a compact ONNX summary. **Configure** opens a modal editor using a local draft; **Apply** commits the configuration, while **Cancel**, close, or Escape discard it. Pack inspection runs only while that configuration panel is open and active.
+
+Input-binding and output-destination menus are searchable, constrained to the control/viewport width, and wrap long reference paths. All matching choices are available in the scrollable menu. Reasons for unresolved inputs are shown in the warning panel rather than repeated beneath the binding dropdown.
 
 Unassigned input bindings and enabled outputs without a destination show warning counts on the compact node and inside the panel. The warning panel lists every unassigned input and output destination by name, with its reason, independently of the mapping-list search filters. Unassigned rows retain amber text, background and borders in the mapping lists, including when selected; a brighter amber ring indicates selection. Deliberately disabled outputs are excluded from these warnings.
 

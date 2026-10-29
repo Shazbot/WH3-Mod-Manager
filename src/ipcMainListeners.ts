@@ -7548,6 +7548,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         // Import graph execution function
         const { executeNodeGraph } = await import("./nodeGraphExecutor");
         const executionContext = createFlowExecutionContext();
+        executionContext.isManualRun = true;
         executionContext.flowFileName = graphExecutionRequest.flowExecution?.flowFileName;
         executionContext.flowSourcePackPath = graphExecutionRequest.flowExecution?.flowSourcePackPath;
         executionContext.flowSourcePackName = graphExecutionRequest.flowExecution?.flowSourcePackName;
