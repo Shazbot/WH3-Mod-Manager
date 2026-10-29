@@ -71,6 +71,7 @@ import type {
   MathMaxNodeData,
   MultiFilterNodeData,
   NativePatchFlowNodeData,
+  OnnxFlowNodeData,
   MultiFilterSplitValue,
   MergeChangesNodeData,
   NumericAdjustmentNodeData,
@@ -92,6 +93,7 @@ import type {
   XmlLocatorStep,
 } from "./types";
 import { targetHasPathButMatchesName } from "./types";
+import type { OnnxInputBinding } from "../onnxFlow";
 
 const collator = new Intl.Collator("en");
 
@@ -7692,6 +7694,395 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
         className="w-3 h-3 bg-orange-500"
         data-output-type="TableSelection"
       />
+    </div>
+  );
+};
+
+/** Configures a packed ONNX bundle or a single packed ONNX model for TableSelection input. */
+export const OnnxFlowNode: React.FC<{ data: OnnxFlowNodeData; id: string }> = ({ data, id }) => {
+  const mods = useAppSelector((state) => state.app.currentPreset.mods).filter((mod) => mod.isEnabled && !!mod.path);
+  const flowSourcePack = useFlowSourcePack();
+  const flowOptions = useFlowOptions();
+  const selectedPackName = data.selectedPackName || "";
+  const selectedMod = mods.find((mod) => mod.name === selectedPackName);
+  const packPath = selectedPackName ? selectedMod?.path : flowSourcePack.path;
+  const [inspection, setInspection] = useState<any>();
+  const [inspectionError, setInspectionError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [reload, setReload] = useState(0);
+  const [inputBindingsText, setInputBindingsText] = useState(() => JSON.stringify(data.inputBindings || {}, null, 2));
+  const [outputBindingsText, setOutputBindingsText] = useState(() => JSON.stringify(data.outputBindings || {}, null, 2));
+  const [standaloneBindingsText, setStandaloneBindingsText] = useState(() => JSON.stringify(data.standaloneInputBindings || {}, null, 2));
+  const [mappingError, setMappingError] = useState("");
+  const [strengthText, setStrengthText] = useState(String(data.strength ?? 1));
+  const [inputSearch, setInputSearch] = useState("");
+  const [outputSearch, setOutputSearch] = useState("");
+  const [selectedInputKey, setSelectedInputKey] = useState("");
+  const [selectedOutputKey, setSelectedOutputKey] = useState("");
+  const updateNode = (patch: Partial<OnnxFlowNodeData>) =>
+    dispatchNodeDataUpdate(data, { nodeId: id, ...patch } as any);
+
+  useEffect(() => {
+    setInputBindingsText(JSON.stringify(data.inputBindings || {}, null, 2));
+  }, [data.inputBindings]);
+  useEffect(() => {
+    setOutputBindingsText(JSON.stringify(data.outputBindings || {}, null, 2));
+  }, [data.outputBindings]);
+  useEffect(() => {
+    setStandaloneBindingsText(JSON.stringify(data.standaloneInputBindings || {}, null, 2));
+  }, [data.standaloneInputBindings]);
+  useEffect(() => setStrengthText(String(data.strength ?? 1)), [data.strength]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setInspection(undefined);
+    setInspectionError("");
+    if (!packPath) {
+      setLoading(false);
+      setInspectionError(selectedPackName ? "The selected pack is unavailable" : "Save this flow to a pack or select a source pack");
+      return;
+    }
+    const inspect = window.api?.inspectOnnxFlowPack;
+    if (!inspect) {
+      setInspectionError("ONNX pack inspection is unavailable");
+      return;
+    }
+    setLoading(true);
+    inspect({
+      packPath,
+      mode: data.mode || "bundle",
+      rootTableName: data.rootTableName || "main_units_tables",
+      modelsDirectory: data.modelsDirectory,
+      modelsManifestPath: data.modelsManifestPath,
+      preprocessorManifestPath: data.preprocessorManifestPath,
+      preprocessorModelPath: data.preprocessorModelPath,
+      standaloneModelPath: data.standaloneModelPath,
+    }).then((result) => {
+      if (cancelled) return;
+      if (!result.success) {
+        setInspectionError(result.error || "Unable to inspect ONNX files");
+        return;
+      }
+      setInspection(result);
+      setInspectionError("");
+    }).catch((error) => {
+      if (!cancelled) setInspectionError(error instanceof Error ? error.message : String(error));
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [packPath, selectedPackName, data.mode, data.rootTableName, data.modelsDirectory, data.modelsManifestPath,
+    data.preprocessorManifestPath, data.preprocessorModelPath, data.standaloneModelPath, reload]);
+
+  useEffect(() => {
+    if (!inspection) return;
+    if (inspection.mode === "standalone") {
+      const standaloneInputBindings = { ...(data.standaloneInputBindings || {}) } as Record<string, OnnxInputBinding[]>;
+      for (const input of inspection.inputs || []) {
+        if (standaloneInputBindings[input.name]) continue;
+        standaloneInputBindings[input.name] = Array.from({ length: input.width || 1 }, (_unused, index) =>
+          index === 0 && input.defaultBinding
+            ? input.defaultBinding
+            : { kind: "unresolved", reason: `Assign feature ${index + 1}` } as OnnxInputBinding,
+        );
+      }
+      if (JSON.stringify(standaloneInputBindings) !== JSON.stringify(data.standaloneInputBindings || {})) {
+        updateNode({ standaloneInputBindings });
+      }
+    } else {
+      const inputBindings = { ...(data.inputBindings || {}) } as Record<string, OnnxInputBinding>;
+      for (const input of inspection.inputs || []) {
+        if (!inputBindings[input.name] && input.defaultBinding) inputBindings[input.name] = input.defaultBinding;
+      }
+      if (JSON.stringify(inputBindings) !== JSON.stringify(data.inputBindings || {})) updateNode({ inputBindings });
+    }
+
+    const outputBindings = { ...(data.outputBindings || {}) } as Record<string, any>;
+    if (inspection.mode === "bundle") {
+      for (const model of inspection.models || []) {
+        if (outputBindings[model.key]) continue;
+        const paths = model.paths || [];
+        outputBindings[model.key] = {
+          ...(model.defaultBinding || {}),
+          enabled: paths.length === 1,
+          path: paths.length === 1 ? paths[0] : model.defaultBinding?.path || [],
+        };
+      }
+    } else if (!outputBindings.standalone && inspection.defaultOutput) {
+      const paths = inspection.defaultOutput.paths || [];
+      outputBindings.standalone = {
+        enabled: true,
+        tableName: inspection.defaultOutput.tableName,
+        column: inspection.defaultOutput.column,
+        path: paths.length === 1 ? paths[0] : [],
+        mode: "replace",
+      };
+    }
+    if (JSON.stringify(outputBindings) !== JSON.stringify(data.outputBindings || {})) updateNode({ outputBindings });
+  }, [inspection, data.inputBindings, data.outputBindings, data.standaloneInputBindings]);
+
+  const applyJson = (text: string, field: "inputBindings" | "outputBindings" | "standaloneInputBindings") => {
+    try {
+      const value: unknown = JSON.parse(text);
+      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Enter a JSON object");
+      setMappingError("");
+      if (field === "inputBindings") updateNode({ inputBindings: value as Record<string, OnnxInputBinding> });
+      else if (field === "outputBindings") updateNode({ outputBindings: value as OnnxFlowNodeData["outputBindings"] });
+      else updateNode({ standaloneInputBindings: value as Record<string, OnnxInputBinding[]> });
+    } catch (error) {
+      setMappingError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const inputSummary = (binding: any) => {
+    if (!binding) return "unassigned";
+    if (binding.kind === "column") return `${binding.tableName}.${binding.column}`;
+    if (binding.kind === "constant") return `constant ${String(binding.value)}`;
+    if (binding.kind === "reference-present") return `${binding.tableName} reference present`;
+    if (binding.kind === "column-present") return `${binding.tableName}.${binding.column} populated`;
+    return binding.reason || "unresolved";
+  };
+  const columnCandidates = (featureType: "float32" | "string") =>
+    (inspection?.bindingCandidates?.columns || []).filter((option: any) =>
+      featureType === "float32"
+        ? ["Boolean", "I16", "I32", "I64", "F32", "F64", "ColourRGB"].includes(option.fieldType)
+        : ["StringU8", "StringU16", "OptionalStringU8", "OptionalStringU16"].includes(option.fieldType),
+    );
+  const outputCandidates = () => (inspection?.bindingCandidates?.columns || []).filter((option: any) =>
+    ["Boolean", "I16", "I32", "I64", "F32", "F64"].includes(option.fieldType),
+  );
+  const candidateMatches = (binding: any, candidate: any) =>
+    binding?.tableName === candidate.tableName && binding?.column === candidate.column &&
+    JSON.stringify(binding?.path || []) === JSON.stringify(candidate.path || []);
+  const setBundleInputBinding = (name: string, binding: OnnxInputBinding) =>
+    updateNode({ inputBindings: { ...(data.inputBindings || {}), [name]: binding } });
+  const setStandaloneInputBinding = (name: string, index: number, binding: OnnxInputBinding) => {
+    const next = { ...(data.standaloneInputBindings || {}) } as Record<string, OnnxInputBinding[]>;
+    const values = [...(next[name] || [])];
+    values[index] = binding;
+    next[name] = values;
+    updateNode({ standaloneInputBindings: next });
+  };
+  const renderInputBinding = (input: any, index: number, current: OnnxInputBinding) => {
+    const columns = columnCandidates(input.type);
+    const references = inspection?.bindingCandidates?.references || [];
+    const presenceColumns = inspection?.bindingCandidates?.columns || [];
+    const matchingPresence = current?.kind === "column-present" ? presenceColumns.find((candidate: any) => candidateMatches(current, candidate)) : undefined;
+    const isReferenceInput = input.name === "is_ranged" || current?.kind === "reference-present";
+    const matchingColumn = current?.kind === "column" ? columns.find((candidate: any) => candidateMatches(current, candidate)) : undefined;
+    const matchingReference = current?.kind === "reference-present" ? references.find((candidate: any) => candidateMatches(current, candidate)) : undefined;
+    const selected = current?.kind === "constant" ? "@constant" : current?.kind === "unresolved" ? "@unresolved"
+      : matchingPresence ? `present:${matchingPresence.id}` : matchingReference ? `reference:${matchingReference.id}` : matchingColumn ? `column:${matchingColumn.id}` : "@unresolved";
+    const updateBinding = (binding: OnnxInputBinding) => data.mode === "standalone"
+      ? setStandaloneInputBinding(input.name, index, binding)
+      : setBundleInputBinding(input.name, binding);
+    return (
+      <div key={`${input.name}:${index}`} className="bg-gray-800 rounded p-2 nodrag">
+        <div className="text-[10px] font-mono text-gray-300 mb-1">{input.name}{input.width > 1 ? ` feature ${index + 1}` : ""} ({input.type})</div>
+        <select value={selected} onChange={(event) => {
+          const value = event.target.value;
+          if (value === "@constant") updateBinding({ kind: "constant", value: input.type === "float32" ? 0 : "" });
+          else if (value === "@unresolved") updateBinding({ kind: "unresolved", reason: "Assign an input" });
+          else if (value.startsWith("present:")) {
+            const option = presenceColumns.find((candidate: any) => `present:${candidate.id}` === value);
+            if (option) updateBinding({ kind: "column-present", tableName: option.tableName, column: option.column, path: option.path });
+          } else if (value.startsWith("reference:")) {
+            const option = references.find((candidate: any) => `reference:${candidate.id}` === value);
+            if (option) updateBinding({ kind: "reference-present", tableName: option.tableName, path: option.path });
+          } else if (value.startsWith("column:")) {
+            const option = columns.find((candidate: any) => `column:${candidate.id}` === value);
+            if (option) updateBinding({ kind: "column", tableName: option.tableName, column: option.column, path: option.path });
+          }
+        }} className="w-full p-1 text-[10px] bg-gray-700 border border-gray-600 rounded">
+          <option value="@unresolved">Unassigned</option>
+          {columns.map((option: any) => <option key={`column:${option.id}`} value={`column:${option.id}`}>{option.label}</option>)}
+          {isReferenceInput && references.map((option: any) => <option key={`reference:${option.id}`} value={`reference:${option.id}`}>Reference present: {option.label}</option>)}
+          {input.type === "float32" && presenceColumns.map((option: any) => <option key={`present:${option.id}`} value={`present:${option.id}`}>Column populated: {option.label}</option>)}
+          <option value="@constant">Constant</option>
+        </select>
+        {current?.kind === "constant" && <input type={input.type === "float32" ? "number" : "text"} step="any"
+          value={String(current.value)} onChange={(event) => updateBinding({ kind: "constant", value: input.type === "float32" ? Number(event.target.value) : event.target.value })}
+          className="mt-1 w-full p-1 text-[10px] bg-gray-700 border border-gray-600 rounded" />}
+        {current?.kind === "unresolved" && <div className="text-[10px] text-yellow-200 mt-1">{current.reason || "Assign an input"}</div>}
+        {current?.kind === "column" && input.type === "float32" && <label className="flex items-center gap-2 text-[10px] text-gray-300 mt-1">
+          <input type="checkbox" checked={current.missingAsNaN === true} onChange={(event) => updateBinding({ ...current, missingAsNaN: event.target.checked })} />
+          Pass missing values as NaN for model imputation
+        </label>}
+      </div>
+    );
+  };
+  const updateOutputBinding = (key: string, patch: Record<string, unknown>) => {
+    const current = data.outputBindings?.[key] || {};
+    updateNode({ outputBindings: { ...(data.outputBindings || {}), [key]: { ...current, ...patch } } });
+  };
+  const renderOutputBinding = (key: string, label: string, defaultBinding: any) => {
+    const binding = data.outputBindings?.[key] || defaultBinding || {};
+    const candidates = outputCandidates();
+    const selectedCandidate = candidates.find((candidate: any) => candidateMatches(binding, candidate));
+    const options = flowOptions.filter((option) => option.type === "range");
+    return (
+      <div key={key} className="bg-gray-800 rounded p-2 space-y-1 nodrag">
+        <label className="flex items-center gap-2 text-[10px] font-mono text-gray-200">
+          <input type="checkbox" checked={binding.enabled !== false} onChange={(event) => updateOutputBinding(key, { enabled: event.target.checked })} />
+          <span>{label}</span>
+        </label>
+        <label className="flex items-center gap-2 text-[10px] text-gray-300">
+          <input type="checkbox" checked={binding.roundPrediction === true} onChange={(event) => updateOutputBinding(key, { roundPrediction: event.target.checked })} />
+          Round prediction before applying strength
+        </label>
+        <select value={selectedCandidate?.id || ""} onChange={(event) => {
+          const candidate = candidates.find((item: any) => item.id === event.target.value);
+          if (candidate) updateOutputBinding(key, { tableName: candidate.tableName, column: candidate.column, path: candidate.path });
+        }} className="w-full p-1 text-[10px] bg-gray-700 border border-gray-600 rounded">
+          <option value="">Choose destination column</option>
+          {candidates.map((candidate: any) => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}
+        </select>
+        <div className="flex gap-1">
+          <select value={binding.mode || "replace"} onChange={(event) => updateOutputBinding(key, { mode: event.target.value })}
+            className="flex-1 p-1 text-[10px] bg-gray-700 border border-gray-600 rounded">
+            <option value="delta">Delta</option><option value="add">Add</option><option value="replace">Replace</option>
+          </select>
+          {binding.mode === "delta" && <input type="number" step="any" value={String(binding.strength ?? data.strength ?? 1)}
+            onChange={(event) => updateOutputBinding(key, { strength: Number(event.target.value) })}
+            className="w-20 p-1 text-[10px] bg-gray-700 border border-gray-600 rounded" />}
+        </div>
+        {binding.mode === "delta" && <select value={binding.strengthOptionId || ""} onChange={(event) => updateOutputBinding(key, { strengthOptionId: event.target.value })}
+          className="w-full p-1 text-[10px] bg-gray-700 border border-gray-600 rounded">
+          <option value="">Use node strength</option>{options.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+        </select>}
+      </div>
+    );
+  };
+  const inputFeatures = (inspection?.inputs || []).flatMap((input: any) => {
+    const width = data.mode === "standalone" ? Math.max(1, input.width || 1) : 1;
+    return Array.from({ length: width }, (_unused, index) => {
+      const binding = data.mode === "standalone"
+        ? data.standaloneInputBindings?.[input.name]?.[index] || (index === 0 ? input.defaultBinding : undefined) || { kind: "unresolved", reason: `Assign feature ${index + 1}` }
+        : data.inputBindings?.[input.name] || input.defaultBinding || { kind: "unresolved", reason: "No schema match" };
+      return { input, index, binding: binding as OnnxInputBinding, key: `${input.name}\0${index}` };
+    });
+  });
+  const filteredInputFeatures = inputFeatures.filter((feature: any) =>
+    feature.input.name.toLowerCase().includes(inputSearch.toLowerCase()),
+  );
+  const selectedInput = filteredInputFeatures.find((feature: any) => feature.key === selectedInputKey) || filteredInputFeatures[0];
+  const outputEntries = data.mode === "standalone"
+    ? [{ key: "standalone", label: "Standalone output", defaultBinding: data.outputBindings?.standalone }]
+    : (inspection?.models || []).map((model: any) => ({ key: model.key, label: model.key, defaultBinding: model.defaultBinding }));
+  const filteredOutputEntries = outputEntries.filter((entry: any) => entry.label.toLowerCase().includes(outputSearch.toLowerCase()));
+  const selectedOutput = filteredOutputEntries.find((entry: any) => entry.key === selectedOutputKey) || filteredOutputEntries[0];
+
+  return (
+    <div className="bg-gray-700 border-2 border-indigo-500 rounded-lg p-4 min-w-[340px] max-w-[480px] text-white nodrag nowheel">
+      <Handle type="target" position={Position.Left} className="w-3 h-3 bg-indigo-400" data-input-type="TableSelection" />
+      <div className="font-medium text-sm mb-1">{data.label || "ONNX Prediction"}</div>
+      <div className="text-xs text-gray-300 mb-3">Runs packed CPU inference for each selected root row and writes enabled outputs.</div>
+
+      <div className="space-y-2 max-h-[560px] overflow-y-auto scrollable-node-content pr-1">
+        <label className="block text-xs text-gray-300">Source pack</label>
+        <select value={selectedPackName} onChange={(event) => updateNode({ selectedPackName: event.target.value })}
+          className="w-full p-1 text-xs bg-gray-800 border border-gray-600 rounded">
+          <option value="">Owning flow pack{flowSourcePack.name ? ` (${flowSourcePack.name})` : ""}</option>
+          {mods.map((mod) => <option key={`${mod.name}:${mod.path}`} value={mod.name}>{mod.humanName || mod.name}</option>)}
+        </select>
+        <label className="block text-xs text-gray-300">Model format</label>
+        <select value={data.mode || "bundle"} onChange={(event) => updateNode({ mode: event.target.value as OnnxFlowNodeData["mode"] })}
+          className="w-full p-1 text-xs bg-gray-800 border border-gray-600 rounded">
+          <option value="bundle">Manifest bundle</option><option value="standalone">Standalone model</option>
+        </select>
+        <label className="block text-xs text-gray-300">Root table</label>
+        <input value={data.rootTableName || "main_units_tables"} onChange={(event) => updateNode({ rootTableName: event.target.value })}
+          className="w-full p-1 text-xs bg-gray-800 border border-gray-600 rounded font-mono" />
+
+        {data.mode === "standalone" ? (
+          <>
+            <label className="block text-xs text-gray-300">Packed model path</label>
+            <input value={data.standaloneModelPath || ""} onChange={(event) => updateNode({ standaloneModelPath: event.target.value })}
+              placeholder="models/predictor.onnx" className="w-full p-1 text-xs bg-gray-800 border border-gray-600 rounded font-mono" />
+            {inspection?.outputs?.length > 0 && <label className="block text-xs text-gray-300">Output tensor
+              <select value={data.standaloneOutputName || inspection.outputs[0].name}
+                onChange={(event) => updateNode({ standaloneOutputName: event.target.value })}
+                className="mt-1 w-full p-1 text-xs bg-gray-800 border border-gray-600 rounded">
+                {inspection.outputs.map((output: any) => <option key={output.name} value={output.name}>{output.name} ({output.type}, {output.shape.join(" × ")})</option>)}
+              </select>
+            </label>}
+          </>
+        ) : (
+          <>
+            <label className="block text-xs text-gray-300">Model folder</label>
+            <input value={data.modelsDirectory || "onnx_models"} onChange={(event) => updateNode({ modelsDirectory: event.target.value })}
+              className="w-full p-1 text-xs bg-gray-800 border border-gray-600 rounded font-mono" />
+            <label className="block text-xs text-gray-300">Models manifest</label>
+            <input value={data.modelsManifestPath || "onnx_models/models.json"} onChange={(event) => updateNode({ modelsManifestPath: event.target.value })}
+              className="w-full p-1 text-xs bg-gray-800 border border-gray-600 rounded font-mono" />
+            <label className="block text-xs text-gray-300">Preprocessor manifest</label>
+            <input value={data.preprocessorManifestPath || "onnx_models/preprocessor.json"} onChange={(event) => updateNode({ preprocessorManifestPath: event.target.value })}
+              className="w-full p-1 text-xs bg-gray-800 border border-gray-600 rounded font-mono" />
+            <label className="block text-xs text-gray-300">Preprocessor model</label>
+            <input value={data.preprocessorModelPath || "onnx_models/preprocessor.onnx"} onChange={(event) => updateNode({ preprocessorModelPath: event.target.value })}
+              className="w-full p-1 text-xs bg-gray-800 border border-gray-600 rounded font-mono" />
+          </>
+        )}
+
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-gray-300">{loading ? "Inspecting packed model…" : inspectionError || (inspection ? "Model metadata loaded" : "")}</span>
+          <button onClick={() => setReload((current) => current + 1)} className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 rounded text-xs">Inspect</button>
+        </div>
+        {inspection?.errors?.length > 0 && <div className="text-xs text-red-300 whitespace-pre-wrap">{inspection.errors.join("\n")}</div>}
+        {inspection?.warnings?.length > 0 && <div className="text-xs text-yellow-200">{inspection.warnings.join("; ")}</div>}
+
+        <label className="block text-xs text-gray-300">{data.mode === "standalone" ? "Model inputs" : "Bundle feature bindings"}</label>
+        <input value={inputSearch} onChange={(event) => setInputSearch(event.target.value)} placeholder="Filter inputs…"
+          className="w-full p-1 text-xs bg-gray-800 border border-gray-600 rounded nodrag" />
+        <div className="max-h-36 overflow-y-auto scrollable-node-content nodrag space-y-1">
+          {filteredInputFeatures.map((feature: any) => <button key={feature.key} onClick={() => setSelectedInputKey(feature.key)}
+            className={`w-full text-left p-1 rounded text-[10px] font-mono ${selectedInput?.key === feature.key ? "bg-indigo-700 text-white" : "bg-gray-800 text-gray-300"}`}>
+            {feature.input.name}{feature.input.width > 1 ? `[${feature.index + 1}]` : ""} → {inputSummary(feature.binding)}
+          </button>)}
+        </div>
+        {selectedInput && renderInputBinding(selectedInput.input, selectedInput.index, selectedInput.binding)}
+
+        <label className="block text-xs text-gray-300">Prediction destinations</label>
+        <input value={outputSearch} onChange={(event) => setOutputSearch(event.target.value)} placeholder="Filter outputs…"
+          className="w-full p-1 text-xs bg-gray-800 border border-gray-600 rounded nodrag" />
+        <div className="space-y-1 max-h-64 overflow-y-auto scrollable-node-content nodrag">
+          {filteredOutputEntries.map((entry: any) => {
+            const binding = data.outputBindings?.[entry.key] || entry.defaultBinding || {};
+            const destination = binding.column ? `${binding.tableName}.${binding.column}` : "destination required";
+            return <button key={entry.key} onClick={() => setSelectedOutputKey(entry.key)}
+              className={`w-full text-left p-1 rounded text-[10px] font-mono ${selectedOutput?.key === entry.key ? "bg-indigo-700 text-white" : "bg-gray-800 text-gray-300"}`}>
+              {binding.enabled === false ? "□" : "☑"} {entry.label} → {destination}
+            </button>;
+          })}
+        </div>
+        {selectedOutput && renderOutputBinding(selectedOutput.key, selectedOutput.label, selectedOutput.defaultBinding)}
+        <details className="text-xs text-gray-300 nodrag">
+          <summary className="cursor-pointer">Advanced JSON mappings</summary>
+          <div className="mt-2 space-y-2">
+            <textarea value={data.mode === "standalone" ? standaloneBindingsText : inputBindingsText}
+              onChange={(event) => data.mode === "standalone" ? setStandaloneBindingsText(event.target.value) : setInputBindingsText(event.target.value)}
+              onBlur={() => applyJson(data.mode === "standalone" ? standaloneBindingsText : inputBindingsText, data.mode === "standalone" ? "standaloneInputBindings" : "inputBindings")}
+              rows={5} spellCheck={false} className="w-full p-2 text-[10px] bg-gray-800 border border-gray-600 rounded font-mono nodrag" />
+            <textarea value={outputBindingsText} onChange={(event) => setOutputBindingsText(event.target.value)}
+              onBlur={() => applyJson(outputBindingsText, "outputBindings")} rows={5} spellCheck={false}
+              className="w-full p-2 text-[10px] bg-gray-800 border border-gray-600 rounded font-mono nodrag" />
+            <div className="text-[10px] text-gray-400">Column bindings include parent-to-child schema paths. Constants and reference-present checks are available from the input controls.</div>
+          </div>
+        </details>
+        {mappingError && <div className="text-xs text-red-300">{mappingError}</div>}
+
+        <label className="block text-xs text-gray-300">Default add/delta strength</label>
+        <input type="number" step="any" value={strengthText} onChange={(event) => setStrengthText(event.target.value)}
+          onBlur={() => { const value = Number(strengthText); if (Number.isFinite(value)) updateNode({ strength: value }); }}
+          className="w-full p-1 text-xs bg-gray-800 border border-gray-600 rounded" />
+        <select value={data.strengthOptionId || ""} onChange={(event) => updateNode({ strengthOptionId: event.target.value })}
+          className="w-full p-1 text-xs bg-gray-800 border border-gray-600 rounded">
+          <option value="">Use configured strength</option>
+          {flowOptions.filter((option) => option.type === "range").map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+        </select>
+      </div>
+      <div className="mt-2 text-xs text-gray-400">Output: TableSelection</div>
+      <Handle type="source" position={Position.Right} className="w-3 h-3 bg-indigo-400" data-output-type="TableSelection" />
     </div>
   );
 };

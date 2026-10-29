@@ -891,6 +891,45 @@ const api = {
     error?: string;
   }> => ipcRenderer.invoke("listNativePatchFlowTemplates", packPath),
 
+  inspectOnnxFlowPack: (request: {
+    packPath: string;
+    mode: "bundle" | "standalone";
+    rootTableName: string;
+    modelsDirectory?: string;
+    modelsManifestPath?: string;
+    preprocessorManifestPath?: string;
+    preprocessorModelPath?: string;
+    standaloneModelPath?: string;
+  }): Promise<{
+    success: boolean;
+    mode?: "bundle" | "standalone";
+    inputs?: Array<{
+      name: string;
+      type: "float32" | "string";
+      width?: number;
+      defaultBinding?: Record<string, unknown>;
+      options?: Array<{ id: string; tableName: string; column: string; path: unknown[]; label: string }>;
+    }>;
+    models?: Array<{
+      key: string;
+      file?: string;
+      constant?: number;
+      defaultTableName: string;
+      defaultColumn: string;
+      defaultBinding?: Record<string, unknown>;
+      paths?: unknown[][];
+    }>;
+    outputs?: Array<{ name: string; type: string; shape: Array<number | string> }>;
+    bindingCandidates?: {
+      columns: Array<{ id: string; tableName: string; column: string; path: unknown[]; label: string; fieldType?: string }>;
+      references: Array<{ id: string; tableName: string; column: string; path: unknown[]; label: string; fieldType?: string }>;
+    };
+    defaultOutput?: { tableName: string; column: string; paths: unknown[][] };
+    warnings?: string[];
+    errors?: string[];
+    error?: string;
+  }> => ipcRenderer.invoke("inspectOnnxFlowPack", request),
+
   getFlowFilesFromPack: (
     packPath: string,
   ): Promise<{

@@ -124,6 +124,19 @@ export const serializeReactFlowNodes = (nodes: Node[]): SerializedNode[] => {
         filename: maybeString(data.filename),
         tsvFileName: maybeString(data.tsvFileName),
         selectedPackName: maybeString(data.selectedPackName),
+        mode: data.type === "onnx" ? (data.mode === "standalone" ? "standalone" : "bundle") : undefined,
+          rootTableName: maybeString(data.rootTableName),
+          modelsDirectory: maybeString(data.modelsDirectory),
+          modelsManifestPath: maybeString(data.modelsManifestPath),
+          preprocessorManifestPath: maybeString(data.preprocessorManifestPath),
+          preprocessorModelPath: maybeString(data.preprocessorModelPath),
+          standaloneModelPath: maybeString(data.standaloneModelPath),
+          standaloneInputBindings: (data.standaloneInputBindings || {}) as Record<string, unknown>,
+          standaloneOutputName: maybeString(data.standaloneOutputName),
+          inputBindings: (data.inputBindings || {}) as Record<string, unknown>,
+          outputBindings: (data.outputBindings || {}) as Record<string, unknown>,
+          strength: typeof data.strength === "number" ? data.strength : undefined,
+          strengthOptionId: maybeString(data.strengthOptionId),
         templatePath: maybeString(data.templatePath),
         scalarValues: (data.scalarValues || {}) as Record<string, unknown>,
         scalarOptionBindings: (data.scalarOptionBindings || {}) as Record<string, string>,
@@ -254,6 +267,32 @@ export const prepareGraphForExecution = ({
       }
       nodeData.scalarValues = scalarValues;
       modified = true;
+    }
+
+    if (node.type === "onnx") {
+      const resolveNumericOption = (optionId: string): number => {
+        const option = flowOptions.find((item) => item.id === optionId);
+        if (!option) return Number.NaN;
+        const value = Number(option.value);
+        return Number.isFinite(value) ? value : Number.NaN;
+      };
+      const strengthOptionId = String(currentData.strengthOptionId || "");
+      if (strengthOptionId) {
+        nodeData.strength = resolveNumericOption(strengthOptionId);
+        modified = true;
+      }
+      const outputBindings = { ...((currentData.outputBindings || {}) as Record<string, Record<string, unknown>>) };
+      let outputBindingsModified = false;
+      for (const [modelKey, binding] of Object.entries(outputBindings)) {
+        const optionId = typeof binding?.strengthOptionId === "string" ? binding.strengthOptionId : "";
+        if (!optionId) continue;
+        outputBindings[modelKey] = { ...binding, strength: resolveNumericOption(optionId) };
+        outputBindingsModified = true;
+      }
+      if (outputBindingsModified) {
+        nodeData.outputBindings = outputBindings;
+        modified = true;
+      }
     }
 
     // Resolved outside the flowOptions guard on purpose: a gate whose option was deleted must fall

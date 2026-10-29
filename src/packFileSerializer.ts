@@ -1019,6 +1019,7 @@ const schemaAwareFlowNodeTypes = new Set([
   "generaterowsschema",
   "addnewcolumn",
   "deepclone",
+  "onnx",
 ]);
 /** Exported for tests: the same hop as serializeNodeConfigForExecution, for the game-start run. */
 export const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): unknown => {
@@ -1201,6 +1202,23 @@ export const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): u
         generateLoc: (node.data as any).generateLoc !== false,
         autoFollowReferences: (node.data as any).autoFollowReferences !== false,
       };
+    case "onnx":
+      return {
+        mode: node.data.mode === "standalone" ? "standalone" : "bundle",
+        selectedPackName: node.data.selectedPackName || "",
+        rootTableName: node.data.rootTableName || "main_units_tables",
+        modelsDirectory: node.data.modelsDirectory || "onnx_models",
+        modelsManifestPath: node.data.modelsManifestPath || "onnx_models/models.json",
+        preprocessorManifestPath: node.data.preprocessorManifestPath || "onnx_models/preprocessor.json",
+        preprocessorModelPath: node.data.preprocessorModelPath || "onnx_models/preprocessor.onnx",
+        standaloneModelPath: node.data.standaloneModelPath || "",
+        standaloneInputBindings: node.data.standaloneInputBindings || {},
+        standaloneOutputName: node.data.standaloneOutputName || "",
+        inputBindings: node.data.inputBindings || {},
+        outputBindings: node.data.outputBindings || {},
+        strength: node.data.strength ?? 1,
+        strengthOptionId: node.data.strengthOptionId || "",
+      };
     default:
       return node.data.textValue;
   }
@@ -1329,6 +1347,25 @@ export const prepareFlow = (
         scalarValues[inputId] = option.type === "multiline" ? splitMultilineOptionValue(String(value)) : value;
       }
       (node.data as any).scalarValues = scalarValues;
+    }
+    if (node.type === "onnx") {
+      const resolveNumericOption = (optionId: string): number => {
+        const option = flowData.options?.find((item) => item.id === optionId);
+        if (!option) return Number.NaN;
+        const userValue = flowOptions?.optionValues?.[optionId];
+        const value = userValue !== undefined ? userValue : option.value;
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric : Number.NaN;
+      };
+      const strengthOptionId = String((node.data as any).strengthOptionId || "");
+      if (strengthOptionId) (node.data as any).strength = resolveNumericOption(strengthOptionId);
+      const outputBindings = { ...(((node.data as any).outputBindings || {}) as Record<string, Record<string, unknown>>) };
+      for (const [modelKey, binding] of Object.entries(outputBindings)) {
+        const optionId = typeof binding?.strengthOptionId === "string" ? binding.strengthOptionId : "";
+        if (!optionId) continue;
+        outputBindings[modelKey] = { ...binding, strength: resolveNumericOption(optionId) };
+      }
+      (node.data as any).outputBindings = outputBindings;
     }
     if (node.type === "edittextfile") {
       // Runtime-only: lets the node omit the pack which owns this flow from PackFiles resolution.

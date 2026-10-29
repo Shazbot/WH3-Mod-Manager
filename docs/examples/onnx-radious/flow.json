@@ -1,0 +1,1785 @@
+{
+  "version": "1.0",
+  "timestamp": 1793294922013,
+  "nodes": [
+    {
+      "id": "sources",
+      "type": "allenabledmods",
+      "position": {
+        "x": 0,
+        "y": 80
+      },
+      "data": {
+        "label": "Enabled mods + vanilla",
+        "type": "allenabledmods",
+        "outputType": "PackFiles",
+        "includeBaseGame": true
+      }
+    },
+    {
+      "id": "units",
+      "type": "tableselectiondropdown",
+      "position": {
+        "x": 350,
+        "y": 80
+      },
+      "data": {
+        "label": "Effective main units",
+        "type": "tableselectiondropdown",
+        "inputType": "PackFiles",
+        "outputType": "TableSelection",
+        "selectedTable": "main_units_tables"
+      }
+    },
+    {
+      "id": "predict",
+      "type": "onnx",
+      "position": {
+        "x": 700,
+        "y": 80
+      },
+      "data": {
+        "label": "Radious stat predictions",
+        "type": "onnx",
+        "inputType": "TableSelection",
+        "outputType": "TableSelection",
+        "mode": "bundle",
+        "selectedPackName": "radious_stat_scaler.pack",
+        "rootTableName": "main_units_tables",
+        "modelsDirectory": "onnx_models",
+        "modelsManifestPath": "onnx_models/models.json",
+        "preprocessorManifestPath": "onnx_models/preprocessor.json",
+        "preprocessorModelPath": "onnx_models/preprocessor.onnx",
+        "inputBindings": {
+          "main_units__caste": {
+            "kind": "column",
+            "tableName": "main_units_tables",
+            "column": "caste",
+            "path": []
+          },
+          "main_units__weight": {
+            "kind": "column",
+            "tableName": "main_units_tables",
+            "column": "weight",
+            "path": []
+          },
+          "main_units__tier": {
+            "kind": "column",
+            "tableName": "main_units_tables",
+            "column": "tier",
+            "path": [],
+            "missingAsNaN": true
+          },
+          "main_units__num_men": {
+            "kind": "column",
+            "tableName": "main_units_tables",
+            "column": "num_men",
+            "path": [],
+            "missingAsNaN": true
+          },
+          "main_units__recruitment_cost": {
+            "kind": "column",
+            "tableName": "main_units_tables",
+            "column": "recruitment_cost",
+            "path": [],
+            "missingAsNaN": true
+          },
+          "main_units__upkeep_cost": {
+            "kind": "column",
+            "tableName": "main_units_tables",
+            "column": "upkeep_cost",
+            "path": [],
+            "missingAsNaN": true
+          },
+          "main_units__multiplayer_cost": {
+            "kind": "column",
+            "tableName": "main_units_tables",
+            "column": "multiplayer_cost",
+            "path": [],
+            "missingAsNaN": true
+          },
+          "main_units__barrier_health": {
+            "kind": "column",
+            "tableName": "main_units_tables",
+            "column": "barrier_health",
+            "path": [],
+            "missingAsNaN": true
+          },
+          "main_units__is_high_threat": {
+            "kind": "column",
+            "tableName": "main_units_tables",
+            "column": "is_high_threat",
+            "path": [],
+            "missingAsNaN": true
+          },
+          "main_units__is_monstrous": {
+            "kind": "column",
+            "tableName": "main_units_tables",
+            "column": "is_monstrous",
+            "path": [],
+            "missingAsNaN": true
+          },
+          "main_units__is_renown": {
+            "kind": "column",
+            "tableName": "main_units_tables",
+            "column": "is_renown",
+            "path": [],
+            "missingAsNaN": true
+          },
+          "main_units__can_siege": {
+            "kind": "column",
+            "tableName": "main_units_tables",
+            "column": "can_siege",
+            "path": [],
+            "missingAsNaN": true
+          },
+          "land_units__accuracy": {
+            "kind": "column",
+            "tableName": "land_units_tables",
+            "column": "accuracy",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "land_units__armour": {
+            "kind": "column",
+            "tableName": "land_units_tables",
+            "column": "armour",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ]
+          },
+          "land_units__category": {
+            "kind": "column",
+            "tableName": "land_units_tables",
+            "column": "category",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ]
+          },
+          "land_units__charge_bonus": {
+            "kind": "column",
+            "tableName": "land_units_tables",
+            "column": "charge_bonus",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "land_units__class": {
+            "kind": "column",
+            "tableName": "land_units_tables",
+            "column": "class",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ]
+          },
+          "land_units__melee_attack": {
+            "kind": "column",
+            "tableName": "land_units_tables",
+            "column": "melee_attack",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "land_units__melee_defence": {
+            "kind": "column",
+            "tableName": "land_units_tables",
+            "column": "melee_defence",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "land_units__morale": {
+            "kind": "column",
+            "tableName": "land_units_tables",
+            "column": "morale",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "land_units__bonus_hit_points": {
+            "kind": "column",
+            "tableName": "land_units_tables",
+            "column": "bonus_hit_points",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "land_units__num_mounts": {
+            "kind": "column",
+            "tableName": "land_units_tables",
+            "column": "num_mounts",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "land_units__shield": {
+            "kind": "column",
+            "tableName": "land_units_tables",
+            "column": "shield",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ]
+          },
+          "land_units__secondary_ammo": {
+            "kind": "column",
+            "tableName": "land_units_tables",
+            "column": "secondary_ammo",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "land_units__primary_ammo": {
+            "kind": "column",
+            "tableName": "land_units_tables",
+            "column": "primary_ammo",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "land_units__damage_mod_flame": {
+            "kind": "column",
+            "tableName": "land_units_tables",
+            "column": "damage_mod_flame",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "land_units__damage_mod_magic": {
+            "kind": "column",
+            "tableName": "land_units_tables",
+            "column": "damage_mod_magic",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "land_units__num_engines": {
+            "kind": "column",
+            "tableName": "land_units_tables",
+            "column": "num_engines",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "land_units__damage_mod_physical": {
+            "kind": "column",
+            "tableName": "land_units_tables",
+            "column": "damage_mod_physical",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "land_units__damage_mod_missile": {
+            "kind": "column",
+            "tableName": "land_units_tables",
+            "column": "damage_mod_missile",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "land_units__damage_mod_all": {
+            "kind": "column",
+            "tableName": "land_units_tables",
+            "column": "damage_mod_all",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "land_units__can_skirmish": {
+            "kind": "column",
+            "tableName": "land_units_tables",
+            "column": "can_skirmish",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "land_units__can_brace": {
+            "kind": "column",
+            "tableName": "land_units_tables",
+            "column": "can_brace",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "land_units__reload": {
+            "kind": "column",
+            "tableName": "land_units_tables",
+            "column": "reload",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "battle_entities__type": {
+            "kind": "column",
+            "tableName": "battle_entities_tables",
+            "column": "type",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "man_entity",
+                "targetTable": "battle_entities_tables",
+                "targetColumn": "key"
+              }
+            ]
+          },
+          "battle_entities__walk_speed": {
+            "kind": "column",
+            "tableName": "battle_entities_tables",
+            "column": "walk_speed",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "man_entity",
+                "targetTable": "battle_entities_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "battle_entities__run_speed": {
+            "kind": "column",
+            "tableName": "battle_entities_tables",
+            "column": "run_speed",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "man_entity",
+                "targetTable": "battle_entities_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "battle_entities__acceleration": {
+            "kind": "column",
+            "tableName": "battle_entities_tables",
+            "column": "acceleration",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "man_entity",
+                "targetTable": "battle_entities_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "battle_entities__deceleration": {
+            "kind": "column",
+            "tableName": "battle_entities_tables",
+            "column": "deceleration",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "man_entity",
+                "targetTable": "battle_entities_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "battle_entities__charge_speed": {
+            "kind": "column",
+            "tableName": "battle_entities_tables",
+            "column": "charge_speed",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "man_entity",
+                "targetTable": "battle_entities_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "battle_entities__radius": {
+            "kind": "column",
+            "tableName": "battle_entities_tables",
+            "column": "radius",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "man_entity",
+                "targetTable": "battle_entities_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "battle_entities__mass": {
+            "kind": "column",
+            "tableName": "battle_entities_tables",
+            "column": "mass",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "man_entity",
+                "targetTable": "battle_entities_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "battle_entities__turn_speed": {
+            "kind": "column",
+            "tableName": "battle_entities_tables",
+            "column": "turn_speed",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "man_entity",
+                "targetTable": "battle_entities_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "battle_entities__hit_points": {
+            "kind": "column",
+            "tableName": "battle_entities_tables",
+            "column": "hit_points",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "man_entity",
+                "targetTable": "battle_entities_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "battle_entities__fly_speed": {
+            "kind": "column",
+            "tableName": "battle_entities_tables",
+            "column": "fly_speed",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "man_entity",
+                "targetTable": "battle_entities_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "battle_entities__flying_charge_speed": {
+            "kind": "column",
+            "tableName": "battle_entities_tables",
+            "column": "flying_charge_speed",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "man_entity",
+                "targetTable": "battle_entities_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "battle_entities__size": {
+            "kind": "column",
+            "tableName": "battle_entities_tables",
+            "column": "size",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "man_entity",
+                "targetTable": "battle_entities_tables",
+                "targetColumn": "key"
+              }
+            ]
+          },
+          "melee_weapons__bonus_v_large": {
+            "kind": "column",
+            "tableName": "melee_weapons_tables",
+            "column": "bonus_v_large",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_melee_weapon",
+                "targetTable": "melee_weapons_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "melee_weapons__bonus_v_infantry": {
+            "kind": "column",
+            "tableName": "melee_weapons_tables",
+            "column": "bonus_v_infantry",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_melee_weapon",
+                "targetTable": "melee_weapons_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "melee_weapons__damage": {
+            "kind": "column",
+            "tableName": "melee_weapons_tables",
+            "column": "damage",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_melee_weapon",
+                "targetTable": "melee_weapons_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "melee_weapons__ap_damage": {
+            "kind": "column",
+            "tableName": "melee_weapons_tables",
+            "column": "ap_damage",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_melee_weapon",
+                "targetTable": "melee_weapons_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "melee_weapons__melee_weapon_type": {
+            "kind": "column",
+            "tableName": "melee_weapons_tables",
+            "column": "melee_weapon_type",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_melee_weapon",
+                "targetTable": "melee_weapons_tables",
+                "targetColumn": "key"
+              }
+            ]
+          },
+          "melee_weapons__splash_attack_target_size": {
+            "kind": "column",
+            "tableName": "melee_weapons_tables",
+            "column": "splash_attack_target_size",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_melee_weapon",
+                "targetTable": "melee_weapons_tables",
+                "targetColumn": "key"
+              }
+            ]
+          },
+          "melee_weapons__splash_attack_max_attacks": {
+            "kind": "column",
+            "tableName": "melee_weapons_tables",
+            "column": "splash_attack_max_attacks",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_melee_weapon",
+                "targetTable": "melee_weapons_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "melee_weapons__splash_attack_power_multiplier": {
+            "kind": "column",
+            "tableName": "melee_weapons_tables",
+            "column": "splash_attack_power_multiplier",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_melee_weapon",
+                "targetTable": "melee_weapons_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "melee_weapons__is_magical": {
+            "kind": "column",
+            "tableName": "melee_weapons_tables",
+            "column": "is_magical",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_melee_weapon",
+                "targetTable": "melee_weapons_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "melee_weapons__melee_attack_interval": {
+            "kind": "column",
+            "tableName": "melee_weapons_tables",
+            "column": "melee_attack_interval",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_melee_weapon",
+                "targetTable": "melee_weapons_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "projectiles__effective_range": {
+            "kind": "column",
+            "tableName": "projectiles_tables",
+            "column": "effective_range",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_missile_weapon",
+                "targetTable": "missile_weapons_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "missile_weapons_tables",
+                "column": "default_projectile",
+                "targetTable": "projectiles_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "projectiles__minimum_range": {
+            "kind": "column",
+            "tableName": "projectiles_tables",
+            "column": "minimum_range",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_missile_weapon",
+                "targetTable": "missile_weapons_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "missile_weapons_tables",
+                "column": "default_projectile",
+                "targetTable": "projectiles_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "projectiles__damage": {
+            "kind": "column",
+            "tableName": "projectiles_tables",
+            "column": "damage",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_missile_weapon",
+                "targetTable": "missile_weapons_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "missile_weapons_tables",
+                "column": "default_projectile",
+                "targetTable": "projectiles_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "projectiles__ap_damage": {
+            "kind": "column",
+            "tableName": "projectiles_tables",
+            "column": "ap_damage",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_missile_weapon",
+                "targetTable": "missile_weapons_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "missile_weapons_tables",
+                "column": "default_projectile",
+                "targetTable": "projectiles_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "projectiles__base_reload_time": {
+            "kind": "column",
+            "tableName": "projectiles_tables",
+            "column": "base_reload_time",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_missile_weapon",
+                "targetTable": "missile_weapons_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "missile_weapons_tables",
+                "column": "default_projectile",
+                "targetTable": "projectiles_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "projectiles__bonus_v_infantry": {
+            "kind": "column",
+            "tableName": "projectiles_tables",
+            "column": "bonus_v_infantry",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_missile_weapon",
+                "targetTable": "missile_weapons_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "missile_weapons_tables",
+                "column": "default_projectile",
+                "targetTable": "projectiles_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "projectiles__bonus_v_large": {
+            "kind": "column",
+            "tableName": "projectiles_tables",
+            "column": "bonus_v_large",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_missile_weapon",
+                "targetTable": "missile_weapons_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "missile_weapons_tables",
+                "column": "default_projectile",
+                "targetTable": "projectiles_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "missingAsNaN": true
+          },
+          "is_ranged": {
+            "kind": "column-present",
+            "tableName": "land_units_tables",
+            "column": "primary_missile_weapon",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ]
+          }
+        },
+        "outputBindings": {
+          "delta_main_units__tier": {
+            "enabled": true,
+            "tableName": "main_units_tables",
+            "column": "tier",
+            "path": [],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_main_units__num_men": {
+            "enabled": true,
+            "tableName": "main_units_tables",
+            "column": "num_men",
+            "path": [],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_main_units__recruitment_cost": {
+            "enabled": true,
+            "tableName": "main_units_tables",
+            "column": "recruitment_cost",
+            "path": [],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_main_units__upkeep_cost": {
+            "enabled": true,
+            "tableName": "main_units_tables",
+            "column": "upkeep_cost",
+            "path": [],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_main_units__multiplayer_cost": {
+            "enabled": true,
+            "tableName": "main_units_tables",
+            "column": "multiplayer_cost",
+            "path": [],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_main_units__barrier_health": {
+            "enabled": true,
+            "tableName": "main_units_tables",
+            "column": "barrier_health",
+            "path": [],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_land_units__accuracy": {
+            "enabled": true,
+            "tableName": "land_units_tables",
+            "column": "accuracy",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_land_units__charge_bonus": {
+            "enabled": true,
+            "tableName": "land_units_tables",
+            "column": "charge_bonus",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_land_units__melee_attack": {
+            "enabled": true,
+            "tableName": "land_units_tables",
+            "column": "melee_attack",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_land_units__melee_defence": {
+            "enabled": true,
+            "tableName": "land_units_tables",
+            "column": "melee_defence",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_land_units__morale": {
+            "enabled": true,
+            "tableName": "land_units_tables",
+            "column": "morale",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_land_units__bonus_hit_points": {
+            "enabled": true,
+            "tableName": "land_units_tables",
+            "column": "bonus_hit_points",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_land_units__num_mounts": {
+            "enabled": true,
+            "tableName": "land_units_tables",
+            "column": "num_mounts",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_land_units__secondary_ammo": {
+            "enabled": true,
+            "tableName": "land_units_tables",
+            "column": "secondary_ammo",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_land_units__primary_ammo": {
+            "enabled": true,
+            "tableName": "land_units_tables",
+            "column": "primary_ammo",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_land_units__damage_mod_flame": {
+            "enabled": true,
+            "tableName": "land_units_tables",
+            "column": "damage_mod_flame",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": false
+          },
+          "delta_land_units__damage_mod_magic": {
+            "enabled": true,
+            "tableName": "land_units_tables",
+            "column": "damage_mod_magic",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": false
+          },
+          "delta_land_units__num_engines": {
+            "enabled": true,
+            "tableName": "land_units_tables",
+            "column": "num_engines",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_land_units__damage_mod_physical": {
+            "enabled": true,
+            "tableName": "land_units_tables",
+            "column": "damage_mod_physical",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_land_units__damage_mod_missile": {
+            "enabled": true,
+            "tableName": "land_units_tables",
+            "column": "damage_mod_missile",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_land_units__damage_mod_all": {
+            "enabled": true,
+            "tableName": "land_units_tables",
+            "column": "damage_mod_all",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": false
+          },
+          "delta_land_units__reload": {
+            "enabled": true,
+            "tableName": "land_units_tables",
+            "column": "reload",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_battle_entities__run_speed": {
+            "enabled": true,
+            "tableName": "battle_entities_tables",
+            "column": "run_speed",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "man_entity",
+                "targetTable": "battle_entities_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_battle_entities__charge_speed": {
+            "enabled": true,
+            "tableName": "battle_entities_tables",
+            "column": "charge_speed",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "man_entity",
+                "targetTable": "battle_entities_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_battle_entities__mass": {
+            "enabled": true,
+            "tableName": "battle_entities_tables",
+            "column": "mass",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "man_entity",
+                "targetTable": "battle_entities_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_battle_entities__hit_points": {
+            "enabled": true,
+            "tableName": "battle_entities_tables",
+            "column": "hit_points",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "man_entity",
+                "targetTable": "battle_entities_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_melee_weapons__bonus_v_large": {
+            "enabled": true,
+            "tableName": "melee_weapons_tables",
+            "column": "bonus_v_large",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_melee_weapon",
+                "targetTable": "melee_weapons_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_melee_weapons__bonus_v_infantry": {
+            "enabled": true,
+            "tableName": "melee_weapons_tables",
+            "column": "bonus_v_infantry",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_melee_weapon",
+                "targetTable": "melee_weapons_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_melee_weapons__damage": {
+            "enabled": true,
+            "tableName": "melee_weapons_tables",
+            "column": "damage",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_melee_weapon",
+                "targetTable": "melee_weapons_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_melee_weapons__ap_damage": {
+            "enabled": true,
+            "tableName": "melee_weapons_tables",
+            "column": "ap_damage",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_melee_weapon",
+                "targetTable": "melee_weapons_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_melee_weapons__splash_attack_max_attacks": {
+            "enabled": true,
+            "tableName": "melee_weapons_tables",
+            "column": "splash_attack_max_attacks",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_melee_weapon",
+                "targetTable": "melee_weapons_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_melee_weapons__splash_attack_power_multiplier": {
+            "enabled": true,
+            "tableName": "melee_weapons_tables",
+            "column": "splash_attack_power_multiplier",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_melee_weapon",
+                "targetTable": "melee_weapons_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_melee_weapons__is_magical": {
+            "enabled": true,
+            "tableName": "melee_weapons_tables",
+            "column": "is_magical",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_melee_weapon",
+                "targetTable": "melee_weapons_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": false
+          },
+          "delta_projectiles__effective_range": {
+            "enabled": true,
+            "tableName": "projectiles_tables",
+            "column": "effective_range",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_missile_weapon",
+                "targetTable": "missile_weapons_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "missile_weapons_tables",
+                "column": "default_projectile",
+                "targetTable": "projectiles_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_projectiles__damage": {
+            "enabled": true,
+            "tableName": "projectiles_tables",
+            "column": "damage",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_missile_weapon",
+                "targetTable": "missile_weapons_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "missile_weapons_tables",
+                "column": "default_projectile",
+                "targetTable": "projectiles_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_projectiles__ap_damage": {
+            "enabled": true,
+            "tableName": "projectiles_tables",
+            "column": "ap_damage",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_missile_weapon",
+                "targetTable": "missile_weapons_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "missile_weapons_tables",
+                "column": "default_projectile",
+                "targetTable": "projectiles_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          },
+          "delta_projectiles__base_reload_time": {
+            "enabled": true,
+            "tableName": "projectiles_tables",
+            "column": "base_reload_time",
+            "path": [
+              {
+                "tableName": "main_units_tables",
+                "column": "land_unit",
+                "targetTable": "land_units_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "land_units_tables",
+                "column": "primary_missile_weapon",
+                "targetTable": "missile_weapons_tables",
+                "targetColumn": "key"
+              },
+              {
+                "tableName": "missile_weapons_tables",
+                "column": "default_projectile",
+                "targetTable": "projectiles_tables",
+                "targetColumn": "key"
+              }
+            ],
+            "mode": "delta",
+            "roundPrediction": true
+          }
+        },
+        "strength": 1,
+        "strengthOptionId": "radious_strength"
+      }
+    },
+    {
+      "id": "save",
+      "type": "savechanges",
+      "position": {
+        "x": 1250,
+        "y": 80
+      },
+      "data": {
+        "label": "Save scaled stats",
+        "type": "savechanges",
+        "inputType": "TableSelection",
+        "packName": "whmm_radious_stat_scaler_output",
+        "packedFileName": "whmm_radious_scaled",
+        "openInWindows": false,
+        "openInViewer": false,
+        "saveAsMoviePack": false
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "edge-sources-units",
+      "sourceId": "sources",
+      "targetId": "units",
+      "sourceType": "PackFiles",
+      "targetType": "PackFiles"
+    },
+    {
+      "id": "edge-units-predict",
+      "sourceId": "units",
+      "targetId": "predict",
+      "sourceType": "TableSelection",
+      "targetType": "TableSelection"
+    },
+    {
+      "id": "edge-predict-save",
+      "sourceId": "predict",
+      "targetId": "save",
+      "sourceType": "TableSelection",
+      "targetType": "TableSelection"
+    }
+  ],
+  "options": [
+    {
+      "id": "radious_strength",
+      "name": "Stat change strength",
+      "description": "Multiplier for predicted stat deltas. 0 leaves values unchanged; 1 applies the full prediction.",
+      "type": "range",
+      "value": 1,
+      "min": 0,
+      "max": 2,
+      "step": 0.05
+    }
+  ],
+  "metadata": {
+    "nodeCount": 4,
+    "connectionCount": 3
+  },
+  "isGraphEnabled": true,
+  "graphStartsEnabled": true
+}

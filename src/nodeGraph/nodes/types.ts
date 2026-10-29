@@ -1,6 +1,7 @@
 import { DBVersion, SCHEMA_FIELD_TYPE } from "../../packFileTypes";
 import type { FilterRow, FlowNodeDataPatch } from "../types";
 import type { NativePatchTableSchemas } from "../nativePatchSchema";
+import type { OnnxInputBinding, OnnxOutputBinding } from "../onnxFlow";
 
 export interface NodeData extends Record<string, unknown> {
   label: string;
@@ -578,6 +579,26 @@ export interface ConditionalBranchNodeData extends NodeData {
   flowOptionChoices?: Array<{ id: string; label: string }>;
   columnNames: string[];
   connectedTableName?: string;
+}
+
+export interface OnnxFlowNodeData extends NodeData {
+  inputType: "TableSelection";
+  outputType: "TableSelection";
+  mode: "bundle" | "standalone";
+  /** Empty means use the pack that owns the saved flow. */
+  selectedPackName: string;
+  rootTableName: string;
+  modelsDirectory: string;
+  modelsManifestPath: string;
+  preprocessorManifestPath: string;
+  preprocessorModelPath: string;
+  standaloneModelPath: string;
+  standaloneInputBindings: Record<string, OnnxInputBinding[]>;
+  standaloneOutputName: string;
+  inputBindings: Record<string, OnnxInputBinding>;
+  outputBindings: Record<string, OnnxOutputBinding>;
+  strength: number;
+  strengthOptionId: string;
 }
 
 /** One hop of the deep clone plan: a table reached from its parent by a schema reference. */

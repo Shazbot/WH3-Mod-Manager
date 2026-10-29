@@ -36,6 +36,19 @@ import {
   type FlowPackCatalogEntry,
 } from "./nodeGraph/flowPackOperations";
 import {
+  findOnnxForwardPaths,
+  getOnnxColumnBindingOptions,
+  inferOnnxInputBinding,
+  inferOnnxOutputBinding,
+  isSafeOnnxPackPath,
+  joinOnnxPackPath,
+  parseOnnxBundleMetadata,
+  parseOnnxModelTarget,
+  selectOnnxSchemaVersions,
+  validateOnnxBundlePaths,
+} from "./nodeGraph/onnxFlow";
+import { inspectStandaloneOnnxBytes } from "./nodeGraph/onnxInference";
+import {
   canReusePackIndexForCompat,
   canReuseParsedPackForCompat,
   mergeCompatTextIntoPack,
@@ -6672,13 +6685,15 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     byGame: Partial<Record<SupportedGames, FlowExecutionCacheEntry>>;
   }
   const FLOW_EXECUTION_CACHE_FILE = "flow-execution-cache.bin";
+  // 12: ONNX inference uses installed schema versions and supports predictor-compatible feature/writeback settings.
+  // 11: packed ONNX inference adds model bytes and tensor bindings to launch outputs.
   // 10: native patch schema outputs can provide Custom Rows Input declarations before patch execution.
   // 9: terminal native patch nodes register contributions in memory rather than saved pack files.
   // 8: native patch template selection and contribution generation now affect saved flow outputs.
   // 7: automatic flow execution uses saved pack content only; also invalidate v6 entries that included staged data.
   // 5: replacement outputs retain the source pack name; older cached outputs may use the Save
   // Changes node's configured name instead.
-  const FLOW_EXECUTION_CACHE_VERSION = 10;
+  const FLOW_EXECUTION_CACHE_VERSION = 12;
   let flowExecutionCache: FlowExecutionCache | null = null;
   const loadFlowExecutionCache = async (): Promise<FlowExecutionCache> => {
     if (flowExecutionCache !== null) return flowExecutionCache;
@@ -8545,6 +8560,108 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           success: false,
           error: error instanceof Error ? error.message : "Failed to copy packed file",
         };
+      }
+    },
+  );
+  ipcMain.handle(
+    "inspectOnnxFlowPack",
+    async (_event, request: {
+      packPath: string;
+      mode: "bundle" | "standalone";
+      rootTableName: string;
+      modelsDirectory?: string;
+      modelsManifestPath?: string;
+      preprocessorManifestPath?: string;
+      preprocessorModelPath?: string;
+      standaloneModelPath?: string;
+    }) => {
+      try {
+        const packPath = request.packPath;
+        if (!packPath) throw new Error("Choose an ONNX source pack");
+        const rootTableName = request.rootTableName || "main_units_tables";
+        const schema = selectOnnxSchemaVersions(await getSchemaForGame(appData.currentGame), await getDefaultTableVersions());
+        const index = await readPack(packPath, { skipParsingTables: true, skipSorting: true });
+        const entryByPath = new Map(index.packedFiles.map((entry) => [normalizePackFilePathKey(entry.name), entry.name]));
+        const readEntries = async (paths: string[]) => {
+          const normalizedPaths = paths.map((filePath) => {
+            const safePath = filePath.replace(/\\/g, "/");
+            if (!isSafeOnnxPackPath(safePath)) throw new Error(`Unsafe ONNX packed-file path: ${filePath}`);
+            const packedName = entryByPath.get(normalizePackFilePathKey(safePath.replace(/\//g, "\\")));
+            if (!packedName) throw new Error(`Source pack is missing '${filePath}'`);
+            return packedName;
+          });
+          const result = await readPack(packPath, { skipParsingTables: true, skipSorting: true, filesToRead: normalizedPaths });
+          return new Map(result.packedFiles.map((entry) => [normalizePackFilePathKey(entry.name), entry]));
+        };
+        const readBytes = (entry: PackedFile | undefined, label: string): Buffer => {
+          if (entry?.buffer) return entry.buffer;
+          if (entry?.text !== undefined) return Buffer.from(entry.text, "utf8");
+          throw new Error(`Packed file '${label}' has no readable payload`);
+        };
+        const bindingInfo = (name: string, type: "float32" | "string") => {
+          const inferred = inferOnnxInputBinding({ name, type }, rootTableName, schema);
+          return { defaultBinding: inferred.defaultBinding, options: inferred.options };
+        };
+        const bindingCandidates = {
+          columns: getOnnxColumnBindingOptions(rootTableName, schema, "any"),
+          references: inferOnnxInputBinding({ name: "is_ranged", type: "float32" }, rootTableName, schema).options,
+        };
+        if (request.mode === "standalone") {
+          const modelPath = request.standaloneModelPath || "";
+          if (!isSafeOnnxPackPath(modelPath)) throw new Error("Standalone model path must be a safe relative packed-file path");
+          const entries = await readEntries([modelPath]);
+          const modelBytes = readBytes(entries.get(normalizePackFilePathKey(modelPath.replace(/\//g, "\\"))), modelPath);
+          const metadata = await inspectStandaloneOnnxBytes(modelBytes);
+          let target: { tableName: string; column: string } | undefined;
+          try {
+            const basename = modelPath.split(/[\\/]/).pop()?.replace(/\.onnx$/i, "") || "";
+            const parsed = parseOnnxModelTarget(basename);
+            target = { tableName: parsed.tableName, column: parsed.column };
+          } catch {
+            target = undefined;
+          }
+          return {
+            success: true,
+            mode: "standalone",
+            inputs: metadata.inputs.map((input) => ({ ...input, ...bindingInfo(input.name, input.type) })),
+            outputs: metadata.outputs,
+            bindingCandidates,
+            defaultOutput: {
+              tableName: target?.tableName || rootTableName,
+              column: target?.column || "",
+              paths: findOnnxForwardPaths(rootTableName, target?.tableName || rootTableName, schema),
+            },
+            errors: metadata.errors,
+          };
+        }
+        const paths = {
+          modelsDirectory: request.modelsDirectory || "onnx_models",
+          modelsManifestPath: request.modelsManifestPath || "onnx_models/models.json",
+          preprocessorManifestPath: request.preprocessorManifestPath || "onnx_models/preprocessor.json",
+          preprocessorModelPath: request.preprocessorModelPath || "onnx_models/preprocessor.onnx",
+        };
+        validateOnnxBundlePaths(paths);
+        const entries = await readEntries([paths.modelsManifestPath, paths.preprocessorManifestPath]);
+        const metadata = parseOnnxBundleMetadata(
+          readBytes(entries.get(normalizePackFilePathKey(paths.modelsManifestPath.replace(/\//g, "\\"))), paths.modelsManifestPath).toString("utf8"),
+          readBytes(entries.get(normalizePackFilePathKey(paths.preprocessorManifestPath.replace(/\//g, "\\"))), paths.preprocessorManifestPath).toString("utf8"),
+        );
+        return {
+          success: true,
+          mode: "bundle",
+          inputs: metadata.inputs.map((input) => ({ ...input, ...bindingInfo(input.name, input.type) })),
+          bindingCandidates,
+          models: metadata.models.map((model) => ({
+            ...model,
+            defaultBinding: inferOnnxOutputBinding(model, rootTableName, schema),
+            paths: findOnnxForwardPaths(rootTableName, model.defaultTableName, schema),
+          })),
+          warnings: metadata.warnings,
+          errors: metadata.errors,
+          preprocessorModelPath: paths.preprocessorModelPath,
+        };
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : "Unable to inspect ONNX pack" };
       }
     },
   );

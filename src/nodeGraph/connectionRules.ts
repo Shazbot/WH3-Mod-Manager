@@ -55,6 +55,7 @@ const TABLE_SELECTION_SOURCES = new Set([
   "customrowsinput",
   "readtsvfrompack",
   "deepclone",
+  "onnx",
   "conditionalbranch",
   "removetables",
   "editloctext",

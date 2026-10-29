@@ -1237,6 +1237,8 @@
   "nodeEditorNodeCombineSameTablesDescription": "Merges input entries for the same table into one, keeping every row",
   "nodeEditorNodeDeepCloneLabel": "Deep Clone",
   "nodeEditorNodeDeepCloneDescription": "Clones rows and their referenced tables, optionally into several variants",
+  "nodeEditorNodeOnnxLabel": "ONNX Prediction",
+  "nodeEditorNodeOnnxDescription": "Runs packed ONNX models on selected table rows and writes enabled predictions",
   "nodeEditorDeepCloneTitle": "Deep Clone",
   "nodeEditorDeepCloneNameTemplateLabel": "New key template:",
   "nodeEditorDeepCloneNameTemplateHelp": "{original} = source key, {selfOriginal} = this table's key, {variant} = variant suffix",

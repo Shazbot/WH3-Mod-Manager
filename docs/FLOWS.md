@@ -63,7 +63,7 @@ Every input and output socket carries one of the `NodeEdgeTypes` (`src/index.d.t
 
 ## Node catalogue
 
-There are 46 node types, grouped as they appear in the editor sidebar (`nodeRegistry.ts`). The descriptions are the registry's own fallback strings.
+There are 47 node types, grouped as they appear in the editor sidebar (`nodeRegistry.ts`). The descriptions are the registry's own fallback strings.
 
 | Section              | Type id                   | Label                       | What it does                                                                         |
 | -------------------- | ------------------------- | --------------------------- | ------------------------------------------------------------------------------------ |
@@ -90,6 +90,7 @@ There are 46 node types, grouped as they appear in the editor sidebar (`nodeRegi
 |                      | `mathceil`                | Math Ceil                   | Rounds changed values up                                                             |
 |                      | `mathmax`                 | Math Max                    | `Math.max(value, input)` on changed values                                           |
 |                      | `mergechanges`            | Merge Changes               | Merges several ChangedColumnSelection inputs into one                                |
+|                      | `onnx`                    | ONNX Prediction             | Runs packed bundle or standalone ONNX inference and writes enabled table outputs    |
 |                      | `savechanges`             | Save Changes                | Writes the result to a pack (see Outputs below)                                      |
 | Text                 | `appendtext`              | Append Text                 | Adds text before and after                                                           |
 |                      | `groupbycolumns`          | Group By Columns (For Text) | TableSelection + two columns → GroupedText                                           |
@@ -182,7 +183,7 @@ Results are `{ success, data?, error?, warnings?, activeOutputHandles? }` per no
 
 ## Launch cache
 
-`<userData>/flow-execution-cache.bin` is zstd-compressed JSON, one entry per game. Version: `FLOW_EXECUTION_CACHE_VERSION` (currently 10; the history is in comments next to it).
+`<userData>/flow-execution-cache.bin` is zstd-compressed JSON, one entry per game. Version: `FLOW_EXECUTION_CACHE_VERSION` (currently 12; the history is in comments next to it).
 
 The cache key is a hash of:
 
@@ -226,3 +227,7 @@ The template format, limits, merge rules and examples are in [`NATIVE_PATCHES.md
 6. If the node needs more than `textValue` at run time, add a case to `prepareNodeConfig` (`packFileSerializer.ts`); the default passes only `textValue`. If it has text fields that should take `{{option}}` values, handle them in **both** `prepareFlow` and `prepareGraphForExecution`.
 7. Add a `case` in `executeNodeAction` (`nodeExecutor.ts`). If it needs the DB schema, add it to `schemaAwareFlowNodeTypes`.
 8. Add targeted tests next to the existing ones in `test/nodeGraph/` (one file per node, e.g. `conditionalBranch.node.test.ts`, `connectionRules.node.test.ts`).
+
+The ONNX node uses `TableSelection` for input and output. It reads a manifest bundle or one packed `.onnx` model from the selected source pack (an empty selection uses the flow-owning pack). Its controls offer schema column/reference choices, constants, output enablement, destination columns and add/replace/delta modes; advanced JSON mappings remain available for custom paths. Ambiguous paths and unresolved `is_ranged` bindings must be assigned before execution. Linked output rows are cloned per root row while existing shared rows remain intact. The launch execution cache was bumped when this node was added.
+
+ONNX bindings can also test whether a column is populated, independently of whether its foreign key resolves. Numeric column bindings can opt into `missingAsNaN` so a packed preprocessor handles imputation; the default remains zero. Output bindings can opt into `roundPrediction` before delta strength and writeback. Model inspection and execution select installed default table versions rather than assuming the largest schema version belongs to the running game. The Radious example in `docs/examples/onnx-radious/` uses these settings to follow its companion predictor.

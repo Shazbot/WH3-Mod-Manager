@@ -4,8 +4,8 @@ This is a map of how WHMM's windows talk to the Electron main process: the mecha
 
 Counts in this document come from the source as of 2026-10-26:
 
-- `src/preload.ts`: 238 `window.api` methods, 98 `invoke` channels, 73 `send` channels, 67 event subscriptions.
-- Main process: 179 handlers (106 `handle`, 73 `on`) and 66 channels it emits to windows.
+- `src/preload.ts`: 239 `window.api` methods, 99 `invoke` channels, 73 `send` channels, 67 event subscriptions.
+- Main process: 180 handlers (107 `handle`, 73 `on`) and 66 channels it emits to windows.
 
 ## Processes and windows
 
@@ -154,7 +154,7 @@ Legend:
 
 ### Flows (node graph)
 
-- **I** `executeNode`, `executeNodeGraph`, `saveNodeFlow`, `listNativePatchFlowTemplates`, `getFlowFilesFromPack`, `getFlowPackCatalog`, `selectFlowPackFile`, `selectFlowPackSavePath`, `saveFlowToPack`
+- **I** `executeNode`, `executeNodeGraph`, `saveNodeFlow`, `listNativePatchFlowTemplates`, `inspectOnnxFlowPack`, `getFlowFilesFromPack`, `getFlowPackCatalog`, `selectFlowPackFile`, `selectFlowPackSavePath`, `saveFlowToPack`
 
 See `docs/FLOWS.md`.
 

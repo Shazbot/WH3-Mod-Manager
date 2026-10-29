@@ -1638,6 +1638,7 @@ declare global {
     | "combinesametables"
     | "deepclone"
     | "conditionalbranch"
+    | "onnx"
     | "removetables"
     | "editloctext"
     | "edittextfile"

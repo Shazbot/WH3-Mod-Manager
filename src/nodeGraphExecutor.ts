@@ -275,6 +275,24 @@ export const serializeNodeConfigForExecution = (node: SerializedNode): string =>
       autoFollowReferences: (node.data as any).autoFollowReferences !== false,
     });
   }
+  if (node.type === "onnx") {
+    return JSON.stringify({
+      mode: (node.data as any).mode === "standalone" ? "standalone" : "bundle",
+      selectedPackName: (node.data as any).selectedPackName || "",
+      rootTableName: (node.data as any).rootTableName || "main_units_tables",
+      modelsDirectory: (node.data as any).modelsDirectory || "onnx_models",
+      modelsManifestPath: (node.data as any).modelsManifestPath || "onnx_models/models.json",
+      preprocessorManifestPath: (node.data as any).preprocessorManifestPath || "onnx_models/preprocessor.json",
+      preprocessorModelPath: (node.data as any).preprocessorModelPath || "onnx_models/preprocessor.onnx",
+      standaloneModelPath: (node.data as any).standaloneModelPath || "",
+      standaloneInputBindings: (node.data as any).standaloneInputBindings || {},
+      standaloneOutputName: (node.data as any).standaloneOutputName || "",
+      inputBindings: (node.data as any).inputBindings || {},
+      outputBindings: (node.data as any).outputBindings || {},
+      strength: (node.data as any).strength ?? 1,
+      strengthOptionId: (node.data as any).strengthOptionId || "",
+    });
+  }
   return node.data.textValue || "";
 };
 type SchemaOutputs = Map<string, Awaited<ReturnType<typeof readNativePatchFlowTableSchema>>>;

@@ -43,6 +43,8 @@ module.exports = {
     sideEffects: true,
   },
   externals: {
+    // Preserve ORT's platform-relative native binding and shared-library lookup.
+    "onnxruntime-node": "commonjs2 onnxruntime-node",
     // Externalize large schema files to load them dynamically
     "../schema/schema_wh3.json": "commonjs2 ../schema/schema_wh3.json",
     "../schema/schema_wh2.json": "commonjs2 ../schema/schema_wh2.json",
@@ -73,6 +75,14 @@ module.exports = {
         },
         { from: "./node_modules/binary-file", to: "../node_modules/binary-file" },
         { from: "./node_modules/denodeify", to: "../node_modules/denodeify" },
+        {
+          from: "./node_modules/onnxruntime-node",
+          to: "../node_modules/onnxruntime-node",
+          globOptions: {
+            ignore: ["**/script/**", "**/lib/**", "**/test/**"],
+          },
+        },
+        { from: "./node_modules/onnxruntime-common", to: "../node_modules/onnxruntime-common" },
       ],
     }),
     {
