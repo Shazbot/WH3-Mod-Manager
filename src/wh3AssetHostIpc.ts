@@ -12,6 +12,7 @@ import {
   revokeModelPreviewFile,
 } from "./assetProtocol";
 import {
+  WH3_ASSET_HOST_DDS_TEXTURES_CAPABILITY,
   Wh3AssetHostClient,
   type Wh3AssetHostAnimationReference,
   type Wh3AssetHostDecisionAction,
@@ -465,6 +466,7 @@ const exportVisualsModelNow = async (
   variantSelectionsValue: unknown,
   queuedAtMs: number,
   generation: number,
+  ddsTexturesRequested = false,
 ) => {
   const operationStartedAt = performance.now();
   const queueWaitMs = operationStartedAt - queuedAtMs;
@@ -487,6 +489,7 @@ const exportVisualsModelNow = async (
     host = await prepareVisualsModelHost(enabledMods, generation);
     const prepareHostMs = performance.now() - prepareHostStartedAt;
 
+    const ddsTextures = ddsTexturesRequested && host.client.hasCapability(WH3_ASSET_HOST_DDS_TEXTURES_CAPABILITY);
     const hostExportStartedAt = performance.now();
     const result = await host.client.exportModel({
       assetPath: normalized.assetPath,
@@ -494,6 +497,7 @@ const exportVisualsModelNow = async (
       animationPaths,
       animationSelections,
       variantSelections,
+      ddsTextures,
     });
     const hostExportMs = performance.now() - hostExportStartedAt;
     assertHostLifecycleActive(generation);
@@ -537,6 +541,7 @@ const exportVisualsModelNow = async (
         registerMs,
         totalMs: performance.now() - queuedAtMs,
         glbBytes,
+        ddsTextures,
       },
     };
   } catch (error) {
@@ -641,6 +646,7 @@ const exportVisualsModelBatchNow = async (
   itemsValue: unknown,
   queuedAtMs: number,
   generation: number,
+  ddsTexturesRequested = false,
 ) => {
   const operationStartedAt = performance.now();
   const queueWaitMs = operationStartedAt - queuedAtMs;
@@ -679,6 +685,7 @@ const exportVisualsModelBatchNow = async (
       animationPaths,
       animationSelections,
       items: previewsToCreate.map(({ outputPath, variantSelections }) => ({ outputPath, variantSelections })),
+      ddsTextures: ddsTexturesRequested && host.client.hasCapability(WH3_ASSET_HOST_DDS_TEXTURES_CAPABILITY),
     });
     const hostExportMs = performance.now() - hostExportStartedAt;
     assertHostLifecycleActive(generation);
@@ -771,11 +778,26 @@ const exportVisualsModel = <T>(operation: () => Promise<T>): Promise<T> => {
 ipcMain.removeHandler("exportVisualsModel");
 ipcMain.handle(
   "exportVisualsModel",
-  async (_event, assetPath: string, enabledMods: unknown, animationPaths: unknown, variantSelections: unknown) => {
+  async (
+    _event,
+    assetPath: string,
+    enabledMods: unknown,
+    animationPaths: unknown,
+    variantSelections: unknown,
+    ddsTextures?: unknown,
+  ) => {
     const queuedAtMs = performance.now();
     const generation = hostLifecycleGeneration;
     return exportVisualsModel(() =>
-      exportVisualsModelNow(assetPath, enabledMods, animationPaths, variantSelections, queuedAtMs, generation),
+      exportVisualsModelNow(
+        assetPath,
+        enabledMods,
+        animationPaths,
+        variantSelections,
+        queuedAtMs,
+        generation,
+        ddsTextures === true,
+      ),
     );
   },
 );
@@ -802,11 +824,26 @@ ipcMain.handle(
 ipcMain.removeHandler("exportVisualsModelBatch");
 ipcMain.handle(
   "exportVisualsModelBatch",
-  async (_event, assetPath: string, enabledMods: unknown, animationPaths: unknown, items: unknown) => {
+  async (
+    _event,
+    assetPath: string,
+    enabledMods: unknown,
+    animationPaths: unknown,
+    items: unknown,
+    ddsTextures?: unknown,
+  ) => {
     const queuedAtMs = performance.now();
     const generation = hostLifecycleGeneration;
     return exportVisualsModel(() =>
-      exportVisualsModelBatchNow(assetPath, enabledMods, animationPaths, items, queuedAtMs, generation),
+      exportVisualsModelBatchNow(
+        assetPath,
+        enabledMods,
+        animationPaths,
+        items,
+        queuedAtMs,
+        generation,
+        ddsTextures === true,
+      ),
     );
   },
 );
@@ -829,6 +866,7 @@ ipcMain.handle("reportVisualsModelPreviewTiming", async (_event, value: unknown)
   const assetPath = typeof report.assetPath === "string" ? report.assetPath : "<unknown>";
   const main = report.main;
   const ktx2 = report.ktx2;
+  const dds = report.dds;
   const protocolTiming = previewId ? getModelPreviewServeTiming(previewId) : undefined;
   const protocolWindowMs =
     protocolTiming?.firstRequestStartMs == null || protocolTiming.lastResponseReadyMs == null
@@ -847,6 +885,12 @@ ipcMain.handle("reportVisualsModelPreviewTiming", async (_event, value: unknown)
       `protocolWindow=${protocolWindowMs.toFixed(1)}ms`,
       `protocolRequests=${protocolTiming?.requestCount ?? 0}`,
       `protocolBytes=${protocolTiming?.bytesRead ?? 0}`,
+      `ddsTextures=${main?.ddsTextures === true}`,
+      `rawDds=${dds?.ddsTextureCount ?? 0}`,
+      `rawDdsWall=${formatTiming(dds?.ddsTextureWallMs)}ms`,
+      `rawDdsBytes=${Math.round(finiteNumber(dds?.ddsBytes))}`,
+      `ddsUploadCpu=${formatTiming(dds?.ddsUploadMs)}ms`,
+      `ddsCpuDecoded=${dds?.cpuDecodedCount ?? 0}`,
       `rawKtx2=${ktx2?.rawTextureCount ?? 0}`,
       `rawKtx2Wall=${formatTiming(ktx2?.rawTextureWallMs)}ms`,
       `zstdDecodeCpu=${formatTiming(ktx2?.zstdDecodeMs)}ms`,

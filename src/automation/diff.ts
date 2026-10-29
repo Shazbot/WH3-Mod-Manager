@@ -162,7 +162,7 @@ const ddsHeaderDiff = (beforeBytes: Buffer, before: DdsLayout, afterBytes: Buffe
   };
 };
 
-const rgbaError = (before: Buffer, after: Buffer, width: number, height: number) => {
+const rgbaError = (before: Uint8Array, after: Uint8Array, width: number, height: number) => {
   const sums = [0, 0, 0, 0];
   const maxima = [0, 0, 0, 0];
   let differingTexels = 0;

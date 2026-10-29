@@ -39,7 +39,7 @@ type CachedWh3RawTextureData = {
   srgb: boolean;
 };
 
-const hashWh3RawKtx2 = (buffer: ArrayBuffer) => {
+export const hashWh3RawKtx2 = (buffer: ArrayBuffer) => {
   // Hash 32-bit words: raw (uncompressed) textures are tens of MB, so a
   // per-byte loop would cost as much as the Zstd decode it replaces.
   const wordCount = buffer.byteLength >>> 2;

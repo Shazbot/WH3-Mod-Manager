@@ -1,6 +1,7 @@
 import { Duplex, PassThrough } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 import {
+  WH3_ASSET_HOST_DDS_TEXTURES_CAPABILITY,
   Wh3AssetHostClient,
   Wh3AssetHostClientError,
   Wh3AssetHostRemoteError,
@@ -282,6 +283,67 @@ describe("WH3AssetHostClient", () => {
       ],
     });
     assetHost.dispose();
+  });
+
+  it("sends ddsTextures only when requested and reports the optional capability after hello", async () => {
+    const required = [
+      "hello",
+      "initialize",
+      "getAnimationCatalog",
+      "exportModel",
+      "exportModelBatch",
+      "exportAnimations",
+      "exportPaintedVariant",
+      "paintedVariantRgba",
+      "paintedVariantSourceOverride",
+      "missingSkeletonDecision",
+      "shutdown",
+    ];
+    const run = async (capabilities: string[]) => {
+      const { client, server } = createDuplexPair();
+      const seen: any[] = [];
+      installServerResponder(server, (request) => {
+        seen.push(request);
+        return {
+          protocolVersion: 1,
+          requestId: request.requestId,
+          success: true,
+          command: request.command,
+          result:
+            request.command === "hello"
+              ? { hostVersion: "t", protocolVersion: 1, capabilities, maxFrameBytes: 1024 }
+              : request.command === "exportModelBatch"
+                ? { exports: [] }
+                : { success: true, primaryFile: "m.glb", auxiliaryFiles: [], warnings: [], errors: [] },
+          error: null,
+        };
+      });
+      const assetHost = new Wh3AssetHostClient({
+        executablePath: "host.exe",
+        spawnProcess: () => createMockChild() as never,
+        connectPipe: async () => client,
+      });
+      await assetHost.start();
+      const before = assetHost.hasCapability(WH3_ASSET_HOST_DDS_TEXTURES_CAPABILITY);
+      await assetHost.hello();
+      await assetHost.exportModel({ assetPath: "a", outputPath: "a.glb" });
+      await assetHost.exportModel({ assetPath: "a", outputPath: "b.glb", ddsTextures: true });
+      await assetHost.exportModels({ assetPath: "a", items: [{ outputPath: "c.glb" }], ddsTextures: true });
+      const supported = assetHost.hasCapability(WH3_ASSET_HOST_DDS_TEXTURES_CAPABILITY);
+      assetHost.dispose();
+      return { seen, before, supported };
+    };
+
+    // An older host without the capability still passes hello(); the flag is optional.
+    const older = await run(required);
+    expect(older.before).toBe(false);
+    expect(older.supported).toBe(false);
+    const withDds = await run([...required, WH3_ASSET_HOST_DDS_TEXTURES_CAPABILITY]);
+    expect(withDds.supported).toBe(true);
+    const [, plain, flagged, batch] = withDds.seen;
+    expect(plain).not.toHaveProperty("ddsTextures");
+    expect(flagged).toMatchObject({ command: "exportModel", ddsTextures: true });
+    expect(batch).toMatchObject({ command: "exportModelBatch", ddsTextures: true });
   });
 
   it("sends exportModelBatch with shared options and per-item selections", async () => {

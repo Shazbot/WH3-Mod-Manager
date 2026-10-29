@@ -10,6 +10,8 @@ export interface VisualsModelPreviewMainTiming {
   registerMs: number;
   totalMs: number;
   glbBytes?: number;
+  /** True when the host was actually asked to write passthrough DDS textures. */
+  ddsTextures?: boolean;
 }
 
 export interface VisualsModelPreviewKtx2Timing {
@@ -20,6 +22,15 @@ export interface VisualsModelPreviewKtx2Timing {
   zstdDecodeMs: number;
   textureCreateMs: number;
   textureUploadMs: number;
+}
+
+export interface VisualsModelPreviewDdsTiming {
+  ddsTextureCount: number;
+  ddsBytes: number;
+  ddsTextureWallMs: number;
+  ddsUploadMs: number;
+  /** Textures decoded on the CPU because the GPU lacks the needed compressed format. */
+  cpuDecodedCount: number;
 }
 
 export interface VisualsModelPreviewTimingReport {
@@ -33,6 +44,7 @@ export interface VisualsModelPreviewTimingReport {
   firstRenderMs: number;
   main?: VisualsModelPreviewMainTiming;
   ktx2: VisualsModelPreviewKtx2Timing;
+  dds?: VisualsModelPreviewDdsTiming;
 }
 
 export interface VisualsModelPreviewExportResult {
@@ -264,6 +276,7 @@ export const exportVisualsModel = async (
   enabledMods: readonly VisualsModelPreviewMod[],
   animationSelections: readonly VisualsModelPreviewAnimationReference[] = [],
   variantSelections: readonly VariantMeshSelection[] = [],
+  options: { ddsTextures?: boolean } = {},
 ): Promise<VisualsModelPreviewExportResult> =>
   (await getRendererIpc().invoke(
     "exportVisualsModel",
@@ -271,6 +284,7 @@ export const exportVisualsModel = async (
     enabledMods.map(({ name, path, loadOrder }) => ({ name, path, loadOrder })),
     [...animationSelections],
     [...variantSelections],
+    options.ddsTextures === true,
   )) as VisualsModelPreviewExportResult;
 
 /** Exports skeleton nodes plus the given clips (animations named `clip{index}`); no meshes or textures. */
@@ -293,6 +307,7 @@ export const exportVisualsModelBatch = async (
   enabledMods: readonly VisualsModelPreviewMod[],
   animationSelections: readonly VisualsModelPreviewAnimationReference[] = [],
   items: readonly VisualsModelPreviewBatchItem[] = [],
+  options: { ddsTextures?: boolean } = {},
 ): Promise<VisualsModelPreviewBatchExportResult> =>
   (await getRendererIpc().invoke(
     "exportVisualsModelBatch",
@@ -300,6 +315,7 @@ export const exportVisualsModelBatch = async (
     enabledMods.map(({ name, path, loadOrder }) => ({ name, path, loadOrder })),
     [...animationSelections],
     items.map((item) => ({ variantSelections: [...item.variantSelections] })),
+    options.ddsTextures === true,
   )) as VisualsModelPreviewBatchExportResult;
 
 export const getVisualsModelAnimationCatalog = async (

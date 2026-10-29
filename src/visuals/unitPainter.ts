@@ -1,5 +1,11 @@
 import * as THREE from "three";
 import { MeshBVH, SkinnedMeshBVH, acceleratedRaycast } from "three-mesh-bvh";
+import {
+  convertPackedNormalToStandardRgba,
+  decodeWh3DdsBaseMipRgba,
+  getDdsFamilyForThreeFormat,
+  parseWh3TextureEncoding,
+} from "./wh3DdsTexture";
 
 export type UnitPainterBrushMode = "recolor" | "paint" | "restore";
 export type UnitPainterSurfaceSelectionScope = "material" | "island";
@@ -119,7 +125,8 @@ type PaintableMaterial = THREE.Material & {
 };
 
 type PaintableTexture = {
-  original: THREE.DataTexture;
+  /** A DataTexture (RGBA8 KTX2 path) or a CompressedTexture from the DDS path; restored on dispose. */
+  original: THREE.Texture;
   editable: THREE.DataTexture;
   /** Flattened Base + visible paint layers shown in Three and used for export. */
   data: Uint8Array;
@@ -315,7 +322,7 @@ export type UnitPainterExportTexture = {
 type MaterialRestore = {
   material: PaintableMaterial;
   property: "map" | "normalMap";
-  original: THREE.DataTexture;
+  original: THREE.Texture;
 };
 
 type UnitPainterSelection = {
@@ -502,7 +509,7 @@ const sanitizeExportFileName = (value: string) => {
   return `${stem || "painted_texture"}.rgba`;
 };
 
-const getTextureExportFileName = (texture: THREE.DataTexture, index: number) => {
+const getTextureExportFileName = (texture: THREE.Texture, index: number) => {
   const sourceVirtualPath = texture.userData.wh3SourceVirtualPath;
   if (typeof sourceVirtualPath === "string" && sourceVirtualPath) {
     return sanitizeExportFileName(sourceVirtualPath);
@@ -541,13 +548,53 @@ const getDataTextureImage = (texture: THREE.DataTexture) => {
   };
 };
 
-const cloneEditableDataTexture = (texture: THREE.DataTexture, data: Uint8Array, width: number, height: number) => {
+/**
+ * RGBA8 pixels the painter edits for a texture: the DataTexture's own bytes, or, for a block-compressed DDS
+ * texture, its base mip decoded on the CPU. DXT5nm normals are converted to the standard form (RGB = XYZ),
+ * exactly like the host's KTX2 path, so painter math and exports see the same data either way.
+ */
+const getEditableSourceImage = (texture: THREE.Texture) => {
+  if (texture instanceof THREE.DataTexture) {
+    const image = getDataTextureImage(texture);
+    if (!image) return undefined;
+    if (parseWh3TextureEncoding(texture.userData.wh3TextureEncoding) !== "normal-dxt5nm") return image;
+    // CPU-decoded DDS fallback texture that still holds raw packed normals.
+    const data = new Uint8Array(image.data);
+    convertPackedNormalToStandardRgba(data);
+    return { data, width: image.width, height: image.height };
+  }
+  if (texture instanceof THREE.CompressedTexture) {
+    const family = getDdsFamilyForThreeFormat(texture.format);
+    const baseMip = texture.mipmaps?.[0];
+    if (!family || !baseMip?.data) return undefined;
+    try {
+      const decoded = decodeWh3DdsBaseMipRgba(family, {
+        width: baseMip.width,
+        height: baseMip.height,
+        data: baseMip.data as Uint8Array,
+      });
+      if (parseWh3TextureEncoding(texture.userData.wh3TextureEncoding) === "normal-dxt5nm") {
+        convertPackedNormalToStandardRgba(decoded.data);
+      }
+      return decoded;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+};
+
+const isPaintableSourceTexture = (texture: THREE.Texture | null | undefined): texture is THREE.Texture =>
+  texture instanceof THREE.DataTexture || texture instanceof THREE.CompressedTexture;
+
+const cloneEditableDataTexture = (texture: THREE.Texture, data: Uint8Array, width: number, height: number) => {
+  const isCompressedSource = texture instanceof THREE.CompressedTexture;
   const editable = new THREE.DataTexture(
     new Uint8Array(data),
     width,
     height,
-    texture.format as THREE.PixelFormat,
-    texture.type,
+    isCompressedSource ? THREE.RGBAFormat : (texture.format as THREE.PixelFormat),
+    isCompressedSource ? THREE.UnsignedByteType : texture.type,
   );
   editable.name = texture.name;
   editable.mapping = texture.mapping;
@@ -555,7 +602,9 @@ const cloneEditableDataTexture = (texture: THREE.DataTexture, data: Uint8Array, 
   editable.wrapS = texture.wrapS;
   editable.wrapT = texture.wrapT;
   editable.magFilter = texture.magFilter;
-  editable.minFilter = texture.minFilter;
+  // The editable copy has no mip chain, so a mipmap filter inherited from a DDS original would sample black.
+  editable.minFilter =
+    isCompressedSource && texture.minFilter !== THREE.NearestFilter ? THREE.LinearFilter : texture.minFilter;
   editable.anisotropy = texture.anisotropy;
   editable.colorSpace = texture.colorSpace;
   editable.offset.copy(texture.offset);
@@ -567,9 +616,16 @@ const cloneEditableDataTexture = (texture: THREE.DataTexture, data: Uint8Array, 
   editable.generateMipmaps = false;
   editable.premultiplyAlpha = texture.premultiplyAlpha;
   editable.flipY = texture.flipY;
-  editable.unpackAlignment = texture.unpackAlignment;
+  editable.unpackAlignment = isCompressedSource ? 1 : texture.unpackAlignment;
   editable.userData = { ...texture.userData, wh3UnitPainterEditable: true };
   delete editable.userData.wh3RawKtx2CacheKey;
+  delete editable.userData.wh3DdsCacheKey;
+  delete editable.userData.wh3DdsFormat;
+  // The editable pixels are already in standard form; drop the encoding so the shader patch stays off.
+  if (editable.userData.wh3TextureEncoding !== undefined) {
+    editable.userData.wh3SourceTextureEncoding = editable.userData.wh3TextureEncoding;
+    delete editable.userData.wh3TextureEncoding;
+  }
   editable.needsUpdate = true;
   return editable;
 };
@@ -1697,7 +1753,7 @@ type DirtyRowSpan = { minX: number; maxX: number };
 export class UnitPainterSession {
   private readonly targetsByEditableTexture = new Map<THREE.Texture, PaintableTexture>();
   private readonly targetsBySourcePath = new Map<string, PaintableTexture>();
-  private readonly normalTargetsByOriginal = new Map<THREE.DataTexture, PaintableTexture>();
+  private readonly normalTargetsByOriginal = new Map<THREE.Texture, PaintableTexture>();
   private readonly normalTargetsBySourcePath = new Map<string, PaintableTexture>();
   private readonly normalTargetByMaterial = new Map<PaintableMaterial, PaintableTexture>();
   private readonly normalTargetsByBaseTarget = new Map<PaintableTexture, Set<PaintableTexture>>();
@@ -1749,7 +1805,7 @@ export class UnitPainterSession {
   private readonly dynamicRaycastBvhs: Array<{ mesh: THREE.Mesh; bvh: SkinnedMeshBVH }> = [];
 
   constructor(root: THREE.Object3D) {
-    const targetsByOriginal = new Map<THREE.DataTexture, PaintableTexture>();
+    const targetsByOriginal = new Map<THREE.Texture, PaintableTexture>();
     const processedMaterials = new Set<PaintableMaterial>();
     let textureIndex = 0;
 
@@ -1758,14 +1814,15 @@ export class UnitPainterSession {
       const materials = Array.isArray(child.material) ? child.material : [child.material];
       for (const rawMaterial of materials) {
         const material = asPaintableMaterial(rawMaterial);
-        if (!material || processedMaterials.has(material) || !(material.map instanceof THREE.DataTexture)) continue;
+        if (!material || processedMaterials.has(material) || !isPaintableSourceTexture(material.map)) continue;
         processedMaterials.add(material);
         const original = material.map;
-        const image = getDataTextureImage(original);
-        if (!image) continue;
 
         let target = targetsByOriginal.get(original);
         if (!target) {
+          // Decoding a compressed original is costly, so only do it once per texture.
+          const image = getEditableSourceImage(original);
+          if (!image) continue;
           const editable = cloneEditableDataTexture(original, image.data, image.width, image.height);
           const editableImage = getDataTextureImage(editable);
           if (!editableImage) {
@@ -1803,11 +1860,11 @@ export class UnitPainterSession {
         this.restores.push({ material, property: "map", original });
         material.map = target.editable;
 
-        const normalOriginal = material.normalMap instanceof THREE.DataTexture ? material.normalMap : undefined;
-        const normalImage = normalOriginal ? getDataTextureImage(normalOriginal) : undefined;
-        if (normalOriginal && normalImage) {
+        const normalOriginal = isPaintableSourceTexture(material.normalMap) ? material.normalMap : undefined;
+        if (normalOriginal) {
           let normalTarget = this.normalTargetsByOriginal.get(normalOriginal);
-          if (!normalTarget) {
+          const normalImage = normalTarget ? undefined : getEditableSourceImage(normalOriginal);
+          if (!normalTarget && normalImage) {
             const editableNormal = cloneEditableDataTexture(
               normalOriginal,
               normalImage.data,

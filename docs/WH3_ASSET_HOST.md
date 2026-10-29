@@ -107,9 +107,9 @@ Each start/stop bumps a lifecycle generation. A request from an older generation
 
 No fields. Result: `{ hostVersion, protocolVersion, capabilities: string[], maxFrameBytes }`.
 
-The host advertises: `hello`, `initialize`, `getAnimationCatalog`, `getVariantMeshComposition`, `exportModel`, `exportModelBatch`, `exportAnimations`, `exportPaintedVariant`, `paintedVariantRgba`, `paintedVariantSourceOverride`, `variantMeshSelections`, `missingSkeletonDecision`, `shutdown`.
+The host advertises: `hello`, `initialize`, `getAnimationCatalog`, `getVariantMeshComposition`, `exportModel`, `exportModel.ddsTextures`, `exportModelBatch`, `exportAnimations`, `exportPaintedVariant`, `paintedVariantRgba`, `paintedVariantSourceOverride`, `variantMeshSelections`, `missingSkeletonDecision`, `shutdown`.
 
-Some entries are **feature flags, not commands**: `paintedVariantRgba`, `paintedVariantSourceOverride`, `variantMeshSelections`, `missingSkeletonDecision`. WHMM requires every entry except `getVariantMeshComposition` and `variantMeshSelections`.
+Some entries are **feature flags, not commands**: `paintedVariantRgba`, `paintedVariantSourceOverride`, `variantMeshSelections`, `missingSkeletonDecision`. WHMM requires every entry except `getVariantMeshComposition`, `variantMeshSelections` and `exportModel.ddsTextures`. The client records the advertised list after `hello` (`hasCapability`), and WHMM sends `ddsTextures` only to hosts that advertise `exportModel.ddsTextures`, so an older bundled host keeps working.
 
 #### `initialize`
 
@@ -141,8 +141,13 @@ Errors: `NotInitialized`, `MissingAssetPath`, `AnimationCatalogFailed`.
 | `animationSelections`                              | `{ path, packIndex?, fragmentPath?, metadataPath? }[]` | Takes precedence; its `path`s become the animation list                              |
 | `variantSelections`                                | `{ slotPath, choiceIndex }[]`                          | Explicit choices for VMD slots                                                       |
 | `exportMaterials`, `includeSkeleton`, `mirrorMesh` | bool                                                   | Default `true`. The host also accepts the aliases `materials`, `skeleton`, `mirror`. |
+| `ddsTextures`                                      | bool                                                   | Default `false`. Capability `exportModel.ddsTextures`; see below.                    |
 
 Result (`ExportResult`): `{ success, primaryFile, auxiliaryFiles: string[], warnings: [{ code, message }], errors: [{ code, message, details? }] }`. `primaryFile` is an absolute path.
+
+**DDS textures (`ddsTextures: true`).** Normal, material-map and default-channel textures that are BC1/2/3/4/5/7, 2D and a multiple of 4 in size are written unchanged from the pack as `<stem>[_sha10].dds` next to the GLB. Anything else falls back, per texture, to the RGBA8 KTX2. Masks are skipped. The GLB lists `MSFT_texture_dds` in `extensionsUsed`; each such glTF texture has `extensions.MSFT_texture_dds.source` pointing at the `.dds` image, while the core `source` is a shared 1x1 placeholder PNG. The `.dds` images carry `extras`: `wh3SourceVirtualPath`, `wh3GeneratedFileName`, `wh3Channel` and `wh3TextureEncoding` (`normal-dxt5nm`, `material-map-wh3` or `direct`). `exportModelBatch` takes the same field.
+
+The renderer asks for it only when the WebGL context has `WEBGL_compressed_texture_s3tc` and `WEBGL_compressed_texture_s3tc_srgb` (`Wh3DdsLoader.canRequestDdsTextures`). Debug switch: set `localStorage["whmm:previewDdsTextures"] = "0"` to force the KTX2 path. In the renderer, `Wh3DdsLoader` (registered as a GLTFLoader plugin for `MSFT_texture_dds`) uploads the blocks with all mips; colour space follows `wh3Channel` (BaseColor/Emissive/SpecularColor are sRGB, everything else linear), never the DX10 sRGB tag. BC4/5/7 without RGTC/BPTC are decoded on the CPU to an RGBA8 DataTexture. `src/visuals/wh3TextureEncodingShader.ts` patches the material shader for `normal-dxt5nm` (X = R*A, Y = G, Z rebuilt) and `material-map-wh3` (metalness from R); it is re-evaluated from the textures currently assigned, so the unit painter's editable standard-form textures (decoded on the CPU from mip 0 and, for packed normals, converted like the host does) run unpatched and the patch returns when the originals are restored. The timing log line gains `ddsTextures`, `rawDds`, `rawDdsWall`, `rawDdsBytes`, `ddsUploadCpu` and `ddsCpuDecoded`.
 
 WHMM registers `primaryFile` with the `whmm://model-preview/<previewId>` protocol handler. The renderer loads the GLB from there with three.js `GLTFLoader` plus `Wh3Ktx2Loader`. IPC `releaseVisualsModelPreview` deletes the preview folder.
 

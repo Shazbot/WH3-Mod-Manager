@@ -74,39 +74,48 @@ const legacyBc: Record<string, [string, number, boolean]> = {
 };
 
 /** Mip offsets are for surface zero; each other array/cube surface starts one chainBytes later. */
-export const inspectDdsLayout = (buffer: Buffer, logicalLength = buffer.length): DdsLayout => {
+const readLayoutU32 = (buffer: Uint8Array, offset: number): number => {
+  if (offset < 0 || offset + 4 > buffer.length) throw new RangeError(`DDS header read out of range at ${offset}`);
+  return (buffer[offset] | (buffer[offset + 1] << 8) | (buffer[offset + 2] << 16) | (buffer[offset + 3] << 24)) >>> 0;
+};
+
+const readLayoutAscii = (buffer: Uint8Array, start: number, end: number): string =>
+  String.fromCharCode(...buffer.subarray(start, end));
+
+/** Accepts a Node Buffer or a plain Uint8Array, so the renderer can use it without Node's Buffer. */
+export const inspectDdsLayout = (buffer: Uint8Array, logicalLength = buffer.length): DdsLayout => {
   if (!Number.isSafeInteger(logicalLength) || logicalLength < buffer.length)
     throw new Error(`Invalid DDS logical length: ${logicalLength}`);
-  if (buffer.length < 128 || buffer.toString("ascii", 0, 4) !== "DDS ")
+  if (buffer.length < 128 || readLayoutAscii(buffer, 0, 4) !== "DDS ")
     throw new Error("Invalid DDS file: missing or truncated header");
-  if (buffer.readUInt32LE(4) !== 124 || buffer.readUInt32LE(76) !== 32)
+  if (readLayoutU32(buffer, 4) !== 124 || readLayoutU32(buffer, 76) !== 32)
     throw new Error("Invalid DDS header or pixel-format size");
-  const width = buffer.readUInt32LE(16),
-    height = buffer.readUInt32LE(12);
+  const width = readLayoutU32(buffer, 16),
+    height = readLayoutU32(buffer, 12);
   if (!width || !height) throw new Error(`Invalid DDS dimensions ${width}x${height}`);
-  const pixelFlags = buffer.readUInt32LE(80);
-  const fourCc = pixelFlags & 4 ? buffer.toString("ascii", 84, 88) : null;
+  const pixelFlags = readLayoutU32(buffer, 80);
+  const fourCc = pixelFlags & 4 ? readLayoutAscii(buffer, 84, 88) : null;
   let dataOffset = 128,
     dxgiFormat: number | null = null,
     arraySize = 1;
-  const caps2 = buffer.readUInt32LE(112);
+  const caps2 = readLayoutU32(buffer, 112);
   let isCubemap = Boolean(caps2 & 0x200);
   let resourceDimension = caps2 & 0x200000 ? "3D" : "2D";
-  let depth = resourceDimension === "3D" ? buffer.readUInt32LE(24) : 1;
+  let depth = resourceDimension === "3D" ? readLayoutU32(buffer, 24) : 1;
   let surfaceCount = 1;
-  let format = fourCc ? `FOURCC_${fourCc}` : `RGB_${buffer.readUInt32LE(88)}BIT`;
+  let format = fourCc ? `FOURCC_${fourCc}` : `RGB_${readLayoutU32(buffer, 88)}BIT`;
   let blockBytes: number | null = null,
     bitsPerPixel: number | null = null,
     previewSupported = false;
   if (fourCc === "DX10") {
     if (buffer.length < 148) throw new Error("Truncated DDS DX10 header");
     dataOffset = 148;
-    dxgiFormat = buffer.readUInt32LE(128);
-    const dimension = buffer.readUInt32LE(132);
+    dxgiFormat = readLayoutU32(buffer, 128);
+    const dimension = readLayoutU32(buffer, 132);
     if (![2, 3, 4].includes(dimension)) throw new Error(`Invalid DDS resource dimension ${dimension}`);
     resourceDimension = dimension === 2 ? "1D" : dimension === 3 ? "2D" : "3D";
-    isCubemap = Boolean(buffer.readUInt32LE(136) & 4);
-    arraySize = buffer.readUInt32LE(140);
+    isCubemap = Boolean(readLayoutU32(buffer, 136) & 4);
+    arraySize = readLayoutU32(buffer, 140);
     if (
       !arraySize ||
       (dimension === 4 && arraySize !== 1) ||
@@ -114,7 +123,7 @@ export const inspectDdsLayout = (buffer: Buffer, logicalLength = buffer.length):
       (dimension === 2 && height !== 1)
     )
       throw new Error("Invalid DDS DX10 array/dimension combination");
-    depth = dimension === 4 ? buffer.readUInt32LE(24) : 1;
+    depth = dimension === 4 ? readLayoutU32(buffer, 24) : 1;
     surfaceCount = arraySize * (isCubemap ? 6 : 1);
     const bc = dxgiBc[dxgiFormat];
     if (bc) [format, blockBytes, previewSupported] = bc;
@@ -135,15 +144,15 @@ export const inspectDdsLayout = (buffer: Buffer, logicalLength = buffer.length):
   } else if (fourCc) {
     const bc = legacyBc[fourCc];
     if (bc) [format, blockBytes, previewSupported] = bc;
-  } else if (pixelFlags & 0x40 && [8, 16, 24, 32].includes(buffer.readUInt32LE(88))) {
-    bitsPerPixel = buffer.readUInt32LE(88);
+  } else if (pixelFlags & 0x40 && [8, 16, 24, 32].includes(readLayoutU32(buffer, 88))) {
+    bitsPerPixel = readLayoutU32(buffer, 88);
   }
   if (isCubemap && fourCc !== "DX10") {
     surfaceCount = [0x400, 0x800, 0x1000, 0x2000, 0x4000, 0x8000].filter((flag) => caps2 & flag).length;
     if (!surfaceCount || resourceDimension === "3D") throw new Error("Invalid DDS cubemap faces/dimensions");
   }
   if (!depth) throw new Error("Invalid DDS volume depth");
-  const declaredMipCount = buffer.readUInt32LE(28);
+  const declaredMipCount = readLayoutU32(buffer, 28);
   const mipCount = declaredMipCount || 1;
   if (mipCount > Math.floor(Math.log2(Math.max(width, height, depth))) + 1)
     throw new Error("DDS mip count exceeds the dimensions' full mip chain");
@@ -151,8 +160,8 @@ export const inspectDdsLayout = (buffer: Buffer, logicalLength = buffer.length):
   // Legacy writers can use padded rows. Do not invent offsets for that unsupported layout.
   if (
     bitsPerPixel !== null &&
-    buffer.readUInt32LE(8) & 8 &&
-    buffer.readUInt32LE(20) !== Math.ceil((width * bitsPerPixel) / 8)
+    readLayoutU32(buffer, 8) & 8 &&
+    readLayoutU32(buffer, 20) !== Math.ceil((width * bitsPerPixel) / 8)
   )
     layoutSupported = false;
   const mips: DdsMipLayout[] = [];
