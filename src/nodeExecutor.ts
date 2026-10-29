@@ -848,6 +848,11 @@ const loadExistingOutputPackFiles = async (
     return cachedOutputPack.map(cloneNewPackedFile);
   }
 
+  // A manual graph run regenerates its output. Only merge saves already made in this
+  // execution context; files left by previous runs have randomized DB names and would
+  // otherwise accumulate duplicate rows every time the author presses Run.
+  if (executionContext?.isManualRun) return [];
+
   if (!fs.existsSync(packPath)) {
     return [];
   }
@@ -876,8 +881,8 @@ const loadExistingOutputPackFiles = async (
       tableSchema: packedFile.tableSchema,
     }));
 
-  // Flow contributions are raw pack entries. Keep them when another Save Changes node or a later
-  // manual run appends to this output pack, even though they do not have parsed DB table schemas.
+  // Flow contributions are raw pack entries. Keep them when another Save Changes node merges
+  // into this output, including context-free append calls, despite their lack of DB schemas.
   const contributionEntries = existingPack.packedFiles.filter((packedFile) =>
     /^whmm_patch_contributions\/v1\/.+\.wh3patchcontrib\.json$/i.test(
       normalizePackFilePathKey(packedFile.name).replace(/\\/g, "/"),

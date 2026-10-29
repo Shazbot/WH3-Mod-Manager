@@ -146,6 +146,8 @@ If `isGraphEnabled` is set, players can switch the whole flow off (`graphEnabled
 2. The editor invokes IPC `executeNodeGraph`.
 3. The main process creates a fresh `FlowExecutionContext`, marks it `isManualRun: true`, and calls `executeNodeGraph`. Per-node results go back to the editor, which uses them for previews. Save Changes uses that explicit flag to allow Open in Windows/Viewer even though manual runs also have a caching context. Automatic launch contexts leave the flag unset and suppress those actions.
 
+The first Save Changes to a destination in a manual graph run regenerates that output pack instead of loading files left by previous runs. Later saves to the same destination within that run merge through `FlowExecutionContext.outputPackByPath`. This prevents repeated runs from accumulating duplicate DB rows under newly randomized output subfile names. Context-free individual node saves retain their existing append behavior.
+
 A manual Save Changes writes to the game's **`data`** folder, and can open the result in Explorer or the viewer.
 
 When the flow being edited is a `whmmflows\` file of an open pack, that pack is the flow's "source pack", and nodes can leave it out of their inputs (`ignoreFlowSourcePack`).

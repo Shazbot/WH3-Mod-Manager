@@ -8,7 +8,9 @@ import appData from "../../src/appData";
 import { executeNodeAction } from "../../src/nodeExecutor";
 import { readPackHeader } from "../../src/packFileHandler";
 import { createFlowExecutionContext } from "../../src/flowExecutionSupport";
-import { readPack } from "../../src/packFileSerializer";
+import { getPacksTableData, readPack } from "../../src/packFileSerializer";
+import { DBNameToDBVersions } from "../../src/schema";
+import { parseEditedCellValue } from "../../src/utility/dbRowCells";
 import type { DBVersion, Pack, PackedFile } from "../../src/packFileTypes";
 
 vi.mock("@mongodb-js/zstd", () => ({
@@ -21,6 +23,7 @@ vi.mock("electron-is-dev", () => ({
 let outputDirectory: string | undefined;
 const originalCurrentGame = appData.currentGame;
 const originalGamePath = appData.gamesToGameFolderPaths.wh3.gamePath;
+const originalMainUnitsSchema = DBNameToDBVersions.wh3.main_units_tables;
 
 beforeEach(() => {
   vi.mocked(shell.openPath).mockReset().mockResolvedValue("");
@@ -29,6 +32,8 @@ beforeEach(() => {
 afterEach(async () => {
   appData.currentGame = originalCurrentGame;
   appData.gamesToGameFolderPaths.wh3.gamePath = originalGamePath;
+  if (originalMainUnitsSchema) DBNameToDBVersions.wh3.main_units_tables = originalMainUnitsSchema;
+  else delete DBNameToDBVersions.wh3.main_units_tables;
   if (outputDirectory) {
     await rm(outputDirectory, { recursive: true, force: true });
     outputDirectory = undefined;
@@ -185,6 +190,74 @@ describe("save changes node", () => {
       const result = await executeTextSave(context, inputData);
       expect(result.success).toBe(true);
       expect(shell.openPath).toHaveBeenCalledWith((result.data as { savedTo: string }).savedTo);
+    },
+  );
+
+  it.each([false, true])(
+    "regenerates output between manual runs but merges saves within one run (shared context=%s)",
+    async (sharedContext) => {
+      outputDirectory = await mkdtemp(path.join(tmpdir(), "whmm-repeat-flow-"));
+      appData.currentGame = "wh3";
+      appData.gamesToGameFolderPaths.wh3.gamePath = outputDirectory;
+      const schema = {
+        version: 7,
+        fields: [
+          { name: "unit", field_type: "StringU8", is_key: true },
+          { name: "cost", field_type: "I32", is_key: false },
+        ],
+      } as DBVersion;
+      DBNameToDBVersions.wh3.main_units_tables = [schema];
+      const newContext = () => ({ ...createFlowExecutionContext(), isManualRun: true });
+      const context = newContext();
+      const savedTo = path.join(outputDirectory, "data", "repeat-output.pack");
+      for (let index = 0; index < 2; index++) {
+        const unit = sharedContext && index === 1 ? "another_unit" : "teb_origo";
+        const result = await executeNodeAction({
+          nodeId: `save_${index}`,
+          nodeType: "savechanges",
+          textValue: "",
+          config: { packName: "repeat-output", openInWindows: false },
+          executionContext: sharedContext ? context : newContext(),
+          inputData: {
+            type: "TableSelection",
+            sourceFiles: [],
+            tableCount: 1,
+            tables: [
+              {
+                name: "db\\main_units_tables",
+                fileName: "db\\main_units_tables\\source",
+                sourceFile: {} as Pack,
+                table: {
+                  name: "db\\main_units_tables\\source",
+                  version: 7,
+                  tableSchema: schema,
+                  schemaFields: [
+                    { name: "unit", ...parseEditedCellValue("StringU8", unit) },
+                    { name: "cost", ...parseEditedCellValue("I32", (index + 1) * 10) },
+                  ],
+                } as PackedFile,
+              },
+            ],
+          },
+        });
+        expect(result.success).toBe(true);
+      }
+      const pack = await readPack(savedTo, { tablesToRead: ["db\\main_units_tables"] });
+      getPacksTableData([pack], ["db\\main_units_tables"]);
+      const cells = pack.packedFiles.flatMap((file) => file.schemaFields || []);
+      expect(
+        cells
+          .filter((cell) => cell.name === "unit")
+          .map((cell) => cell.resolvedKeyValue)
+          .sort(),
+      ).toEqual(sharedContext ? ["another_unit", "teb_origo"] : ["teb_origo"]);
+      expect(
+        cells
+          .filter((cell) => cell.name === "cost")
+          .map((cell) => cell.resolvedKeyValue)
+          .sort(),
+      ).toEqual(sharedContext ? ["10", "20"] : ["20"]);
+      expect(pack.packedFiles).toHaveLength(sharedContext ? 2 : 1);
     },
   );
 
