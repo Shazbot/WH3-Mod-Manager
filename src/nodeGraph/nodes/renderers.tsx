@@ -7973,12 +7973,12 @@ export const OnnxFlowNode: React.FC<{ data: OnnxFlowNodeData; id: string }> = ({
   const selectedOutput = filteredOutputEntries.find((entry: any) => entry.key === selectedOutputKey) || filteredOutputEntries[0];
 
   return (
-    <div className="bg-gray-700 border-2 border-indigo-500 rounded-lg p-4 min-w-[340px] max-w-[480px] text-white nodrag nowheel">
+    <div className="bg-gray-700 border-2 border-indigo-500 rounded-lg p-4 min-w-[340px] max-w-[480px] text-white">
       <Handle type="target" position={Position.Left} className="w-3 h-3 bg-indigo-400" data-input-type="TableSelection" />
       <div className="font-medium text-sm mb-1">{data.label || "ONNX Prediction"}</div>
       <div className="text-xs text-gray-300 mb-3">Runs packed CPU inference for each selected root row and writes enabled outputs.</div>
 
-      <div className="space-y-2 max-h-[560px] overflow-y-auto scrollable-node-content pr-1">
+      <div className="space-y-2 max-h-[560px] overflow-y-auto scrollable-node-content pr-1 nodrag nowheel">
         <label className="block text-xs text-gray-300">Source pack</label>
         <select value={selectedPackName} onChange={(event) => updateNode({ selectedPackName: event.target.value })}
           className="w-full p-1 text-xs bg-gray-800 border border-gray-600 rounded">
