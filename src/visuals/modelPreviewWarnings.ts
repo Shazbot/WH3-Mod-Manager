@@ -4,4 +4,10 @@ export const filterVisualsModelPreviewWarnings = (
   warnings: readonly string[],
   isFeaturesForModdersEnabled: boolean,
 ): string[] =>
-  isFeaturesForModdersEnabled ? [...warnings] : warnings.filter((warning) => warning !== NON_MODDER_STUMP_WARNING);
+  isFeaturesForModdersEnabled
+    ? [...warnings]
+    : warnings.filter(
+        (warning) =>
+          warning !== NON_MODDER_STUMP_WARNING &&
+          !warning.startsWith("Composed models use different skeletons ("),
+      );
