@@ -26,6 +26,15 @@ export const WORKSHOP_OPTIMIZER_HOST_OPTIONS = {
   compressRigidModels: true,
 } as const;
 
+/**
+ * Options sent with an optimize request but kept out of the cache key because they do not change the
+ * output pack. `reportDiagnostics: false` skips the report-only audits (~10 % of a run); hosts that
+ * predate it ignore it.
+ */
+export const WORKSHOP_OPTIMIZER_REQUEST_ONLY_OPTIONS = {
+  reportDiagnostics: false,
+} as const;
+
 /** The host option set for a launch; `compressRigidModels` follows the user's rigid-model compression setting. */
 export const buildHostOptions = (compressRigidModels: boolean) => ({
   ...WORKSHOP_OPTIMIZER_HOST_OPTIONS,

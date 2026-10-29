@@ -18,6 +18,7 @@ import {
   type HostRunOutcome,
   type HostVersions,
   WORKSHOP_OPTIMIZER_PROFILE_ID,
+  WORKSHOP_OPTIMIZER_REQUEST_ONLY_OPTIONS,
   HostProgressTracker,
   buildHostOptions,
   parseHostVersionLine,
@@ -548,7 +549,7 @@ export class WorkshopModOptimizer implements WorkshopStagingOptimizer {
       outputPackPath: outputPath,
       reportPath,
       cacheDirectory: cache.hostCacheDirectory,
-      options: buildHostOptions(this.deps.compressRigidModels),
+      options: { ...buildHostOptions(this.deps.compressRigidModels), ...WORKSHOP_OPTIMIZER_REQUEST_ONLY_OPTIONS },
     });
 
     const combined = new AbortController();
