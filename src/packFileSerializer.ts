@@ -90,6 +90,8 @@ const object_schema = JSON.parse(string_schema);
 const latest_version = Object.keys(object_schema.units_custom_battle_permissions_tables).sort()[0];
 const ver_schema = object_schema.units_custom_battle_permissions_tables[latest_version];
 export const decompressPackedPayload = decompressPackedPayloadCore;
+const PACKED_FILE_INDEX_READ_MAX_GAP_BYTES = 16 * 1024;
+const PACKED_FILE_INDEX_READ_MAX_SPAN_BYTES = 4 * 1024 * 1024;
 function getTypeSize(type: FIELD_TYPE, val: FIELD_VALUE): number {
   switch (type) {
     case "Int8":
@@ -2343,17 +2345,121 @@ export const readPackedFileBuffersFromIndex = async (
 
   let fileId = -1;
   try {
-    fileId = fs.openSync(pack.path, "r");
+    // Resolve all names before opening the pack. Besides avoiding an open for all-miss requests,
+    // retaining the request list separately lets disk reads run in physical order while returned
+    // Map keys keep the caller's order (including repeated names).
+    const requestMatches: Array<{ fileName: string; fileIndex: number; packedFile: PackedFile }> = [];
+    const uniqueMatches = new Map<number, { fileIndex: number; packedFile: PackedFile }>();
     for (const fileName of fileNames) {
-      const index = bs(pack.packedFiles, fileName, (a: PackedFile, b: string) => collator.compare(a.name, b));
-      if (index < 0) continue;
+      const fileIndex = bs(pack.packedFiles, fileName, (a: PackedFile, b: string) => collator.compare(a.name, b));
+      if (fileIndex < 0) continue;
+      const packedFile = pack.packedFiles[fileIndex];
+      requestMatches.push({ fileName, fileIndex, packedFile });
+      if (!uniqueMatches.has(fileIndex)) uniqueMatches.set(fileIndex, { fileIndex, packedFile });
+    }
+    if (uniqueMatches.size === 0) return buffers;
 
-      const packedFile = pack.packedFiles[index];
-      let buffer = Buffer.allocUnsafe(packedFile.file_size);
-      fs.readSync(fileId, buffer, 0, buffer.length, packedFile.start_pos);
-      if (packedFile.is_compressed) {
-        buffer = Buffer.from(await decompressPackedPayload(buffer, packedFile.name));
+    const sortedMatches = [...uniqueMatches.values()].toSorted(
+      (first, second) =>
+        first.packedFile.start_pos - second.packedFile.start_pos ||
+        first.packedFile.file_size - second.packedFile.file_size ||
+        first.fileIndex - second.fileIndex,
+    );
+    const readRuns: Array<{
+      startPos: number;
+      endPos: number;
+      matches: Array<{ fileIndex: number; packedFile: PackedFile }>;
+    }> = [];
+    for (const match of sortedMatches) {
+      const { start_pos: startPos, file_size: fileSize } = match.packedFile;
+      const endPos = startPos + fileSize;
+      if (
+        !Number.isSafeInteger(startPos) ||
+        startPos < 0 ||
+        !Number.isSafeInteger(fileSize) ||
+        fileSize < 0 ||
+        !Number.isSafeInteger(endPos)
+      ) {
+        throw new Error(`Invalid indexed payload range for ${match.packedFile.name}`);
       }
+
+      const currentRun = readRuns[readRuns.length - 1];
+      const gap = currentRun ? startPos - currentRun.endPos : Number.POSITIVE_INFINITY;
+      const combinedEnd = currentRun ? Math.max(currentRun.endPos, endPos) : endPos;
+      const canJoinRun =
+        currentRun !== undefined &&
+        fileSize <= PACKED_FILE_INDEX_READ_MAX_SPAN_BYTES &&
+        gap <= PACKED_FILE_INDEX_READ_MAX_GAP_BYTES &&
+        combinedEnd - currentRun.startPos <= PACKED_FILE_INDEX_READ_MAX_SPAN_BYTES;
+      if (canJoinRun) {
+        currentRun.matches.push(match);
+        currentRun.endPos = combinedEnd;
+      } else {
+        readRuns.push({ startPos, endPos, matches: [match] });
+      }
+    }
+
+    const decodedPayloadsByIndex = new Map<number, Buffer>();
+    fileId = fs.openSync(pack.path, "r");
+    const readFully = (buffer: Buffer, position: number): number => {
+      let bytesRead = 0;
+      while (bytesRead < buffer.length) {
+        const requestedBytes = Math.min(buffer.length - bytesRead, PACKED_FILE_INDEX_READ_MAX_SPAN_BYTES);
+        const justRead = fs.readSync(fileId, buffer, bytesRead, requestedBytes, position + bytesRead);
+        if (justRead === 0) break;
+        bytesRead += justRead;
+      }
+      return bytesRead;
+    };
+
+    let shortRead = false;
+    for (const run of readRuns) {
+      let runBuffer: Buffer;
+      let bytesRead: number;
+      try {
+        const runLength = run.endPos - run.startPos;
+        runBuffer = Buffer.allocUnsafe(runLength);
+        bytesRead = readFully(runBuffer, run.startPos);
+      } catch (error) {
+        // A failed run leaves its requested entries unavailable while other bounded runs can still succeed.
+        console.log(error);
+        continue;
+      }
+
+      for (const match of run.matches) {
+        const offset = match.packedFile.start_pos - run.startPos;
+        const payloadEnd = offset + match.packedFile.file_size;
+        if (payloadEnd > bytesRead) {
+          shortRead = true;
+          continue;
+        }
+        const payload = runBuffer.subarray(offset, payloadEnd);
+        const isWholeSingleFileRun = run.matches.length === 1 && offset === 0 && payload.length === runBuffer.length;
+        try {
+          decodedPayloadsByIndex.set(
+            match.fileIndex,
+            match.packedFile.is_compressed
+              ? await decompressPackedPayload(payload, match.packedFile.name)
+              : isWholeSingleFileRun
+                ? runBuffer
+                : Buffer.from(payload),
+          );
+        } catch (error) {
+          // Do not publish a corrupt entry; final request-order reconstruction stops at it.
+          console.log(error);
+        }
+      }
+    }
+
+    if (shortRead) console.log(new Error(`Short read while loading indexed payloads from ${pack.path}`));
+    const returnedNamesByIndex = new Map<number, string>();
+    for (const { fileName, fileIndex } of requestMatches) {
+      const decodedPayload = decodedPayloadsByIndex.get(fileIndex);
+      if (!decodedPayload) break;
+      const hasReturnedIndex = returnedNamesByIndex.has(fileIndex);
+      const firstReturnedName = returnedNamesByIndex.get(fileIndex);
+      const buffer = hasReturnedIndex && firstReturnedName !== fileName ? Buffer.from(decodedPayload) : decodedPayload;
+      if (!hasReturnedIndex) returnedNamesByIndex.set(fileIndex, fileName);
       buffers.set(fileName, buffer);
     }
   } catch (error) {
