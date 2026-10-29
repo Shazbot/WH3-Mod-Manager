@@ -57,6 +57,48 @@ const setup = (overrides: Record<string, unknown> = {}, response?: any) => {
 };
 
 describe("ONNX configuration panel", () => {
+  it("shows all matching long binding labels and saves a searched selection", async () => {
+    const missing = { kind: "unresolved", reason: "Choose a column" };
+    const columns = Array.from({ length: 240 }, (_, index) => ({
+      id: `choice-${index}`,
+      tableName: "main_units_tables",
+      column: `field_${index}`,
+      path: [],
+      fieldType: "F32",
+      label: `field_${index} via ${"long_reference_path_".repeat(30)}`,
+    }));
+    const { view, update } = setup(
+      { inputBindings: { feature: missing } },
+      {
+        success: true,
+        mode: "bundle",
+        inputs: [{ name: "feature", type: "float32", defaultBinding: missing }],
+        models: [],
+        bindingCandidates: { columns, references: [] },
+      },
+    );
+    fireEvent.click(view.getByText("Configure", { selector: "button" }));
+    const dialog = within(view.getByRole("dialog"));
+    const input = await dialog.findByRole("combobox", { name: "feature input mapping" });
+    fireEvent.keyDown(input, { key: "ArrowDown", code: "ArrowDown" });
+    expect(within(dialog.getByRole("listbox")).getAllByRole("option")).toHaveLength(482);
+    expect(dialog.queryByText(/Showing the first 100/)).not.toBeInTheDocument();
+    fireEvent.change(input, { target: { value: "field_239 via" } });
+    fireEvent.click(await dialog.findByText(columns[239].label, { exact: true }));
+    fireEvent.click(dialog.getByRole("button", { name: "Apply" }));
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inputBindings: {
+          feature: {
+            kind: "column",
+            tableName: "main_units_tables",
+            column: "field_239",
+            path: [],
+          },
+        },
+      }),
+    );
+  });
   it("offers all DB tables and defaults to main_units_tables", async () => {
     const { view, update } = setup();
     fireEvent.click(view.getByText("Configure", { selector: "button" }));

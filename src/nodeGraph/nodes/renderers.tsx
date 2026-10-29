@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Handle, Position, useUpdateNodeInternals } from "@xyflow/react";
 
 import { Modal } from "../../flowbite";
+import { OnnxBindingSelect } from "./OnnxBindingSelect";
 import { useAppSelector } from "../../hooks";
 import { useLocalizations } from "../../localizationContext";
 import { SCHEMA_FIELD_TYPE } from "../../packFileTypes";
@@ -7929,11 +7930,17 @@ export const OnnxFlowNode: React.FC<{ data: OnnxFlowNodeData; id: string }> = ({
     const updateBinding = (binding: OnnxInputBinding) => data.mode === "standalone"
       ? setStandaloneInputBinding(input.name, index, binding)
       : setBundleInputBinding(input.name, binding);
+    const bindingOptions = [
+      { value: "@unresolved", label: "Unassigned" },
+      { value: "@constant", label: "Constant" },
+      ...columns.map((option: any) => ({ value: `column:${option.id}`, label: option.label })),
+      ...(isReferenceInput ? references.map((option: any) => ({ value: `reference:${option.id}`, label: `Reference present: ${option.label}` })) : []),
+      ...(input.type === "float32" ? presenceColumns.map((option: any) => ({ value: `present:${option.id}`, label: `Column populated: ${option.label}` })) : []),
+    ];
     return (
       <div key={`${input.name}:${index}`} className="bg-gray-800 rounded p-3 nodrag">
         <div className="text-sm font-mono text-gray-300 mb-1">{input.name}{input.width > 1 ? ` feature ${index + 1}` : ""} ({input.type})</div>
-        <select value={selected} onChange={(event) => {
-          const value = event.target.value;
+        <OnnxBindingSelect value={selected} options={bindingOptions} label={`${input.name} input mapping${input.width > 1 ? ` feature ${index + 1}` : ""}`} onChange={(value) => {
           if (value === "@constant") updateBinding({ kind: "constant", value: input.type === "float32" ? 0 : "" });
           else if (value === "@unresolved") updateBinding({ kind: "unresolved", reason: "Assign an input" });
           else if (value.startsWith("present:")) {
@@ -7946,17 +7953,10 @@ export const OnnxFlowNode: React.FC<{ data: OnnxFlowNodeData; id: string }> = ({
             const option = columns.find((candidate: any) => `column:${candidate.id}` === value);
             if (option) updateBinding({ kind: "column", tableName: option.tableName, column: option.column, path: option.path });
           }
-        }} className="w-full px-3 py-2 text-sm bg-gray-700 border border-gray-600 rounded">
-          <option value="@unresolved">Unassigned</option>
-          {columns.map((option: any) => <option key={`column:${option.id}`} value={`column:${option.id}`}>{option.label}</option>)}
-          {isReferenceInput && references.map((option: any) => <option key={`reference:${option.id}`} value={`reference:${option.id}`}>Reference present: {option.label}</option>)}
-          {input.type === "float32" && presenceColumns.map((option: any) => <option key={`present:${option.id}`} value={`present:${option.id}`}>Column populated: {option.label}</option>)}
-          <option value="@constant">Constant</option>
-        </select>
+        }} />
         {current?.kind === "constant" && <input type={input.type === "float32" ? "number" : "text"} step="any"
           value={String(current.value)} onChange={(event) => updateBinding({ kind: "constant", value: input.type === "float32" ? Number(event.target.value) : event.target.value })}
           className="mt-1 w-full px-3 py-2 text-sm bg-gray-700 border border-gray-600 rounded" />}
-        {current?.kind === "unresolved" && <div className="text-sm text-yellow-240 mt-1">{current.reason || "Assign an input"}</div>}
         {current?.kind === "column" && input.type === "float32" && <label className="flex items-center gap-2 text-sm text-gray-300 mt-1">
           <input type="checkbox" checked={current.missingAsNaN === true} onChange={(event) => updateBinding({ ...current, missingAsNaN: event.target.checked })} />
           Pass missing values as NaN for model imputation
@@ -7983,13 +7983,11 @@ export const OnnxFlowNode: React.FC<{ data: OnnxFlowNodeData; id: string }> = ({
           <input type="checkbox" checked={binding.roundPrediction === true} onChange={(event) => updateOutputBinding(key, { roundPrediction: event.target.checked })} />
           Round prediction before applying strength
         </label>
-        <select value={selectedCandidate?.id || ""} onChange={(event) => {
-          const candidate = candidates.find((item: any) => item.id === event.target.value);
+        <OnnxBindingSelect value={selectedCandidate?.id || ""} label={`${label} output destination`}
+          options={[{ value: "", label: "Choose destination column" }, ...candidates.map((candidate: any) => ({ value: candidate.id, label: candidate.label }))]} onChange={(value) => {
+          const candidate = candidates.find((item: any) => item.id === value);
           if (candidate) updateOutputBinding(key, { tableName: candidate.tableName, column: candidate.column, path: candidate.path });
-        }} className="w-full px-3 py-2 text-sm bg-gray-700 border border-gray-600 rounded">
-          <option value="">Choose destination column</option>
-          {candidates.map((candidate: any) => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}
-        </select>
+        }} />
         <div className="flex gap-1">
           <select value={binding.mode || "replace"} onChange={(event) => updateOutputBinding(key, { mode: event.target.value })}
             className="flex-1 px-3 py-2 text-sm bg-gray-700 border border-gray-600 rounded">
