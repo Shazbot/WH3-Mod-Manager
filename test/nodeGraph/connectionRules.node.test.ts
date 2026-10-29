@@ -1,9 +1,50 @@
 import { describe, expect, it } from "vitest";
 
-import { applyConnection, rehydrateGraph } from "../../src/nodeGraph/connectionRules";
+import { applyConnection, isConnectionAllowed, rehydrateGraph } from "../../src/nodeGraph/connectionRules";
 import { applyNodeDataPatch } from "../../src/nodeGraph/editorState";
 import { nativePatchColumnsToSchema } from "../../src/nodeGraph/nativePatchSchema";
 import { serializeNodeGraphState } from "../../src/nodeGraph/graphSerialization";
+
+describe("ONNX pack input", () => {
+  it.each(["PackFiles", "TableSelection"])("accepts %s sources", (outputType) => {
+    const state = {
+      nodes: [
+        { id: "source", type: "allenabledmods", position: { x: 0, y: 0 }, data: { outputType } },
+        {
+          id: "onnx",
+          type: "onnx",
+          position: { x: 300, y: 0 },
+          data: { type: "onnx", inputType: "PackFiles", outputType: "TableSelection" },
+        },
+      ],
+      edges: [],
+    } as any;
+    const connection = { source: "source", target: "onnx", sourceHandle: null, targetHandle: null };
+    expect(isConnectionAllowed(state, connection)).toBe(true);
+    expect(applyConnection(state, connection, {}).accepted).toBe(true);
+  });
+
+  it("rehydrates root-table choices without a preceding table-selection node", () => {
+    const schema = { main_units_tables: [{ version: 7, fields: [{ name: "unit" }] }], land_units_tables: [] } as any;
+    const result = rehydrateGraph(
+      {
+        nodes: [
+          {
+            id: "onnx",
+            type: "onnx",
+            position: { x: 0, y: 0 },
+            data: { type: "onnx", inputType: "PackFiles", rootTableName: "main_units_tables" },
+          },
+        ],
+        edges: [],
+      } as any,
+      { DBNameToDBVersions: schema, sortedTableNames: Object.keys(schema) },
+    );
+    expect(result.nodes[0].data.DBNameToDBVersions).toBe(schema);
+    expect(result.nodes[0].data.connectedTableName).toBe("main_units_tables");
+    expect(result.nodes[0].data.columnNames).toEqual(["unit"]);
+  });
+});
 
 describe("Native Patch schema output", () => {
   const schema = [

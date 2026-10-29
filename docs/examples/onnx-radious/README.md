@@ -2,12 +2,12 @@
 
 Import `flow.json` in WHMM's node editor. Keep `radious_stat_scaler.pack` available in WHMM; the ONNX node selects that pack by name rather than a machine-specific path.
 
-The flow reads effective `main_units_tables` rows from all enabled mods and vanilla, runs the packed models, and feeds the result to Save Changes. It applies to all selected units, including vanilla units. It does not filter to units missing from Radious.
+The flow connects **All Enabled Mods → ONNX Prediction → Save Changes**. The ONNX node reads effective `main_units_tables` rows from the incoming enabled mods and vanilla packs, runs the packed models, and feeds the result to Save Changes. It applies to all selected units, including vanilla units. It does not filter to units missing from Radious.
 
 ## Running it
 
 1. Enable the mods whose units should supply the input data, and open the node editor.
-2. Load `flow.json`. Check that the ONNX node finds `radious_stat_scaler.pack`.
+2. Load `flow.json`. Click **Configure** on the ONNX node and check that it finds `radious_stat_scaler.pack`. Use **Apply** to save any configuration changes.
 3. Use **Stat change strength** to control the predicted deltas: `0` leaves values unchanged; `1` applies the full predictions.
 4. Run the flow. Save Changes creates `whmm_radious_stat_scaler_output.pack` in the game's data folder for a manual run. The original model pack is not modified.
 

@@ -36,7 +36,7 @@ import {
   type FlowPackCatalogEntry,
 } from "./nodeGraph/flowPackOperations";
 import {
-  findOnnxForwardPaths,
+  findOnnxShortestForwardPaths,
   getOnnxColumnBindingOptions,
   inferOnnxInputBinding,
   inferOnnxOutputBinding,
@@ -8629,7 +8629,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             defaultOutput: {
               tableName: target?.tableName || rootTableName,
               column: target?.column || "",
-              paths: findOnnxForwardPaths(rootTableName, target?.tableName || rootTableName, schema),
+              paths: findOnnxShortestForwardPaths(rootTableName, target?.tableName || rootTableName, schema),
             },
             errors: metadata.errors,
           };
@@ -8654,7 +8654,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           models: metadata.models.map((model) => ({
             ...model,
             defaultBinding: inferOnnxOutputBinding(model, rootTableName, schema),
-            paths: findOnnxForwardPaths(rootTableName, model.defaultTableName, schema),
+            paths: findOnnxShortestForwardPaths(rootTableName, model.defaultTableName, schema),
           })),
           warnings: metadata.warnings,
           errors: metadata.errors,

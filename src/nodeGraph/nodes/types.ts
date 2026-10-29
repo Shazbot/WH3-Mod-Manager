@@ -582,7 +582,8 @@ export interface ConditionalBranchNodeData extends NodeData {
 }
 
 export interface OnnxFlowNodeData extends NodeData {
-  inputType: "TableSelection";
+  DBNameToDBVersions?: Record<string, DBVersion[]>;
+  inputType: "PackFiles" | "TableSelection";
   outputType: "TableSelection";
   mode: "bundle" | "standalone";
   /** Empty means use the pack that owns the saved flow. */

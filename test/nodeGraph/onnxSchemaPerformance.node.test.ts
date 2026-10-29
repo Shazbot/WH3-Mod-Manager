@@ -2,7 +2,12 @@ import fs from "node:fs";
 import { performance } from "node:perf_hooks";
 import { decompress } from "@mongodb-js/zstd";
 import { describe, expect, it } from "vitest";
-import { findOnnxForwardPaths, getOnnxColumnBindingOptions, inferOnnxInputBinding } from "../../src/nodeGraph/onnxFlow";
+import {
+  findOnnxForwardPaths,
+  findOnnxShortestForwardPaths,
+  getOnnxColumnBindingOptions,
+  inferOnnxInputBinding,
+} from "../../src/nodeGraph/onnxFlow";
 import type { DBVersion } from "../../src/packFileTypes";
 
 describe("ONNX schema inspection responsiveness", () => {
@@ -22,6 +27,13 @@ describe("ONNX schema inspection responsiveness", () => {
     expect(performance.now() - start).toBeLessThan(2000);
     expect(columns.length).toBeGreaterThan(1000);
     expect(references.options.length).toBeGreaterThan(0);
+    const projectiles = findOnnxShortestForwardPaths("main_units_tables", "projectiles_tables", schema);
+    expect(projectiles).toHaveLength(1);
+    expect(projectiles[0].map((step) => step.column)).toEqual([
+      "land_unit",
+      "primary_missile_weapon",
+      "default_projectile",
+    ]);
     expect(columns.some((column) => column.tableName === "main_units_tables" && column.column === "tier")).toBe(true);
     expect(findOnnxForwardPaths("main_units_tables", "land_units_tables", schema).length).toBeGreaterThan(0);
   });

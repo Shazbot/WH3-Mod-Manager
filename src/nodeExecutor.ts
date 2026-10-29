@@ -1456,17 +1456,27 @@ const executeStandaloneOnnxNode = async (
 
 const executeOnnxNode = async (
   nodeId: string,
-  inputData: DBTablesNodeData,
+  incomingData: DBTablesNodeData | PackFilesNodeData,
   rawConfig: unknown,
   textValue: string,
   executionContext?: FlowExecutionContext,
 ): Promise<NodeExecutionResult> => {
-  if (!inputData || inputData.type !== "TableSelection" || !Array.isArray(inputData.tables)) {
-    return { success: false, error: "Invalid input: ONNX expects TableSelection data" };
+  if (!incomingData || (incomingData.type !== "TableSelection" && incomingData.type !== "PackFiles")) {
+    return { success: false, error: "Invalid input: ONNX expects PackFiles data" };
   }
-  if (inputData.tables.length === 0) return { success: true, data: inputData };
   const config = getNodeConfig<OnnxFlowNodeConfig>(rawConfig, textValue);
   if (!config) return { success: false, error: "Invalid ONNX node configuration" };
+  let inputData: DBTablesNodeData;
+  if (incomingData.type === "PackFiles") {
+    if (!Array.isArray(incomingData.files)) return { success: false, error: "Invalid PackFiles input" };
+    const selected = await executeTableSelectionDropdownNode(nodeId, normalizeOnnxTableName(config.rootTableName || "main_units_tables"), incomingData, executionContext);
+    if (!selected.success) return selected;
+    inputData = selected.data as DBTablesNodeData;
+  } else {
+    inputData = incomingData;
+  }
+  if (!Array.isArray(inputData.tables)) return { success: false, error: "Invalid table input" };
+  if (inputData.tables.length === 0) return { success: true, data: inputData };
   if (config.mode === "standalone") {
     return await executeStandaloneOnnxNode(nodeId, inputData, config, executionContext);
   }

@@ -786,10 +786,10 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
     labelFallback: "ONNX Prediction",
     descriptionKey: "nodeEditorNodeOnnxDescription",
     descriptionFallback: "Runs packed ONNX models over table rows and outputs predicted values",
-    createData: ({ label }) => ({
+    createData: ({ label, DBNameToDBVersions }) => ({
       label,
       type: "onnx",
-      inputType: "TableSelection",
+      inputType: "PackFiles",
       outputType: "TableSelection",
       mode: "bundle",
       selectedPackName: "",
@@ -807,7 +807,7 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
       strengthOptionId: "",
       connectedTableName: "",
       columnNames: [],
-      DBNameToDBVersions: {},
+      DBNameToDBVersions: DBNameToDBVersions ?? {},
     }),
   }),
   packfileoperations: createNodeDefinition<PackFileOperationsNodeData>({

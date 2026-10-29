@@ -350,6 +350,7 @@ const needsSchemaContext = (node: Node) =>
   node.type === "generaterows" ||
   node.type === "generaterowsschema" ||
   node.type === "deepclone" ||
+  node.type === "onnx" ||
   node.type === "editloctext";
 
 export const getTableVersion = (
@@ -423,6 +424,12 @@ const withSchemaContext = (nodes: Node[], context: SchemaContext) => {
     const dataPatch: Record<string, unknown> = {
       DBNameToDBVersions,
     };
+    if (node.type === "onnx") {
+      const tableName = String(node.data.rootTableName || "main_units_tables").replace(/^db[\\/]/i, "");
+      dataPatch.connectedTableName = tableName;
+      const versions = DBNameToDBVersions?.[tableName];
+      dataPatch.columnNames = versions ? getTableVersion(tableName, versions, context.defaultTableVersions)?.fields.map(field => field.name) ?? [] : [];
+    }
 
     if (node.data.type === "tableselectiondropdown" || node.data.type === "getcountercolumn") {
       dataPatch.tableNames = sortedTableNames;
@@ -522,6 +529,8 @@ export const isConnectionAllowed = (state: GraphState, params: Connection): bool
     targetNode.type === "edittextfile" && (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
   const isEditXmlFileCompatible =
     targetNode.type === "editxmlfile" && (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
+  const isOnnxCompatible = targetNode.type === "onnx" &&
+    (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
 
   const isSaveChangesCompatible =
     targetNode.type === "savechanges" &&
@@ -537,6 +546,7 @@ export const isConnectionAllowed = (state: GraphState, params: Connection): bool
     isPackFileOperationsCompatible ||
     isEditTextFileCompatible ||
     isEditXmlFileCompatible ||
+    isOnnxCompatible ||
     isSaveChangesCompatible
   );
 };
@@ -598,6 +608,7 @@ export const applyConnection = (state: GraphState, params: Connection, context: 
     isPackFileOperationsCompatible ||
     isEditTextFileCompatible ||
     isEditXmlFileCompatible ||
+    (targetNode.type === "onnx" && (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection")) ||
     isSaveChangesCompatible
   )) {
     return { ...state, accepted: false };

@@ -277,13 +277,14 @@ export const findOnnxForwardPaths = (
   targetTableName: string,
   schema: Record<string, DBVersion[]>,
   maxDepth = 8,
+  shortestOnly = false,
 ): OnnxJoinStep[][] => {
   const graph = getSchemaGraph(schema);
   const root = graph.names.get(normalizeSchemaTableName(rootTableName));
   const target = graph.names.get(normalizeSchemaTableName(targetTableName));
   if (!root || !target) return [];
   if (root === target) return [[]];
-  const cacheKey = JSON.stringify([root, target, maxDepth]);
+  const cacheKey = JSON.stringify([root, target, maxDepth, shortestOnly]);
   const cached = graph.paths.get(cacheKey);
   if (cached) return cached;
 
@@ -306,14 +307,15 @@ export const findOnnxForwardPaths = (
     return [];
   }
 
+  const pathLimit = shortestOnly ? distance.get(root)! : maxDepth;
   const results: OnnxJoinStep[][] = [];
   const visit = (current: string, path: OnnxJoinStep[], seen: Set<string>) => {
-    if (path.length >= maxDepth || results.length > 1) return;
+    if (path.length >= pathLimit || results.length > 1) return;
     for (const edge of getForwardEdges(schema, current)) {
       const next = normalizeSchemaTableName(edge.targetTable);
       if (seen.has(next)) continue;
       const remaining = distance.get(edge.targetTable);
-      if (remaining === undefined || path.length + 1 + remaining > maxDepth) continue;
+      if (remaining === undefined || path.length + 1 + remaining > pathLimit) continue;
       const nextPath = [...path, edge];
       if (next === normalizeSchemaTableName(target)) {
         results.push(nextPath);
@@ -328,6 +330,22 @@ export const findOnnxForwardPaths = (
   visit(root, [], new Set([normalizeSchemaTableName(root)]));
   graph.paths.set(cacheKey, results);
   return results;
+};
+
+/** A single result is safe to infer; two equally short routes still require an author choice. */
+export const findOnnxShortestForwardPaths = (
+  rootTableName: string,
+  targetTableName: string,
+  schema: Record<string, DBVersion[]>,
+): OnnxJoinStep[][] => findOnnxForwardPaths(rootTableName, targetTableName, schema, 8, true);
+
+const getOnnxSelectablePaths = (
+  root: string,
+  target: string,
+  schema: Record<string, DBVersion[]>,
+): OnnxJoinStep[][] => {
+  const paths = [...findOnnxShortestForwardPaths(root, target, schema), ...findOnnxForwardPaths(root, target, schema)];
+  return [...new Map(paths.map((path) => [JSON.stringify(path), path])).values()];
 };
 
 const makeBindingOption = (
@@ -355,7 +373,7 @@ export const getOnnxColumnBindingOptions = (
 ): OnnxBindingOption[] => {
   const options: OnnxBindingOption[] = [];
   for (const tableName of Object.keys(schema)) {
-    const paths = findOnnxForwardPaths(rootTableName, tableName, schema);
+    const paths = getOnnxSelectablePaths(rootTableName, tableName, schema);
     if (paths.length === 0) continue;
     for (const field of getTableFields(tableName, schema)) {
       const matches =
@@ -410,20 +428,22 @@ export const inferOnnxInputBinding = (
       paths: [],
     };
   }
-  const paths = findOnnxForwardPaths(rootTableName, tableName, schema);
+  const paths = findOnnxShortestForwardPaths(rootTableName, tableName, schema);
   const hasField = getTableFields(tableName, schema).some((field) => field.name === target.column);
   const options = hasField
-    ? paths.map((candidatePath) => makeBindingOption(tableName, target.column, candidatePath))
+    ? getOnnxSelectablePaths(rootTableName, tableName, schema).map((candidatePath) =>
+        makeBindingOption(tableName, target.column, candidatePath),
+      )
     : [];
   const defaultBinding: OnnxInputBinding =
-    options.length === 1
+    hasField && paths.length === 1
       ? { kind: "column", tableName, column: target.column, path: paths[0] }
       : {
           kind: "unresolved",
           reason: !hasField
             ? `Column '${target.column}' does not exist in ${tableName}`
             : paths.length > 1
-              ? `More than one forward reference path reaches ${tableName}`
+              ? `More than one shortest forward reference path reaches ${tableName}`
               : `No forward reference path reaches ${tableName}`,
         };
   return { defaultBinding, options, paths };
@@ -434,7 +454,7 @@ export const inferOnnxOutputBinding = (
   rootTableName: string,
   schema: Record<string, DBVersion[]>,
 ): OnnxOutputBinding => {
-  const paths = findOnnxForwardPaths(rootTableName, model.defaultTableName, schema);
+  const paths = findOnnxShortestForwardPaths(rootTableName, model.defaultTableName, schema);
   return {
     enabled: true,
     tableName: model.defaultTableName,

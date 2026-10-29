@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { prepareFlow } from "../../src/packFileSerializer";
+import { executeNodeAction } from "../../src/nodeExecutor";
 import { prepareGraphForExecution, serializeReactFlowNodes } from "../../src/nodeGraph/graphSerialization";
 import { serializeNodeConfigForExecution } from "../../src/nodeGraphExecutor";
 import type { SerializedNodeGraph } from "../../src/nodeGraph/types";
@@ -8,6 +9,7 @@ import {
   buildOnnxInputTensors,
   combineOnnxPrediction,
   findOnnxForwardPaths,
+  findOnnxShortestForwardPaths,
   formatOnnxPrediction,
   getOnnxInputUnresolvedIssues,
   inferOnnxInputBinding,
@@ -40,6 +42,30 @@ const schema = {
 } as any;
 
 describe("ONNX flow metadata and mapping", () => {
+  it.each(["bundle", "standalone"])("accepts empty PackFiles as an empty table result in %s mode", async (mode) => {
+    const result = await executeNodeAction({
+      nodeId: "onnx-packs",
+      nodeType: "onnx",
+      textValue: "",
+      inputData: { type: "PackFiles", files: [], count: 0, loadedCount: 0 },
+      config: { mode, rootTableName: "land_units_tables" },
+    });
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual({ type: "TableSelection", tables: [], sourceFiles: [], tableCount: 0 });
+  });
+
+  it("retains compatibility with empty table selections", async () => {
+    const input = { type: "TableSelection", tables: [], sourceFiles: [], tableCount: 0 } as const;
+    const result = await executeNodeAction({
+      nodeId: "onnx-tables",
+      nodeType: "onnx",
+      textValue: "",
+      inputData: input as any,
+      config: {},
+    });
+    expect(result.success).toBe(true);
+    expect(result.data).toBe(input);
+  });
   it("uses the installed table version rather than the largest version number", () => {
     const latest = { version: 36, fields: [] } as any;
     const live = { version: 7, fields: [field("is_renown", "Boolean")] } as any;
@@ -142,7 +168,7 @@ describe("ONNX flow metadata and mapping", () => {
     ).toThrow("inputs must not be empty");
   });
 
-  it("auto-binds one forward path and leaves ambiguous paths and is_ranged unresolved", () => {
+  it("prefers a unique shortest path while keeping longer routes selectable", () => {
     const direct = inferOnnxInputBinding({ name: "main_units__tier", type: "float32" }, "main_units_tables", schema);
     expect(direct.defaultBinding).toEqual({
       kind: "column",
@@ -157,7 +183,10 @@ describe("ONNX flow metadata and mapping", () => {
       "main_units_tables",
       schema,
     );
-    expect(ambiguous.defaultBinding.kind).toBe("unresolved");
+    expect(ambiguous.defaultBinding).toMatchObject({
+      kind: "column",
+      path: [expect.objectContaining({ column: "land_unit" })],
+    });
     expect(ambiguous.options).toHaveLength(2);
     const ranged = inferOnnxInputBinding({ name: "is_ranged", type: "float32" }, "main_units_tables", schema);
     expect(ranged.defaultBinding).toMatchObject({ kind: "unresolved" });
@@ -165,6 +194,34 @@ describe("ONNX flow metadata and mapping", () => {
     expect(
       getOnnxInputUnresolvedIssues([{ name: "is_ranged", type: "float32" }], { is_ranged: ranged.defaultBinding }),
     ).toHaveLength(1);
+  });
+
+  it("keeps equally short paths ambiguous", () => {
+    const tied = {
+      ...schema,
+      "db\\main_units_tables": table([
+        field("first", "StringU8", false, ["land_units_tables", "key"]),
+        field("second", "StringU8", false, ["land_units_tables", "key"]),
+      ]),
+    };
+    const inferred = inferOnnxInputBinding({ name: "land_units__armour", type: "float32" }, "main_units_tables", tied);
+    expect(inferred.paths).toHaveLength(2);
+    expect(inferred.defaultBinding).toMatchObject({ kind: "unresolved", reason: expect.stringContaining("shortest") });
+  });
+
+  it("finds the shortest route even when longer branches precede it in the schema", () => {
+    const ordered = {
+      ...schema,
+      "db\\main_units_tables": table([
+        field("weapon", "StringU8", false, ["missile_weapons_tables", "key"]),
+        field("weapon_again", "StringU8", false, ["missile_weapons_tables", "key"]),
+        field("direct", "StringU8", false, ["land_units_tables", "key"]),
+      ]),
+    };
+    const paths = findOnnxShortestForwardPaths("main_units_tables", "land_units_tables", ordered);
+    expect(paths).toHaveLength(1);
+    expect(paths[0]).toHaveLength(1);
+    expect(paths[0][0].column).toBe("direct");
   });
 
   it("builds typed tensors with constants, missing defaults, and reference-presence checks", () => {

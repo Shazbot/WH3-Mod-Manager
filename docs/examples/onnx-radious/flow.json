@@ -17,31 +17,16 @@
       }
     },
     {
-      "id": "units",
-      "type": "tableselectiondropdown",
+      "id": "predict",
+      "type": "onnx",
       "position": {
         "x": 350,
         "y": 80
       },
       "data": {
-        "label": "Effective main units",
-        "type": "tableselectiondropdown",
-        "inputType": "PackFiles",
-        "outputType": "TableSelection",
-        "selectedTable": "main_units_tables"
-      }
-    },
-    {
-      "id": "predict",
-      "type": "onnx",
-      "position": {
-        "x": 700,
-        "y": 80
-      },
-      "data": {
         "label": "Radious stat predictions",
         "type": "onnx",
-        "inputType": "TableSelection",
+        "inputType": "PackFiles",
         "outputType": "TableSelection",
         "mode": "bundle",
         "selectedPackName": "radious_stat_scaler.pack",
@@ -1726,7 +1711,7 @@
       "id": "save",
       "type": "savechanges",
       "position": {
-        "x": 1250,
+        "x": 900,
         "y": 80
       },
       "data": {
@@ -1743,18 +1728,11 @@
   ],
   "connections": [
     {
-      "id": "edge-sources-units",
+      "id": "edge-sources-predict",
       "sourceId": "sources",
-      "targetId": "units",
+      "targetId": "predict",
       "sourceType": "PackFiles",
       "targetType": "PackFiles"
-    },
-    {
-      "id": "edge-units-predict",
-      "sourceId": "units",
-      "targetId": "predict",
-      "sourceType": "TableSelection",
-      "targetType": "TableSelection"
     },
     {
       "id": "edge-predict-save",
@@ -1777,8 +1755,8 @@
     }
   ],
   "metadata": {
-    "nodeCount": 4,
-    "connectionCount": 3
+    "nodeCount": 3,
+    "connectionCount": 2
   },
   "isGraphEnabled": true,
   "graphStartsEnabled": true
