@@ -59,6 +59,146 @@ const fixture = (): ApplyOnnxPredictionsRequest => {
 };
 
 describe("ONNX row writeback", () => {
+  const uniqueFixture = () => {
+    const request = fixture();
+    request.inputData.tables = [
+      table(
+        "roots_tables",
+        [field("key", "StringU8", true), field("link")],
+        [
+          ["a", "one"],
+          ["b", "two"],
+        ],
+      ),
+    ];
+    const linked = table(
+      "linked_tables",
+      [field("key", "StringU8", true), field("damage", "I32")],
+      [
+        ["one", "10"],
+        ["two", "20"],
+      ],
+    );
+    request.linkedTableData = [linked];
+    request.collisionTableData = [linked];
+    return request;
+  };
+
+  it("reuses unshared linked keys by default without mutating source rows", () => {
+    const request = uniqueFixture();
+    const original = structuredClone(request);
+    const result = applyOnnxPredictions(request);
+    expect(rows(result.tables[0]).map((row) => row.link)).toEqual(["one", "two"]);
+    expect(rows(result.tables[1])).toEqual([
+      { key: "one", damage: "12" },
+      { key: "two", damage: "25" },
+    ]);
+    expect(request).toEqual(original);
+  });
+
+  it("can disable reuse and create new keys even for unshared rows", () => {
+    const request = uniqueFixture();
+    request.reuseExistingKeys = false;
+    const result = applyOnnxPredictions(request);
+    expect(rows(result.tables[0]).map((row) => row.link)).not.toContain("one");
+    expect(rows(result.tables[0]).map((row) => row.link)).not.toContain("two");
+    expect(rows(result.tables[1]).map((row) => row.damage)).toEqual(["12", "25"]);
+  });
+
+  it("counts one owner when several models update columns on the same linked row", () => {
+    const request = uniqueFixture();
+    request.inputData.tables = [table("roots_tables", [field("key", "StringU8", true), field("link")], [["a", "one"]])];
+    const linked = table(
+      "linked_tables",
+      [field("key", "StringU8", true), field("damage", "I32"), field("armour", "I32")],
+      [["one", "10", "20"]],
+    );
+    request.linkedTableData = [linked];
+    request.collisionTableData = [linked];
+    request.models.push({ key: "armour", defaultTableName: "linked_tables", defaultColumn: "armour" });
+    request.bindings.armour = { ...request.bindings.prediction, column: "armour" };
+    request.predictions = { prediction: [2], armour: [3] };
+    const result = applyOnnxPredictions(request);
+    expect(rows(result.tables[1])).toEqual([{ key: "one", damage: "12", armour: "23" }]);
+  });
+
+  it("reuses unique keys and clones shared keys within the same table", () => {
+    const request = uniqueFixture();
+    request.inputData.tables = [
+      table(
+        "roots_tables",
+        [field("key", "StringU8", true), field("link")],
+        [
+          ["a", "one"],
+          ["b", "two"],
+          ["c", "two"],
+        ],
+      ),
+    ];
+    request.predictions.prediction = [2.4, 4.6, 7.2];
+    const result = applyOnnxPredictions(request);
+    const links = rows(result.tables[0]).map((row) => row.link);
+    expect(links[0]).toBe("one");
+    expect(links.slice(1)).not.toContain("two");
+    expect(new Set(links).size).toBe(3);
+    expect(rows(result.tables[1]).map((row) => row.damage)).toEqual(["12", "25", "27"]);
+  });
+
+  it("does not duplicate reused keys carried in a legacy table input", () => {
+    const request = uniqueFixture();
+    request.inputData.tables.push(request.linkedTableData[0]);
+    const result = applyOnnxPredictions(request);
+    const output = result.tables.filter((table) => table.name === "linked_tables").flatMap(rows);
+    expect(output).toEqual([
+      { key: "one", damage: "12" },
+      { key: "two", damage: "25" },
+    ]);
+  });
+
+  it("keeps unique intermediate keys while redirecting their shared child to clones", () => {
+    const request = fixture();
+    request.inputData.tables = [
+      table(
+        "roots_tables",
+        [field("key", "StringU8", true), field("link")],
+        [
+          ["a", "ma"],
+          ["b", "mb"],
+        ],
+      ),
+    ];
+    const middle = table(
+      "middle_tables",
+      [field("key", "StringU8", true), field("link")],
+      [
+        ["ma", "shared"],
+        ["mb", "shared"],
+      ],
+    );
+    request.linkedTableData.push(middle);
+    request.collisionTableData.push(middle);
+    request.bindings.prediction.path = [
+      { tableName: "roots_tables", column: "link", targetTable: "middle_tables", targetColumn: "key" },
+      { tableName: "middle_tables", column: "link", targetTable: "linked_tables", targetColumn: "key" },
+    ];
+    const result = applyOnnxPredictions(request);
+    expect(rows(result.tables[0]).map((row) => row.link)).toEqual(["ma", "mb"]);
+    const middleRows = rows(result.tables.find((table) => table.name === "middle_tables")!);
+    expect(middleRows.map((row) => row.key)).toEqual(["ma", "mb"]);
+    expect(middleRows.map((row) => row.link)).toEqual(
+      rows(result.tables.find((table) => table.name === "linked_tables")!).map((row) => row.key),
+    );
+    expect(middleRows.map((row) => row.link)).not.toContain("shared");
+  });
+
+  it("protects a shared row even when one root has a no-op prediction", () => {
+    const request = fixture();
+    request.predictions.prediction = [2, 0];
+    const result = applyOnnxPredictions(request);
+    expect(rows(result.tables[0])[0].link).not.toBe("shared");
+    expect(rows(result.tables[0])[1].link).toBe("shared");
+    expect(rows(result.tables[1])).toHaveLength(1);
+  });
   it("optionally rounds a model delta before strength and floating-point writeback", () => {
     const request = fixture();
     const linked = table(

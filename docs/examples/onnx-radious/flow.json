@@ -1704,7 +1704,8 @@
           }
         },
         "strength": 1,
-        "strengthOptionId": "radious_strength"
+        "strengthOptionId": "radious_strength",
+        "reuseExistingKeys": true
       }
     },
     {

@@ -189,6 +189,7 @@ export interface SerializedNode {
     selectedPackName?: string;
     mode?: "bundle" | "standalone";
     rootTableName?: string;
+    reuseExistingKeys?: boolean;
     modelsDirectory?: string;
     modelsManifestPath?: string;
     preprocessorManifestPath?: string;

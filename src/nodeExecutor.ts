@@ -1216,6 +1216,7 @@ const executeNativePatchFlowNode = async (
 };
 
 interface OnnxFlowNodeConfig {
+  reuseExistingKeys?: boolean;
   mode?: "bundle" | "standalone";
   selectedPackName?: string;
   rootTableName?: string;
@@ -1441,6 +1442,7 @@ const executeStandaloneOnnxNode = async (
   const strength = config.strength === undefined ? 1 : Number(config.strength);
   if (!Number.isFinite(strength)) throw new Error("ONNX add strength must be a finite number");
   const output = applyOnnxPredictions({
+    reuseExistingKeys: config.reuseExistingKeys !== false,
     inputData,
     rootTableName,
     models: [model],
@@ -1639,6 +1641,7 @@ const executeOnnxNode = async (
   const strength = config.strength === undefined ? 1 : Number(config.strength);
   if (!Number.isFinite(strength)) throw new Error("ONNX delta strength must be a finite number");
   const output = applyOnnxPredictions({
+    reuseExistingKeys: config.reuseExistingKeys !== false,
     inputData,
     rootTableName,
     models: metadata.models,

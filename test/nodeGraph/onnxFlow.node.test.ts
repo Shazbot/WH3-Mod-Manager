@@ -331,6 +331,29 @@ describe("ONNX flow serialization and flow options", () => {
     });
   });
 
+  it.each([undefined, true, false])(
+    "preserves key reuse settings across save, manual and launch configuration (%s)",
+    (setting) => {
+      const node = onnxNode() as any;
+      node.data.reuseExistingKeys = setting;
+      const serialized = serializeReactFlowNodes([node])[0];
+      expect(serialized.data.reuseExistingKeys).toBe(setting !== false);
+      expect(JSON.parse(serializeNodeConfigForExecution(serialized)).reuseExistingKeys).toBe(setting !== false);
+      const flow: SerializedNodeGraph = {
+        version: "1.0",
+        timestamp: 0,
+        nodes: [serialized],
+        connections: [],
+        options: [],
+        metadata: { nodeCount: 1, connectionCount: 0 },
+        isGraphEnabled: true,
+        graphStartsEnabled: true,
+      };
+      const launched = prepareFlow("reuse.json", flow, "models.pack", undefined, false);
+      expect((launched.nodeConfigs[node.id] as any).reuseExistingKeys).toBe(setting !== false);
+    },
+  );
+
   it("resolves node and per-output strength options in manual and launch runs", () => {
     const node = onnxNode() as any;
     const manual = prepareGraphForExecution({ nodes: [node], edges: [], flowOptions });

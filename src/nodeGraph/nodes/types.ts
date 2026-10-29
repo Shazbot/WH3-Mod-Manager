@@ -582,6 +582,7 @@ export interface ConditionalBranchNodeData extends NodeData {
 }
 
 export interface OnnxFlowNodeData extends NodeData {
+  reuseExistingKeys?: boolean;
   DBNameToDBVersions?: Record<string, DBVersion[]>;
   inputType: "PackFiles" | "TableSelection";
   outputType: "TableSelection";

@@ -126,6 +126,7 @@ export const serializeReactFlowNodes = (nodes: Node[]): SerializedNode[] => {
         selectedPackName: maybeString(data.selectedPackName),
         mode: data.type === "onnx" ? (data.mode === "standalone" ? "standalone" : "bundle") : undefined,
           rootTableName: maybeString(data.rootTableName),
+          reuseExistingKeys: node.type === "onnx" ? data.reuseExistingKeys !== false : undefined,
           modelsDirectory: maybeString(data.modelsDirectory),
           modelsManifestPath: maybeString(data.modelsManifestPath),
           preprocessorManifestPath: maybeString(data.preprocessorManifestPath),

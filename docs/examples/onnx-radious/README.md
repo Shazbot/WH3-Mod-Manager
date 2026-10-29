@@ -29,6 +29,6 @@ For automatic launch-time execution, save this flow into the model pack as `whmm
 
 These mappings follow `predict.ts` and `clean_data.ipynb` / `feature_engineering.ipynb` in the companion predictor project. The ranged flag describes a populated primary missile-weapon reference, including for units with ability-based attacks only when that reference is populated.
 
-All 65 input bindings are supplied, and all 37 model outputs are enabled. Missing linked output rows are skipped. Linked outputs are cloned per root, with references redirected; root unit keys stay unchanged.
+All 65 input bindings are supplied, and all 37 model outputs are enabled. Missing linked output rows are skipped. **Reuse existing keys for unshared rows** is enabled: linked rows used by one selected root keep their keys; shared rows are cloned per root with references redirected. Disable this option in Configure to always generate new linked keys. Root unit keys stay unchanged.
 
 The mappings and reference paths were checked against the installed vanilla DB table versions, rather than the largest version numbers in the bundled schema. This example flow has not been run over a complete enabled-mod load order; inspect the generated tables before using it in a campaign.

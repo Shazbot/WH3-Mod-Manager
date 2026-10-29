@@ -6685,6 +6685,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     byGame: Partial<Record<SupportedGames, FlowExecutionCacheEntry>>;
   }
   const FLOW_EXECUTION_CACHE_FILE = "flow-execution-cache.bin";
+  // 13: ONNX key reuse now keeps unshared linked keys by default.
   // 12: ONNX inference uses installed schema versions and supports predictor-compatible feature/writeback settings.
   // 11: packed ONNX inference adds model bytes and tensor bindings to launch outputs.
   // 10: native patch schema outputs can provide Custom Rows Input declarations before patch execution.
@@ -6693,7 +6694,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   // 7: automatic flow execution uses saved pack content only; also invalidate v6 entries that included staged data.
   // 5: replacement outputs retain the source pack name; older cached outputs may use the Save
   // Changes node's configured name instead.
-  const FLOW_EXECUTION_CACHE_VERSION = 12;
+  const FLOW_EXECUTION_CACHE_VERSION = 13;
   let flowExecutionCache: FlowExecutionCache | null = null;
   const loadFlowExecutionCache = async (): Promise<FlowExecutionCache> => {
     if (flowExecutionCache !== null) return flowExecutionCache;

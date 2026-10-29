@@ -794,6 +794,7 @@ const nodeDefinitions: Record<FlowNodeType, NodeDefinition> = {
       mode: "bundle",
       selectedPackName: "",
       rootTableName: "main_units_tables",
+      reuseExistingKeys: true,
       modelsDirectory: "onnx_models",
       modelsManifestPath: "onnx_models/models.json",
       preprocessorManifestPath: "onnx_models/preprocessor.json",

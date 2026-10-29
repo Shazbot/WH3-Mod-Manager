@@ -183,7 +183,7 @@ Results are `{ success, data?, error?, warnings?, activeOutputHandles? }` per no
 
 ## Launch cache
 
-`<userData>/flow-execution-cache.bin` is zstd-compressed JSON, one entry per game. Version: `FLOW_EXECUTION_CACHE_VERSION` (currently 12; the history is in comments next to it).
+`<userData>/flow-execution-cache.bin` is zstd-compressed JSON, one entry per game. Version: `FLOW_EXECUTION_CACHE_VERSION` (currently 13; the history is in comments next to it).
 
 The cache key is a hash of:
 
@@ -230,7 +230,9 @@ The template format, limits, merge rules and examples are in [`NATIVE_PATCHES.md
 
 The ONNX node accepts `PackFiles` and emits `TableSelection`. Its root-table dropdown lists the current game's database tables and defaults to `main_units_tables`. It reads that table from the incoming packs using the same effective-row/load-order resolution as Table Dropdown Input, so a separate table-selection node is unnecessary. Older `TableSelection` connections remain supported, preserving upstream row filtering and edits. Changing the root table clears the draft mappings for fresh inference.
 
-It reads a manifest bundle or one packed `.onnx` model from the selected model source pack (an empty selection uses the flow-owning pack). Its controls offer schema column/reference choices, constants, output enablement, destination columns and add/replace/delta modes; advanced JSON mappings remain available for custom paths. Ambiguous paths and unresolved `is_ranged` bindings must be assigned before execution. Linked output rows are cloned per root row while existing shared rows remain intact. The launch execution cache was bumped when this node was added.
+It reads a manifest bundle or one packed `.onnx` model from the selected model source pack (an empty selection uses the flow-owning pack). Its controls offer schema column/reference choices, constants, output enablement, destination columns and add/replace/delta modes; advanced JSON mappings remain available for custom paths. Ambiguous paths and unresolved `is_ranged` bindings must be assigned before execution. Shared linked output rows are cloned per root row while existing shared rows remain intact.
+
+**Reuse existing keys for unshared rows** (`reuseExistingKeys`, default `true`) keeps a linked row's original key when only one selected root row reaches it through the enabled output paths. Multiple output columns on one row count as one owner. Shared rows still receive separate keys per root, including intermediate rows when references must be redirected. Roots whose predictions make no changes still count as owners. Disabling the option restores key generation for every changed linked path. When a legacy table input already carries a reused row, its updated output replaces the original rather than emitting duplicate keys. Root unit keys remain unchanged in both modes. Counts cover the selected roots, so filtered table inputs can update a key that other, unselected units also use.
 
 The graph shows a compact ONNX summary. **Configure** opens a modal editor using a local draft; **Apply** commits the configuration, while **Cancel**, close, or Escape discard it. Pack inspection runs only while that configuration panel is open and active.
 

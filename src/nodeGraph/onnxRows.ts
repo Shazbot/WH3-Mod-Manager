@@ -33,6 +33,8 @@ export interface ApplyOnnxPredictionsRequest {
   collisionTableData: DBTablesNodeTable[];
   strength: number;
   cloneIdentity: string;
+  /** Keep original linked keys when only one selected root uses the row. Defaults to true. */
+  reuseExistingKeys?: boolean;
 }
 
 const normalizeTableName = (name: string) =>
@@ -264,6 +266,32 @@ export const applyOnnxPredictions = (request: ApplyOnnxPredictionsRequest): DBTa
   }
   if (rootRows.length === 0) throw new Error(`Input root table '${request.rootTableName}' has no schema rows`);
 
+  // Count owners, not model outputs: several columns of the same linked row belong to one
+  // root. Include roots with no-op predictions so their shared rows remain protected too.
+  const rowOwners = new Map<string, number>();
+  if (request.reuseExistingKeys !== false) {
+    const paths = new Map<string, OnnxJoinStep[]>();
+    for (const model of request.models) {
+      const binding = request.bindings[model.key];
+      if (binding?.enabled && binding.path.length) paths.set(JSON.stringify(binding.path), binding.path);
+    }
+    rootRows.forEach((root, rootIndex) => {
+      for (const path of paths.values()) {
+        const chain = resolvePathChain(path, root.row, root.tableData, rowsByReference);
+        if (!chain) continue;
+        for (let index = 1; index < chain.length; index++) {
+          const ref = chain[index];
+          const key = getCell(ref.row, path[index - 1].targetColumn)?.resolvedKeyValue;
+          if (key === undefined) continue;
+          const identity = `${normalizeTableName(ref.tableData.name)}\0${key}`;
+          const owner = rowOwners.get(identity);
+          rowOwners.set(identity, owner === undefined || owner === rootIndex ? rootIndex : -1);
+        }
+      }
+    });
+  }
+  const reusedKeysByTable = new Map<string, Set<string>>();
+
   const collisionTables = [...request.collisionTableData, ...request.inputData.tables];
   const keysByTable = new Map<string, Set<string>>();
   for (const tableData of collisionTables) {
@@ -351,18 +379,27 @@ export const applyOnnxPredictions = (request: ApplyOnnxPredictionsRequest): DBTa
                 .slice(0, stepIndex + 1)
                 .map((edge) => `${edge.tableName}.${edge.column}`)
                 .join(">") + `|${normalizeTableName(childRef.tableData.name)}`;
-            const newKey = createCloneKey(
-              childRef.tableData.name,
-              sourceKey,
-              rootKey,
-              signature,
-              childKeyField,
-              keysByTable,
-              nextNumericKeyByTable,
-              request.cloneIdentity,
-            );
+            const reuseKey = request.reuseExistingKeys !== false && rowOwners.get(cloneIdentity) === rootIndex;
+            const newKey = reuseKey
+              ? sourceKey
+              : createCloneKey(
+                  childRef.tableData.name,
+                  sourceKey,
+                  rootKey,
+                  signature,
+                  childKeyField,
+                  keysByTable,
+                  nextNumericKeyByTable,
+                  request.cloneIdentity,
+                );
             const clonedRow = cloneRow(childRef.row);
             setCellValue(clonedRow, childRef.tableData.table.tableSchema!.fields, childKeyField.name, newKey);
+            if (reuseKey) {
+              const tableName = normalizeTableName(childRef.tableData.name);
+              const reused = reusedKeysByTable.get(tableName) ?? new Set<string>();
+              reused.add(sourceKey);
+              reusedKeysByTable.set(tableName, reused);
+            }
             childClone = { tableName: step.targetTable, sourceKey, row: clonedRow, tableData: childRef.tableData };
             rootClones.set(cloneIdentity, childClone);
             const outputRows = linkedOutputs.get(childRef.tableData) ?? [];
@@ -388,7 +425,16 @@ export const applyOnnxPredictions = (request: ApplyOnnxPredictionsRequest): DBTa
   for (const [sourceTable, outputTable] of outputRootTables) {
     outputTable.table.schemaFields = (rootOutputRows.get(sourceTable) ?? []).flat();
   }
-  const outputTables = request.inputData.tables.map((tableData) => outputRootTables.get(tableData) ?? tableData);
+  const outputTables = request.inputData.tables.flatMap((tableData) => {
+    const root = outputRootTables.get(tableData);
+    if (root) return [root];
+    const reused = reusedKeysByTable.get(normalizeTableName(tableData.name));
+    if (!reused) return [tableData];
+    // A legacy table input may also carry linked rows. Emit each reused key only once,
+    // using the updated row below rather than passing through its stale original too.
+    const remaining = chunkRows(tableData).filter((row) => !reused.has(getRowKey(tableData, row) ?? ""));
+    return remaining.length ? [{ ...tableData, table: { ...tableData.table, schemaFields: remaining.flat() } }] : [];
+  });
   for (const [sourceTable, rows] of linkedOutputs) {
     outputTables.push({
       ...sourceTable,

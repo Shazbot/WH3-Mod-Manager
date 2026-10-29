@@ -57,6 +57,16 @@ const setup = (overrides: Record<string, unknown> = {}, response?: any) => {
 };
 
 describe("ONNX configuration panel", () => {
+  it("defaults key reuse on and allows disabling it", () => {
+    const { view, update } = setup();
+    fireEvent.click(view.getByText("Configure", { selector: "button" }));
+    const dialog = within(view.getByRole("dialog"));
+    const option = dialog.getByRole("checkbox", { name: "Reuse existing keys for unshared rows" });
+    expect(option).toBeChecked();
+    fireEvent.click(option);
+    fireEvent.click(dialog.getByRole("button", { name: "Apply" }));
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ reuseExistingKeys: false }));
+  });
   it("shows all matching long binding labels and saves a searched selection", async () => {
     const missing = { kind: "unresolved", reason: "Choose a column" };
     const columns = Array.from({ length: 240 }, (_, index) => ({

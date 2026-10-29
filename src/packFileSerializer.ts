@@ -1207,6 +1207,7 @@ export const prepareNodeConfig = (node: SerializedNodeGraph["nodes"][number]): u
         mode: node.data.mode === "standalone" ? "standalone" : "bundle",
         selectedPackName: node.data.selectedPackName || "",
         rootTableName: node.data.rootTableName || "main_units_tables",
+        reuseExistingKeys: node.data.reuseExistingKeys !== false,
         modelsDirectory: node.data.modelsDirectory || "onnx_models",
         modelsManifestPath: node.data.modelsManifestPath || "onnx_models/models.json",
         preprocessorManifestPath: node.data.preprocessorManifestPath || "onnx_models/preprocessor.json",

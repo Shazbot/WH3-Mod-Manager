@@ -280,6 +280,7 @@ export const serializeNodeConfigForExecution = (node: SerializedNode): string =>
       mode: (node.data as any).mode === "standalone" ? "standalone" : "bundle",
       selectedPackName: (node.data as any).selectedPackName || "",
       rootTableName: (node.data as any).rootTableName || "main_units_tables",
+      reuseExistingKeys: node.data.reuseExistingKeys !== false,
       modelsDirectory: (node.data as any).modelsDirectory || "onnx_models",
       modelsManifestPath: (node.data as any).modelsManifestPath || "onnx_models/models.json",
       preprocessorManifestPath: (node.data as any).preprocessorManifestPath || "onnx_models/preprocessor.json",

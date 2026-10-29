@@ -8199,6 +8199,12 @@ export const OnnxFlowNode: React.FC<{ data: OnnxFlowNodeData; id: string }> = ({
         </details>
         {mappingError && <div className="text-sm text-red-300">{mappingError}</div>}
 
+        <label className="flex items-center gap-2 text-sm text-gray-200">
+          <input type="checkbox" checked={data.reuseExistingKeys !== false}
+            onChange={(event) => updateNode({ reuseExistingKeys: event.target.checked })} />
+          Reuse existing keys for unshared rows
+        </label>
+        <p className="text-sm text-gray-300">Keep a linked row's key when only one selected root row uses it. Shared rows still receive new keys. Turn this off to always create new linked keys.</p>
         <label className="block text-sm text-gray-300">Default add/delta strength</label>
         <input type="number" step="any" value={strengthText} onChange={(event) => setStrengthText(event.target.value)}
           onBlur={() => { const value = Number(strengthText); if (Number.isFinite(value)) updateNode({ strength: value }); }}
