@@ -185,7 +185,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
   const [tabs, setTabs] = useState<VisualsViewerTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [viewerMode, setViewerMode] = useState<VisualsViewerMode>("preview");
-  const loadedEnabledModsKeyRef = useRef<string>();
+  const loadedEnabledModsKeyRef = useRef<string>(undefined);
 
   const [isFilePanelOpen, setIsFilePanelOpen] = useState(false);
   const [fileQueryInput, setFileQueryInput] = useState("");

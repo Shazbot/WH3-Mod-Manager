@@ -60,7 +60,7 @@ const ModalComponent: FC<ModalProps> = ({
   const canDismiss = dismissible && !!onClose;
 
   // Read by the Escape listener so it does not have to be re-registered on every render.
-  const closeOnEscapeRef = useRef<(() => void) | undefined>();
+  const closeOnEscapeRef = useRef<(() => void) | undefined>(undefined);
   useLayoutEffect(() => {
     closeOnEscapeRef.current = canDismiss ? onClose : undefined;
   });

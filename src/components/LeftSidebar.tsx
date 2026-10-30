@@ -79,7 +79,7 @@ const LeftSidebar = memo(() => {
   const localized: Record<string, string> = useContext(localizationContext);
 
   const shortcutBufferRef = useRef("");
-  const shortcutTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const shortcutTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const clearShortcutBuffer = useCallback(() => {
     if (shortcutTimeoutRef.current) clearTimeout(shortcutTimeoutRef.current);
     shortcutTimeoutRef.current = undefined;

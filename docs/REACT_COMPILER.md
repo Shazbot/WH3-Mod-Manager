@@ -4,12 +4,14 @@ The renderer is built with [React Compiler](https://react.dev/learn/react-compil
 
 As of 2026-10-30 every renderer component compiles (307 functions across 195 `.tsx` files) except the opt-outs listed in `scripts/react-compiler.cjs`.
 
+The renderer uses React 19.3 with the automatic JSX transform (`react-jsx` in TypeScript, `jsx: "automatic"` in the renderer esbuild loader, and `ReactJSX` in Vitest). Compiler target `"19"` imports the built-in `react/compiler-runtime`; the React 18 compatibility package is no longer needed. Onboarding uses React Joyride 3 and its `onEvent`/`options` API.
+
 ## How it is wired in
 
 | Where                        | What                                                                                                                                                                                                              |
 | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `webpack.renderer.config.js` | `.tsx` files run through `babel-loader` (`@babel/plugin-syntax-typescript` + `babel-plugin-react-compiler`, `target: "18"`), then `esbuild-loader`. `.ts` files and the main and preload builds use esbuild only. |
-| `react-compiler-runtime`     | The memo cache runtime React 18 needs. React 19 has it built in.                                                                                                                                                  |
+| `webpack.renderer.config.js` | `.tsx` files run through `babel-loader` (`@babel/plugin-syntax-typescript` + `babel-plugin-react-compiler`, `target: "19"`), then `esbuild-loader`. `.ts` files and the main and preload builds use esbuild only. |
+| `react/compiler-runtime`     | React 19 provides the memo cache runtime; no compatibility package is needed.                                                                                                                                     |
 | `vitest.config.mjs`          | The `reactCompiler` plugin compiles `src/**/*.tsx` before the TypeScript transform, so DOM tests run the same compiled components as the app.                                                                     |
 | `eslint.config.mjs`          | The compiler's lint rules (`react-hooks/refs`, `immutability`, `preserve-manual-memoization`, ...) are enabled as warnings.                                                                                       |
 | `scripts/react-compiler.cjs` | The allowlist of components the compiler may skip, and the build logger.                                                                                                                                          |
@@ -96,7 +98,7 @@ babel.transformFileSync("src/components/Example.tsx", {
     [
       "babel-plugin-react-compiler",
       {
-        target: "18",
+        target: "19",
         logger: {
           logEvent: (_file, event) =>
             console.log(event.kind, event.fnLoc?.start?.line, event.detail?.options?.reason ?? ""),

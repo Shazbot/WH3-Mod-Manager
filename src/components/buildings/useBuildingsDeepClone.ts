@@ -35,7 +35,7 @@ export const useBuildingsDeepClone = (dbPackPath: string | undefined) => {
 
   const [pending, setPending] = useState<BuildingsCloneTarget | undefined>();
   const [error, setError] = useState<string | undefined>();
-  const timeoutRef = useRef<number | undefined>();
+  const timeoutRef = useRef<number | undefined>(undefined);
 
   const clearTimer = useCallback(() => {
     if (timeoutRef.current !== undefined) {

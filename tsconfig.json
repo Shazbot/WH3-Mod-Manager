@@ -19,7 +19,7 @@
       "@modelcontextprotocol/server/stdio": ["node_modules/@modelcontextprotocol/server/dist/stdio.d.cts"],
       "*": ["node_modules/*"]
     },
-    "jsx": "react"
+    "jsx": "react-jsx"
     // "typeRoots": ["node_modules/@types", "./src"]
   },
   "include": ["src/**/*"],

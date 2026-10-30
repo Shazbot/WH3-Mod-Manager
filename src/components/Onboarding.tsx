@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useContext, useMemo } from "react";
-import Joyride, { Placement, CallBackProps } from "react-joyride";
+import { Joyride, type Placement, type EventData } from "react-joyride";
 import { faGrip } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useAppDispatch, useAppSelector } from "../hooks";
@@ -24,7 +24,7 @@ const Onboarding = memo(() => {
         {
           target: "body",
           content: <span className="font-medium">{localized.onbWelcome}</span>,
-          disableBeacon: true,
+          skipBeacon: true,
           placement: "center" as Placement | "auto" | "center",
         },
         {
@@ -120,31 +120,36 @@ const Onboarding = memo(() => {
           ),
         },
       ].map((step) => {
-        step.disableBeacon = true;
+        step.skipBeacon = true;
         return step;
       }),
     [localized],
   );
 
-  const onJoyrideStateChange = useCallback((data: CallBackProps) => {
-    console.log("joyride:", data.action);
-    if (data.action === "reset" || data.action === "skip") {
-      dispatch(setIsOnboardingToRun(false));
-      dispatch(setWasOnboardingEverRun(true));
-    }
-  }, [dispatch]);
+  const onJoyrideStateChange = useCallback(
+    (data: EventData) => {
+      console.log("joyride:", data.action);
+      if (data.status === "finished" || data.status === "skipped") {
+        dispatch(setIsOnboardingToRun(false));
+        dispatch(setWasOnboardingEverRun(true));
+      }
+    },
+    [dispatch],
+  );
 
   return (
     <>
       {toRun && (
         <Joyride
-          showSkipButton={true}
-          disableScrolling={true}
+          options={{
+            buttons: ["back", "close", "primary", "skip"],
+            skipScroll: true,
+            overlayClickAction: false,
+          }}
           continuous={true}
-          disableOverlayClose={true}
           steps={steps}
           run={toRun}
-          callback={onJoyrideStateChange}
+          onEvent={onJoyrideStateChange}
         ></Joyride>
       )}
     </>

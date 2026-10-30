@@ -823,16 +823,16 @@ describe("pack table tree interactions", () => {
     try {
       expect(screen.getByRole("button", { name: "Files", exact: true })).toBeInTheDocument();
       await waitFor(() => expect(getVanillaPackFileTree).toHaveBeenCalledWith(packPath, ""));
-      expect(screen.getByText("animation")).toBeInTheDocument();
+      expect(await screen.findByText("animation")).toBeInTheDocument();
 
       fireEvent.click(screen.getByText("animation"));
 
       await waitFor(() => expect(getVanillaPackFileTree).toHaveBeenCalledWith(packPath, "animation"));
-      expect(screen.getByText("campaign")).toBeInTheDocument();
+      expect(await screen.findByText("campaign")).toBeInTheDocument();
       const campaignNode = screen.getByText("campaign").closest('[role="treeitem"]');
       if (campaignNode?.getAttribute("aria-expanded") !== "true") fireEvent.click(screen.getByText("campaign"));
-      expect(screen.getByText("dragon.anim")).toBeInTheDocument();
-      expect(screen.getByText("phoenix.anim")).toBeInTheDocument();
+      expect(await screen.findByText("dragon.anim")).toBeInTheDocument();
+      expect(await screen.findByText("phoenix.anim")).toBeInTheDocument();
       expect(screen.queryByText(/Load more files/)).not.toBeInTheDocument();
     } finally {
       view.unmount();

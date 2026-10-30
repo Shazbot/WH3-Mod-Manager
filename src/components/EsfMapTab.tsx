@@ -416,14 +416,14 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const mapImageLoadsRef = useRef(new Map<string, Promise<HTMLImageElement | undefined>>());
   const characterThumbnailSourcesRef = useRef(new Set<string>());
   const characterThumbnailPathsRef = useRef<string[]>([]);
-  const characterThumbnailSessionRef = useRef<string>();
+  const characterThumbnailSessionRef = useRef<string>(undefined);
   /** Keeps click cycling tied to one pointer gesture, even if React replays an event. */
   const characterClickGestureRef = useRef<{
     pointerId: number;
     selectionBeforePointerDown?: { faction: string; id: number };
     clickHandled: boolean;
-  }>();
-  const factionRegionCycleRef = useRef<{ factionKey: string; markerId: number }>();
+  }>(undefined);
+  const factionRegionCycleRef = useRef<{ factionKey: string; markerId: number }>(undefined);
   const factionFlagClickTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const mapContextMenuRef = useRef<HTMLDivElement>(null);
   const mapDragRef = useRef<{
@@ -432,7 +432,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     startY: number;
     startScrollLeft: number;
     startScrollTop: number;
-  }>();
+  }>(undefined);
   const mapZoomAnchorRef = useRef<{
     mapX: number;
     mapY: number;
@@ -440,7 +440,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     scaleY: number;
     scrollLeft: number;
     scrollTop: number;
-  }>();
+  }>(undefined);
   const suppressMapClickRef = useRef(false);
   const characterDragRef = useRef<{
     pointerId: number;
@@ -449,7 +449,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     startX: number;
     startY: number;
     hasMoved: boolean;
-  }>();
+  }>(undefined);
   /** The map as the startpos has it. Ownership edits are overlaid onto it below, never into it. */
   const [baseMap, setBaseMap] = useState<EsfMapPayload>();
   const [campaignOptions, setCampaignOptions] = useState<EsfMapCampaignOption[]>([]);

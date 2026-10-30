@@ -18,7 +18,7 @@ import EsfMapTab from "./EsfMapTab";
 import LoadOrderRulesTab from "./loadOrderRules/LoadOrderRulesTab";
 
 type MainProps = {
-  scrollElement: RefObject<HTMLDivElement>;
+  scrollElement: RefObject<HTMLDivElement | null>;
 };
 const Main = (props: MainProps) => {
   const currentTab = useAppSelector((state) => state.app.currentTab);

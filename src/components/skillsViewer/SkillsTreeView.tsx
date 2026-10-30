@@ -42,7 +42,7 @@ const stripKnownSkillNodeSetPrefix = (value: string) => {
 
 const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
   const firstClickSelected = useRef(false);
-  const hoverTimer = useRef<ReturnType<typeof setTimeout>>();
+  const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(hoverTimer.current), []);
   const isLocalizingSubtypes = useAppSelector((state) => state.app.isLocalizingSubtypes);
   const isShowingSkillNodeSetNames = useAppSelector((state) => state.app.isShowingSkillNodeSetNames);

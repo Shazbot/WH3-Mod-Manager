@@ -52,8 +52,8 @@ type ModListPaneProps = {
   rowData: ModListRow[];
   /** The element this list scrolls inside: the page container, or the pane's own scroller in dual layout. */
   scrollElement: HTMLElement | null;
-  listRef: RefObject<List>;
-  paneHandleRef?: RefObject<ModListPaneHandle>;
+  listRef: RefObject<List | null>;
+  paneHandleRef?: RefObject<ModListPaneHandle | null>;
   gridId?: string;
   layout: ModListLayout;
   showConfigColumn: boolean;

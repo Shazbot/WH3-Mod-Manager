@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import type { ComponentProps, FC, PropsWithChildren, ReactElement } from "react";
 import React from "react";
 import { Children, cloneElement, useMemo } from "react";

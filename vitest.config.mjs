@@ -28,7 +28,7 @@ const reactCompiler = {
       sourceMaps: true,
       plugins: [
         ["@babel/plugin-syntax-typescript", { isTSX: true }],
-        ["babel-plugin-react-compiler", { target: "18" }],
+        ["babel-plugin-react-compiler", { target: "19" }],
       ],
     });
     return { code: result.code, map: result.map };
@@ -47,7 +47,7 @@ const transformTypescript = {
       compilerOptions: {
         esModuleInterop: true,
         inlineSources: true,
-        jsx: ts.JsxEmit.React,
+        jsx: ts.JsxEmit.ReactJSX,
         module: ts.ModuleKind.ESNext,
         sourceMap: true,
         target: ts.ScriptTarget.ES2021,

@@ -402,7 +402,7 @@ describe("Unit Viewer UI", () => {
             }),
           ],
         }),
-        expect.anything(),
+        undefined,
       ),
     );
 
@@ -414,7 +414,7 @@ describe("Unit Viewer UI", () => {
           primaryAnimationTable: "hr1_pegasus",
           animationProfile: "flying",
         }),
-        expect.anything(),
+        undefined,
       ),
     );
 
@@ -426,7 +426,7 @@ describe("Unit Viewer UI", () => {
           primaryAnimationTable: "hu1_bretonnian_hr1_royal_pegasus_lancer",
           animationProfile: "riderFlying",
         }),
-        expect.anything(),
+        undefined,
       ),
     );
   });

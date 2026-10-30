@@ -209,6 +209,10 @@ describe("Native Patch flow controls", () => {
     expect(
       document.querySelector('[data-handleid="output-schema:initial_mapping"][data-output-type="CustomSchema"]'),
     ).not.toBeNull();
+    await waitFor(() => {
+      const serialized = JSON.parse(screen.getByTestId("serialized-config").textContent || "{}");
+      expect(serialized.tableBindings).toEqual(["initial_mapping"]);
+    });
     fireEvent.change(textarea, { target: { value: "alpha\nbeta\n" } });
 
     expect(textarea).toHaveValue("alpha\nbeta\n");

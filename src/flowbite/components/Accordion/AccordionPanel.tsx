@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import type { FC, PropsWithChildren } from "react";
 import { useState } from "react";
 import type { AccordionProps } from ".";

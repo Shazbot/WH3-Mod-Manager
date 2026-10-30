@@ -1252,17 +1252,17 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const paintSessionRef = useRef<ReturnType<typeof createUnitPainterSession> | null>(null);
   const decalFileInputRef = useRef<HTMLInputElement>(null);
   const decalReplaceFileInputRef = useRef<HTMLInputElement>(null);
-  const pendingDecalRef = useRef<UnitPainterDecalSource>();
+  const pendingDecalRef = useRef<UnitPainterDecalSource>(undefined);
   const paintSelectionHelperRef = useRef<THREE.Mesh[]>([]);
   const paintHoverHelperRef = useRef<THREE.Mesh | null>(null);
   const paintHoverKeyRef = useRef("");
-  const textureLinkedHoverSinkRef = useRef<(hover?: UnitPainterTextureHover) => void>();
-  const textureToModelHoverRef = useRef<(hover?: { textureId: string; x: number; y: number }) => void>();
+  const textureLinkedHoverSinkRef = useRef<(hover?: UnitPainterTextureHover) => void>(undefined);
+  const textureToModelHoverRef = useRef<(hover?: { textureId: string; x: number; y: number }) => void>(undefined);
   const painterEnabledRef = useRef(false);
   const paintViewModeRef = useRef<"model" | "split" | "texture">("model");
   const paintIsolationModeRef = useRef<UnitPainterIsolationMode>("off");
   const eyedropperActiveRef = useRef(false);
-  const selectToolModeRef = useRef<UnitPainterSelectMode>();
+  const selectToolModeRef = useRef<UnitPainterSelectMode>(undefined);
   const similarToleranceRef = useRef(8);
   const symmetryEnabledRef = useRef(false);
   const paintScopeRef = useRef<UnitPainterSelectionScope>("all");
@@ -1350,7 +1350,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const isPlayingRef = useRef(true);
   const animationSpeedRef = useRef(1);
   const selectedAnimationPathRef = useRef("");
-  const selectedAnimationReferenceRef = useRef<VisualsModelPreviewAnimationReference | undefined>();
+  const selectedAnimationReferenceRef = useRef<VisualsModelPreviewAnimationReference | undefined>(undefined);
   const primaryAnimationRef = useRef<PrimaryAnimationState | null>(null);
   const animationSwapTokenRef = useRef(0);
   const clipCacheRef = useRef<PreviewClipCache | null>(null);
@@ -1359,8 +1359,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const [previewLoadTick, setPreviewLoadTick] = useState(0);
   const [animationReloadTick, setAnimationReloadTick] = useState(0);
   const pendingCameraViewRef = useRef<{ assetPath: string; view: CameraView } | null>(null);
-  const loadedAnimationCatalogKeyRef = useRef<string>();
-  const loadedVariantCatalogKeyRef = useRef<string>();
+  const loadedAnimationCatalogKeyRef = useRef<string>(undefined);
+  const loadedVariantCatalogKeyRef = useRef<string>(undefined);
   const animationCatalogKey = useMemo(
     () => JSON.stringify([assetPath, animationProfile, effectiveEnabledMods, primaryAnimationTable ?? ""]),
     [animationProfile, assetPath, effectiveEnabledMods, primaryAnimationTable],

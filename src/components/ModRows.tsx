@@ -133,7 +133,7 @@ const emptyMods: Mod[] = [];
 const MemoizedFloatingOverlay = memo(FloatingOverlay);
 
 type ModRowsProps = {
-  scrollElement: RefObject<HTMLDivElement>;
+  scrollElement: RefObject<HTMLDivElement | null>;
 };
 
 const getLoadOrderRowAnchor = (modName: string) => document.getElementById(`load-order-row-anchor-${modName}`);
@@ -177,7 +177,7 @@ const ModRows = memo((props: ModRowsProps) => {
   const [activeLoadOrderPosition, setActiveLoadOrderPosition] = useState(0);
   const [recentlyReorderedModNames, setRecentlyReorderedModNames] = useState<Set<string>>(new Set());
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
-  const loadOrderScrollSnapshotRef = useRef<LoadOrderScrollSnapshot>();
+  const loadOrderScrollSnapshotRef = useRef<LoadOrderScrollSnapshot>(undefined);
   const skipInitialPlaceholderScrollRef = useRef(false);
   const pendingLoadOrderAnchorFramesRef = useRef<number[]>([]);
   const reorderHighlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);

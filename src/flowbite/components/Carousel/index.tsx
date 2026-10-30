@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import classNames from "classnames";
 import type { ComponentProps, FC, PropsWithChildren, ReactElement, ReactNode } from "react";
 import React from "react";
@@ -35,7 +36,7 @@ export const Carousel: FC<CarouselProps> = ({
 
   const items = useMemo(
     () =>
-      Children.map(children as ReactElement[], (child: ReactElement) =>
+      Children.map(children as ReactElement<{ className?: string }>[], (child: ReactElement<{ className?: string }>) =>
         cloneElement(child, {
           className: classNames(theme.item.base, child.props.className),
         }),

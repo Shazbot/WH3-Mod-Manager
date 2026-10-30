@@ -17,7 +17,7 @@ rules.push(
     test: /\.tsx$/,
     exclude: /(node_modules|\.webpack)/,
     use: [
-      { loader: "esbuild-loader", options: {} },
+      { loader: "esbuild-loader", options: { jsx: "automatic" } },
       {
         loader: "babel-loader",
         options: {
@@ -27,7 +27,7 @@ rules.push(
           plugins: [
             ["@babel/plugin-syntax-typescript", { isTSX: true }],
             // The logger warns when a component outside the allowlist is skipped (docs/REACT_COMPILER.md).
-            ["babel-plugin-react-compiler", { target: "18", logger: createBuildLogger() }],
+            ["babel-plugin-react-compiler", { target: "19", logger: createBuildLogger() }],
           ],
         },
       },

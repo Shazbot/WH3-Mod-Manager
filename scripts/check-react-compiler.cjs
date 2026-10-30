@@ -19,7 +19,7 @@ for (const file of files) {
     code: false,
     plugins: [
       ["@babel/plugin-syntax-typescript", { isTSX: true }],
-      ["babel-plugin-react-compiler", { target: "18", logger: { logEvent: (_filename, event) => events.push(event) } }],
+      ["babel-plugin-react-compiler", { target: "19", logger: { logEvent: (_filename, event) => events.push(event) } }],
     ],
   });
   compiledFunctions += events.filter((event) => event.kind === "CompileSuccess").length;

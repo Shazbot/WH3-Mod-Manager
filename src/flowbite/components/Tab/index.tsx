@@ -117,7 +117,9 @@ export const TabsComponent: FC<TabsProps> = ({ children, style = "default", ...r
             id={`${id}-tab-${index}`}
             onClick={() => handleClick({ target: index })}
             onKeyDown={(event) => handleKeyboard({ event, target: index })}
-            ref={(element) => (tabRefs.current[index] = element as HTMLButtonElement)}
+            ref={(element) => {
+              tabRefs.current[index] = element as HTMLButtonElement;
+            }}
             role="tab"
             tabIndex={index === focusedTab ? 0 : -1}
           >

@@ -6,7 +6,7 @@ export type BuildingUpgradeArrowsProps = {
   edges: BuildingsUpgradeEdge[];
   /** Live element per level key, filled in by the tiles as they mount. */
   tileElements: React.RefObject<Map<string, HTMLElement>>;
-  containerRef: React.RefObject<HTMLElement>;
+  containerRef: React.RefObject<HTMLElement | null>;
   /** Any value that changes when the board relays out, so the paths are recomputed. */
   layoutToken: unknown;
 };

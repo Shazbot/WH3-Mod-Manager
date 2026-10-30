@@ -11,7 +11,7 @@ export const getMiddleware = ({
   arrowRef,
   placement,
 }: {
-  arrowRef: RefObject<HTMLDivElement>;
+  arrowRef: RefObject<HTMLDivElement | null>;
   placement: "auto" | Placement;
 }): Middleware[] => {
   const middleware = [];

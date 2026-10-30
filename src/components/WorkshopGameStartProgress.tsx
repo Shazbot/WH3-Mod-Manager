@@ -191,7 +191,7 @@ const WorkshopGameStartProgressCard = memo(() => {
   const [progress, setProgress] = useState<WorkshopGameStartProgress>();
   const [cancelRequestedRunId, setCancelRequestedRunId] = useState<string>();
   const [skipRequestedRunId, setSkipRequestedRunId] = useState<string>();
-  const cancelRequestedRunIdRef = useRef<string>();
+  const cancelRequestedRunIdRef = useRef<string>(undefined);
   const seenRunIds = useRef(new Set<string>());
 
   useEffect(() => {

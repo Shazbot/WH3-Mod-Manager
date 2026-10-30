@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import classNames from "classnames";
 import type { ComponentProps, FC, PropsWithChildren, ReactElement } from "react";
 import React, { Children, cloneElement, useMemo, useState } from "react";

@@ -268,13 +268,13 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
   const [hoveredEffect, setHoveredEffect] = useState<Effect>();
   // Bumped each time the stick delay starts, so the lock bar's fill starts over.
   const [lockBarRun, setLockBarRun] = useState(0);
-  const tooltipTimer = useRef<ReturnType<typeof setTimeout>>();
-  const tooltipHideTimer = useRef<ReturnType<typeof setTimeout>>();
+  const tooltipTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const tooltipHideTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   // A hovered spell's tooltip sticks the same way, so the mouse can move into it.
   const [isSpellTooltipLocked, setIsSpellTooltipLocked] = useState(false);
   const [spellLockBarRun, setSpellLockBarRun] = useState(0);
-  const spellTooltipTimer = useRef<ReturnType<typeof setTimeout>>();
-  const spellTooltipHideTimer = useRef<ReturnType<typeof setTimeout>>();
+  const spellTooltipTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const spellTooltipHideTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [hoveredLevel, setHoveredLevel] = useState<number>();
   const [iconNaturalWidth, setIconNaturalWidth] = useState(0);
   const isTinyIcon = iconNaturalWidth > 0 && iconNaturalWidth <= skillIconBox.width / 2;
