@@ -1,11 +1,39 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { transformSync } from "@babel/core";
 import ts from "typescript";
 import { defineConfig } from "vitest/config";
 
 const projectRoot = fileURLToPath(new URL(".", import.meta.url));
 const typescriptFilePattern = /\.(?:[cm]?ts|tsx)$/;
+// Matches the renderer build: React Compiler runs on src .tsx files only (webpack.renderer.config.js).
+const reactCompilerFilePattern = /\/src\/.+\.tsx$/;
+
+// Tests run the same compiled components the app ships, so a component the compiler breaks fails here too. Like the
+// renderer build it compiles the TSX source before TypeScript: once JSX is createElement calls, the compiler reads
+// `ref` props as refs passed to a function and skips the component. Vite chains this plugin's source map with the
+// TypeScript one, so stack traces still point at the source.
+const reactCompiler = {
+  name: "react-compiler",
+  enforce: "pre",
+  transform(source, id) {
+    const filePath = id.split("?", 1)[0];
+    if (filePath.includes("/node_modules/") || !reactCompilerFilePattern.test(filePath)) return null;
+
+    const result = transformSync(source, {
+      filename: filePath,
+      babelrc: false,
+      configFile: false,
+      sourceMaps: true,
+      plugins: [
+        ["@babel/plugin-syntax-typescript", { isTSX: true }],
+        ["babel-plugin-react-compiler", { target: "18" }],
+      ],
+    });
+    return { code: result.code, map: result.map };
+  },
+};
 
 const transformTypescript = {
   name: "transform-typescript-with-typescript",
@@ -40,7 +68,7 @@ const transformTypescript = {
 export default defineConfig({
   root: projectRoot,
   esbuild: false,
-  plugins: [transformTypescript],
+  plugins: [reactCompiler, transformTypescript],
   resolve: {
     alias: {
       "@": path.resolve(projectRoot),
@@ -56,7 +84,7 @@ export default defineConfig({
     projects: [
       {
         esbuild: false,
-        plugins: [transformTypescript],
+        plugins: [reactCompiler, transformTypescript],
         // Projects do not inherit the root `resolve`, and src code imports through the "@" alias.
         resolve: { alias: { "@": projectRoot } },
         test: {
@@ -68,7 +96,7 @@ export default defineConfig({
       },
       {
         esbuild: false,
-        plugins: [transformTypescript],
+        plugins: [reactCompiler, transformTypescript],
         resolve: { alias: { "@": projectRoot } },
         test: {
           name: "dom",

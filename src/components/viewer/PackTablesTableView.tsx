@@ -1131,32 +1131,29 @@ const AgGridWrapper = memo(
     }, [rowCount, selectionRanges]);
 
     const columnDefs = useMemo<Array<ColDef<RowData>>>(() => {
-      const defs: Array<ColDef<RowData>> = [
-        {
-          headerName: "",
-          colId: "__rowIndex",
-          editable: false,
-          width: rowIndexColumnWidth,
-          minWidth: rowIndexColumnWidth,
-          resizable: false,
-          pinned: "left",
-          sortable: false,
-          filter: false,
-          suppressMovable: true,
-          valueGetter: (p) => (typeof p.node?.rowIndex === "number" ? p.node.rowIndex + 1 : ""),
-          cellClass: (p) => {
-            const rowIndex = p.node?.rowIndex;
-            const classes = ["pack-table-row-index-cell", "text-right", "tabular-nums"];
-            if (typeof rowIndex === "number" && isRowSelected(rowIndex)) {
-              classes.push("pack-table-row-index-selected");
-            }
-            return classes;
-          },
+      const rowIndexDef: ColDef<RowData> = {
+        headerName: "",
+        colId: "__rowIndex",
+        editable: false,
+        width: rowIndexColumnWidth,
+        minWidth: rowIndexColumnWidth,
+        resizable: false,
+        pinned: "left",
+        sortable: false,
+        filter: false,
+        suppressMovable: true,
+        valueGetter: (p) => (typeof p.node?.rowIndex === "number" ? p.node.rowIndex + 1 : ""),
+        cellClass: (p) => {
+          const rowIndex = p.node?.rowIndex;
+          const classes = ["pack-table-row-index-cell", "text-right", "tabular-nums"];
+          if (typeof rowIndex === "number" && isRowSelected(rowIndex)) {
+            classes.push("pack-table-row-index-selected");
+          }
+          return classes;
         },
-      ];
+      };
 
-      for (let colIndex = 0; colIndex < currentSchema.fields.length; colIndex++) {
-        const field = currentSchema.fields[colIndex];
+      const fieldDefs = currentSchema.fields.map((field, colIndex): ColDef<RowData> => {
         const colType = columns[colIndex]?.type;
         const isFloatColumn = field?.field_type === "F32" || field?.field_type === "F64";
         const isKey = !!field && keyColumnSet.has(field.name);
@@ -1172,7 +1169,7 @@ const AgGridWrapper = memo(
           : getColumnWidth(colIndex);
         const width = Math.max(contentWidth, getHeaderMinWidth(displayHeaderName, isKey, headerChromePx));
         const columnDefaultValue = columnDefaultValues[colIndex];
-        defs.push({
+        return {
           headerName,
           headerTooltip: getColumnHeaderTooltip(tableName, field, fullHeaderName, localized),
           hide: hiddenColumnIndexes.has(colIndex),
@@ -1221,10 +1218,10 @@ const AgGridWrapper = memo(
             }
             return classes;
           },
-        });
-      }
+        };
+      });
 
-      return defs;
+      return [rowIndexDef, ...fieldDefs];
     }, [
       columnHeaders,
       columns,
@@ -1451,36 +1448,36 @@ const AgGridWrapper = memo(
       }
     }, []);
 
-    const runAutoScroll = useCallback(() => {
-      autoScrollFrameRef.current = null;
-
-      const dragSelection = dragSelectionRef.current;
-      const pointer = dragPointerRef.current;
-      const root = gridRootRef.current;
-      if (!dragSelection || !pointer || !root) return;
-
-      const viewport = getGridViewport(root);
-      if (!viewport) return;
-
-      const viewportRect = viewport.getBoundingClientRect();
-      // The shared viewport also contains the sticky header; selection scrolls at the row edge.
-      const headerBottom = root.querySelector(".ag-header")?.getBoundingClientRect().bottom ?? viewportRect.top;
-      const bodyTop = Math.max(viewportRect.top, headerBottom);
-      const deltaY = getAutoScrollDelta(pointer.clientY, bodyTop, viewportRect.bottom);
-      const deltaX = getAutoScrollDelta(pointer.clientX, viewportRect.left, viewportRect.right);
-      const didScroll = scrollGridBy(root, deltaX, deltaY);
-
-      if (didScroll) {
-        updateDragSelectionFromPoint(pointer.clientX, pointer.clientY);
-      }
-
-      autoScrollFrameRef.current = window.requestAnimationFrame(runAutoScroll);
-    }, [updateDragSelectionFromPoint]);
-
     const startAutoScroll = useCallback(() => {
       if (autoScrollFrameRef.current != null) return;
+      // Each frame schedules the next until the drag stops or there is nothing left to scroll.
+      function runAutoScroll() {
+        autoScrollFrameRef.current = null;
+
+        const dragSelection = dragSelectionRef.current;
+        const pointer = dragPointerRef.current;
+        const root = gridRootRef.current;
+        if (!dragSelection || !pointer || !root) return;
+
+        const viewport = getGridViewport(root);
+        if (!viewport) return;
+
+        const viewportRect = viewport.getBoundingClientRect();
+        // The shared viewport also contains the sticky header; selection scrolls at the row edge.
+        const headerBottom = root.querySelector(".ag-header")?.getBoundingClientRect().bottom ?? viewportRect.top;
+        const bodyTop = Math.max(viewportRect.top, headerBottom);
+        const deltaY = getAutoScrollDelta(pointer.clientY, bodyTop, viewportRect.bottom);
+        const deltaX = getAutoScrollDelta(pointer.clientX, viewportRect.left, viewportRect.right);
+        const didScroll = scrollGridBy(root, deltaX, deltaY);
+
+        if (didScroll) {
+          updateDragSelectionFromPoint(pointer.clientX, pointer.clientY);
+        }
+
+        autoScrollFrameRef.current = window.requestAnimationFrame(runAutoScroll);
+      }
       autoScrollFrameRef.current = window.requestAnimationFrame(runAutoScroll);
-    }, [runAutoScroll]);
+    }, [updateDragSelectionFromPoint]);
 
     useEffect(() => {
       const onWindowMouseMove = (event: MouseEvent) => {
@@ -1924,6 +1921,10 @@ type PackTablesTableViewProps = {
   onSearchNavigationHandled?: (requestId: number) => void;
 };
 
+// Kept outside the component so the try/catch that awaits it holds no optional chaining, which React Compiler
+// cannot compile.
+const saveDBTableEdits = (packPath: string, packFile: PackedFile) => window.api?.saveDBTableEdits(packPath, packFile);
+
 const PackTablesTableView = memo((props: PackTablesTableViewProps) => {
   const {
     showDialog,
@@ -1950,8 +1951,8 @@ const PackTablesTableView = memo((props: PackTablesTableViewProps) => {
   const [searchSelection, setSearchSelection] = useState<ReferenceSelection | undefined>(undefined);
   const handledReferenceRequestIdRef = useRef<number | null>(null);
   const handledSearchNavigationRequestIdRef = useRef<number | null>(null);
-  const selectCurrentPackData = useMemo(makeSelectCurrentPackData, []);
-  const selectCurrentPackUnsavedFiles = useMemo(makeSelectCurrentPackUnsavedFiles, []);
+  const selectCurrentPackData = useMemo(() => makeSelectCurrentPackData(), []);
+  const selectCurrentPackUnsavedFiles = useMemo(() => makeSelectCurrentPackUnsavedFiles(), []);
 
   const setTableFilterDebounced = useMemo(
     () =>
@@ -2372,45 +2373,53 @@ const PackTablesTableView = memo((props: PackTablesTableViewProps) => {
 
       applyPackFileLocally(nextPackFile, nextPreparedTableData);
 
+      // The try only awaits the call: React Compiler cannot compile a throw, or optional chaining, inside try/catch.
+      let result: Awaited<ReturnType<typeof saveDBTableEdits>> = undefined;
+      let saveError: unknown;
       try {
-        const result = await window.api?.saveDBTableEdits(packPath, nextPackFile);
-        if (!result?.success) {
-          throw new Error(
-            result?.error || localized.viewerFailedToStoreDbTableEdits || "Failed to store DB table edits",
-          );
-        }
-
-        if (historyMode === "push") {
-          historyPastRef.current.push(previousPackFile);
-          if (historyPastRef.current.length > 100) {
-            historyPastRef.current.shift();
-          }
-          historyFutureRef.current = [];
-          syncHistorySize();
-        } else if (historyMode === "undo") {
-          historyPastRef.current.pop();
-          historyFutureRef.current.push(previousPackFile);
-          syncHistorySize();
-        } else if (historyMode === "redo") {
-          historyFutureRef.current.pop();
-          historyPastRef.current.push(previousPackFile);
-          syncHistorySize();
-        }
-
-        return true;
+        result = await saveDBTableEdits(packPath, nextPackFile);
       } catch (error) {
+        saveError = error;
+      }
+      const saved = saveError === undefined && !!result?.success;
+      if (!saved && saveError === undefined) {
+        saveError = new Error(
+          result?.error || localized.viewerFailedToStoreDbTableEdits || "Failed to store DB table edits",
+        );
+      }
+
+      if (!saved) {
         clearPreparedTableForPackedFile(packPath, previousPackFile.name);
         setWorkingPackFile(previousPackFile);
         setWorkingPreparedTableData(previousPreparedTableData);
         showDialog(
           (localized.viewerFailedToSaveDbTableEdits || "Failed to save DB table edits: {{error}}").replace(
             "{{error}}",
-            error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
+            saveError instanceof Error ? saveError.message : localized.viewerUnknownError || "Unknown error",
           ),
           { title: localized.viewerSaveFailed || "Save Failed" },
         );
         return false;
       }
+
+      if (historyMode === "push") {
+        historyPastRef.current.push(previousPackFile);
+        if (historyPastRef.current.length > 100) {
+          historyPastRef.current.shift();
+        }
+        historyFutureRef.current = [];
+        syncHistorySize();
+      } else if (historyMode === "undo") {
+        historyPastRef.current.pop();
+        historyFutureRef.current.push(previousPackFile);
+        syncHistorySize();
+      } else if (historyMode === "redo") {
+        historyFutureRef.current.pop();
+        historyPastRef.current.push(previousPackFile);
+        syncHistorySize();
+      }
+
+      return true;
     },
     [applyPackFileLocally, currentSchema, localized, packPath, showDialog, syncHistorySize],
   );

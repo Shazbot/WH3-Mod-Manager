@@ -47,6 +47,7 @@ import {
   serializeLoadOrderRuleRows,
 } from "../../utility/loadOrderRulesFile";
 import type { VanillaPackTreeChild } from "../../vanillaPackIndex/format";
+import { runGuarded } from "../../utility/runGuarded";
 
 type PackTablesTreeViewProps = {
   packPath: string;
@@ -325,7 +326,8 @@ type HeadlessVirtualTreeProps = {
   hiddenNodeIds: Set<INode["id"]>;
   selectedIds: Array<string | number>;
   expandedIds: Array<string | number>;
-  initialScrollTop: number;
+  // Read once when the tree mounts; it is keyed by tab and pack, so switching either remounts it.
+  getInitialScrollTop: () => number;
   ariaLabel: string;
   onSelectedIdsChange: (ids: Array<string | number>) => void;
   onExpandedIdsChange: (ids: Array<string | number>) => void;
@@ -339,6 +341,9 @@ type HeadlessVirtualTreeProps = {
 };
 
 /** The virtualized presentation layer for one of the pack trees. */
+// Ids are joined with a character that never appears in a pack path, so splitting gives them back.
+const splitItemKey = (itemKey: string): string[] => (itemKey === "" ? [] : itemKey.split("\u0001"));
+
 const HeadlessVirtualTree = React.memo(
   ({
     treeTab,
@@ -346,7 +351,7 @@ const HeadlessVirtualTree = React.memo(
     hiddenNodeIds,
     selectedIds,
     expandedIds,
-    initialScrollTop,
+    getInitialScrollTop,
     ariaLabel,
     onSelectedIdsChange,
     onExpandedIdsChange,
@@ -358,7 +363,11 @@ const HeadlessVirtualTree = React.memo(
     getNodeClassName,
     getNodeStyle,
   }: HeadlessVirtualTreeProps) => {
+    // Headless Tree keeps one tree object and changes it in place (rebuildTree, getItems), which React Compiler
+    // would treat as unchanged and cache, leaving the list showing stale items. Keep this component uncompiled.
+    "use no memo";
     const listRef = React.useRef<List | null>(null);
+    const [initialScrollTop] = React.useState(getInitialScrollTop);
     const scrollTopRef = React.useRef(initialScrollTop);
     const nodeById = React.useMemo(() => {
       const result = new Map<string, INode>();
@@ -376,10 +385,9 @@ const HeadlessVirtualTree = React.memo(
     const selectedItemKey = selectedIds.join("\u0001");
     // The content key keeps controlled arrays stable across parent renders without feeding the
     // freshly-created array identity back into Headless Tree's controlled-state reconciliation.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    const expandedItemIds = React.useMemo(() => expandedIds.map(String), [expandedItemKey]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    const selectedItemIds = React.useMemo(() => selectedIds.map(String), [selectedItemKey]);
+    // The arrays are rebuilt from the key itself, so they change exactly when their contents do.
+    const expandedItemIds = React.useMemo(() => splitItemKey(expandedItemKey), [expandedItemKey]);
+    const selectedItemIds = React.useMemo(() => splitItemKey(selectedItemKey), [selectedItemKey]);
 
     const tree = useTree<HeadlessPackTreeItem>({
       rootItemId: String(data[0]?.id ?? 0),
@@ -544,11 +552,10 @@ const HeadlessVirtualTree = React.memo(
 );
 
 const ArrowIconForHeadlessTree = ({ isOpen }: { isOpen: boolean }) => {
-  const baseClass = "arrow";
   const classes = cx(
-    baseClass,
-    { [`${baseClass}--closed`]: !isOpen },
-    { [`${baseClass}--open`]: isOpen },
+    "arrow",
+    { "arrow--closed": !isOpen },
+    { "arrow--open": isOpen },
     { "rotate-90": isOpen },
     "w-4",
     "h-4",
@@ -565,8 +572,8 @@ const PackTablesTreeView = React.memo(
     const dispatch = useAppDispatch();
     const localized: Record<string, string> = useContext(localizationContext);
     const currentGame = useAppSelector((state) => state.app.currentGame);
-    const selectCurrentPackData = useMemo(makeSelectCurrentPackData, []);
-    const selectCurrentPackUnsavedFiles = useMemo(makeSelectCurrentPackUnsavedFiles, []);
+    const selectCurrentPackData = useMemo(() => makeSelectCurrentPackData(), []);
+    const selectCurrentPackUnsavedFiles = useMemo(() => makeSelectCurrentPackUnsavedFiles(), []);
 
     const [activeTreeTab, setActiveTreeTab] = React.useState<"db" | "files">(props.preferredTab);
     const [contextMenu, setContextMenu] = React.useState<{
@@ -622,17 +629,6 @@ const PackTablesTreeView = React.memo(
       setActiveTreeTab(props.preferredTab);
     }, [props.packPath, props.preferredTab]);
 
-    useImperativeHandle(ref, () => ({
-      openNewFlowDialog: () => {
-        setContextMenu(null);
-        setActiveTreeTab("files");
-        setIsNewFlowDialogOpen(true);
-      },
-      createLoadOrderRulesFile: () => {
-        void handleCreateLoadOrderRules();
-      },
-    }));
-
     const packPath = props.packPath || gameToPackWithDBTablesName[currentGame] || "db.pack";
     const packData = useAppSelector((state) => selectCurrentPackData(state, packPath));
     const unsavedFiles = useAppSelector((state) => selectCurrentPackUnsavedFiles(state, packPath));
@@ -660,8 +656,8 @@ const PackTablesTreeView = React.memo(
           return;
         }
 
-        const request = (async () => {
-          try {
+        const request = runGuarded(
+          async () => {
             const result = await getVanillaPackFileTree(packPath, prefixKey);
             if (requestGeneration !== vanillaFileTreeGenerationRef.current || !result?.success) return;
 
@@ -678,19 +674,22 @@ const PackTablesTreeView = React.memo(
               }
               return [...childrenByPath.values()];
             });
-          } catch (error) {
-            console.error(`Could not load vanilla files under ${prefix || "the pack root"}:`, error);
-          }
-        })();
+          },
+          {
+            onError: (error) => {
+              console.error(`Could not load vanilla files under ${prefix || "the pack root"}:`, error);
+            },
+          },
+        );
 
         vanillaFileTreeRequestsRef.current.set(prefixKey, request);
-        try {
-          await request;
-        } finally {
-          if (vanillaFileTreeRequestsRef.current.get(prefixKey) === request) {
-            vanillaFileTreeRequestsRef.current.delete(prefixKey);
-          }
-        }
+        await runGuarded(() => request, {
+          onFinally: () => {
+            if (vanillaFileTreeRequestsRef.current.get(prefixKey) === request) {
+              vanillaFileTreeRequestsRef.current.delete(prefixKey);
+            }
+          },
+        });
       },
       [isVanillaDBPackOpen, packPath],
     );
@@ -711,21 +710,26 @@ const PackTablesTreeView = React.memo(
 
       let isCurrent = true;
       void (async () => {
-        try {
-          const result = await searchVanillaPackFiles(packPath, normalizedFilter);
-          if (!isCurrent || searchGeneration !== vanillaFileSearchGenerationRef.current || !result?.success) return;
+        await runGuarded(
+          async () => {
+            const result = await searchVanillaPackFiles(packPath, normalizedFilter);
+            if (!isCurrent || searchGeneration !== vanillaFileSearchGenerationRef.current || !result?.success) return;
 
-          setVanillaFileSearch({
-            query: normalizedFilter,
-            filePaths: result.filePaths ?? [],
-            folderPaths: result.folderPaths ?? [],
-            truncated: result.truncated ?? false,
-          });
-        } catch (error) {
-          if (isCurrent && searchGeneration === vanillaFileSearchGenerationRef.current) {
-            console.error(`Could not search vanilla files for ${normalizedFilter}:`, error);
-          }
-        }
+            setVanillaFileSearch({
+              query: normalizedFilter,
+              filePaths: result.filePaths ?? [],
+              folderPaths: result.folderPaths ?? [],
+              truncated: result.truncated ?? false,
+            });
+          },
+          {
+            onError: (error) => {
+              if (isCurrent && searchGeneration === vanillaFileSearchGenerationRef.current) {
+                console.error(`Could not search vanilla files for ${normalizedFilter}:`, error);
+              }
+            },
+          },
+        );
       })();
 
       return () => {
@@ -1369,33 +1373,38 @@ const PackTablesTreeView = React.memo(
       const paths = deleteConfirm;
       if (!paths) return;
       setDeleteConfirm(null);
-      try {
-        const result = await window.api?.deletePackedFiles?.(packPath, paths);
-        if (!result?.success) {
-          props.showDialog(
-            (localized.viewerDeletePackedFilesError || "Failed to delete packed files: {{error}}").replace(
-              "{{error}}",
-              result?.error || localized.viewerUnknownError || "Unknown error",
-            ),
-            {
-              title: localized.viewerDeleteFailed || "Delete Failed",
-            },
-          );
-          return;
-        }
-        const removedPaths = result.removedPaths ?? paths;
-        clearPackFileCaches(removedPaths);
-        props.onPackFilePathsRemoved?.(packPath, removedPaths);
-      } catch (error) {
-        console.error("Error deleting packed files:", error);
-        props.showDialog(
-          (localized.viewerDeletePackedFilesException || "Error deleting packed files: {{error}}").replace(
-            "{{error}}",
-            error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
-          ),
-          { title: localized.viewerDeleteFailed || "Delete Failed" },
-        );
-      }
+      await runGuarded(
+        async () => {
+          const result = await window.api?.deletePackedFiles?.(packPath, paths);
+          if (!result?.success) {
+            props.showDialog(
+              (localized.viewerDeletePackedFilesError || "Failed to delete packed files: {{error}}").replace(
+                "{{error}}",
+                result?.error || localized.viewerUnknownError || "Unknown error",
+              ),
+              {
+                title: localized.viewerDeleteFailed || "Delete Failed",
+              },
+            );
+            return;
+          }
+          const removedPaths = result.removedPaths ?? paths;
+          clearPackFileCaches(removedPaths);
+          props.onPackFilePathsRemoved?.(packPath, removedPaths);
+        },
+        {
+          onError: (error) => {
+            console.error("Error deleting packed files:", error);
+            props.showDialog(
+              (localized.viewerDeletePackedFilesException || "Error deleting packed files: {{error}}").replace(
+                "{{error}}",
+                error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
+              ),
+              { title: localized.viewerDeleteFailed || "Delete Failed" },
+            );
+          },
+        },
+      );
     };
 
     useEffect(() => {
@@ -1421,32 +1430,37 @@ const PackTablesTreeView = React.memo(
 
     const handleRenameApply = async (entries: PackFileRenameEntry[]) => {
       if (!renameRequest) return;
-      try {
-        const result = await window.api?.renamePackedFilesInPack?.(packPath, entries);
-        if (!result?.success) {
-          props.showDialog(
-            (localized.viewerRenamePackedFilesError || "Failed to rename packed files: {{error}}").replace(
-              "{{error}}",
-              result?.error || localized.viewerUnknownError || "Unknown error",
-            ),
-            { title: localized.viewerRenameFailed || "Rename Failed" },
-          );
-          return;
-        }
-        const removedPaths = result.removedPaths ?? entries.map((entry) => entry.originalPath);
-        clearPackFileCaches([...removedPaths, ...entries.map((entry) => entry.newPath)]);
-        props.onPackFilePathsRemoved?.(packPath, removedPaths);
-        setRenameRequest(null);
-      } catch (error) {
-        console.error("Error renaming packed files:", error);
-        props.showDialog(
-          (localized.viewerRenamePackedFilesException || "Error renaming packed files: {{error}}").replace(
-            "{{error}}",
-            error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
-          ),
-          { title: localized.viewerRenameFailed || "Rename Failed" },
-        );
-      }
+      await runGuarded(
+        async () => {
+          const result = await window.api?.renamePackedFilesInPack?.(packPath, entries);
+          if (!result?.success) {
+            props.showDialog(
+              (localized.viewerRenamePackedFilesError || "Failed to rename packed files: {{error}}").replace(
+                "{{error}}",
+                result?.error || localized.viewerUnknownError || "Unknown error",
+              ),
+              { title: localized.viewerRenameFailed || "Rename Failed" },
+            );
+            return;
+          }
+          const removedPaths = result.removedPaths ?? entries.map((entry) => entry.originalPath);
+          clearPackFileCaches([...removedPaths, ...entries.map((entry) => entry.newPath)]);
+          props.onPackFilePathsRemoved?.(packPath, removedPaths);
+          setRenameRequest(null);
+        },
+        {
+          onError: (error) => {
+            console.error("Error renaming packed files:", error);
+            props.showDialog(
+              (localized.viewerRenamePackedFilesException || "Error renaming packed files: {{error}}").replace(
+                "{{error}}",
+                error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
+              ),
+              { title: localized.viewerRenameFailed || "Rename Failed" },
+            );
+          },
+        },
+      );
     };
 
     /**
@@ -1561,46 +1575,54 @@ const PackTablesTreeView = React.memo(
       setContextMenu(null);
       setActiveTreeTab("db");
       setIsLoadingNewTableOptions(true);
-      try {
-        const [dbNameToDBVersions, nextDefaultTableVersions] = await Promise.all([
-          window.api?.getDBNameToDBVersions(),
-          window.api?.getDefaultTableVersions(),
-        ]);
+      await runGuarded(
+        async () => {
+          const [dbNameToDBVersions, nextDefaultTableVersions] = await Promise.all([
+            window.api?.getDBNameToDBVersions(),
+            window.api?.getDefaultTableVersions(),
+          ]);
 
-        const resolvedTableVersions =
-          dbNameToDBVersions && Object.keys(dbNameToDBVersions).length > 0
-            ? dbNameToDBVersions
-            : dataFromBackend.DBNameToDBVersions;
+          const resolvedTableVersions =
+            dbNameToDBVersions && Object.keys(dbNameToDBVersions).length > 0
+              ? dbNameToDBVersions
+              : dataFromBackend.DBNameToDBVersions;
 
-        const tableNames = Object.keys(resolvedTableVersions).toSorted((first, second) => first.localeCompare(second));
-        if (tableNames.length === 0) {
-          props.showDialog(localized.viewerNoVanillaTables || "No vanilla DB tables are available for this game", {
-            title: localized.viewerNoTables || "No Tables",
-          });
-          return;
-        }
+          const tableNames = Object.keys(resolvedTableVersions).toSorted((first, second) =>
+            first.localeCompare(second),
+          );
+          if (tableNames.length === 0) {
+            props.showDialog(localized.viewerNoVanillaTables || "No vanilla DB tables are available for this game", {
+              title: localized.viewerNoTables || "No Tables",
+            });
+            return;
+          }
 
-        setAvailableTableVersions(resolvedTableVersions);
-        setDefaultTableVersions(nextDefaultTableVersions || {});
-        setNewTableName((currentValue) =>
-          currentValue && resolvedTableVersions[currentValue] ? currentValue : tableNames[0],
-        );
-        setNewTableSuffix("");
-        setIsNewTableDialogOpen(true);
-      } catch (error) {
-        console.error("Error loading vanilla DB table definitions:", error);
-        props.showDialog(
-          (
-            localized.viewerLoadVanillaDefinitionsError || "Failed to load vanilla DB table definitions: {{error}}"
-          ).replace(
-            "{{error}}",
-            error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
-          ),
-          { title: localized.viewerError || "Error" },
-        );
-      } finally {
-        setIsLoadingNewTableOptions(false);
-      }
+          setAvailableTableVersions(resolvedTableVersions);
+          setDefaultTableVersions(nextDefaultTableVersions || {});
+          setNewTableName((currentValue) =>
+            currentValue && resolvedTableVersions[currentValue] ? currentValue : tableNames[0],
+          );
+          setNewTableSuffix("");
+          setIsNewTableDialogOpen(true);
+        },
+        {
+          onError: (error) => {
+            console.error("Error loading vanilla DB table definitions:", error);
+            props.showDialog(
+              (
+                localized.viewerLoadVanillaDefinitionsError || "Failed to load vanilla DB table definitions: {{error}}"
+              ).replace(
+                "{{error}}",
+                error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
+              ),
+              { title: localized.viewerError || "Error" },
+            );
+          },
+          onFinally: () => {
+            setIsLoadingNewTableOptions(false);
+          },
+        },
+      );
     };
 
     const showExportResult = (result: PackExportResult | undefined, outputDirectory: string) => {
@@ -1637,23 +1659,33 @@ const PackTablesTreeView = React.memo(
 
       setContextMenu(null);
       setIsExportingSelection(true);
-      try {
-        const outputDirectory = await window.api?.selectDirectory();
-        if (!outputDirectory) return;
-        const result = await window.api?.exportPackedFilesToDirectory?.(packPath, outputDirectory, selectedExportPaths);
-        showExportResult(result, outputDirectory);
-      } catch (error) {
-        console.error("Error exporting selected packed files:", error);
-        props.showDialog(
-          (localized.viewerErrorExportingPackedFiles || "Error exporting packed files: {{error}}").replace(
-            "{{error}}",
-            error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
-          ),
-          { title: localized.viewerExportFailed || "Export Failed" },
-        );
-      } finally {
-        setIsExportingSelection(false);
-      }
+      await runGuarded(
+        async () => {
+          const outputDirectory = await window.api?.selectDirectory();
+          if (!outputDirectory) return;
+          const result = await window.api?.exportPackedFilesToDirectory?.(
+            packPath,
+            outputDirectory,
+            selectedExportPaths,
+          );
+          showExportResult(result, outputDirectory);
+        },
+        {
+          onError: (error) => {
+            console.error("Error exporting selected packed files:", error);
+            props.showDialog(
+              (localized.viewerErrorExportingPackedFiles || "Error exporting packed files: {{error}}").replace(
+                "{{error}}",
+                error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
+              ),
+              { title: localized.viewerExportFailed || "Export Failed" },
+            );
+          },
+          onFinally: () => {
+            setIsExportingSelection(false);
+          },
+        },
+      );
     };
 
     const handleExportWholePack = async () => {
@@ -1661,70 +1693,84 @@ const PackTablesTreeView = React.memo(
 
       setContextMenu(null);
       setIsExportingWholePack(true);
-      try {
-        const outputDirectory = await window.api?.selectDirectory();
-        if (!outputDirectory) return;
-        const result = await window.api?.exportPackedFilesToDirectory?.(packPath, outputDirectory, "all");
-        showExportResult(result, outputDirectory);
-      } catch (error) {
-        console.error("Error exporting whole packed file:", error);
-        props.showDialog(
-          (localized.viewerErrorExportingPackedFiles || "Error exporting packed files: {{error}}").replace(
-            "{{error}}",
-            error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
-          ),
-          { title: localized.viewerExportFailed || "Export Failed" },
-        );
-      } finally {
-        setIsExportingWholePack(false);
-      }
+      await runGuarded(
+        async () => {
+          const outputDirectory = await window.api?.selectDirectory();
+          if (!outputDirectory) return;
+          const result = await window.api?.exportPackedFilesToDirectory?.(packPath, outputDirectory, "all");
+          showExportResult(result, outputDirectory);
+        },
+        {
+          onError: (error) => {
+            console.error("Error exporting whole packed file:", error);
+            props.showDialog(
+              (localized.viewerErrorExportingPackedFiles || "Error exporting packed files: {{error}}").replace(
+                "{{error}}",
+                error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
+              ),
+              { title: localized.viewerExportFailed || "Export Failed" },
+            );
+          },
+          onFinally: () => {
+            setIsExportingWholePack(false);
+          },
+        },
+      );
     };
 
     const applyImportItems = async (items: PackImportItem[], planningErrors: PackImportPlanError[] = []) => {
       setIsImporting(true);
-      try {
-        const result = await window.api?.applyPackImportFromDisk?.(packPath, items);
-        const errors = [
-          ...planningErrors.map((error) => `${error.diskPath || localized.viewerImport || "Import"}: ${error.message}`),
-          ...(result?.errors ?? []).map(
-            (error) => `${error.diskPath || localized.viewerImport || "Import"}: ${error.message}`,
-          ),
-        ];
-        if (!result?.success && errors.length === 0) {
-          errors.push(localized.viewerImportUnknownError || "Unknown import error");
-        }
-        if (errors.length > 0) {
-          props.showDialog(
-            (
-              localized.viewerImportedWithErrors ||
-              "Imported {{imported}} file(s), but {{failed}} file(s) failed:\n{{errors}}"
-            )
-              .replace("{{imported}}", String(result?.importedCount ?? 0))
-              .replace("{{failed}}", String(errors.length))
-              .replace("{{errors}}", errors.join("\n")),
-            { title: localized.viewerImportFinishedWithErrors || "Import Finished With Errors" },
-          );
-        } else {
-          props.showDialog(
-            (localized.viewerImportedSuccess || "Imported {{count}} file(s). Press Save to write the pack.").replace(
-              "{{count}}",
-              String(result?.importedCount ?? 0),
+      await runGuarded(
+        async () => {
+          const result = await window.api?.applyPackImportFromDisk?.(packPath, items);
+          const errors = [
+            ...planningErrors.map(
+              (error) => `${error.diskPath || localized.viewerImport || "Import"}: ${error.message}`,
             ),
-            { title: localized.viewerImportComplete || "Import Complete" },
-          );
-        }
-      } catch (error) {
-        console.error("Error importing packed files:", error);
-        props.showDialog(
-          (localized.viewerErrorImportingPackedFiles || "Error importing packed files: {{error}}").replace(
-            "{{error}}",
-            error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
-          ),
-          { title: localized.viewerImportFailed || "Import Failed" },
-        );
-      } finally {
-        setIsImporting(false);
-      }
+            ...(result?.errors ?? []).map(
+              (error) => `${error.diskPath || localized.viewerImport || "Import"}: ${error.message}`,
+            ),
+          ];
+          if (!result?.success && errors.length === 0) {
+            errors.push(localized.viewerImportUnknownError || "Unknown import error");
+          }
+          if (errors.length > 0) {
+            props.showDialog(
+              (
+                localized.viewerImportedWithErrors ||
+                "Imported {{imported}} file(s), but {{failed}} file(s) failed:\n{{errors}}"
+              )
+                .replace("{{imported}}", String(result?.importedCount ?? 0))
+                .replace("{{failed}}", String(errors.length))
+                .replace("{{errors}}", errors.join("\n")),
+              { title: localized.viewerImportFinishedWithErrors || "Import Finished With Errors" },
+            );
+          } else {
+            props.showDialog(
+              (localized.viewerImportedSuccess || "Imported {{count}} file(s). Press Save to write the pack.").replace(
+                "{{count}}",
+                String(result?.importedCount ?? 0),
+              ),
+              { title: localized.viewerImportComplete || "Import Complete" },
+            );
+          }
+        },
+        {
+          onError: (error) => {
+            console.error("Error importing packed files:", error);
+            props.showDialog(
+              (localized.viewerErrorImportingPackedFiles || "Error importing packed files: {{error}}").replace(
+                "{{error}}",
+                error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
+              ),
+              { title: localized.viewerImportFailed || "Import Failed" },
+            );
+          },
+          onFinally: () => {
+            setIsImporting(false);
+          },
+        },
+      );
     };
 
     const handleImport = async (kind: "file" | "folder") => {
@@ -1733,46 +1779,52 @@ const PackTablesTreeView = React.memo(
       const targetFolder = contextMenu?.target?.kind === "folder" ? contextMenu.target.folderPath : "";
       setContextMenu(null);
       setIsImporting(true);
-      try {
-        const sourcePaths =
-          kind === "file" ? await window.api?.selectImportFiles?.() : await window.api?.selectImportFolders?.();
-        if (!sourcePaths || sourcePaths.length === 0) return;
+      await runGuarded(
+        async () => {
+          const sourcePaths =
+            kind === "file" ? await window.api?.selectImportFiles?.() : await window.api?.selectImportFolders?.();
+          if (!sourcePaths || sourcePaths.length === 0) return;
 
-        const plan = await window.api?.planPackImportFromDisk?.(
-          packPath,
-          sourcePaths.map((sourcePath) => ({ path: sourcePath, kind })),
-          targetFolder,
-        );
-        if (!plan) {
-          props.showDialog(localized.viewerCouldNotPlanImport || "Could not plan the import", {
-            title: localized.viewerImportFailed || "Import Failed",
-          });
-          return;
-        }
-        if (plan.items.length === 0) {
-          const errors = plan.errors.map((error) => `${error.diskPath || "Import"}: ${error.message}`).join("\n");
-          props.showDialog(errors || localized.viewerNoFilesToImport || "No files were found to import", {
-            title: localized.viewerNothingToImport || "Nothing To Import",
-          });
-          return;
-        }
-        if (plan.items.some((item) => item.conflictsWith)) {
-          props.onImportConflicts?.({ packPath, plan });
-          return;
-        }
-        await applyImportItems(plan.items, plan.errors);
-      } catch (error) {
-        console.error("Error planning packed file import:", error);
-        props.showDialog(
-          (localized.viewerErrorImportingPackedFiles || "Error importing packed files: {{error}}").replace(
-            "{{error}}",
-            error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
-          ),
-          { title: localized.viewerImportFailed || "Import Failed" },
-        );
-      } finally {
-        setIsImporting(false);
-      }
+          const plan = await window.api?.planPackImportFromDisk?.(
+            packPath,
+            sourcePaths.map((sourcePath) => ({ path: sourcePath, kind })),
+            targetFolder,
+          );
+          if (!plan) {
+            props.showDialog(localized.viewerCouldNotPlanImport || "Could not plan the import", {
+              title: localized.viewerImportFailed || "Import Failed",
+            });
+            return;
+          }
+          if (plan.items.length === 0) {
+            const errors = plan.errors.map((error) => `${error.diskPath || "Import"}: ${error.message}`).join("\n");
+            props.showDialog(errors || localized.viewerNoFilesToImport || "No files were found to import", {
+              title: localized.viewerNothingToImport || "Nothing To Import",
+            });
+            return;
+          }
+          if (plan.items.some((item) => item.conflictsWith)) {
+            props.onImportConflicts?.({ packPath, plan });
+            return;
+          }
+          await applyImportItems(plan.items, plan.errors);
+        },
+        {
+          onError: (error) => {
+            console.error("Error planning packed file import:", error);
+            props.showDialog(
+              (localized.viewerErrorImportingPackedFiles || "Error importing packed files: {{error}}").replace(
+                "{{error}}",
+                error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
+              ),
+              { title: localized.viewerImportFailed || "Import Failed" },
+            );
+          },
+          onFinally: () => {
+            setIsImporting(false);
+          },
+        },
+      );
     };
 
     const handleCreateNewFlow = async () => {
@@ -1805,27 +1857,33 @@ const PackTablesTreeView = React.memo(
       const flowData = JSON.stringify(emptyFlow, null, 2);
 
       setIsCreatingNewFlow(true);
-      try {
-        const result = await window.api?.saveNodeFlow(newFlowName.trim(), flowData, packData.packPath);
-        if (!result?.success || !result.filePath) {
-          throw new Error(result?.error || localized.viewerFailedToCreateFlow || "Failed to create flow");
-        }
-        console.log("Flow created successfully at:", result.filePath);
-        props.onOpenFlowFile({ flowFile: result.filePath, packPath: packData.packPath });
-        setIsNewFlowDialogOpen(false);
-        setNewFlowName("");
-      } catch (error) {
-        console.error("Error creating flow:", error);
-        props.showDialog(
-          (localized.viewerCreateFlowError || "Failed to create flow: {{error}}").replace(
-            "{{error}}",
-            error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
-          ),
-          { title: localized.viewerCreateFailed || "Create Failed" },
-        );
-      } finally {
-        setIsCreatingNewFlow(false);
-      }
+      await runGuarded(
+        async () => {
+          const result = await window.api?.saveNodeFlow(newFlowName.trim(), flowData, packData.packPath);
+          if (!result?.success || !result.filePath) {
+            throw new Error(result?.error || localized.viewerFailedToCreateFlow || "Failed to create flow");
+          }
+          console.log("Flow created successfully at:", result.filePath);
+          props.onOpenFlowFile({ flowFile: result.filePath, packPath: packData.packPath });
+          setIsNewFlowDialogOpen(false);
+          setNewFlowName("");
+        },
+        {
+          onError: (error) => {
+            console.error("Error creating flow:", error);
+            props.showDialog(
+              (localized.viewerCreateFlowError || "Failed to create flow: {{error}}").replace(
+                "{{error}}",
+                error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
+              ),
+              { title: localized.viewerCreateFailed || "Create Failed" },
+            );
+          },
+          onFinally: () => {
+            setIsCreatingNewFlow(false);
+          },
+        },
+      );
     };
 
     /**
@@ -1869,6 +1927,17 @@ const PackTablesTreeView = React.memo(
 
       props.onOpenPackedFile({ filePath: LOAD_ORDER_RULES_PACKED_FILE_PATH, packPath: packData.packPath });
     };
+
+    useImperativeHandle(ref, () => ({
+      openNewFlowDialog: () => {
+        setContextMenu(null);
+        setActiveTreeTab("files");
+        setIsNewFlowDialogOpen(true);
+      },
+      createLoadOrderRulesFile: () => {
+        void handleCreateLoadOrderRules();
+      },
+    }));
 
     const handleCreateNewTable = async () => {
       if (!packData) return;
@@ -1921,47 +1990,52 @@ const PackTablesTreeView = React.memo(
       }
 
       setIsCreatingNewTable(true);
-      try {
-        const nextPackedFile: PackedFile = {
-          name: packedFileName,
-          file_size: 0,
-          start_pos: 0,
-          schemaFields: [],
-          version: schema.version,
-          tableSchema: schema,
-        };
+      await runGuarded(
+        async () => {
+          const nextPackedFile: PackedFile = {
+            name: packedFileName,
+            file_size: 0,
+            start_pos: 0,
+            schemaFields: [],
+            version: schema.version,
+            tableSchema: schema,
+          };
 
-        const result = await window.api?.saveDBTableEdits(packData.packPath, nextPackedFile);
-        if (!result?.success) {
-          throw new Error(result?.error || localized.viewerFailedToCreateDbTable || "Failed to create DB table");
-        }
+          const result = await window.api?.saveDBTableEdits(packData.packPath, nextPackedFile);
+          if (!result?.success) {
+            throw new Error(result?.error || localized.viewerFailedToCreateDbTable || "Failed to create DB table");
+          }
 
-        dispatch(
-          setUnsavedPacksData({
+          dispatch(
+            setUnsavedPacksData({
+              packPath: packData.packPath,
+              // Keep earlier staged edits visible. The IPC handler also merges this file into its
+              // authoritative staging list, but this local update can win the render race.
+              unsavedFileData: [...unsavedFiles.filter((file) => file.name !== nextPackedFile.name), nextPackedFile],
+            }),
+          );
+          props.onOpenDBTable({
             packPath: packData.packPath,
-            // Keep earlier staged edits visible. The IPC handler also merges this file into its
-            // authoritative staging list, but this local update can win the render race.
-            unsavedFileData: [...unsavedFiles.filter((file) => file.name !== nextPackedFile.name), nextPackedFile],
-          }),
-        );
-        props.onOpenDBTable({
-          packPath: packData.packPath,
-          dbFolder,
-          dbName: trimmedTableName,
-          dbSubname: trimmedSuffix,
-        });
-        closeNewTableDialog();
-      } catch (error) {
-        console.error("Error creating DB table:", error);
-        props.showDialog(
-          (localized.viewerCreateDbTableError || "Failed to create DB table: {{error}}").replace(
-            "{{error}}",
-            error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
-          ),
-          { title: localized.viewerCreateFailed || "Create Failed" },
-        );
-        setIsCreatingNewTable(false);
-      }
+            dbFolder,
+            dbName: trimmedTableName,
+            dbSubname: trimmedSuffix,
+          });
+          closeNewTableDialog();
+        },
+        {
+          onError: (error) => {
+            console.error("Error creating DB table:", error);
+            props.showDialog(
+              (localized.viewerCreateDbTableError || "Failed to create DB table: {{error}}").replace(
+                "{{error}}",
+                error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
+              ),
+              { title: localized.viewerCreateFailed || "Create Failed" },
+            );
+            setIsCreatingNewTable(false);
+          },
+        },
+      );
     };
 
     const renderTree = (
@@ -2007,7 +2081,7 @@ const PackTablesTreeView = React.memo(
           hiddenNodeIds={treeTab === "db" ? dbHiddenNodeIds : fileHiddenNodeIds}
           selectedIds={selectedIds}
           expandedIds={effectiveExpandedIds}
-          initialScrollTop={treeScrollTopsRef.current[treeTab] ?? 0}
+          getInitialScrollTop={() => treeScrollTopsRef.current[treeTab] ?? 0}
           ariaLabel={
             treeTab === "db"
               ? localized.viewerDbFilesTree || "DB files tree"
