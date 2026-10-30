@@ -48,7 +48,7 @@ interface CompressionWinTableProps {
 
 const CompressionWinTable = ({ wins, localized }: CompressionWinTableProps) => (
   <div className="mt-1 overflow-x-auto">
-    <table className="min-w-[30rem] w-full table-fixed text-xs">
+    <table className="min-w-120 w-full table-fixed text-xs">
       <colgroup>
         <col />
         <col className="w-28" />

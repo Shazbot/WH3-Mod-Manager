@@ -1056,7 +1056,7 @@ const Categories = memo(() => {
           event.preventDefault();
           onOverlayClick();
         }}
-        className={`${isContextMenuOpen ? "" : "hidden"} z-[250] dark`}
+        className={`${isContextMenuOpen ? "" : "hidden"} z-250 dark`}
         id="modDropdownOverlay"
       >
         <div
@@ -1067,7 +1067,7 @@ const Categories = memo(() => {
           id="categoriesContextMenu"
           className={
             `${isContextMenuOpen ? "" : "hidden"}` +
-            " fixed w-52 bg-white rounded divide-y divide-gray-100 shadow dark:bg-gray-700 z-[300]"
+            " fixed w-52 bg-white rounded divide-y divide-gray-100 shadow-sm dark:bg-gray-700 z-300"
           }
           ref={contextMenuRef}
         >
@@ -1229,13 +1229,13 @@ const Categories = memo(() => {
               <div className="relative" ref={optionsMenuRef}>
                 <button
                   onClick={() => setIsOptionsMenuOpen((currentValue) => !currentValue)}
-                  className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
+                  className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-hidden dark:focus:ring-gray-800"
                   type="button"
                 >
                   {localized.options || "Options"}
                 </button>
                 {isOptionsMenuOpen && (
-                  <div className="absolute left-0 z-[250] w-48 rounded-lg border border-gray-700 bg-gray-800 p-1 text-left shadow-lg">
+                  <div className="absolute left-0 z-250 w-48 rounded-lg border border-gray-700 bg-gray-800 p-1 text-left shadow-lg">
                     <button
                       type="button"
                       className="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-white hover:bg-gray-700"
@@ -1257,14 +1257,14 @@ const Categories = memo(() => {
               </div>
               <button
                 onClick={() => setIsEditCategoriesModalOpen(true)}
-                className="w-36 text-white bg-green-700 hover:bg-green-800 focus:ring-4 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
+                className="w-36 text-white bg-green-700 hover:bg-green-800 focus:ring-4 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-hidden dark:focus:ring-gray-800"
                 type="button"
               >
                 {localized.editCategories}
               </button>
               <button
                 onClick={collapseOrExpandAllCategories}
-                className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
+                className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mb-2 dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-hidden dark:focus:ring-gray-800"
                 type="button"
               >
                 {hiddenCategories.length === 0 ? localized.collapseAll : localized.expandAll}

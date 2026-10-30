@@ -165,7 +165,7 @@ const BuildingIconSelect = ({
             "max-w-[90vw]",
             "first-child-div-second-child-div-flex-grow",
             "first-child-div-flex-col",
-            "!h-[85vh]",
+            "h-[85vh]!",
           ]}
         >
           <Modal.Header>{localized.buildingsBrowseBuildingIcons || "Browse building icons"}</Modal.Header>
@@ -250,7 +250,7 @@ const VariantRow = memo(
       .join(" / ");
 
     return (
-      <div className="grid min-w-[48rem] grid-cols-[minmax(8rem,1fr)_minmax(8rem,1fr)_minmax(8rem,1fr)_5rem_minmax(12rem,1.5fr)_4rem] items-center gap-2 border-t border-gray-700 px-2 py-1.5 text-xs">
+      <div className="grid min-w-3xl grid-cols-[minmax(8rem,1fr)_minmax(8rem,1fr)_minmax(8rem,1fr)_5rem_minmax(12rem,1.5fr)_4rem] items-center gap-2 border-t border-gray-700 px-2 py-1.5 text-xs">
         <span className="truncate" title={variant.culture}>
           {variantPart(variant.culture, anyLabel)}
         </span>
@@ -414,7 +414,7 @@ const BuildingCultureVariantsModal = memo(
             </p>
 
             <div className="max-h-[45vh] overflow-auto rounded border border-gray-700">
-              <div className="grid min-w-[48rem] grid-cols-[minmax(8rem,1fr)_minmax(8rem,1fr)_minmax(8rem,1fr)_5rem_minmax(12rem,1.5fr)_4rem] gap-2 bg-gray-800 px-2 py-1.5 text-[0.65rem] text-gray-400">
+              <div className="grid min-w-3xl grid-cols-[minmax(8rem,1fr)_minmax(8rem,1fr)_minmax(8rem,1fr)_5rem_minmax(12rem,1.5fr)_4rem] gap-2 bg-gray-800 px-2 py-1.5 text-[0.65rem] text-gray-400">
                 <span>{localized.buildingsCulture || "Culture"}</span>
                 <span>{localized.buildingsSubculture || "Subculture"}</span>
                 <span>{localized.buildingsFaction || "Faction"}</span>
@@ -444,7 +444,7 @@ const BuildingCultureVariantsModal = memo(
                 {localized.buildingsAddVariantRow || "Add a variant row"}
               </div>
               <div className="flex flex-wrap items-end gap-3">
-                <label className={`${labelClass} min-w-[15rem]`}>
+                <label className={`${labelClass} min-w-60`}>
                   {localized.buildingsCulture || "Culture"}
                   <VirtualizedSelect
                     windowThreshold={WINDOW_THRESHOLD}
@@ -461,7 +461,7 @@ const BuildingCultureVariantsModal = memo(
                     menuPlacement="auto"
                   />
                 </label>
-                <label className={`${labelClass} min-w-[15rem]`}>
+                <label className={`${labelClass} min-w-60`}>
                   {localized.buildingsSubculture || "Subculture"}
                   <VirtualizedSelect
                     windowThreshold={WINDOW_THRESHOLD}
@@ -477,7 +477,7 @@ const BuildingCultureVariantsModal = memo(
                     menuPlacement="auto"
                   />
                 </label>
-                <label className={`${labelClass} min-w-[15rem]`}>
+                <label className={`${labelClass} min-w-60`}>
                   {localized.buildingsFaction || "Faction"}
                   <VirtualizedSelect
                     windowThreshold={WINDOW_THRESHOLD}
@@ -490,7 +490,7 @@ const BuildingCultureVariantsModal = memo(
                     menuPlacement="auto"
                   />
                 </label>
-                <label className={`${labelClass} min-w-[15rem]`}>
+                <label className={`${labelClass} min-w-60`}>
                   {localized.buildingsIcon || "Icon"}
                   <BuildingIconSelect
                     options={iconOptions}

@@ -37,7 +37,7 @@ export const UpdateNotification = memo(
 
     return (
       <Toast>
-        <div className="flex !items-start">
+        <div className="flex items-start!">
           <div className="ml-3 text-sm font-normal">
             <span className="mb-1 text-sm font-semibold text-gray-900 dark:text-white">
               {localized.updateAvailable}

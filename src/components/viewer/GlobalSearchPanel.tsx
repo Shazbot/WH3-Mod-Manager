@@ -547,7 +547,7 @@ const GlobalSearchPanel = memo(
         </div>
 
         <div
-          className="flex w-1/3 min-w-[17rem] max-w-[32rem] shrink-0 flex-col gap-2 overflow-y-auto border-l border-gray-700 p-2 scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700"
+          className="flex w-1/3 min-w-68 max-w-lg shrink-0 flex-col gap-2 overflow-y-auto border-l border-gray-700 p-2 scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700"
           data-testid="global-search-controls"
         >
           <label
@@ -567,7 +567,7 @@ const GlobalSearchPanel = memo(
                 if (event.key === "Enter") void handleSearch();
               }}
               placeholder={localized.globalSearchPlaceholder || "Search packs…"}
-              className="w-full min-w-0 bg-transparent py-2 text-base text-white outline-none"
+              className="w-full min-w-0 bg-transparent py-2 text-base text-white outline-hidden"
             />
           </label>
 
@@ -684,7 +684,7 @@ const GlobalSearchPanel = memo(
                     checked={selectedOpenPackKeys.includes(packPathKey(pack.packPath))}
                     onChange={() => toggleOpenPack(pack.packPath)}
                   />
-                  <span className="max-w-[12rem] truncate">{pack.label}</span>
+                  <span className="max-w-48 truncate">{pack.label}</span>
                 </label>
               ))}
             </div>

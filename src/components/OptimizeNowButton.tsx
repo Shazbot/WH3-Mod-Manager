@@ -36,7 +36,7 @@ const OptimizeNowButton = memo(() => {
   return (
     <button
       type="button"
-      className="inline-flex items-center gap-2 rounded border border-gray-600 bg-gray-800 px-3 py-1.5 text-xs font-medium uppercase text-gray-200 hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-500 disabled:cursor-not-allowed disabled:opacity-50"
+      className="inline-flex items-center gap-2 rounded border border-gray-600 bg-gray-800 px-3 py-1.5 text-xs font-medium uppercase text-gray-200 hover:bg-gray-700 focus:outline-hidden focus:ring-1 focus:ring-gray-500 disabled:cursor-not-allowed disabled:opacity-50"
       disabled={!!reason}
       title={reason}
       onClick={() => window.api?.runWorkshopOptimizerBackgroundNow?.()}

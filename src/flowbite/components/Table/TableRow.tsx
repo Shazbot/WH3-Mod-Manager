@@ -13,7 +13,7 @@ export const TableRow: FC<TableRowProps> = ({ children, className, ...props }) =
       data-testid="table-row-element"
       className={classNames(
         {
-          "odd:bg-white even:bg-gray-50 odd:dark:bg-gray-800 even:dark:bg-gray-700": striped,
+          "odd:bg-white even:bg-gray-50 dark:odd:bg-gray-800 dark:even:bg-gray-700": striped,
           "hover:bg-gray-50 dark:hover:bg-gray-600": hoverable,
         },
         className,

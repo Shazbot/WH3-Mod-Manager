@@ -202,8 +202,8 @@ const ModCustomization = memo(() => {
           position="top-center"
           explicitClasses={[
             "mt-8",
-            "!max-w-7xl",
-            "md:!h-full",
+            "max-w-7xl!",
+            "md:h-full!",
             ..."scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700".split(" "),
             "modalDontOverflowWindowHeight",
           ]}

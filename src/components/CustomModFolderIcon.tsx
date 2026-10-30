@@ -26,7 +26,7 @@ const CustomModFolderIcon = memo(({ folderPath }: CustomModFolderIconProps) => {
       placement="bottom"
       style="dark"
       arrow
-      className="custom-mod-folder-tooltip !z-[100] !border-0 !bg-transparent !p-0 !text-slate-100 !shadow-none"
+      className="custom-mod-folder-tooltip z-100! border-0! bg-transparent! p-0! text-slate-100! shadow-none!"
       content={tooltipContent}
     >
       <span className="ml-1 inline-flex shrink-0 items-center text-slate-400 opacity-80" aria-label={tooltipText}>

@@ -151,7 +151,7 @@ const LeftSidebar = memo(() => {
     <>
       <Tabs
         id="left-sidebar"
-        className="fixed top-8 z-[200] left-0 outline-transparent parent-unhide-child select-none"
+        className="fixed top-8 z-200 left-0 outline-transparent parent-unhide-child select-none"
         onSelect={(index) => onTabSelected(index)}
         selectedIndex={Math.max(
           0,
@@ -163,7 +163,7 @@ const LeftSidebar = memo(() => {
             <div className="flex items-center h-full relative">
               <IoIosList size="1.5rem" />
               <span className="ml-2 mr-2 hidden-child">{localized.allMods}</span>
-              <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
+              <span className="text-xs absolute hidden-child right-0 -bottom-2 opacity-60">
                 Ctrl+{tabIndexToTabType.indexOf("mods") + 1}
               </span>
             </div>
@@ -173,7 +173,7 @@ const LeftSidebar = memo(() => {
               <div className="flex items-center h-full parent-unhide-child relative">
                 <IoMdCheckboxOutline size="1.5rem" />
                 <span className="ml-2 mr-2 hidden-child">{localized.enabledModsCapitalized}</span>
-                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
+                <span className="text-xs absolute hidden-child right-0 -bottom-2 opacity-60">
                   Ctrl+{tabIndexToTabType.indexOf("enabledMods") + 1}
                 </span>
               </div>
@@ -184,7 +184,7 @@ const LeftSidebar = memo(() => {
               <div className="flex items-center h-full parent-unhide-child relative">
                 <MdCategory size="1.5rem" />
                 <span className="ml-2 mr-2 hidden-child">{localized.categories}</span>
-                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
+                <span className="text-xs absolute hidden-child right-0 -bottom-2 opacity-60">
                   Ctrl+{tabIndexToTabType.indexOf("categories") + 1}
                 </span>
               </div>
@@ -197,7 +197,7 @@ const LeftSidebar = memo(() => {
                 <span className="ml-2 mr-2 hidden-child">
                   {localized.presetsTab || localized.editPresets || "Presets"}
                 </span>
-                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
+                <span className="text-xs absolute hidden-child right-0 -bottom-2 opacity-60">
                   Ctrl+{tabIndexToTabType.indexOf("presets") + 1}
                 </span>
               </div>
@@ -208,7 +208,7 @@ const LeftSidebar = memo(() => {
               <div className="flex items-center h-full parent-unhide-child relative">
                 <TbArrowsSort size="1.4rem" />
                 <span className="ml-2 mr-2 hidden-child">{localized.loadOrderRulesTab || "Load Order Rules"}</span>
-                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
+                <span className="text-xs absolute hidden-child right-0 -bottom-2 opacity-60">
                   Ctrl+{tabIndexToTabType.indexOf("loadOrderRules") + 1}
                 </span>
               </div>
@@ -219,7 +219,7 @@ const LeftSidebar = memo(() => {
               <div className="flex items-center h-full parent-unhide-child relative">
                 <BsDiagram3 size="1.3rem" />
                 <span className="ml-2 mr-2 hidden-child">{localized.skillsViewer || "Skill Trees"}</span>
-                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
+                <span className="text-xs absolute hidden-child right-0 -bottom-2 opacity-60">
                   Ctrl+{tabIndexToTabType.indexOf("skills") + 1}
                 </span>
               </div>
@@ -230,7 +230,7 @@ const LeftSidebar = memo(() => {
               <div className="flex items-center h-full parent-unhide-child relative">
                 <GiClassicalKnowledge size="1.3rem" />
                 <span className="ml-2 mr-2 hidden-child">{localized.techTreesTab || "Tech Trees"}</span>
-                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
+                <span className="text-xs absolute hidden-child right-0 -bottom-2 opacity-60">
                   Ctrl+{tabIndexToTabType.indexOf("techTrees") + 1}
                 </span>
               </div>
@@ -241,7 +241,7 @@ const LeftSidebar = memo(() => {
               <div className="flex items-center h-full parent-unhide-child relative">
                 <GiCrossedSwords size="1.35rem" />
                 <span className="ml-2 mr-2 hidden-child">{localized.unitViewerTab || "Unit Viewer"}</span>
-                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
+                <span className="text-xs absolute hidden-child right-0 -bottom-2 opacity-60">
                   Ctrl+{tabIndexToTabType.indexOf("unitViewer") + 1}
                 </span>
               </div>
@@ -252,7 +252,7 @@ const LeftSidebar = memo(() => {
               <div className="flex items-center h-full parent-unhide-child relative">
                 <GiCastle size="1.35rem" />
                 <span className="ml-2 mr-2 hidden-child">{localized.buildingsTab || "Buildings"}</span>
-                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
+                <span className="text-xs absolute hidden-child right-0 -bottom-2 opacity-60">
                   Ctrl+{tabIndexToTabType.indexOf("buildings") + 1}
                 </span>
               </div>
@@ -263,7 +263,7 @@ const LeftSidebar = memo(() => {
               <div className="flex items-center h-full parent-unhide-child relative">
                 <GiSwapBag size="1.35rem" />
                 <span className="ml-2 mr-2 hidden-child">{localized.ancillariesTab || "Ancillaries"}</span>
-                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
+                <span className="text-xs absolute hidden-child right-0 -bottom-2 opacity-60">
                   Ctrl+{tabIndexToTabType.indexOf("ancillaries") + 1}
                 </span>
               </div>
@@ -274,7 +274,7 @@ const LeftSidebar = memo(() => {
               <div className="flex items-center h-full parent-unhide-child relative">
                 <FaMapMarkedAlt size="1.35rem" />
                 <span className="ml-2 mr-2 hidden-child">{localized.mapTab || "Map"}</span>
-                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
+                <span className="text-xs absolute hidden-child right-0 -bottom-2 opacity-60">
                   Ctrl+{tabIndexToTabType.indexOf("map") + 1}
                 </span>
               </div>
@@ -285,7 +285,7 @@ const LeftSidebar = memo(() => {
               <div className="flex items-center h-full parent-unhide-child relative">
                 <BsPersonVcard size="1.25rem" />
                 <span className="ml-2 mr-2 hidden-child">{localized.visualsTab || "Visuals"}</span>
-                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
+                <span className="text-xs absolute hidden-child right-0 -bottom-2 opacity-60">
                   Ctrl+{tabIndexToTabType.indexOf("visuals") + 1}
                 </span>
               </div>
@@ -296,7 +296,7 @@ const LeftSidebar = memo(() => {
               <div className="flex items-center h-full parent-unhide-child relative">
                 <FaProjectDiagram size="1.5rem" />
                 <span className="ml-2 mr-2 hidden-child">{localized.nodeEditorTab || "Node Editor"}</span>
-                <span className="text-xs absolute hidden-child -right-0 -bottom-2 opacity-60">
+                <span className="text-xs absolute hidden-child right-0 -bottom-2 opacity-60">
                   Ctrl+{tabIndexToTabType.indexOf("nodeEditor") + 1}
                 </span>
               </div>

@@ -500,12 +500,12 @@ const ModRow = forwardRef<HTMLDivElement, ModRowProps>(
             >
               <label className="cursor-pointer" htmlFor={checkboxId}>
                 {areThumbnailsEnabled && (
-                  <img className="max-w-[6rem] aspect-square" src={thumbnailSrc} decoding="async"></img>
+                  <img className="max-w-24 aspect-square" src={thumbnailSrc} decoding="async"></img>
                 )}
               </label>
             </div>
             <div className="flex place-items-center w-min-[0px]" onContextMenu={(e) => onModRightClick(e, mod)}>
-              <label className="max-w-full inline-block break-words cursor-pointer" htmlFor={checkboxId}>
+              <label className="max-w-full inline-block wrap-break-word cursor-pointer" htmlFor={checkboxId}>
                 <PackName mod={mod} isEnabledInMergedMod={isEnabledInMergedMod} customFolderPath={customFolderPath} />
               </label>
             </div>

@@ -120,7 +120,7 @@ const ModalComponent: FC<ModalProps> = ({
             }}
           >
             <div className={classNames(theme.content.base, ...explicitClasses, theme.sizes[size])}>
-              <div className={classNames(theme.content.inner, "!h-full")}>{children}</div>
+              <div className={classNames(theme.content.inner, "h-full!")}>{children}</div>
             </div>
           </div>
         </ModalContext.Provider>,

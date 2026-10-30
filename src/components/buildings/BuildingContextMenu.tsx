@@ -50,7 +50,7 @@ const BuildingContextMenu = memo(({ x, y, heading, items, onPick, onClose, editA
         left: Math.min(x, Math.max(0, window.innerWidth - 360)),
         top: Math.min(y, Math.max(0, window.innerHeight - menuHeight)),
       }}
-      className="fixed z-[80] w-[340px] rounded border border-gray-600 bg-gray-800 py-1 shadow-lg"
+      className="fixed z-80 w-[340px] rounded border border-gray-600 bg-gray-800 py-1 shadow-lg"
     >
       <div className="truncate border-b border-gray-700 px-3 py-1 text-xs text-gray-400">{heading}</div>
       {items.map((item) => (

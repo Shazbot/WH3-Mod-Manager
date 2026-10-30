@@ -2505,7 +2505,7 @@ const PackTablesTreeView = React.memo(
                     setNewFolderName(event.target.value);
                     setNewFolderError("");
                   }}
-                  className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-none"
+                  className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-hidden"
                   autoFocus
                 />
               </label>
@@ -2537,7 +2537,7 @@ const PackTablesTreeView = React.memo(
 
         {/* New Flow Dialog */}
         {isNewFlowDialogOpen && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md">
               <h2 className="text-xl font-bold text-white mb-4">
                 {localized.viewerCreateNewFlow || "Create New Flow"}
@@ -2560,7 +2560,7 @@ const PackTablesTreeView = React.memo(
                       setNewFlowName("");
                     }
                   }}
-                  className="w-full p-2 bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-blue-400"
+                  className="w-full p-2 bg-gray-700 text-white border border-gray-600 rounded focus:outline-hidden focus:border-blue-400"
                   placeholder={localized.viewerFlowNamePlaceholder || "Enter flow name..."}
                   autoFocus
                 />
@@ -2591,7 +2591,7 @@ const PackTablesTreeView = React.memo(
         )}
 
         {isNewTableDialogOpen && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md">
               <h2 className="text-xl font-bold text-white mb-4">
                 {localized.viewerCreateNewDbTable || "Create New DB Table"}
@@ -2638,7 +2638,7 @@ const PackTablesTreeView = React.memo(
                       closeNewTableDialog();
                     }
                   }}
-                  className="w-full p-2 bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-blue-400"
+                  className="w-full p-2 bg-gray-700 text-white border border-gray-600 rounded focus:outline-hidden focus:border-blue-400"
                   placeholder={localized.viewerTableSuffixPlaceholder || "xxx"}
                   autoFocus
                 />

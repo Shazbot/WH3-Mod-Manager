@@ -674,7 +674,7 @@ const AncillaryDetail = memo(
             crisp at any card height instead of stretching. */}
         <div
           style={{ fontFamily: '"Libre Baskerville", serif' }}
-          className="space-y-3 rounded-md border-2 border-amber-900/70 bg-gradient-to-b from-gray-900 to-gray-950 p-4 text-base text-gray-100 shadow-[inset_0_0_0_1px_rgba(217,164,80,0.35)]"
+          className="space-y-3 rounded-md border-2 border-amber-900/70 bg-linear-to-b/srgb from-gray-900 to-gray-950 p-4 text-base text-gray-100 shadow-[inset_0_0_0_1px_rgba(217,164,80,0.35)]"
         >
           <div className="flex items-start gap-3">
             {detail.iconUrl ? (

@@ -86,8 +86,8 @@ const ImportSteamCollection = memo(() => {
           position="top-center"
           explicitClasses={[
             "mt-8",
-            "!max-w-5xl",
-            "md:!h-full",
+            "max-w-5xl!",
+            "md:h-full!",
             ..."scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700".split(" "),
             "modalDontOverflowWindowHeight",
           ]}
@@ -111,7 +111,7 @@ const ImportSteamCollection = memo(() => {
                   ></input>
                 </span>
                 <button
-                  className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-56"
+                  className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-hidden focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-56"
                   onClick={(e) => {
                     onImportSteamCollectionClicked();
                   }}
@@ -137,14 +137,14 @@ const ImportSteamCollection = memo(() => {
                     </div>
                     <div
                       className={
-                        "rounded border w-[32rem] flex justify-center flex-col p-5 gap-4 " +
+                        "rounded border w-lg flex justify-center flex-col p-5 gap-4 " +
                         ((doImmediateImport && "border-blue-500") || "border-slate-400")
                       }
                     >
                       <div>
                         <div className="flex items-center">
                           <input
-                            className={`${!doImmediateImport && "grayscale [&:not(:checked)]:bg-blue-600"}`}
+                            className={`${!doImmediateImport && "grayscale not-checked:bg-blue-600"}`}
                             disabled={!doImmediateImport}
                             type="checkbox"
                             id="disable-mods-not-in-collection"
@@ -163,7 +163,7 @@ const ImportSteamCollection = memo(() => {
                       <div>
                         <div className="flex items-center">
                           <input
-                            className={`${!doImmediateImport && "grayscale [&:not(:checked)]:bg-blue-600"}`}
+                            className={`${!doImmediateImport && "grayscale not-checked:bg-blue-600"}`}
                             disabled={!doImmediateImport}
                             type="checkbox"
                             id="import-with-explicit-load-order"
@@ -199,7 +199,7 @@ const ImportSteamCollection = memo(() => {
                     </div>
                     <div
                       className={
-                        "rounded border w-[32rem] flex justify-center flex-col p-5 gap-4 " +
+                        "rounded border w-lg flex justify-center flex-col p-5 gap-4 " +
                         ((doPresetImport && "border-blue-500") || "border-slate-400")
                       }
                     >
@@ -227,7 +227,7 @@ const ImportSteamCollection = memo(() => {
                       <div>
                         <div className="flex items-center">
                           <input
-                            className={`${!doPresetImport && "grayscale [&:not(:checked)]:bg-blue-600"}`}
+                            className={`${!doPresetImport && "grayscale not-checked:bg-blue-600"}`}
                             type="checkbox"
                             disabled={!doPresetImport}
                             checked={doPresetImportWithLoadOrder}

@@ -99,7 +99,7 @@ const AncillaryTypesModal = memo(
           "max-w-[90vw]",
           "first-child-div-second-child-div-flex-grow",
           "first-child-div-flex-col",
-          "!h-[85vh]",
+          "h-[85vh]!",
         ]}
       >
         <Modal.Header>

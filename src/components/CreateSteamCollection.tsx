@@ -56,8 +56,8 @@ const CreateSteamCollection = memo(() => {
           position="top-center"
           explicitClasses={[
             "mt-8",
-            "!max-w-5xl",
-            "md:!h-full",
+            "max-w-5xl!",
+            "md:h-full!",
             ..."scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700".split(" "),
             "modalDontOverflowWindowHeight",
           ]}
@@ -70,7 +70,7 @@ const CreateSteamCollection = memo(() => {
             <div className="flex flex-col gap-y-6 gap-x-4 z-10 leading-relaxed dark:text-gray-300 relative font-normal items-center">
               <div className="flex mt-2 w-[75%]">
                 <button
-                  className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
+                  className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-hidden focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
                   onClick={() => onGoToSteamCreateCollectionPageClicked()}
                 >
                   <Tooltip
@@ -89,7 +89,7 @@ const CreateSteamCollection = memo(() => {
 
               <div className="flex mt-2 w-[75%]">
                 <button
-                  className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
+                  className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-hidden focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-[70%]"
                   onClick={(e) => onCopyCollectionCreationScriptClicked(e)}
                 >
                   <Tooltip

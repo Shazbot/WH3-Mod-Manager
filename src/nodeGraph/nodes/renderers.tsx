@@ -174,7 +174,7 @@ export const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; 
       <select
         value={selectedPack}
         onChange={handleDropdownChange}
-        className="w-full max-w-md p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-cyan-400"
+        className="w-full max-w-md p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-cyan-400"
       >
         <option value="">{localized.nodeEditorSelectPack || "Select a pack..."}</option>
         {allMods.map((mod) => (
@@ -270,7 +270,7 @@ export const RemovePackSourceNode: React.FC<{ data: RemovePackSourceNodeData; id
       <select
         value={selectedPack}
         onChange={handleDropdownChange}
-        className="w-full max-w-md p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-rose-400"
+        className="w-full max-w-md p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-rose-400"
       >
         <option value="">{localized.nodeEditorSelectPack || "Select a pack..."}</option>
         {allMods.map((mod) => (
@@ -383,7 +383,7 @@ export const TableSelectionDropdownNode: React.FC<{ data: TableSelectionDropdown
       <select
         value={selectedTable}
         onChange={handleDropdownChange}
-        className="w-full max-w-md p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-orange-400"
+        className="w-full max-w-md p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-orange-400"
       >
         <option value="">{localized.nodeEditorSelectTable || "Select a table..."}</option>
         {(tableNames.length > 0 &&
@@ -447,7 +447,7 @@ export const PackFilesNode: React.FC<{ data: PackFilesNodeData; id: string }> = 
         value={textValue}
         onChange={handleTextChange}
         placeholder={localized.nodeEditorEnterPackFilesConfiguration || "Enter pack files configuration..."}
-        className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-blue-400"
+        className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-hidden focus:border-blue-400"
       />
 
       <div className="mt-2">
@@ -494,7 +494,7 @@ export const TableSelectionNode: React.FC<{ data: TableSelectionNodeData; id: st
         value={textValue}
         onChange={handleTextChange}
         placeholder={localized.nodeEditorEnterTableSelectionCriteria || "Enter table selection criteria..."}
-        className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-purple-400"
+        className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-hidden focus:border-purple-400"
       />
 
       <div className="mt-2 text-xs text-gray-400">{localized.nodeEditorOutput || "Output:"} TableSelection</div>
@@ -542,7 +542,7 @@ export const ColumnSelectionNode: React.FC<{ data: ColumnSelectionNodeData; id: 
         value={textValue}
         onChange={handleTextChange}
         placeholder={localized.nodeEditorEnterColumnSelectionCriteria || "Enter column selection criteria..."}
-        className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-emerald-400"
+        className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-hidden focus:border-emerald-400"
       />
 
       <div className="mt-2 text-xs text-gray-400">{localized.nodeEditorOutput || "Output:"} ColumnSelection</div>
@@ -634,7 +634,7 @@ export const ColumnSelectionDropdownNode: React.FC<{ data: ColumnSelectionDropdo
       <select
         value={selectedColumn}
         onChange={handleDropdownChange}
-        className="w-full max-w-sm p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-teal-400"
+        className="w-full max-w-sm p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-teal-400"
       >
         <option value="">{localized.nodeEditorSelectColumn || "Select a column..."}</option>
         {columnNames.map((columnName) => (
@@ -740,7 +740,7 @@ export const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: st
           <select
             value={selectedColumn1}
             onChange={handleDropdown1Change}
-            className="w-full max-w-sm p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-fuchsia-400"
+            className="w-full max-w-sm p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-fuchsia-400"
           >
             <option value="">{localized.nodeEditorSelectColumn || "Select a column..."}</option>
             {columnNames.map((columnName) => (
@@ -755,7 +755,7 @@ export const GroupByColumnsNode: React.FC<{ data: GroupByColumnsNodeData; id: st
           <select
             value={selectedColumn2}
             onChange={handleDropdown2Change}
-            className="w-full max-w-sm p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-fuchsia-400"
+            className="w-full max-w-sm p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-fuchsia-400"
           >
             <option value="">{localized.nodeEditorSelectColumn || "Select a column..."}</option>
             {columnNames.map((columnName) => (
@@ -936,7 +936,7 @@ export const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ dat
                           aria-pressed={selected}
                           title={filterMatchModeDescriptions[mode]}
                           onClick={() => handleFilterChange(index, "matchMode", mode)}
-                          className={`px-2 py-0.5 text-[10px] leading-none transition-colors focus:outline-none focus:ring-1 focus:ring-yellow-400 ${
+                          className={`px-2 py-0.5 text-[10px] leading-none transition-colors focus:outline-hidden focus:ring-1 focus:ring-yellow-400 ${
                             selected ? "bg-yellow-600 text-white" : "text-gray-300 hover:bg-gray-600"
                           }`}
                         >
@@ -956,7 +956,7 @@ export const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ dat
                   <select
                     value={filter.column}
                     onChange={(e) => handleFilterChange(index, "column", e.target.value)}
-                    className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-yellow-400"
+                    className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded focus:outline-hidden focus:border-yellow-400"
                   >
                     <option value="">{localized.nodeEditorSelectColumnShort || "Select column..."}</option>
                     {columnNames.map((columnName) => (
@@ -971,7 +971,7 @@ export const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ dat
                     value={filter.column}
                     onChange={(e) => handleFilterChange(index, "column", e.target.value)}
                     placeholder={localized.nodeEditorEnterColumnName || "Enter column name..."}
-                    className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-yellow-400"
+                    className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded focus:outline-hidden focus:border-yellow-400"
                   />
                 )}
               </div>
@@ -982,7 +982,7 @@ export const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ dat
                 onChange={(e) => handleFilterChange(index, "value", e.target.value)}
                 placeholder={localized.nodeEditorFilterValue || "Filter value..."}
                 aria-invalid={regexError ? true : undefined}
-                className={`w-full p-1 text-xs bg-gray-700 text-white border rounded mb-1 focus:outline-none ${
+                className={`w-full p-1 text-xs bg-gray-700 text-white border rounded mb-1 focus:outline-hidden ${
                   regexError ? "border-red-500 focus:border-red-400" : "border-gray-600 focus:border-yellow-400"
                 }`}
               />
@@ -997,7 +997,7 @@ export const FilterNode: React.FC<{ data: FilterNodeData; id: string }> = ({ dat
                 <select
                   value={filter.operator}
                   onChange={(e) => handleFilterChange(index, "operator", e.target.value as "AND" | "OR")}
-                  className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-yellow-400"
+                  className="w-full p-1 text-xs bg-gray-700 text-white border border-gray-600 rounded focus:outline-hidden focus:border-yellow-400"
                 >
                   <option value="AND">{localized.nodeEditorAnd || "AND"}</option>
                   <option value="OR">{localized.nodeEditorOr || "OR"}</option>
@@ -1149,7 +1149,7 @@ export const ReferenceTableLookupNode: React.FC<{ data: ReferenceTableLookupNode
         <select
           value={selectedReferenceTable}
           onChange={handleDropdownChange}
-          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-purple-400"
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-purple-400"
         >
           <option value="">{localized.nodeEditorSelectReferencedTable || "Select referenced table..."}</option>
           {referenceTableNames.map((tableName) => (
@@ -1335,7 +1335,7 @@ export const ReverseReferenceLookupNode: React.FC<{ data: ReverseReferenceLookup
         <select
           value={selectedReverseTable}
           onChange={handleDropdownChange}
-          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-indigo-400"
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-indigo-400"
         >
           <option value="">{localized.nodeEditorSelectReverseTable || "Select table to reverse to..."}</option>
           {reverseTableNames.map((tableName) => (
@@ -1415,7 +1415,7 @@ export const NumericAdjustmentNode: React.FC<{ data: NumericAdjustmentNodeData; 
           localized.nodeEditorEnterFormulaUsingX ||
           "Enter a number, or a formula using x (e.g., 10, x + 10, x * 1.5)..."
         }
-        className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-yellow-400"
+        className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-hidden focus:border-yellow-400"
       />
 
       <div className="mt-2 text-xs text-gray-400">{localized.nodeEditorOutput || "Output:"} ChangedColumnSelection</div>
@@ -1465,7 +1465,7 @@ export const MathMaxNode: React.FC<{ data: MathMaxNodeData; id: string }> = ({ d
           value={textValue}
           onChange={handleTextChange}
           placeholder={localized.nodeEditorEnterValueExample100 || "Enter value (e.g., 100)..."}
-          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-purple-400"
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-purple-400"
         />
       </div>
 
@@ -1619,7 +1619,7 @@ export const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }
             value={packName}
             onChange={handlePackNameChange}
             placeholder={localized.nodeEditorLeaveBlankForAutoGeneratedName || "Leave blank for auto-generated name"}
-            className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-green-400"
+            className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-green-400"
           />
         </div>
 
@@ -1632,7 +1632,7 @@ export const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }
             value={packedFileName}
             onChange={handlePackedFileNameChange}
             placeholder={localized.nodeEditorLeaveBlankForAutoGeneratedName || "Leave blank for auto-generated name"}
-            className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-green-400"
+            className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-green-400"
           />
         </div>
 
@@ -1646,7 +1646,7 @@ export const SaveChangesNode: React.FC<{ data: SaveChangesNodeData; id: string }
             placeholder={
               localized.nodeEditorEnterAdditionalSaveConfiguration || "Enter additional save configuration..."
             }
-            className="w-full h-16 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-green-400"
+            className="w-full h-16 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-hidden focus:border-green-400"
           />
         </div>
 
@@ -1817,7 +1817,7 @@ export const GetCounterColumnNode: React.FC<{ data: GetCounterColumnNodeData; id
         <select
           value={selectedTable}
           onChange={handleTableChange}
-          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-teal-400"
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-teal-400"
         >
           <option value="">{localized.nodeEditorSelectTable || "Select a table..."}</option>
           {tableNames.map((tableName) => (
@@ -1835,7 +1835,7 @@ export const GetCounterColumnNode: React.FC<{ data: GetCounterColumnNodeData; id
         <select
           value={selectedColumn}
           onChange={handleColumnChange}
-          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-teal-400"
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-teal-400"
           disabled={!selectedTable}
         >
           <option value="">{localized.nodeEditorSelectColumn || "Select a column..."}</option>
@@ -1856,7 +1856,7 @@ export const GetCounterColumnNode: React.FC<{ data: GetCounterColumnNodeData; id
           value={newColumnName}
           onChange={handleNewColumnNameChange}
           placeholder={localized.nodeEditorCounterValueExample || "e.g., counter_value"}
-          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-teal-400"
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-teal-400"
         />
       </div>
 
@@ -1918,7 +1918,7 @@ export const DumpToTSVNode: React.FC<{ data: DumpToTSVNodeData; id: string }> = 
           value={filename}
           onChange={handleFilenameChange}
           placeholder={localized.nodeEditorLeaveBlankForAutoGeneratedName || "Leave blank for auto-generated name"}
-          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-blue-400"
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-blue-400"
         />
       </div>
 
@@ -2008,7 +2008,7 @@ export const TextSurroundNode: React.FC<{ data: TextSurroundNodeData; id: string
           <select
             value={groupedTextSelection}
             onChange={handleGroupedTextSelectionChange}
-            className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-rose-400"
+            className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-rose-400"
           >
             <option value="Text">{localized.nodeEditorText || "Text"}</option>
             <option value="Text Lines">{localized.nodeEditorTextLines || "Text Lines"}</option>
@@ -2020,7 +2020,7 @@ export const TextSurroundNode: React.FC<{ data: TextSurroundNodeData; id: string
         value={textValue}
         onChange={handleTextChange}
         placeholder={localized.nodeEditorEnterSurroundTextConfiguration || "Enter surround text configuration..."}
-        className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-rose-400"
+        className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-hidden focus:border-rose-400"
       />
 
       <div className="mt-2 text-xs text-gray-400">
@@ -2112,7 +2112,7 @@ export const AppendTextNode: React.FC<{ data: AppendTextNodeData; id: string }> 
           <select
             value={groupedTextSelection}
             onChange={handleGroupedTextSelectionChange}
-            className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-purple-400"
+            className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-purple-400"
           >
             <option value="Text">{localized.nodeEditorText || "Text"}</option>
             <option value="Text Lines">{localized.nodeEditorTextLines || "Text Lines"}</option>
@@ -2129,7 +2129,7 @@ export const AppendTextNode: React.FC<{ data: AppendTextNodeData; id: string }> 
           value={beforeText}
           onChange={handleBeforeTextChange}
           placeholder={localized.nodeEditorTextToAddBefore || "Text to add before..."}
-          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-purple-400"
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-purple-400"
         />
       </div>
 
@@ -2142,7 +2142,7 @@ export const AppendTextNode: React.FC<{ data: AppendTextNodeData; id: string }> 
           value={afterText}
           onChange={handleAfterTextChange}
           placeholder={localized.nodeEditorTextToAddAfter || "Text to add after..."}
-          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-purple-400"
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-purple-400"
         />
       </div>
 
@@ -2218,7 +2218,7 @@ export const TextJoinNode: React.FC<{ data: TextJoinNodeData; id: string }> = ({
           <select
             value={groupedTextSelection}
             onChange={handleGroupedTextSelectionChange}
-            className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-sky-400"
+            className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-sky-400"
           >
             <option value="Text">{localized.nodeEditorText || "Text"}</option>
             <option value="Text Lines">{localized.nodeEditorTextLines || "Text Lines"}</option>
@@ -2230,7 +2230,7 @@ export const TextJoinNode: React.FC<{ data: TextJoinNodeData; id: string }> = ({
         value={textValue}
         onChange={handleTextChange}
         placeholder={localized.nodeEditorEnterJoinConfiguration || "Enter join configuration (separator, etc.)..."}
-        className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-sky-400"
+        className="w-full h-20 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-hidden focus:border-sky-400"
       />
 
       <div className="mt-2 text-xs text-gray-400">
@@ -2289,7 +2289,7 @@ export const GroupedColumnsToTextNode: React.FC<{ data: GroupedColumnsToTextNode
           value={pattern}
           onChange={handlePatternChange}
           placeholder="{0}: {1}"
-          className="w-full h-16 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-none focus:border-emerald-400"
+          className="w-full h-16 p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded resize-none focus:outline-hidden focus:border-emerald-400"
         />
       </div>
 
@@ -2302,7 +2302,7 @@ export const GroupedColumnsToTextNode: React.FC<{ data: GroupedColumnsToTextNode
           value={joinSeparator}
           onChange={handleJoinSeparatorChange}
           placeholder="\n"
-          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-emerald-400"
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-emerald-400"
         />
       </div>
 
@@ -2801,7 +2801,7 @@ export const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ dat
               <select
                 value={lookupColumn}
                 onChange={handleLookupColumnChange}
-                className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-cyan-400"
+                className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-cyan-400"
               >
                 <option value="">{localized.nodeEditorSelectColumnShort || "Select column..."}</option>
                 {sourceColumnNames.map((columnName) => (
@@ -2821,7 +2821,7 @@ export const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ dat
                 <select
                   value={lookupColumn}
                   onChange={handleLookupColumnChange}
-                  className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-cyan-400"
+                  className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-cyan-400"
                 >
                   <option value="">{localized.nodeEditorSelectColumnShort || "Select column..."}</option>
                   {sourceColumnNames.map((columnName) => (
@@ -2839,7 +2839,7 @@ export const LookupNode: React.FC<{ data: LookupNodeData; id: string }> = ({ dat
                 <select
                   value={indexJoinColumn}
                   onChange={handleIndexJoinColumnChange}
-                  className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-cyan-400"
+                  className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-cyan-400"
                 >
                   <option value="">{localized.nodeEditorSelectColumnShort || "Select column..."}</option>
                   {indexedColumnNames.map((columnName) => (
@@ -3069,7 +3069,7 @@ export const ExtractTableNode: React.FC<{ data: ExtractTableNodeData; id: string
         <select
           value={tablePrefix}
           onChange={handlePrefixChange}
-          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-blue-400"
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-blue-400"
         >
           <option value="">{localized.nodeEditorSelectPrefix || "Select prefix..."}</option>
           {tablePrefixes.map((prefix) => (
@@ -3207,7 +3207,7 @@ export const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: 
         <select
           value={aggregateColumn}
           onChange={handleColumnChange}
-          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-orange-400"
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-orange-400"
         >
           <option value="">{localized.nodeEditorSelectColumnShort || "Select column..."}</option>
           {columnNames.map((columnName) => (
@@ -3278,7 +3278,7 @@ export const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: 
         <select
           value={filterColumn}
           onChange={handleFilterColumnChange}
-          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-orange-400 mb-2"
+          className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-orange-400 mb-2"
         >
           <option value="">{localized.nodeEditorNoFilter || "No filter"}</option>
           {columnNames.map((columnName) => (
@@ -3293,7 +3293,7 @@ export const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: 
             <select
               value={filterOperator}
               onChange={handleFilterOperatorChange}
-              className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-orange-400 mb-2"
+              className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-orange-400 mb-2"
             >
               <option value="equals">=</option>
               <option value="notEquals">≠</option>
@@ -3308,7 +3308,7 @@ export const AggregateNestedNode: React.FC<{ data: AggregateNestedNodeData; id: 
               value={filterValue}
               onChange={handleFilterValueChange}
               placeholder={localized.nodeEditorFilterValue || "Filter value..."}
-              className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-orange-400"
+              className="w-full p-2 text-sm bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-orange-400"
             />
           </>
         )}
@@ -5435,7 +5435,7 @@ export const ReadTSVFromPackNode: React.FC<{
             setTableName(newName);
             dispatchNodeDataUpdate(data, { nodeId: id, tableName: newName });
           }}
-          className="w-full p-1.5 text-xs bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-indigo-400"
+          className="w-full p-1.5 text-xs bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-indigo-400"
         />
       </div>
 
@@ -5879,7 +5879,7 @@ export const NativePatchFlowNode: React.FC<{
         <span
           tabIndex={0}
           aria-label="How saving and startup application work"
-          className="ml-1 px-1 text-[10px] leading-none text-gray-300 border border-gray-500 rounded-full cursor-help select-none align-middle focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="ml-1 px-1 text-[10px] leading-none text-gray-300 border border-gray-500 rounded-full cursor-help select-none align-middle focus:outline-hidden focus:ring-1 focus:ring-blue-500"
           title={
             "Run manually with Save Changes: the current resolved scalar values and table rows, including flow option values, are saved with the patch template and payload in the output pack. WHMM applies those saved values when the pack is enabled for launch. Changing the source inputs does not update that pack until the flow is run and saved again.\n\n" +
             "Run manually without Save Changes: the node validates its inputs and builds a preview only. It does not apply a patch or retain it for the next launch.\n\n" +
@@ -5967,7 +5967,7 @@ export const CustomRowsInputNode: React.FC<{
             setTableName(newName);
             dispatchNodeDataUpdate(data, { nodeId: id, tableName: newName });
           }}
-          className="w-full p-1.5 text-xs bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-indigo-400"
+          className="w-full p-1.5 text-xs bg-gray-800 text-white border border-gray-600 rounded focus:outline-hidden focus:border-indigo-400"
         />
       </div>
 
@@ -8065,7 +8065,7 @@ export const OnnxFlowNode: React.FC<{ data: OnnxFlowNodeData; id: string }> = ({
         <div className="flex items-center justify-between gap-2">
           <div className="font-medium text-sm">{savedData.label || "ONNX Prediction"}</div>
           <button type="button" aria-haspopup="dialog" onClick={openConfiguration}
-            className="nodrag rounded bg-blue-600 px-2 py-1 text-xs hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400">Configure</button>
+            className="nodrag rounded bg-blue-600 px-2 py-1 text-xs hover:bg-blue-700 focus:outline-hidden focus:ring-2 focus:ring-blue-400">Configure</button>
         </div>
         <div className="mt-3 space-y-1 text-xs text-gray-300">
           <div className="truncate" title={savedData.selectedPackName || flowSourcePack.name || "Owning flow pack"}>{savedData.selectedPackName || flowSourcePack.name || "Owning flow pack"}</div>
@@ -8079,7 +8079,7 @@ export const OnnxFlowNode: React.FC<{ data: OnnxFlowNodeData; id: string }> = ({
       </div>
       {isEditorOpen && <Modal root={modalRoot ?? undefined} show={isNodeEditorActive} size="5xl" position="center"
         aria-labelledby={`onnx-config-title-${id}`} aria-modal="true" onClose={() => setDraft(null)}
-        explicitClasses={["!max-w-5xl", "!h-[90vh]", "!max-h-[90vh]", "overflow-hidden", "first-child-div-second-child-div-flex-grow", "first-child-div-flex-col"]}>
+        explicitClasses={["max-w-5xl!", "h-[90vh]!", "max-h-[90vh]!", "overflow-hidden", "first-child-div-second-child-div-flex-grow", "first-child-div-flex-col"]}>
         <Modal.Header><span id={`onnx-config-title-${id}`}>Configure ONNX Prediction</span></Modal.Header>
         <Modal.Body onWheel={stopWheelPropagation}>
       <div className="space-y-4 text-sm leading-6 nodrag nowheel">
@@ -8146,8 +8146,8 @@ export const OnnxFlowNode: React.FC<{ data: OnnxFlowNodeData; id: string }> = ({
           {unassignedInputs.length > 0 && <div className="mt-3">
             <div className="font-medium">Unassigned inputs</div>
             <ul aria-label="Unassigned inputs" className="mt-1 max-h-64 space-y-2 overflow-y-auto scrollable-node-content">
-              {unassignedInputs.map((feature: any) => <li key={feature.key} className="break-words">
-                <button type="button" className="text-left font-mono underline underline-offset-2 hover:text-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-300" onClick={() => {
+              {unassignedInputs.map((feature: any) => <li key={feature.key} className="wrap-break-word">
+                <button type="button" className="text-left font-mono underline underline-offset-2 hover:text-amber-100 focus:outline-hidden focus:ring-2 focus:ring-amber-300" onClick={() => {
                   setInputSearch(feature.input.name);
                   setInputWarningFilter(feature.key);
                   setSelectedInputKey(feature.key);
@@ -8162,7 +8162,7 @@ export const OnnxFlowNode: React.FC<{ data: OnnxFlowNodeData; id: string }> = ({
             <ul aria-label="Unassigned output destinations" className="mt-1 max-h-64 space-y-2 overflow-y-auto scrollable-node-content">
               {unassignedOutputs.map((entry: any) => {
                 const binding = data.outputBindings?.[entry.key] || entry.defaultBinding;
-                return <li key={entry.key} className="break-words">
+                return <li key={entry.key} className="wrap-break-word">
                   <code>{entry.label}</code>
                   <div className="text-gray-300">{!binding?.tableName || !binding?.column ? "Choose a destination column." : `Choose a reference path to ${binding.tableName}.`}</div>
                 </li>;
@@ -8723,7 +8723,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
             type="button"
             onClick={openEditor}
             aria-haspopup="dialog"
-            className="shrink-0 rounded bg-sky-600 px-2 py-1 text-xs text-white hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
+            className="shrink-0 rounded bg-sky-600 px-2 py-1 text-xs text-white hover:bg-sky-700 focus:outline-hidden focus:ring-2 focus:ring-sky-400"
           >
             {localized.nodeEditorEditXmlFileEdit || "Edit"}
           </button>
@@ -8780,9 +8780,9 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
           show={isNodeEditorActive}
           size="5xl"
           explicitClasses={[
-            "!max-w-5xl",
-            "!h-[90vh]",
-            "!max-h-[90vh]",
+            "max-w-5xl!",
+            "h-[90vh]!",
+            "max-h-[90vh]!",
             "overflow-hidden",
             "first-child-div-second-child-div-flex-grow",
             "first-child-div-flex-col",
@@ -8805,14 +8805,14 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                   <button
                     type="button"
                     onClick={() => setIsDiscardConfirmationOpen(false)}
-                    className="rounded-lg bg-gray-600 px-4 py-2 text-sm text-white hover:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    className="rounded-lg bg-gray-600 px-4 py-2 text-sm text-white hover:bg-gray-500 focus:outline-hidden focus:ring-2 focus:ring-blue-400"
                   >
                     {localized.nodeEditorEditXmlFileKeepEditing || "Keep editing"}
                   </button>
                   <button
                     type="button"
                     onClick={closeEditorWithoutSaving}
-                    className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-400"
+                    className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 focus:outline-hidden focus:ring-2 focus:ring-red-400"
                   >
                     {localized.nodeEditorEditXmlFileDiscard || "Discard changes"}
                   </button>
@@ -8850,7 +8850,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                             targetMode: event.target.value as EditXmlFileDraft["targetMode"],
                           }))
                         }
-                        className="rounded-lg border border-gray-600 bg-gray-800 p-2 text-sm text-white focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        className="rounded-lg border border-gray-600 bg-gray-800 p-2 text-sm text-white focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-400"
                       >
                         <option value="path">{localized.nodeEditorEditXmlFileTargetPath || "Exact path"}</option>
                         <option value="input" disabled={inputType !== "TableSelection"}>
@@ -8868,7 +8868,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                           value={draft.filePath}
                           onChange={(event) => updateDraft((current) => ({ ...current, filePath: event.target.value }))}
                           placeholder={localized.nodeEditorEditXmlFilePathPlaceholder || "ui/campaign/objectives.xml"}
-                          className="rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-sm text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                          className="rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-sm text-white placeholder-gray-500 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-400"
                         />
                         {validationErrors.some((error) => error.code === "pathRequired") && (
                           <span className="text-xs text-red-300">
@@ -8955,7 +8955,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                               value={step.elementName}
                               onChange={(event) => updateLocatorStep(step.id, { elementName: event.target.value })}
                               placeholder={localized.nodeEditorEditXmlFileElementNamePlaceholder || "*"}
-                              className="rounded-lg border border-gray-600 bg-gray-700 p-2 font-mono text-sm text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                              className="rounded-lg border border-gray-600 bg-gray-700 p-2 font-mono text-sm text-white placeholder-gray-500 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-400"
                             />
                             <span className="text-[11px] text-gray-400">
                               {localized.nodeEditorEditXmlFileElementNameWildcardHelp ||
@@ -8989,7 +8989,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                               <button
                                 type="button"
                                 onClick={() => addLocatorAttribute(step.id)}
-                                className="rounded px-2 py-1 text-xs text-blue-300 hover:bg-gray-700 hover:text-blue-200 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                className="rounded px-2 py-1 text-xs text-blue-300 hover:bg-gray-700 hover:text-blue-200 focus:outline-hidden focus:ring-1 focus:ring-blue-400"
                               >
                                 + {localized.nodeEditorEditXmlFileAddAttribute || "Add attribute"}
                               </button>
@@ -9013,7 +9013,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                                       updateLocatorAttribute(step.id, attribute.id, { name: event.target.value })
                                     }
                                     placeholder={localized.nodeEditorEditXmlFileAttributeName || "name"}
-                                    className="rounded-lg border border-gray-600 bg-gray-700 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                    className="rounded-lg border border-gray-600 bg-gray-700 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-400"
                                   />
                                   <input
                                     aria-label={`${localized.nodeEditorEditXmlFileAttributeValue || "Attribute value"} ${stepIndex + 1}.${attributeIndex + 1}`}
@@ -9023,13 +9023,13 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                                       updateLocatorAttribute(step.id, attribute.id, { value: event.target.value })
                                     }
                                     placeholder={localized.nodeEditorEditXmlFileAttributeValue || "value"}
-                                    className="rounded-lg border border-gray-600 bg-gray-700 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                    className="rounded-lg border border-gray-600 bg-gray-700 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-400"
                                   />
                                   <button
                                     type="button"
                                     onClick={() => removeLocatorAttribute(step.id, attribute.id)}
                                     aria-label={`${localized.nodeEditorEditXmlFileRemoveAttribute || "Remove attribute"} ${stepIndex + 1}.${attributeIndex + 1}`}
-                                    className="rounded px-2 py-2 text-xs text-red-300 hover:bg-gray-700 hover:text-red-200 focus:outline-none focus:ring-1 focus:ring-red-400"
+                                    className="rounded px-2 py-2 text-xs text-red-300 hover:bg-gray-700 hover:text-red-200 focus:outline-hidden focus:ring-1 focus:ring-red-400"
                                   >
                                     ✕
                                   </button>
@@ -9067,7 +9067,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                     <button
                       type="button"
                       onClick={addLocatorStep}
-                      className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-700 focus:outline-hidden focus:ring-2 focus:ring-blue-400"
                     >
                       + {localized.nodeEditorEditXmlFileAddStep || "Add step"}
                     </button>
@@ -9089,7 +9089,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                           action: event.target.value as EditXmlFileDraft["action"],
                         }))
                       }
-                      className="rounded-lg border border-gray-600 bg-gray-800 p-2 text-sm text-white focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      className="rounded-lg border border-gray-600 bg-gray-800 p-2 text-sm text-white focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-400"
                     >
                       <option value="setAttributes">
                         {localized.nodeEditorEditXmlFileSetAttributes || "Set attributes"}
@@ -9112,7 +9112,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                         <button
                           type="button"
                           onClick={addAttributeEdit}
-                          className="rounded px-2 py-1 text-xs text-blue-300 hover:bg-gray-700 hover:text-blue-200 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                          className="rounded px-2 py-1 text-xs text-blue-300 hover:bg-gray-700 hover:text-blue-200 focus:outline-hidden focus:ring-1 focus:ring-blue-400"
                         >
                           + {localized.nodeEditorEditXmlFileAddAttributeEdit || "Add attribute edit"}
                         </button>
@@ -9133,7 +9133,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                               value={edit.name}
                               onChange={(event) => updateAttributeEdit(edit.id, { name: event.target.value })}
                               placeholder={localized.nodeEditorEditXmlFileAttributeName || "name"}
-                              className="rounded-lg border border-gray-600 bg-gray-700 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                              className="rounded-lg border border-gray-600 bg-gray-700 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-400"
                             />
                             <input
                               aria-label={`${localized.nodeEditorEditXmlFileNewValue || "New value"} ${editIndex + 1}`}
@@ -9141,13 +9141,13 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                               value={edit.newValue}
                               onChange={(event) => updateAttributeEdit(edit.id, { newValue: event.target.value })}
                               placeholder={localized.nodeEditorEditXmlFileNewValue || "new value"}
-                              className="rounded-lg border border-gray-600 bg-gray-700 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                              className="rounded-lg border border-gray-600 bg-gray-700 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-400"
                             />
                             <button
                               type="button"
                               onClick={() => removeAttributeEdit(edit.id)}
                               aria-label={`${localized.nodeEditorEditXmlFileRemoveAttributeEdit || "Remove attribute edit"} ${editIndex + 1}`}
-                              className="rounded px-2 py-2 text-xs text-red-300 hover:bg-gray-700 hover:text-red-200 focus:outline-none focus:ring-1 focus:ring-red-400"
+                              className="rounded px-2 py-2 text-xs text-red-300 hover:bg-gray-700 hover:text-red-200 focus:outline-hidden focus:ring-1 focus:ring-red-400"
                             >
                               ✕
                             </button>
@@ -9187,7 +9187,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                         <button
                           type="button"
                           onClick={addAttributeEdit}
-                          className="shrink-0 rounded px-2 py-1 text-xs text-blue-300 hover:bg-gray-700 hover:text-blue-200 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                          className="shrink-0 rounded px-2 py-1 text-xs text-blue-300 hover:bg-gray-700 hover:text-blue-200 focus:outline-hidden focus:ring-1 focus:ring-blue-400"
                         >
                           + {localized.nodeEditorEditXmlFileAddAttributeEdit || "Add attribute edit"}
                         </button>
@@ -9221,7 +9221,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                                 value={edit.name}
                                 onChange={(event) => updateAttributeEdit(edit.id, { name: event.target.value })}
                                 placeholder={localized.nodeEditorEditXmlFileAttributeName || "name"}
-                                className="rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                className="rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-400"
                               />
                               <select
                                 aria-label={`${localized.nodeEditorEditXmlFileAttributeOperation || "Edit operation"} ${editIndex + 1}`}
@@ -9231,7 +9231,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                                     operation: event.target.value as XmlAttributeEditOperation,
                                   })
                                 }
-                                className="rounded-lg border border-gray-600 bg-gray-800 p-2 text-xs text-white focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                className="rounded-lg border border-gray-600 bg-gray-800 p-2 text-xs text-white focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-400"
                               >
                                 <option value="replace">
                                   {localized.nodeEditorEditXmlFileReplaceText || "replace"}
@@ -9245,7 +9245,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                                 type="button"
                                 onClick={() => removeAttributeEdit(edit.id)}
                                 aria-label={`${localized.nodeEditorEditXmlFileRemoveAttributeEdit || "Remove attribute edit"} ${editIndex + 1}`}
-                                className="rounded px-2 py-2 text-xs text-red-300 hover:bg-gray-600 hover:text-red-200 focus:outline-none focus:ring-1 focus:ring-red-400"
+                                className="rounded px-2 py-2 text-xs text-red-300 hover:bg-gray-600 hover:text-red-200 focus:outline-hidden focus:ring-1 focus:ring-red-400"
                               >
                                 ✕
                               </button>
@@ -9259,7 +9259,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                                   value={edit.newValue}
                                   onChange={(event) => updateAttributeEdit(edit.id, { newValue: event.target.value })}
                                   placeholder={localized.nodeEditorEditXmlFileFormulaPlaceholder || "x * 2"}
-                                  className="rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                  className="rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-400"
                                 />
                                 <span className="text-[11px] text-gray-400">
                                   {localized.nodeEditorEditXmlFileFormulaHelp ||
@@ -9280,7 +9280,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                                         ? localized.nodeEditorEditXmlFileRegexPatternPlaceholder || "(capture)-(group)"
                                         : localized.nodeEditorEditXmlFileMatchTextPlaceholder || "text to replace"
                                     }
-                                    className="rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                    className="rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-400"
                                   />
                                 </label>
                                 <label className="flex flex-col gap-1 text-xs text-gray-300">
@@ -9295,7 +9295,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                                           "new text using $1 or $<name>..."
                                         : localized.nodeEditorEditXmlFileNewValuePlaceholder || "new value"
                                     }
-                                    className="rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                    className="rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-xs text-white placeholder-gray-500 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-400"
                                   />
                                 </label>
                               </div>
@@ -9342,7 +9342,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                         }
                         placeholder={localized.nodeEditorEditXmlFileReplacementPlaceholder || "<element />"}
                         rows={8}
-                        className="w-full rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-sm text-white placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        className="w-full rounded-lg border border-gray-600 bg-gray-800 p-2 font-mono text-sm text-white placeholder-gray-500 focus:border-blue-400 focus:outline-hidden focus:ring-1 focus:ring-blue-400"
                       />
                       {validationErrors.some(
                         (error) => error.code === "replacementRequired" || error.code === "replacementInvalid",
@@ -9364,7 +9364,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
               <button
                 type="button"
                 onClick={requestClose}
-                className="rounded-lg bg-gray-600 px-4 py-2 text-sm text-white hover:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                className="rounded-lg bg-gray-600 px-4 py-2 text-sm text-white hover:bg-gray-500 focus:outline-hidden focus:ring-2 focus:ring-blue-400"
               >
                 {localized.nodeEditorEditXmlFileCancel || localized.cancel || "Cancel"}
               </button>
@@ -9372,7 +9372,7 @@ export const EditXmlFileNode: React.FC<{ data: EditXmlFileNodeData; id: string }
                 type="button"
                 onClick={handleDone}
                 disabled={!isValid}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-hidden focus:ring-2 focus:ring-blue-400 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {localized.nodeEditorEditXmlFileDone || "Done"}
               </button>

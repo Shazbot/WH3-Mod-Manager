@@ -114,9 +114,9 @@ const BuildingTile = memo(
         )}
 
         {tile.iconUrl ? (
-          <img className="absolute inset-[8%] z-[1] h-[84%] w-[84%] object-contain" src={tile.iconUrl} alt="" />
+          <img className="absolute inset-[8%] z-1 h-[84%] w-[84%] object-contain" src={tile.iconUrl} alt="" />
         ) : (
-          <span className="absolute inset-0 z-[1] flex items-center justify-center text-[0.55rem] leading-tight text-gray-500">
+          <span className="absolute inset-0 z-1 flex items-center justify-center text-[0.55rem] leading-tight text-gray-500">
             {localized.buildingsNoIcon || "no icon"}
           </span>
         )}
@@ -167,10 +167,10 @@ const BuildingTile = memo(
         )}
 
         {/* Revealed on hover, matching the in-game tile: turns top-left, cost bottom-right. */}
-        <span className="pointer-events-none absolute left-0.5 top-0.5 z-[4] hidden rounded-sm border border-black/90 bg-black/95 px-1 py-0.5 text-xs font-bold leading-tight text-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.95)] group-hover:block">
+        <span className="pointer-events-none absolute left-0.5 top-0.5 z-4 hidden rounded-sm border border-black/90 bg-black/95 px-1 py-0.5 text-xs font-bold leading-tight text-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.95)] group-hover:block">
           {tile.createTime}t
         </span>
-        <span className="pointer-events-none absolute bottom-0.5 right-0.5 z-[4] hidden rounded-sm border border-black/90 bg-black/95 px-1 py-0.5 text-xs font-bold leading-tight text-amber-200 shadow-[0_1px_3px_rgba(0,0,0,0.95)] group-hover:block">
+        <span className="pointer-events-none absolute bottom-0.5 right-0.5 z-4 hidden rounded-sm border border-black/90 bg-black/95 px-1 py-0.5 text-xs font-bold leading-tight text-amber-200 shadow-[0_1px_3px_rgba(0,0,0,0.95)] group-hover:block">
           {tile.createCost}
         </span>
       </button>

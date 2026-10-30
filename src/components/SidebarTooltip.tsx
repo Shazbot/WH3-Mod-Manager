@@ -15,7 +15,8 @@ import {
 } from "@floating-ui/react";
 import classNames from "classnames";
 import type { TooltipProps } from "flowbite-react";
-import { tooltipTheme as theme } from "flowbite-react";
+import { tooltipTheme } from "flowbite-react";
+import { useResolveTheme } from "flowbite-react/helpers/resolve-theme";
 import React, { useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -39,6 +40,7 @@ const SidebarTooltip = ({
   className,
   ...props
 }: TooltipProps) => {
+  const theme = useResolveTheme([tooltipTheme]);
   // Kept in state rather than a ref so the arrow middleware is added once the arrow element mounts.
   const [arrowElement, setArrowElement] = useState<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -85,7 +87,7 @@ const SidebarTooltip = ({
           animation && `${theme.animation} ${animation}`,
           !open && theme.hidden,
           theme.style[style],
-          "z-[300]",
+          "z-300",
           className,
         ),
         ref: refs.setFloating,
@@ -103,7 +105,7 @@ const SidebarTooltip = ({
       <div
         className={classNames(
           theme.content,
-          "max-h-[calc(100vh-60px)] max-w-[calc(100vw-1rem)] overflow-auto break-words",
+          "max-h-[calc(100vh-60px)] max-w-[calc(100vw-1rem)] overflow-auto wrap-break-word",
         )}
       >
         {content}

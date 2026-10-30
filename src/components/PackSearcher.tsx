@@ -49,8 +49,8 @@ const PackSearcher = memo(() => {
           position="top-center"
           explicitClasses={[
             "mt-8",
-            "!max-w-5xl",
-            "md:!h-full",
+            "max-w-5xl!",
+            "md:h-full!",
             ..."scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700".split(" "),
             "modalDontOverflowWindowHeight",
           ]}
@@ -75,7 +75,7 @@ const PackSearcher = memo(() => {
                   ></input>
                 </span>
                 <button
-                  className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-56"
+                  className="inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-hidden focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out m-auto w-56"
                   onClick={() => {
                     onSearchClicked();
                   }}

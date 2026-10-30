@@ -359,7 +359,7 @@ const TechTreesTab = memo(() => {
                     confirmCreateNewNodeSet();
                   }
                 }}
-                className="mt-2 w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
+                className="mt-2 w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-500 focus:outline-hidden"
                 placeholder="Enter new technology node set key"
                 autoFocus
               />

@@ -355,7 +355,7 @@ const PackFileRenameModal: React.FC<PackFileRenameModalProps> = ({
                       setRenameStrategy("whole");
                       setNewFileName(event.target.value);
                     }}
-                    className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-none"
+                    className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-hidden"
                     autoFocus
                   />
                 </label>
@@ -407,7 +407,7 @@ const PackFileRenameModal: React.FC<PackFileRenameModalProps> = ({
                           setRenameStrategy("partial");
                           setFind(event.target.value);
                         }}
-                        className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-none"
+                        className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-hidden"
                       />
                     </label>
                     <label className="block">
@@ -420,7 +420,7 @@ const PackFileRenameModal: React.FC<PackFileRenameModalProps> = ({
                           setRenameStrategy("partial");
                           setReplace(event.target.value);
                         }}
-                        className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-none"
+                        className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-hidden"
                       />
                     </label>
                   </div>
@@ -557,7 +557,7 @@ const PackFileRenameModal: React.FC<PackFileRenameModalProps> = ({
                         setNewFolderName(event.target.value);
                         setNewFolderError("");
                       }}
-                      className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-none"
+                      className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-hidden"
                       autoFocus
                     />
                   </label>
@@ -605,7 +605,7 @@ const PackFileRenameModal: React.FC<PackFileRenameModalProps> = ({
                     aria-label={localized.viewerFind || "Find"}
                     value={find}
                     onChange={(event) => setFind(event.target.value)}
-                    className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-none"
+                    className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-hidden"
                     autoFocus
                   />
                 </label>
@@ -615,7 +615,7 @@ const PackFileRenameModal: React.FC<PackFileRenameModalProps> = ({
                     aria-label={localized.viewerReplaceWith || "Replace with"}
                     value={replace}
                     onChange={(event) => setReplace(event.target.value)}
-                    className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-none"
+                    className="w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-400 focus:outline-hidden"
                   />
                 </label>
               </div>

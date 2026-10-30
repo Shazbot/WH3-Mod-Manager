@@ -98,7 +98,7 @@ export const VanillaDbCacheBuildProgressCard = memo(() => {
   return (
     <div
       aria-live="polite"
-      className="dark fixed right-[1%] bottom-[1%] z-[110] w-96 rounded-lg border border-gray-600 bg-gray-800 p-4 text-gray-100 shadow-xl"
+      className="dark fixed right-[1%] bottom-[1%] z-110 w-96 rounded-lg border border-gray-600 bg-gray-800 p-4 text-gray-100 shadow-xl"
       data-testid="vanilla-db-cache-progress"
       role="status"
     >
@@ -131,7 +131,7 @@ export const VanillaDbCacheBuildProgressCard = memo(() => {
         />
       </div>
       {isRunning && <p className="mt-2 text-xs text-gray-400">{copy.runningNote}</p>}
-      {progress.detail && <p className="mt-2 break-words text-xs text-gray-400">{progress.detail}</p>}
+      {progress.detail && <p className="mt-2 wrap-break-word text-xs text-gray-400">{progress.detail}</p>}
     </div>
   );
 });

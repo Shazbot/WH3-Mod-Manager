@@ -24,7 +24,7 @@ const AboutScreen = memo(({ isOpen, setIsOpen }: AboutScreenProps) => {
           show={true}
           size="2xl"
           position="center"
-          explicitClasses={["!max-w-7xl"]}
+          explicitClasses={["max-w-7xl!"]}
         >
           <Modal.Header>{localized.about}</Modal.Header>
           <Modal.Body>

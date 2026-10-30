@@ -1090,7 +1090,7 @@ const ModRows = memo((props: ModRowsProps) => {
         )}
         {loadOrderModName && (
           <div
-            className="fixed bottom-4 right-4 z-[60] max-w-sm rounded-lg border border-blue-600 bg-slate-900 px-4 py-3 text-sm text-slate-100 shadow-xl"
+            className="fixed bottom-4 right-4 z-60 max-w-sm rounded-lg border border-blue-600 bg-slate-900 px-4 py-3 text-sm text-slate-100 shadow-xl"
             role="status"
           >
             <div className="font-semibold">

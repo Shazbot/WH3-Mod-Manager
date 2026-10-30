@@ -83,7 +83,7 @@ const ModDropdown = memo((props: ModDropdownProps) => {
           id="modDropdown"
           className={
             `${props.isOpen ? "" : "hidden"}` +
-            ` fixed w-52 bg-white rounded divide-y divide-gray-100 shadow dark:bg-gray-700`
+            ` fixed w-52 bg-white rounded divide-y divide-gray-100 shadow-sm dark:bg-gray-700`
           }
           style={{
             left: adjustedPosition.x,

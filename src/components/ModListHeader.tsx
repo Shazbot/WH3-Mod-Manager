@@ -106,7 +106,7 @@ const ModListHeader = memo(
       <div
         // Onboarding points at this cell, and the dual layout would otherwise render the id twice.
         id={isInsidePane ? undefined : "sortHeader"}
-        className={`flex place-items-center w-full justify-center z-[11] rounded-tl-xl ${headerClass}`}
+        className={`flex place-items-center w-full justify-center z-11 rounded-tl-xl ${headerClass}`}
         onClick={(event) => setSortingType(SortingType.Ordered, event.shiftKey)}
         onContextMenu={(event) => {
           event.preventDefault();

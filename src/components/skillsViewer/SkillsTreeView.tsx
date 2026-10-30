@@ -263,7 +263,7 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
                 opacity: isDisabled ? 0.5 : 1,
               }}
               className={
-                "flex items-center [&:not(:first-child)]:mt-2 hover:overflow-visible cursor-default " +
+                "flex items-center not-first:mt-2 hover:overflow-visible cursor-default " +
                 (isTreeNodeFiltered(element) ? "hidden" : "")
               }
             >

@@ -602,12 +602,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
 
       {/* Keep the tooltip outside the board's z-0 stacking context so it can clear the filter dropdowns. */}
       {activeSubTab === "board" && hoveredTile && (
-        <div
-          ref={setFloating}
-          style={{ ...floatingStyles, zIndex: 60 }}
-          className="pointer-events-none"
-          role="tooltip"
-        >
+        <div ref={setFloating} style={{ ...floatingStyles, zIndex: 60 }} className="pointer-events-none" role="tooltip">
           <BuildingTooltip tile={hoveredTile} />
         </div>
       )}
@@ -799,7 +794,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
       )}
 
       {isFeaturesForModdersEnabled && deepClone.isResolving && (
-        <div className="fixed bottom-4 right-4 z-[80] rounded bg-gray-800 px-3 py-2 text-xs text-gray-200 shadow-lg">
+        <div className="fixed bottom-4 right-4 z-80 rounded bg-gray-800 px-3 py-2 text-xs text-gray-200 shadow-lg">
           {localized.buildingsReadTableFor || "Reading the table for"} {deepClone.resolvingLabel}...
         </div>
       )}
@@ -819,7 +814,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
           show
           size="6xl"
           position="top-center"
-          explicitClasses={["mt-8", "!max-w-7xl", "md:!h-full", "overflow-hidden", "modalDontOverflowWindowHeight"]}
+          explicitClasses={["mt-8", "max-w-7xl!", "md:h-full!", "overflow-hidden", "modalDontOverflowWindowHeight"]}
         >
           <Modal.Header>{localized.buildingsDeepCloning || "Deep Cloning..."}</Modal.Header>
           <Modal.Body>

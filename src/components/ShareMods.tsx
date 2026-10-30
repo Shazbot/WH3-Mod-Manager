@@ -113,7 +113,7 @@ const ShareMods = memo((props: ShareModsProps) => {
             onClose={onClose}
             size="2xl"
             position="center"
-            explicitClasses={["!max-w-7xl"]}
+            explicitClasses={["max-w-7xl!"]}
           >
             <Modal.Header>Share Mod List</Modal.Header>
             <Modal.Body>
@@ -127,7 +127,7 @@ const ShareMods = memo((props: ShareModsProps) => {
 
                   <div className="flex mt-4 justify-center">
                     <button
-                      className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out"
+                      className="make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-hidden focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out"
                       onClick={() => exportModsToClipboard()}
                     >
                       <span className="uppercase">Export to clipboard</span>
@@ -153,7 +153,7 @@ const ShareMods = memo((props: ShareModsProps) => {
               <div className="flex mt-4 justify-center">
                 <button
                   disabled={importModsText == null || importModsText === ""}
-                  className="disabled:opacity-50 disabled:cursor-not-allowed make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out"
+                  className="disabled:opacity-50 disabled:cursor-not-allowed make-tooltip-w-full inline-block px-6 py-2.5 bg-purple-600 text-white font-medium text-xs leading-tight rounded shadow-md hover:bg-purple-700 hover:shadow-lg focus:bg-purple-700 focus:shadow-lg focus:outline-hidden focus:ring-0 active:bg-purple-800 active:shadow-lg transition duration-150 ease-in-out"
                   onClick={() => importMods()}
                 >
                   <span className="uppercase">Import</span>

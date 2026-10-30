@@ -64,7 +64,7 @@ const CompatConflictCard = ({
           <span className="font-normal normal-case text-gray-500 dark:text-gray-400">{side.orderLabel}</span>
         )}
       </div>
-      <div className="mt-2 break-words font-semibold text-gray-900 dark:text-gray-100">{side.packName}</div>
+      <div className="mt-2 wrap-break-word font-semibold text-gray-900 dark:text-gray-100">{side.packName}</div>
       {side.fileName && (
         <code className="mt-1 block break-all text-xs text-gray-600 dark:text-gray-400">{side.fileName}</code>
       )}
@@ -73,7 +73,7 @@ const CompatConflictCard = ({
   );
 
   return (
-    <article className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800/50">
+    <article className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xs dark:border-gray-700 dark:bg-gray-800/50">
       <div className="border-b border-gray-200 px-3 py-2.5 dark:border-gray-700">
         {headingLabel && (
           <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">

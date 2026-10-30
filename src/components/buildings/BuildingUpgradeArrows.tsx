@@ -83,7 +83,7 @@ const BuildingUpgradeArrows = memo(({ edges, tileElements, containerRef, layoutT
 
   return (
     <svg
-      className="pointer-events-none absolute left-0 top-0 z-[1]"
+      className="pointer-events-none absolute left-0 top-0 z-1"
       width={size.width}
       height={size.height}
       aria-hidden="true"

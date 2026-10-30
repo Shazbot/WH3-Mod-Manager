@@ -146,7 +146,7 @@ const RequiredMods = memo((props: RequiredModsProps) => {
           onClose={onClose}
           size="2xl"
           position="top-center"
-          explicitClasses={["mt-8", "!max-w-[max(42rem,50vw)]"]}
+          explicitClasses={["mt-8", "max-w-[max(42rem,50vw)]!"]}
         >
           <Modal.Header>{localized.missingRequiredMods}</Modal.Header>
           <Modal.Body style={{ maxHeight: "calc(100vh - 12rem)" }}>

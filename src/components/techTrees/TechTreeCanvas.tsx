@@ -1859,7 +1859,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
             ))}
           </select>
         )}
-        <Dropdown dismissOnClick={false} label="View" color="light" className="min-w-[12rem]">
+        <Dropdown dismissOnClick={false} label="View" color="light" className="min-w-48">
           <DropdownItem className="p-0">
             <label className="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 cursor-pointer select-none">
               <input
@@ -2033,7 +2033,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
                 value={savePackName}
                 onChange={(e) => setSavePackName(e.target.value)}
                 placeholder="Enter pack name"
-                className="w-full px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
+                className="w-full px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-hidden focus:border-blue-500"
                 disabled={isSaving}
               />
             </div>
@@ -2045,7 +2045,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
                   value={savePackDirectory || ""}
                   placeholder="Default: game data folder"
                   readOnly
-                  className="flex-1 px-3 py-2 bg-gray-700 text-gray-400 border border-gray-600 rounded-lg focus:outline-none"
+                  className="flex-1 px-3 py-2 bg-gray-700 text-gray-400 border border-gray-600 rounded-lg focus:outline-hidden"
                 />
                 <button
                   onClick={handleSelectSavePackDirectory}
@@ -2203,7 +2203,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
                 onChange={(event) =>
                   setEditLinkTarget((prev) => (prev ? { ...prev, parentOffset: event.target.value } : prev))
                 }
-                className="w-full px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
+                className="w-full px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-hidden focus:border-blue-500"
               />
             </div>
             <div>
@@ -2218,7 +2218,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
                 onChange={(event) =>
                   setEditLinkTarget((prev) => (prev ? { ...prev, childOffset: event.target.value } : prev))
                 }
-                className="w-full px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
+                className="w-full px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-hidden focus:border-blue-500"
               />
             </div>
             <div>
@@ -2234,7 +2234,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
                 onChange={(event) =>
                   setEditLinkTarget((prev) => (prev ? { ...prev, initialDescentTiers: event.target.value } : prev))
                 }
-                className="w-full px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
+                className="w-full px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-hidden focus:border-blue-500"
               />
             </div>
             <p className="text-xs text-gray-400">

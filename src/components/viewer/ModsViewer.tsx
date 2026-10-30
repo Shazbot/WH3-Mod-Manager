@@ -2114,7 +2114,7 @@ const ModsViewer = memo(() => {
           show={isOpen}
           size="6xl"
           position="top-center"
-          explicitClasses={["mt-8", "!max-w-7xl", "md:!h-full", "overflow-hidden", "modalDontOverflowWindowHeight"]}
+          explicitClasses={["mt-8", "max-w-7xl!", "md:h-full!", "overflow-hidden", "modalDontOverflowWindowHeight"]}
         >
           <Modal.Header>{localized.viewerDeepCloning || "Deep Cloning..."}</Modal.Header>
           <Modal.Body>
@@ -2148,7 +2148,7 @@ const ModsViewer = memo(() => {
                 value={saveAsPackName}
                 onChange={(e) => setSaveAsPackName(e.target.value)}
                 placeholder={localized.viewerPackNamePlaceholder || "e.g. my_custom_pack"}
-                className="w-full px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
+                className="w-full px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-hidden focus:border-blue-500"
                 disabled={isSaveAsProcessing}
               />
             </div>
@@ -2165,7 +2165,7 @@ const ModsViewer = memo(() => {
                     localized.viewerSaveLocationLoading || "Loading data folder, or click Browse to pick another"
                   }
                   readOnly
-                  className="flex-1 px-3 py-2 bg-gray-700 text-gray-400 border border-gray-600 rounded-lg focus:outline-none"
+                  className="flex-1 px-3 py-2 bg-gray-700 text-gray-400 border border-gray-600 rounded-lg focus:outline-hidden"
                 />
                 <button
                   onClick={handleSelectSaveAsDirectory}
@@ -2273,7 +2273,7 @@ const ModsViewer = memo(() => {
                 onKeyDown={(event) => {
                   if (event.key === "Enter") handleCopyTableWithNewName();
                 }}
-                className="w-full rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
+                className="w-full rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-white focus:border-blue-500 focus:outline-hidden"
                 disabled={isCopyProcessing}
                 aria-label={localized.viewerTableName || "New table name"}
               />
@@ -2431,7 +2431,7 @@ const ModsViewer = memo(() => {
               value={newPackName}
               onChange={(e) => setNewPackName(e.target.value)}
               placeholder={localized.viewerNewPackNamePlaceholder || "e.g. new_mod_pack"}
-              className="w-full px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
+              className="w-full px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-hidden focus:border-blue-500"
               disabled={isNewPackProcessing}
             />
           </div>
@@ -2564,7 +2564,7 @@ const ModsViewer = memo(() => {
                         id="mods-viewer-file-menu"
                         role="menu"
                         aria-label={localized.viewerFile || "File"}
-                        className="absolute left-0 top-full z-50 mt-1 min-w-[10rem] rounded-md border border-gray-600 bg-gray-800 py-1 shadow-xl"
+                        className="absolute left-0 top-full z-50 mt-1 min-w-40 rounded-md border border-gray-600 bg-gray-800 py-1 shadow-xl"
                       >
                         <button
                           type="button"
@@ -2609,7 +2609,7 @@ const ModsViewer = memo(() => {
                               ref={recentPackMenuRef}
                               role="menu"
                               aria-label={localized.viewerOpenRecent || "Open Recent"}
-                              className="absolute left-full top-0 z-50 min-w-[16rem] max-w-[28rem] overflow-hidden rounded-md border border-gray-600 bg-gray-800 py-1 shadow-xl"
+                              className="absolute left-full top-0 z-50 min-w-[16rem] max-w-md overflow-hidden rounded-md border border-gray-600 bg-gray-800 py-1 shadow-xl"
                             >
                               {availableRecentPackPaths.length > 0 ? (
                                 availableRecentPackPaths.slice(0, visibleRecentPackCount).map((packPath, index) => (

@@ -219,7 +219,7 @@ const Sidebar = memo(() => {
       type="button"
       role="menuitemcheckbox"
       aria-checked={checked}
-      className="flex w-full items-start gap-2 rounded px-3 py-2 text-left text-sm text-white hover:bg-gray-700 focus:bg-gray-700 focus:outline-none"
+      className="flex w-full items-start gap-2 rounded px-3 py-2 text-left text-sm text-white hover:bg-gray-700 focus:bg-gray-700 focus:outline-hidden"
       onClick={onToggle}
     >
       <input type="checkbox" readOnly checked={checked} className="pointer-events-none mt-0.5 accent-blue-500" />
@@ -759,7 +759,7 @@ const Sidebar = memo(() => {
         setIsOpen={setIsShowingRequiredMods}
         modDependencies={allMissingModDependencies}
       />
-      <div className="fixed h-[min(90vh,calc(100vh-5rem))] max-h-[min(90vh,calc(100vh-5rem))] overflow-y-auto z-[40] flex flex-col scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700 [&>div.mt-4_.text-center.mt-4]:mt-0">
+      <div className="fixed h-[min(90vh,calc(100vh-5rem))] max-h-[min(90vh,calc(100vh-5rem))] overflow-y-auto z-40 flex flex-col scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700 [&>div.mt-4_.text-center.mt-4]:mt-0">
         <div id="presetSection">
           <SidebarTooltip
             placement="left"
@@ -1059,8 +1059,9 @@ const Sidebar = memo(() => {
               id="playGame"
               aria-haspopup={gameStartOptions.length > 0 ? "menu" : undefined}
               aria-expanded={gameStartMenuPosition !== null}
-              className={`bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded h-14 w-36 m-auto ${
-                (isWH3Running && "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50") || ""
+              className={`font-bold py-2 px-4 rounded h-14 w-36 m-auto ${
+                (isWH3Running && "bg-green-500/50 hover:bg-green-700/50 text-white/50") ||
+                "bg-green-500 hover:bg-green-700 text-white"
               }`}
               onContextMenu={openGameStartMenu}
               onClick={(e) => {
@@ -1115,7 +1116,7 @@ const Sidebar = memo(() => {
                 ref={gameStartMenuRef}
                 role="menu"
                 aria-label={localized.gameStartParameters || "Game Start Parameters"}
-                className="fixed z-[250] max-h-[calc(100vh-1rem)] w-72 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border border-gray-700 bg-gray-800 p-1 text-left shadow-lg"
+                className="fixed z-250 max-h-[calc(100vh-1rem)] w-72 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border border-gray-700 bg-gray-800 p-1 text-left shadow-lg"
                 style={{ left: gameStartMenuPosition.left, top: gameStartMenuPosition.top }}
                 onContextMenu={(event) => event.preventDefault()}
               >
@@ -1162,8 +1163,9 @@ const Sidebar = memo(() => {
             <div className="mt-2 w-36 h-7 relative">
               <button
                 id="continueGame"
-                className={`bg-green-600 border-green-500 border-2 hover:bg-green-700 text-white font-medium text-sm px-4 rounded h-7 w-36 m-auto ${
-                  (isWH3Running && "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50") || ""
+                className={`border-green-500 border-2 font-medium text-sm px-4 rounded h-7 w-36 m-auto ${
+                  (isWH3Running && "bg-green-600/50 hover:bg-green-700/50 text-white/50") ||
+                  "bg-green-600 hover:bg-green-700 text-white"
                 }`}
                 onClick={() => onContinueGameClicked()}
                 disabled={saves.length < 1}
@@ -1179,7 +1181,7 @@ const Sidebar = memo(() => {
               <button
                 id="showSaves"
                 type="submit"
-                className="absolute h-7 top-0 bottom-0 right-0 px-1 text-sm font-medium text-white bg-green-600 rounded-r-lg border-2 border-green-500 hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-blue-300 dark:bg-green-600 dark:hover:bg-green-700 dark:focus:ring-green-800"
+                className="absolute h-7 top-0 bottom-0 right-0 px-1 text-sm font-medium text-white bg-green-600 rounded-r-lg border-2 border-green-500 hover:bg-green-700 focus:ring-4 focus:outline-hidden focus:ring-blue-300 dark:bg-green-600 dark:hover:bg-green-700 dark:focus:ring-green-800"
                 onClick={() => onShowSavedGamesClicked()}
                 disabled={saves.length < 1}
               >
@@ -1216,7 +1218,7 @@ const Sidebar = memo(() => {
           <div className="text-center mt-4">
             <button
               onClick={() => window.api?.requestOpenModInViewer(gameToPackWithDBTablesName[currentGame] || "db.pack")}
-              className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
+              className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-hidden dark:focus:ring-gray-800"
               type="button"
             >
               {localized.dbViewer}
@@ -1231,13 +1233,13 @@ const Sidebar = memo(() => {
                 <>
                   <button
                     onClick={() => setIsTreeMenuOpen((currentValue) => !currentValue)}
-                    className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
+                    className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-hidden dark:focus:ring-gray-800"
                     type="button"
                   >
                     {localized.treeWindows || "Trees"}
                   </button>
                   {isTreeMenuOpen && (
-                    <div className="absolute left-1/2 z-[250] mt-1 w-44 -translate-x-1/2 rounded-lg border border-gray-700 bg-gray-800 p-1 text-left shadow-lg">
+                    <div className="absolute left-1/2 z-250 mt-1 w-44 -translate-x-1/2 rounded-lg border border-gray-700 bg-gray-800 p-1 text-left shadow-lg">
                       <button
                         type="button"
                         className="block w-full rounded px-3 py-2 text-sm text-white hover:bg-gray-700"
@@ -1264,7 +1266,7 @@ const Sidebar = memo(() => {
               ) : canOpenSkillsWindow ? (
                 <button
                   onClick={() => window.api?.requestOpenSkillsWindow(mods)}
-                  className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
+                  className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-hidden dark:focus:ring-gray-800"
                   type="button"
                 >
                   {localized.skillsViewer || "Skill Trees"}
@@ -1272,7 +1274,7 @@ const Sidebar = memo(() => {
               ) : (
                 <button
                   onClick={() => window.api?.requestOpenTechTreesWindow()}
-                  className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
+                  className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-hidden dark:focus:ring-gray-800"
                   type="button"
                 >
                   {localized.techTreesTab || "Tech Trees"}
@@ -1286,7 +1288,7 @@ const Sidebar = memo(() => {
           <div className="text-center mt-4">
             <button
               onClick={() => dispatch(setIsHelpOpen(true))}
-              className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
+              className="w-36 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:bg-gray-700 dark:border-gray-600 dark:border-2 focus:outline-hidden dark:focus:ring-gray-800"
               type="button"
             >
               {localized.faqAbbreviated}

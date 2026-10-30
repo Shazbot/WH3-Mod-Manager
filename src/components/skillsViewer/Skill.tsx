@@ -762,7 +762,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
         <Handle
           type="target"
           position={Position.Left}
-          className={`ml-[10px] z-[2] ${data.isEditMode ? "" : "opacity-0"}`}
+          className={`ml-[10px] z-2 ${data.isEditMode ? "" : "opacity-0"}`}
           style={data.isEditMode ? undefined : { pointerEvents: "none" }}
         />
         <div className="absolute" style={cardStyle}>
@@ -845,7 +845,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
         <Handle
           type="source"
           position={Position.Right}
-          className={`mr-[10px] z-[2] ${data.isEditMode ? "" : "opacity-0"}`}
+          className={`mr-[10px] z-2 ${data.isEditMode ? "" : "opacity-0"}`}
           style={data.isEditMode ? undefined : { pointerEvents: "none" }}
         />
       </div>

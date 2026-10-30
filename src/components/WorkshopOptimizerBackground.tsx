@@ -92,12 +92,12 @@ const WorkshopOptimizerBackground = memo(() => {
       role="status"
       aria-live="polite"
       data-testid="workshop-optimizer-background"
-      className="fixed bottom-4 right-4 z-[55] flex max-w-md items-center gap-3 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-xs text-slate-200 shadow-lg"
+      className="fixed bottom-4 right-4 z-55 flex max-w-md items-center gap-3 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-xs text-slate-200 shadow-lg"
     >
-      <span className="min-w-0 break-words">{text}</span>
+      <span className="min-w-0 wrap-break-word">{text}</span>
       <button
         type="button"
-        className="shrink-0 rounded border border-slate-500 px-2 py-1 text-xs hover:bg-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-400"
+        className="shrink-0 rounded border border-slate-500 px-2 py-1 text-xs hover:bg-slate-700 focus:outline-hidden focus:ring-1 focus:ring-slate-400"
         onClick={() => window.api?.cancelWorkshopOptimizerBackground?.()}
       >
         {localized.workshopOptimizerBackgroundCancel || "Cancel"}

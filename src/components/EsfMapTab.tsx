@@ -2642,7 +2642,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
               {isEditingOwnership && (
                 <div className="pointer-events-none absolute inset-0 z-20">
                   <div
-                    className="pointer-events-none absolute left-1/2 top-3 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-2 rounded border border-blue-400/70 bg-gray-950/90 px-3 py-2 text-center text-xs text-gray-200 shadow-lg backdrop-blur-sm"
+                    className="pointer-events-none absolute left-1/2 top-3 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-2 rounded border border-blue-400/70 bg-gray-950/90 px-3 py-2 text-center text-xs text-gray-200 shadow-lg backdrop-blur-xs"
                     role="status"
                   >
                     {brushFactionDetails?.flagUrl && (
@@ -2656,7 +2656,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                         : mapText("mapOwnershipNoFactionSelected", "No faction selected")}
                     </span>
                   </div>
-                  <div className="pointer-events-none absolute bottom-3 left-3 z-20 max-w-[calc(100%-1.5rem)] rounded border border-gray-600/80 bg-gray-950/90 px-3 py-2 text-xs text-gray-300 shadow-lg backdrop-blur-sm">
+                  <div className="pointer-events-none absolute bottom-3 left-3 z-20 max-w-[calc(100%-1.5rem)] rounded border border-gray-600/80 bg-gray-950/90 px-3 py-2 text-xs text-gray-300 shadow-lg backdrop-blur-xs">
                     <div className="mb-1 font-medium text-gray-100">
                       {mapText("mapOwnershipMouseActions", "Mouse actions")}
                     </div>
@@ -3222,7 +3222,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                       ? mapText("mapFilterClimates", "Filter climates…")
                       : mapText("mapFilterRegions", "Filter regions…")
                 }
-                className="w-full rounded border border-gray-700 bg-gray-950 px-2 py-1.5 text-sm text-gray-200 outline-none focus:border-blue-500"
+                className="w-full rounded border border-gray-700 bg-gray-950 px-2 py-1.5 text-sm text-gray-200 outline-hidden focus:border-blue-500"
               />
             </div>
             <div className="min-h-0 flex-1 overflow-auto p-2">
@@ -3458,7 +3458,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                                       aria-label={`${label}: ${targetLabel} (${targetKey})`}
                                       onClick={(event) => handleDiplomacyFlagClick(event, targetKey)}
                                       onDoubleClick={(event) => handleDiplomacyFlagClick(event, targetKey, true)}
-                                      className="flex h-6 w-6 items-center justify-center rounded border border-gray-700 bg-gray-900 hover:border-blue-400 focus:border-blue-400 focus:outline-none"
+                                      className="flex h-6 w-6 items-center justify-center rounded border border-gray-700 bg-gray-900 hover:border-blue-400 focus:border-blue-400 focus:outline-hidden"
                                     >
                                       {target?.flagUrl ? (
                                         <img src={target.flagUrl} alt="" className="h-5 w-5 object-contain" />

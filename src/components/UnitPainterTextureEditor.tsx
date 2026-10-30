@@ -844,7 +844,7 @@ const UnitPainterTextureEditor = ({
 
   const viewportBackgroundClass =
     backgroundMode === "checker"
-      ? "bg-[linear-gradient(45deg,#111827_25%,transparent_25%),linear-gradient(-45deg,#111827_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#111827_75%),linear-gradient(-45deg,transparent_75%,#111827_75%)] bg-[length:24px_24px] bg-[position:0_0,0_12px,12px_-12px,-12px_0px]"
+      ? "bg-[linear-gradient(45deg,#111827_25%,transparent_25%),linear-gradient(-45deg,#111827_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#111827_75%),linear-gradient(-45deg,transparent_75%,#111827_75%)] bg-size-[24px_24px] bg-position-[0_0,0_12px,12px_-12px,-12px_0px]"
       : backgroundMode === "light"
         ? "bg-gray-200"
         : "bg-gray-950";

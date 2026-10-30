@@ -23,20 +23,20 @@ const makeStore = (overrides = {}) =>
   });
 
 describe("Flowbite React migration", () => {
-  it("uses Tailwind 3 and portals the sidebar tooltip outside its scroll container", async () => {
+  it("uses Tailwind 4 and portals the sidebar tooltip outside its scroll container", async () => {
     const user = userEvent.setup();
     const { container } = render(
       <SidebarTooltip content="A sidebar warning" placement="right">
         <button>Warning details</button>
       </SidebarTooltip>,
     );
-    expect(getVersion()).toBe(3);
+    expect(getVersion()).toBe(4);
     await user.hover(screen.getByRole("button", { name: "Warning details" }));
     const tooltip = await screen.findByRole("tooltip");
     expect(tooltip).toHaveTextContent("A sidebar warning");
     expect(container).not.toContainElement(tooltip);
     expect(tooltip).toHaveStyle({ position: "fixed" });
-    expect(tooltip).toHaveClass("bg-gray-900", "z-[300]");
+    expect(tooltip).toHaveClass("bg-gray-900", "z-300");
   });
 
   it("keeps options open after checkbox changes and dismisses a faction selection", async () => {

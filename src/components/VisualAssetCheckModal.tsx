@@ -28,11 +28,11 @@ const FindingRow = memo(
       <li className="py-2 border-b border-gray-600 last:border-b-0">
         <div className="flex items-baseline gap-2">
           <span className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-medium ${style.badge}`}>{finding.code}</span>
-          <span className="text-sm text-gray-100 break-words">{finding.message}</span>
+          <span className="text-sm text-gray-100 wrap-break-word">{finding.message}</span>
         </div>
         {finding.path && <div className="mt-1 text-xs text-slate-300 break-all">{finding.path}</div>}
         {finding.details && (
-          <div className="mt-0.5 text-xs text-slate-400 break-words">
+          <div className="mt-0.5 text-xs text-slate-400 wrap-break-word">
             <span className="font-medium">{localized.visualCheckDetails || "Details"}: </span>
             {finding.details}
           </div>
@@ -151,7 +151,7 @@ const Findings = memo(
                 aria-pressed={shown[severity]}
                 disabled={counts[severity] === 0}
                 onClick={() => setShown((previous) => ({ ...previous, [severity]: !previous[severity] }))}
-                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 ${
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium focus:outline-hidden focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 ${
                   shown[severity]
                     ? "border-blue-500 bg-gray-600 text-white"
                     : "border-gray-600 bg-gray-800 text-gray-400"
@@ -214,7 +214,7 @@ const Findings = memo(
                     {visible.length < findings.length && (
                       <button
                         type="button"
-                        className="m-2 rounded px-3 py-1 text-sm text-blue-300 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="m-2 rounded px-3 py-1 text-sm text-blue-300 hover:bg-gray-600 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                         onClick={() => setExpanded((previous) => ({ ...previous, [key]: true }))}
                       >
                         {interpolate(localized.visualCheckShowAll || "Show all {{count}}", { count: findings.length })}
@@ -319,7 +319,7 @@ const VisualAssetCheckModal = memo(() => {
 
   const modName = state.state === "done" ? state.report.modName : state.modName;
   const percent = state.state === "running" ? Math.round(state.fraction * 100) : 0;
-  const buttonBase = "px-4 py-2 font-medium text-sm rounded focus:outline-none focus:ring-2";
+  const buttonBase = "px-4 py-2 font-medium text-sm rounded focus:outline-hidden focus:ring-2";
 
   return (
     <Modal show dismissible onClose={dismiss} size="5xl" position="center" explicitClasses={["max-h-[90vh]"]}>
@@ -355,7 +355,7 @@ const VisualAssetCheckModal = memo(() => {
               <p className="text-base font-medium text-red-400">
                 {localized.visualCheckFailedTitle || "The check could not be completed"}
               </p>
-              <p className="text-sm text-gray-300 break-words">{failureText(state, localized)}</p>
+              <p className="text-sm text-gray-300 wrap-break-word">{failureText(state, localized)}</p>
             </div>
           )}
           {state.state === "done" && <Findings report={state.report} localized={localized} />}

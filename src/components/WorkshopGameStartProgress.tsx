@@ -372,9 +372,9 @@ const WorkshopGameStartProgressCard = memo(() => {
                 </p>
               )}
               {progress.detail && !isOptimizingStage && (
-                <p className="mt-1 break-words text-xs text-gray-500 dark:text-gray-400">{progress.detail}</p>
+                <p className="mt-1 wrap-break-word text-xs text-gray-500 dark:text-gray-400">{progress.detail}</p>
               )}
-              {progress.error && <p className="mt-1 break-words text-xs text-red-600">{progress.error}</p>}
+              {progress.error && <p className="mt-1 wrap-break-word text-xs text-red-600">{progress.error}</p>}
             </div>
             {percent !== undefined && <span className="text-sm tabular-nums text-gray-500">{percent}%</span>}
           </div>
@@ -399,7 +399,7 @@ const WorkshopGameStartProgressCard = memo(() => {
         <Modal.Footer>
           {(canSkipOptimization || (isOptimizing && isSkipRequested)) && (
             <button
-              className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-hidden focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
               disabled={!canSkipOptimization || isSkipRequested}
               onClick={requestSkipOptimization}
               type="button"
@@ -410,7 +410,7 @@ const WorkshopGameStartProgressCard = memo(() => {
             </button>
           )}
           <button
-            className="rounded bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 focus:outline-hidden focus:ring-2 focus:ring-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={!canCancel}
             onClick={requestCancel}
             type="button"

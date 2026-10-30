@@ -446,7 +446,7 @@ const BuildingEditModal = memo(
         show
         size="2xl"
         position="center"
-        explicitClasses={["first-child-div-second-child-div-flex-grow", "!h-[75vh]", "first-child-div-flex-col"]}
+        explicitClasses={["first-child-div-second-child-div-flex-grow", "h-[75vh]!", "first-child-div-flex-col"]}
       >
         <Modal.Header>
           {(localized.buildingsEditTitle || "Edit {{title}}").replace("{{title}}", tile.title)}

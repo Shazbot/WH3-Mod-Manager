@@ -679,10 +679,9 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
 
   const memoryActionButton = canSaveToMemory ? (
     <button
-      className={`bg-cyan-700 border-cyan-600 border-2 hover:bg-cyan-800 text-white font-medium text-sm px-4 rounded h-8 min-w-44 m-auto ${
-        ((!isSavingPossible() || isSaving) &&
-          "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50 cursor-not-allowed") ||
-        ""
+      className={`border-cyan-600 border-2 font-medium text-sm px-4 rounded h-8 min-w-44 m-auto ${
+        ((!isSavingPossible() || isSaving) && "bg-cyan-700/50 hover:bg-cyan-800/50 text-white/50 cursor-not-allowed") ||
+        "bg-cyan-700 hover:bg-cyan-800 text-white"
       }`}
       onClick={async () => await onSave("memory")}
       disabled={!isSavingPossible() || isSaving}
@@ -703,8 +702,8 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
           position="top-center"
           explicitClasses={[
             "mt-8",
-            "!max-w-5xl",
-            "md:!h-full",
+            "max-w-5xl!",
+            "md:h-full!",
             ..."scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700".split(" "),
             "modalDontOverflowWindowHeight",
           ]}
@@ -823,10 +822,10 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
         {launchSource === "buildings" && memoryActionButton}
         <div className="flex w-60 flex-col items-center gap-3 rounded-lg border border-gray-600 bg-gray-800/60 p-3">
           <button
-            className={`bg-green-600 border-green-500 border-2 hover:bg-green-700 text-white font-medium text-sm px-4 rounded h-8 min-w-32 m-auto ${
+            className={`border-green-500 border-2 font-medium text-sm px-4 rounded h-8 min-w-32 m-auto ${
               ((!isSavingPossible() || isSaving) &&
-                "bg-opacity-50 hover:bg-opacity-50 text-opacity-50 hover:text-opacity-50 cursor-not-allowed") ||
-              ""
+                "bg-green-600/50 hover:bg-green-700/50 text-white/50 cursor-not-allowed") ||
+              "bg-green-600 hover:bg-green-700 text-white"
             }`}
             onClick={async () => await onSave("pack")}
             disabled={!isSavingPossible() || isSaving}
@@ -840,7 +839,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
             placeholder={localized.viewerOptionalNewPackName || "(Optional) Name for new pack"}
             disabled={isSaving}
             onChange={(e) => setSavePackFileName(e.target.value)}
-            className={`bg-gray-50 w-52 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-none ${
+            className={`bg-gray-50 w-52 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-hidden ${
               isSaving ? "opacity-60 cursor-not-allowed" : ""
             }`}
           />
@@ -872,7 +871,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
             placeholder={localized.viewerOptionalNewTablesName || "(Optional) Name for new tables"}
             disabled={isSaving}
             onChange={(e) => setSavePackedFileName(e.target.value)}
-            className={`bg-gray-50 w-52 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-none ${
+            className={`bg-gray-50 w-52 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-hidden ${
               isSaving ? "opacity-60 cursor-not-allowed" : ""
             }`}
           />
@@ -880,7 +879,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
         <div className="text-center">
           <button
             onClick={() => setIsHelpOpen(true)}
-            className="w-28 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:border-blue-500 dark:border-gray-600 dark:border-2 focus:outline-none dark:focus:ring-gray-800"
+            className="w-28 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 mx-2 mb-2 m-auto dark:bg-transparent dark:hover:border-blue-500 dark:border-gray-600 dark:border-2 focus:outline-hidden dark:focus:ring-gray-800"
             type="button"
           >
             {localized.help}
@@ -911,7 +910,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
           disabled={isSaving}
           onChange={(event) => setGlobalRenameValue(event.target.value)}
           placeholder={localized.viewerIndividualKeyPlaceholder || "Leave empty to rename keys individually"}
-          className="block w-full rounded-lg border border-gray-600 bg-gray-700 p-2.5 text-sm text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+          className="block w-full rounded-lg border border-gray-600 bg-gray-700 p-2.5 text-sm text-white placeholder-gray-400 focus:border-blue-500 focus:outline-hidden focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
         />
         {normalizedModdersPrefix && (
           <label className="flex items-center gap-2 text-sm text-gray-300" htmlFor="dbclone-append-modders-prefix">
@@ -967,7 +966,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
               >
                 {isBranch && <ArrowIcon isOpen={isExpanded} />}
                 <CheckBoxIcon
-                  className={`checkbox-icon scale-125 ${!isBranch && "!ml-[26px]"}`}
+                  className={`checkbox-icon scale-125 ${!isBranch && "ml-[26px]!"}`}
                   onClick={(e) => {
                     // handleSelect(e);
                     onNodeToggled(element.name);

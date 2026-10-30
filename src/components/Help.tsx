@@ -42,8 +42,8 @@ const Help = memo(() => {
           position="top-center"
           explicitClasses={[
             "mt-8",
-            "!max-w-5xl",
-            "md:!h-full",
+            "max-w-5xl!",
+            "md:h-full!",
             ..."scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700".split(" "),
             "modalDontOverflowWindowHeight",
           ]}
@@ -60,7 +60,7 @@ const Help = memo(() => {
                     <AccordionTrigger>{localized[locHeaderAndContent[0]]}</AccordionTrigger>
                     <AccordionContent>
                       {locHeaderAndContent.slice(1).map((loc, ii) => (
-                        <p key={`${i}_${ii}`} className="[&:not(:first-child)]:mt-4">
+                        <p key={`${i}_${ii}`} className="not-first:mt-4">
                           {localized[loc]}
                         </p>
                       ))}
@@ -78,7 +78,7 @@ const Help = memo(() => {
                     <AccordionTrigger>{localized[locHeaderAndContent[0]]}</AccordionTrigger>
                     <AccordionContent>
                       {locHeaderAndContent.slice(1).map((loc, ii) => (
-                        <p key={`${i}_${ii}`} className="[&:not(:first-child)]:mt-4">
+                        <p key={`${i}_${ii}`} className="not-first:mt-4">
                           {localized[loc]}
                         </p>
                       ))}

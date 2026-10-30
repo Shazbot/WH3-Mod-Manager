@@ -33,7 +33,7 @@ const BuildingSetBand = memo(
       style={{ "--building-band-colour": band.colour } as React.CSSProperties}
     >
       <div
-        className="grid flex-1 content-end gap-x-[var(--building-column-gap)] gap-y-[var(--building-gap)] px-[calc(var(--building-gap)*2)] pt-[var(--building-gap)]"
+        className="grid flex-1 content-end gap-x-(--building-column-gap) gap-y-(--building-gap) px-[calc(var(--building-gap)*2)] pt-(--building-gap)"
         style={{
           gridTemplateColumns: `repeat(${band.columnCount}, var(--building-tile))`,
           gridTemplateRows: `repeat(${rowCount}, var(--building-tile))`,
@@ -56,7 +56,7 @@ const BuildingSetBand = memo(
         )}
       </div>
       <div
-        className="buildingSetLabel mt-[var(--building-gap)] truncate px-2 py-1 text-center text-[0.7rem] font-medium"
+        className="buildingSetLabel mt-(--building-gap) truncate px-2 py-1 text-center text-[0.7rem] font-medium"
         title={band.setKey}
         onContextMenu={(event) => {
           if (!onBandContextMenu) return;

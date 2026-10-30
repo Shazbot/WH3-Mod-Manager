@@ -367,7 +367,7 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
       )}
 
       {deepClone.isResolving && (
-        <div className="fixed bottom-4 right-4 z-[80] rounded bg-gray-800 px-3 py-2 text-xs text-gray-200 shadow-lg">
+        <div className="fixed bottom-4 right-4 z-80 rounded bg-gray-800 px-3 py-2 text-xs text-gray-200 shadow-lg">
           {localized.ancillariesReadingTableFor || "Reading the table for"} {deepClone.resolvingLabel}...
         </div>
       )}
@@ -387,7 +387,7 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
           show
           size="6xl"
           position="top-center"
-          explicitClasses={["mt-8", "!max-w-7xl", "md:!h-full", "overflow-hidden", "modalDontOverflowWindowHeight"]}
+          explicitClasses={["mt-8", "max-w-7xl!", "md:h-full!", "overflow-hidden", "modalDontOverflowWindowHeight"]}
         >
           <Modal.Header>{localized.ancillariesDeepCloning || "Deep Cloning..."}</Modal.Header>
           <Modal.Body>

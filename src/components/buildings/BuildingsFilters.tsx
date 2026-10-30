@@ -523,7 +523,7 @@ const BuildingsFilters = memo(
             {localized.buildingsExtra || "Extra"}
           </button>
           {isOptionsMenuOpen && (
-            <div className="absolute right-0 z-[250] mt-1 w-56 rounded-lg border border-gray-700 bg-gray-800 p-1 text-left shadow-lg">
+            <div className="absolute right-0 z-250 mt-1 w-56 rounded-lg border border-gray-700 bg-gray-800 p-1 text-left shadow-lg">
               <label className="flex items-center gap-2 rounded px-3 py-2 text-sm text-white hover:bg-gray-700">
                 <input
                   type="checkbox"

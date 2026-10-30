@@ -26,7 +26,7 @@ type TechNodeData = {
   effects?: TechEffect[];
 };
 
-const handleClass = (showHandles: boolean) => `z-[2] ${showHandles ? "" : "opacity-0 pointer-events-none"}`;
+const handleClass = (showHandles: boolean) => `z-2 ${showHandles ? "" : "opacity-0 pointer-events-none"}`;
 
 const TechNode = memo(({ data, selected }: NodeProps) => {
   const typedData = data as TechNodeData;

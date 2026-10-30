@@ -77,7 +77,7 @@ interface IconOption {
 const noIcons: Record<string, string> = {};
 
 const inputClass =
-  "sticky top-[-1.5rem] w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500";
+  "sticky -top-6 w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500";
 
 const AddNodeModal = memo((props: AddNodeModalProps) => {
   const { isOpen, onClose, onAdd, editorData, initialRow, initialColumn, editingData } = props;
@@ -277,7 +277,7 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
         show={isOpen}
         onClose={onClose}
         size="3xl"
-        explicitClasses={["first-child-div-second-child-div-flex-grow", "!h-[94vh]", "first-child-div-flex-col"]}
+        explicitClasses={["first-child-div-second-child-div-flex-grow", "h-[94vh]!", "first-child-div-flex-col"]}
       >
         <Modal.Header>{editingData ? localized.editNode || "Edit Node" : localized.addNode || "Add Node"}</Modal.Header>
         <Modal.Body>
@@ -613,7 +613,7 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
                               [key]: e.target.value,
                             }));
                           }}
-                          className={inputClass + " !w-24"}
+                          className={inputClass + " w-24!"}
                         />
                       </div>
                     ))}
@@ -651,7 +651,7 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
           "max-w-[90vw]",
           "first-child-div-second-child-div-flex-grow",
           "first-child-div-flex-col",
-          "!h-[90vh]",
+          "h-[90vh]!",
         ]}
       >
         <Modal.Header>Select Icon</Modal.Header>

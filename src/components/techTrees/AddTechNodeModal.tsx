@@ -386,7 +386,7 @@ const AddTechNodeModal = ({
                             [option.value]: event.target.value,
                           }))
                         }
-                        className={`${inputClass} !w-32`}
+                        className={`${inputClass} w-32!`}
                         placeholder="Value"
                       />
                     </div>
@@ -570,7 +570,7 @@ const AddTechNodeModal = ({
           "max-w-[90vw]",
           "first-child-div-second-child-div-flex-grow",
           "first-child-div-flex-col",
-          "!h-[90vh]",
+          "h-[90vh]!",
         ]}
       >
         <Modal.Header>Select Icon</Modal.Header>

@@ -5513,7 +5513,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           aria-label="Animation speed"
           title="Animation speed"
           disabled={!clipDuration}
-          className="w-[4.5rem] shrink-0 rounded border border-gray-600 bg-gray-800 px-2 py-1 text-xs text-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+          className="w-18 shrink-0 rounded border border-gray-600 bg-gray-800 px-2 py-1 text-xs text-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {ANIMATION_SPEEDS.map((speed) => (
             <option key={speed} value={speed}>
@@ -5531,7 +5531,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           onWheel={(event) => adjustRangeFromWheel(event, seekAnimation)}
           aria-label="Animation timeline"
           disabled={!clipDuration}
-          className="hidden min-w-24 flex-[2] accent-blue-500 sm:block"
+          className="hidden min-w-24 flex-2 accent-blue-500 sm:block"
         />
         <span className="w-16 shrink-0 text-right tabular-nums text-gray-500">
           {clipDuration ? `${formatAnimationTime(currentTime)} / ${formatAnimationTime(clipDuration)}` : "—"}

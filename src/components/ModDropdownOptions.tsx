@@ -335,13 +335,13 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
           </Modal.Body>
           <Modal.Footer>
             <button
-              className="px-4 py-2 bg-gray-500 text-white font-medium text-sm rounded hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-400"
+              className="px-4 py-2 bg-gray-500 text-white font-medium text-sm rounded hover:bg-gray-600 focus:outline-hidden focus:ring-2 focus:ring-gray-400"
               onClick={() => setIsDeleteConfirmOpen(false)}
             >
               {localized.cancel || "Cancel"}
             </button>
             <button
-              className="px-4 py-2 bg-red-600 text-white font-medium text-sm rounded hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+              className="px-4 py-2 bg-red-600 text-white font-medium text-sm rounded hover:bg-red-700 focus:outline-hidden focus:ring-2 focus:ring-red-500"
               onClick={() => {
                 if (primaryMod) {
                   selectedMods.forEach(deletePack);
@@ -403,7 +403,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 <Tooltip
                   placement="right"
                   style="light"
-                  content={<div className="min-w-[10rem]">{localized.keepAlwaysEnabledTooltip}</div>}
+                  content={<div className="min-w-40">{localized.keepAlwaysEnabledTooltip}</div>}
                 >
                   <span className="flex items-center gap-2">
                     <MdOutlineCheckBox className="w-5 h-5"></MdOutlineCheckBox>
@@ -426,7 +426,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 <Tooltip
                   placement="right"
                   style="light"
-                  content={<div className="min-w-[10rem]">{localized.hideFromListTooltip}</div>}
+                  content={<div className="min-w-40">{localized.hideFromListTooltip}</div>}
                 >
                   <span className="flex items-center gap-2">
                     <MdHideImage className="w-5 h-5"></MdHideImage>
@@ -586,7 +586,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                     <Tooltip
                       placement="right"
                       style="light"
-                      content={<div className="min-w-[10rem]">{localized.uploadModTooltip}</div>}
+                      content={<div className="min-w-40">{localized.uploadModTooltip}</div>}
                     >
                       {localized.uploadMod}
                     </Tooltip>
@@ -606,7 +606,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                     <Tooltip
                       placement="right"
                       style="light"
-                      content={<div className="min-w-[10rem]">{localized.updateModTooltip}</div>}
+                      content={<div className="min-w-40">{localized.updateModTooltip}</div>}
                     >
                       <span className="flex items-center gap-2">
                         <FaSync className="w-5 h-5"></FaSync>
@@ -626,7 +626,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                     <Tooltip
                       placement="right"
                       style="light"
-                      content={<div className="min-w-[10rem]">{localized.fakeUpdatePackTooltip}</div>}
+                      content={<div className="min-w-40">{localized.fakeUpdatePackTooltip}</div>}
                     >
                       <span className="flex items-center gap-2">
                         <FaClock className="w-5 h-5"></FaClock>
@@ -648,7 +648,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 <Tooltip
                   placement="right"
                   style="light"
-                  content={<div className="min-w-[10rem]">{localized.createBackupTooltip}</div>}
+                  content={<div className="min-w-40">{localized.createBackupTooltip}</div>}
                 >
                   <span className="flex items-center gap-2">
                     <FaCopy className="w-5 h-5"></FaCopy>
@@ -668,7 +668,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 >
                   <Tooltip
                     placement="right"
-                    content={<div className="min-w-[10rem]">{localized.forceDownloadTooltip}</div>}
+                    content={<div className="min-w-40">{localized.forceDownloadTooltip}</div>}
                     style="light"
                   >
                     <span className="flex items-center gap-2">
@@ -692,7 +692,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                   <Tooltip
                     placement="right"
                     content={
-                      <div className="min-w-[10rem]">
+                      <div className="min-w-40">
                         {localized.forceResubscribeModTooltip ||
                           "Force Steam to unsubscribe and re-subscribe to this mod."}
                       </div>
@@ -718,7 +718,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 >
                   <Tooltip
                     placement="right"
-                    content={<div className="min-w-[10rem]">{localized.unsubscribeTooltip}</div>}
+                    content={<div className="min-w-40">{localized.unsubscribeTooltip}</div>}
                     style="light"
                   >
                     <span className="flex items-center gap-2">
@@ -740,7 +740,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 >
                   <Tooltip
                     placement="right"
-                    content={<div className="min-w-[10rem]">{localized.reMergeTooltip}</div>}
+                    content={<div className="min-w-40">{localized.reMergeTooltip}</div>}
                     style="light"
                   >
                     {localized.reMerge}
@@ -760,7 +760,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                   <Tooltip
                     placement="right"
                     content={
-                      <div className="min-w-[10rem]">
+                      <div className="min-w-40">
                         {localized.deleteModTooltip || "Delete this mod from the data folder"}
                       </div>
                     }
@@ -785,9 +785,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 >
                   <Tooltip
                     placement="right"
-                    content={
-                      <div className="min-w-[10rem]">{localized.deleteModTooltip || "Delete this merged mod"}</div>
-                    }
+                    content={<div className="min-w-40">{localized.deleteModTooltip || "Delete this merged mod"}</div>}
                     style="light"
                   >
                     <span className="flex items-center gap-2 text-red-600 dark:text-red-400">
@@ -809,7 +807,7 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 >
                   <Tooltip
                     placement="right"
-                    content={<div className="min-w-[10rem]">{localized.deleteModTooltip || "Delete this mod"}</div>}
+                    content={<div className="min-w-40">{localized.deleteModTooltip || "Delete this mod"}</div>}
                     style="light"
                   >
                     <span className="flex items-center gap-2 text-red-600 dark:text-red-400">

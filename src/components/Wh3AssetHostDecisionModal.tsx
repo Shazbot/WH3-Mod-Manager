@@ -75,7 +75,7 @@ const Wh3AssetHostDecisionModal = () => {
       onClose={() => void respond("cancelExport")}
       size="md"
       position="center"
-      explicitClasses={["z-[110]"]}
+      explicitClasses={["z-110"]}
     >
       <Modal.Header>{title}</Modal.Header>
       <Modal.Body>
@@ -91,7 +91,7 @@ const Wh3AssetHostDecisionModal = () => {
       <Modal.Footer>
         <button
           type="button"
-          className="rounded-lg bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-500 focus:outline-hidden focus:ring-2 focus:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() => void respond("cancelExport")}
           disabled={isResponding}
           data-testid="wh3-asset-host-cancel-skeleton"
@@ -100,7 +100,7 @@ const Wh3AssetHostDecisionModal = () => {
         </button>
         <button
           type="button"
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-hidden focus:ring-2 focus:ring-blue-400 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() => void respond("continueWithoutSkeleton")}
           disabled={isResponding}
           data-testid="wh3-asset-host-continue-skeleton"

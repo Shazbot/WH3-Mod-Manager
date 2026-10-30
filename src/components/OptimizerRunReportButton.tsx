@@ -98,7 +98,7 @@ const ModRow = memo(({ mod, localized }: { mod: OptimizerRunModEntry; localized:
         <span className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-medium ${STATUS_STYLE[mod.status]}`}>
           {statusLabel(mod.status, localized)}
         </span>
-        <span className="text-sm text-gray-100 break-words">{mod.name}</span>
+        <span className="text-sm text-gray-100 wrap-break-word">{mod.name}</span>
         {mod.reused && mod.status !== "skipped" && (
           <span className="text-xs text-gray-400">
             {localized.optimizerReportReused || "(reused from an earlier run)"}
@@ -137,10 +137,10 @@ const ModRow = memo(({ mod, localized }: { mod: OptimizerRunModEntry; localized:
         <div className="mt-1 text-sm text-gray-400">{skipText(mod.skipReason, localized)}</div>
       )}
       {mod.status === "skipped" && mod.failureMessage && (
-        <div className="mt-0.5 text-xs text-slate-400 break-words">{mod.failureMessage}</div>
+        <div className="mt-0.5 text-xs text-slate-400 wrap-break-word">{mod.failureMessage}</div>
       )}
       {mod.status === "failed" && (
-        <div className="mt-1 text-sm text-red-300 break-words">
+        <div className="mt-1 text-sm text-red-300 wrap-break-word">
           {interpolate(
             localized.optimizerReportFailed || "Could not be optimized and was copied unchanged. Reason: {{reason}}",
             { reason: mod.failureMessage || localized.optimizerReportUnknownReason || "unknown error" },
@@ -242,7 +242,7 @@ const OptimizerRunReportButton = memo(() => {
     <>
       <button
         type="button"
-        className="inline-flex items-center gap-2 rounded border border-gray-600 bg-gray-800 px-3 py-1.5 text-xs font-medium uppercase text-gray-200 hover:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-500 disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex items-center gap-2 rounded border border-gray-600 bg-gray-800 px-3 py-1.5 text-xs font-medium uppercase text-gray-200 hover:bg-gray-700 focus:outline-hidden focus:ring-1 focus:ring-gray-500 disabled:cursor-not-allowed disabled:opacity-50"
         disabled={!report}
         title={report ? undefined : localized.optimizerReportNone || "No optimization run yet"}
         onClick={() => setShow(true)}
@@ -280,7 +280,7 @@ const OptimizerRunReportButton = memo(() => {
           <Modal.Footer>
             <button
               type="button"
-              className="px-4 py-2 font-medium text-sm rounded focus:outline-none focus:ring-2 bg-gray-500 text-white hover:bg-gray-600 focus:ring-gray-400"
+              className="px-4 py-2 font-medium text-sm rounded focus:outline-hidden focus:ring-2 bg-gray-500 text-white hover:bg-gray-600 focus:ring-gray-400"
               onClick={() => setShow(false)}
             >
               {localized.visualCheckClose || "Close"}

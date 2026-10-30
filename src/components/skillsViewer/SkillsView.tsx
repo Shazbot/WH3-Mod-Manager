@@ -4904,7 +4904,7 @@ const SkillsView = memo(
                   value={savePackName}
                   onChange={(e) => setSavePackName(e.target.value)}
                   placeholder="Enter pack name"
-                  className="w-full px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
+                  className="w-full px-3 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-hidden focus:border-blue-500"
                   disabled={isSavePackProcessing}
                 />
               </div>
@@ -4916,7 +4916,7 @@ const SkillsView = memo(
                     value={savePackDirectory || ""}
                     placeholder="Default: game data folder"
                     readOnly
-                    className="flex-1 px-3 py-2 bg-gray-700 text-gray-400 border border-gray-600 rounded-lg focus:outline-none"
+                    className="flex-1 px-3 py-2 bg-gray-700 text-gray-400 border border-gray-600 rounded-lg focus:outline-hidden"
                   />
                   <button
                     onClick={handleSelectSavePackDirectory}

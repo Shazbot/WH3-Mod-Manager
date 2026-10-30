@@ -1027,7 +1027,7 @@ const PresetsTab = memo(() => {
               {localized.options || "Options"}
             </button>
             {isOptionsMenuOpen && (
-              <div className="absolute right-0 z-[250] mt-1 w-48 rounded-lg border border-gray-700 bg-gray-800 p-1 text-left shadow-lg">
+              <div className="absolute right-0 z-250 mt-1 w-48 rounded-lg border border-gray-700 bg-gray-800 p-1 text-left shadow-lg">
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-white hover:bg-gray-700"
@@ -1417,7 +1417,7 @@ const PresetsTab = memo(() => {
       </div>
 
       {isDiscardConfirmOpen && (
-        <div className="fixed inset-0 z-[500] bg-black/70 flex items-center justify-center">
+        <div className="fixed inset-0 z-500 bg-black/70 flex items-center justify-center">
           <div className="bg-slate-800 border border-slate-600 rounded p-4 min-w-[24rem]">
             <div className="text-slate-100">{localized.discardUnsavedChanges || "Discard unsaved changes?"}</div>
             <div className="mt-3 flex justify-end gap-2">
@@ -1439,7 +1439,7 @@ const PresetsTab = memo(() => {
       )}
 
       {isDeleteConfirmOpen && (
-        <div className="fixed inset-0 z-[500] bg-black/70 flex items-center justify-center">
+        <div className="fixed inset-0 z-500 bg-black/70 flex items-center justify-center">
           <div className="bg-slate-800 border border-slate-600 rounded p-4 min-w-[24rem]">
             <div className="text-slate-100">
               {localized.deletePresetConfirm || `Delete preset "${selectedPresetName}"?`}
@@ -1460,7 +1460,7 @@ const PresetsTab = memo(() => {
       )}
 
       {isSaveAsOpen && (
-        <div className="fixed inset-0 z-[500] bg-black/70 flex items-center justify-center">
+        <div className="fixed inset-0 z-500 bg-black/70 flex items-center justify-center">
           <div className="bg-slate-800 border border-slate-600 rounded p-4 min-w-[24rem]">
             <div className="text-slate-100">{localized.saveAs || "Save As"}</div>
             <div className="mt-2 text-sm text-slate-300">{localized.saveAsPresetPrompt || "Name for new preset:"}</div>

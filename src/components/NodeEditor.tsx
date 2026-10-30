@@ -216,7 +216,7 @@ const NodeSidebar: React.FC<{
           placeholder={localized.nodeEditorFilterNodesPlaceholder || "Filter nodes..."}
           value={filterText}
           onChange={(e) => setFilterText(e.target.value)}
-          className="sticky top-0 w-full p-2 text-sm bg-gray-700 text-white border border-gray-600 rounded focus:outline-none focus:border-teal-400 z-10"
+          className="sticky top-0 w-full p-2 text-sm bg-gray-700 text-white border border-gray-600 rounded focus:outline-hidden focus:border-teal-400 z-10"
         />
       </div>
 
@@ -304,7 +304,7 @@ const NodeSidebar: React.FC<{
                     reorderingFavorite.current = sectionIndex === 0 && favorites.length > 0 ? nodeType.type : undefined;
                     onDragStart(event, nodeType);
                   }}
-                  className="p-3 bg-gray-700 border border-gray-600 rounded-lg cursor-move hover:bg-gray-600 shadow-sm transition-colors duration-150"
+                  className="p-3 bg-gray-700 border border-gray-600 rounded-lg cursor-move hover:bg-gray-600 shadow-xs transition-colors duration-150"
                 >
                   <div className="font-medium text-sm text-white">{nodeType.label}</div>
                   {!useCompactView && <div className="text-xs text-gray-300 mt-1">{nodeType.description}</div>}
@@ -1263,7 +1263,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack, isAct
 
                   {quickConnectSourceNodeId && (
                     <div
-                      className="fixed bottom-4 right-4 z-[60] max-w-sm rounded-lg border border-blue-600 bg-slate-900 px-4 py-3 text-sm text-slate-100 shadow-xl"
+                      className="fixed bottom-4 right-4 z-60 max-w-sm rounded-lg border border-blue-600 bg-slate-900 px-4 py-3 text-sm text-slate-100 shadow-xl"
                       role="status"
                       aria-live="polite"
                     >

@@ -21,7 +21,7 @@ const theme: FlowbiteTheme = {
       base: "flex w-full items-center justify-between first:rounded-t-lg last:rounded-b-lg py-5 px-5 text-left font-medium text-gray-500 dark:text-gray-400",
       flush: {
         off: "hover:bg-gray-100 focus:ring-4 focus:ring-gray-200 dark:hover:bg-gray-800 dark:focus:ring-gray-800",
-        on: "!bg-transparent dark:!bg-transparent",
+        on: "bg-transparent! dark:bg-transparent!",
       },
       heading: "",
       open: {
@@ -53,7 +53,7 @@ const theme: FlowbiteTheme = {
       success: "text-green-700 bg-green-100 border-green-500 dark:bg-green-200 dark:text-green-800",
       warning: "text-yellow-700 bg-yellow-100 border-yellow-500 dark:bg-yellow-200 dark:text-yellow-800",
     },
-    icon: "mr-3 inline h-5 w-5 flex-shrink-0",
+    icon: "mr-3 inline h-5 w-5 shrink-0",
     rounded: "rounded-lg",
   },
   avatar: {
@@ -63,7 +63,7 @@ const theme: FlowbiteTheme = {
       off: "rounded relative overflow-hidden bg-gray-100 dark:bg-gray-600",
       on: "rounded",
     },
-    rounded: "!rounded-full",
+    rounded: "rounded-full!",
     size: {
       xs: "w-6 h-6",
       sm: "w-8 h-8",
@@ -153,41 +153,41 @@ const theme: FlowbiteTheme = {
     },
     disabled: "cursor-not-allowed opacity-50",
     gradient: {
-      cyan: "text-white bg-gradient-to-r from-cyan-400 via-cyan-500 to-cyan-600 hover:bg-gradient-to-br focus:ring-4 focus:ring-cyan-300 dark:focus:ring-cyan-800",
+      cyan: "text-white bg-linear-to-r/srgb from-cyan-400 via-cyan-500 to-cyan-600 hover:bg-linear-to-br/srgb focus:ring-4 focus:ring-cyan-300 dark:focus:ring-cyan-800",
       failure:
-        "text-white bg-gradient-to-r from-red-400 via-red-500 to-red-600 hover:bg-gradient-to-br focus:ring-4 focus:ring-red-300 dark:focus:ring-red-800",
-      info: "text-white bg-gradient-to-r from-blue-500 via-blue-600 to-blue-700 hover:bg-gradient-to-br focus:ring-4 focus:ring-blue-300 dark:focus:ring-blue-800 ",
-      lime: "text-gray-900 bg-gradient-to-r from-lime-200 via-lime-400 to-lime-500 hover:bg-gradient-to-br focus:ring-4 focus:ring-lime-300 dark:focus:ring-lime-800",
+        "text-white bg-linear-to-r/srgb from-red-400 via-red-500 to-red-600 hover:bg-linear-to-br/srgb focus:ring-4 focus:ring-red-300 dark:focus:ring-red-800",
+      info: "text-white bg-linear-to-r/srgb from-blue-500 via-blue-600 to-blue-700 hover:bg-linear-to-br/srgb focus:ring-4 focus:ring-blue-300 dark:focus:ring-blue-800 ",
+      lime: "text-gray-900 bg-linear-to-r/srgb from-lime-200 via-lime-400 to-lime-500 hover:bg-linear-to-br/srgb focus:ring-4 focus:ring-lime-300 dark:focus:ring-lime-800",
 
-      pink: "text-white bg-gradient-to-r from-pink-400 via-pink-500 to-pink-600 hover:bg-gradient-to-br focus:ring-4 focus:ring-pink-300 dark:focus:ring-pink-800",
+      pink: "text-white bg-linear-to-r/srgb from-pink-400 via-pink-500 to-pink-600 hover:bg-linear-to-br/srgb focus:ring-4 focus:ring-pink-300 dark:focus:ring-pink-800",
       purple:
-        "text-white bg-gradient-to-r from-purple-500 via-purple-600 to-purple-700 hover:bg-gradient-to-br focus:ring-4 focus:ring-purple-300 dark:focus:ring-purple-800",
+        "text-white bg-linear-to-r/srgb from-purple-500 via-purple-600 to-purple-700 hover:bg-linear-to-br/srgb focus:ring-4 focus:ring-purple-300 dark:focus:ring-purple-800",
       success:
-        "text-white bg-gradient-to-r from-green-400 via-green-500 to-green-600 hover:bg-gradient-to-br focus:ring-4 focus:ring-green-300 dark:focus:ring-green-800",
-      teal: "text-white bg-gradient-to-r from-teal-400 via-teal-500 to-teal-600 hover:bg-gradient-to-br focus:ring-4 focus:ring-teal-300 dark:focus:ring-teal-800",
+        "text-white bg-linear-to-r/srgb from-green-400 via-green-500 to-green-600 hover:bg-linear-to-br/srgb focus:ring-4 focus:ring-green-300 dark:focus:ring-green-800",
+      teal: "text-white bg-linear-to-r/srgb from-teal-400 via-teal-500 to-teal-600 hover:bg-linear-to-br/srgb focus:ring-4 focus:ring-teal-300 dark:focus:ring-teal-800",
     },
     gradientDuoTone: {
       cyanToBlue:
-        "text-white bg-gradient-to-r from-cyan-500 to-blue-500 hover:bg-gradient-to-bl focus:ring-4 focus:ring-cyan-300 dark:focus:ring-cyan-800",
+        "text-white bg-linear-to-r/srgb from-cyan-500 to-blue-500 hover:bg-linear-to-bl/srgb focus:ring-4 focus:ring-cyan-300 dark:focus:ring-cyan-800",
       greenToBlue:
-        "text-white bg-gradient-to-br from-green-400 to-blue-600 hover:bg-gradient-to-bl focus:ring-4 focus:ring-green-200 dark:focus:ring-green-800",
+        "text-white bg-linear-to-br/srgb from-green-400 to-blue-600 hover:bg-linear-to-bl/srgb focus:ring-4 focus:ring-green-200 dark:focus:ring-green-800",
       pinkToOrange:
-        "text-white bg-gradient-to-br from-pink-500 to-orange-400 hover:bg-gradient-to-bl focus:ring-4 focus:ring-pink-200 dark:focus:ring-pink-800",
+        "text-white bg-linear-to-br/srgb from-pink-500 to-orange-400 hover:bg-linear-to-bl/srgb focus:ring-4 focus:ring-pink-200 dark:focus:ring-pink-800",
       purpleToBlue:
-        "text-white bg-gradient-to-br from-purple-600 to-blue-500 hover:bg-gradient-to-bl focus:ring-4 focus:ring-blue-300 dark:focus:ring-blue-800",
+        "text-white bg-linear-to-br/srgb from-purple-600 to-blue-500 hover:bg-linear-to-bl/srgb focus:ring-4 focus:ring-blue-300 dark:focus:ring-blue-800",
       purpleToPink:
-        "text-white bg-gradient-to-r from-purple-500 to-pink-500 hover:bg-gradient-to-l focus:ring-4 focus:ring-purple-200 dark:focus:ring-purple-800",
+        "text-white bg-linear-to-r/srgb from-purple-500 to-pink-500 hover:bg-linear-to-l/srgb focus:ring-4 focus:ring-purple-200 dark:focus:ring-purple-800",
       redToYellow:
-        "text-gray-900 bg-gradient-to-r from-red-200 via-red-300 to-yellow-200 hover:bg-gradient-to-bl focus:ring-4 focus:ring-red-100 dark:focus:ring-red-400",
+        "text-gray-900 bg-linear-to-r/srgb from-red-200 via-red-300 to-yellow-200 hover:bg-linear-to-bl/srgb focus:ring-4 focus:ring-red-100 dark:focus:ring-red-400",
       tealToLime:
-        "text-gray-900 bg-gradient-to-r from-teal-200 to-lime-200 hover:bg-gradient-to-l hover:from-teal-200 hover:to-lime-200 hover:!text-gray-900 focus:ring-4 focus:ring-lime-200 dark:focus:ring-teal-700",
+        "text-gray-900 bg-linear-to-r/srgb from-teal-200 to-lime-200 hover:bg-linear-to-l/srgb hover:from-teal-200 hover:to-lime-200 hover:text-gray-900! focus:ring-4 focus:ring-lime-200 dark:focus:ring-teal-700",
     },
     inner: {
       base: "flex items-center",
       position: {
         none: "",
         start: "rounded-r-none",
-        middle: "!rounded-none",
+        middle: "rounded-none!",
         end: "rounded-l-none",
       },
     },
@@ -198,7 +198,7 @@ const theme: FlowbiteTheme = {
         gray: "border border-gray-900 dark:border-white",
       },
       off: "",
-      on: "bg-white text-gray-900 transition-all duration-75 ease-in group-hover:bg-opacity-0 group-hover:text-inherit dark:bg-gray-900 dark:text-white",
+      on: "bg-white text-gray-900 transition-all duration-75 ease-in group-hover:bg-transparent dark:group-hover:bg-transparent group-hover:text-inherit dark:bg-gray-900 dark:text-white",
       pill: {
         off: "rounded-md",
         on: "rounded-full",
@@ -219,9 +219,9 @@ const theme: FlowbiteTheme = {
   buttonGroup: {
     base: "inline-flex",
     position: {
-      none: "focus:!ring-2",
+      none: "focus:ring-2!",
       start: "rounded-r-none",
-      middle: "!rounded-none border-l-0 pl-0",
+      middle: "rounded-none! border-l-0 pl-0",
       end: "rounded-l-none border-l-0 pl-0",
     },
   },
@@ -253,25 +253,25 @@ const theme: FlowbiteTheme = {
     },
     item: {
       base: "absolute top-1/2 left-1/2 block w-full -translate-x-1/2 -translate-y-1/2",
-      wrapper: "w-full flex-shrink-0 transform cursor-grab snap-center",
+      wrapper: "w-full shrink-0 transform cursor-grab snap-center",
     },
     control: {
-      base: "inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/30 group-hover:bg-white/50 group-focus:outline-none group-focus:ring-4 group-focus:ring-white dark:bg-gray-800/30 dark:group-hover:bg-gray-800/60 dark:group-focus:ring-gray-800/70 sm:h-10 sm:w-10",
+      base: "inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/30 group-hover:bg-white/50 group-focus:outline-hidden group-focus:ring-4 group-focus:ring-white dark:bg-gray-800/30 dark:group-hover:bg-gray-800/60 dark:group-focus:ring-gray-800/70 sm:h-10 sm:w-10",
       icon: "h-5 w-5 text-white dark:text-gray-800 sm:h-6 sm:w-6",
     },
-    leftControl: "absolute top-0 left-0 flex h-full items-center justify-center px-4 focus:outline-none",
-    rightControl: "absolute top-0 right-0 flex h-full items-center justify-center px-4 focus:outline-none",
+    leftControl: "absolute top-0 left-0 flex h-full items-center justify-center px-4 focus:outline-hidden",
+    rightControl: "absolute top-0 right-0 flex h-full items-center justify-center px-4 focus:outline-hidden",
     scrollContainer: {
       base: "flex h-full snap-mandatory overflow-y-hidden overflow-x-scroll scroll-smooth rounded-lg",
       snap: "snap-x",
     },
   },
   darkThemeToggle: {
-    base: "rounded-lg p-2.5 text-sm text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-4 focus:ring-gray-200 dark:text-gray-400 dark:hover:bg-gray-700 dark:focus:ring-gray-700",
+    base: "rounded-lg p-2.5 text-sm text-gray-500 hover:bg-gray-100 focus:outline-hidden focus:ring-4 focus:ring-gray-200 dark:text-gray-400 dark:hover:bg-gray-700 dark:focus:ring-gray-700",
     icon: "h-5 w-5",
   },
   footer: {
-    base: "w-full rounded-lg bg-white shadow dark:bg-gray-800 md:flex md:items-center md:justify-between",
+    base: "w-full rounded-lg bg-white shadow-sm dark:bg-gray-800 md:flex md:items-center md:justify-between",
     container: "w-full p-6",
     bgDark: "bg-gray-800",
     groupLink: {
@@ -367,7 +367,7 @@ const theme: FlowbiteTheme = {
             off: "rounded-lg",
           },
           withShadow: {
-            on: "shadow-sm dark:shadow-sm-light",
+            on: "shadow-xs dark:shadow-sm-light",
             off: "",
           },
         },
@@ -398,7 +398,7 @@ const theme: FlowbiteTheme = {
       },
     },
     toggleSwitch: {
-      base: "group relative flex items-center rounded-lg focus:outline-none",
+      base: "group relative flex items-center rounded-lg focus:outline-hidden",
       active: {
         on: "cursor-pointer",
         off: "cursor-not-allowed opacity-50",
@@ -425,7 +425,7 @@ const theme: FlowbiteTheme = {
           "border-green-500 bg-green-50 text-green-900 placeholder-green-700 focus:border-green-500 focus:ring-green-500 dark:border-green-400 dark:bg-green-100 dark:focus:border-green-500 dark:focus:ring-green-500",
       },
       withShadow: {
-        on: "shadow-sm dark:shadow-sm-light",
+        on: "shadow-xs dark:shadow-sm-light",
         off: "",
       },
     },
@@ -450,7 +450,7 @@ const theme: FlowbiteTheme = {
             off: "rounded-lg",
           },
           withShadow: {
-            on: "shadow-sm dark:shadow-sm-light",
+            on: "shadow-xs dark:shadow-sm-light",
             off: "",
           },
           sizes: {
@@ -476,7 +476,7 @@ const theme: FlowbiteTheme = {
     base: "list-none rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white",
     item: {
       active: {
-        off: "hover:bg-gray-100 hover:text-blue-700 focus:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-700 dark:border-gray-600 dark:hover:bg-gray-600 dark:hover:text-white dark:focus:text-white dark:focus:ring-gray-500",
+        off: "hover:bg-gray-100 hover:text-blue-700 focus:text-blue-700 focus:outline-hidden focus:ring-2 focus:ring-blue-700 dark:border-gray-600 dark:hover:bg-gray-600 dark:hover:text-white dark:focus:text-white dark:focus:ring-gray-500",
         on: "bg-blue-700 text-white dark:bg-gray-800",
       },
       base: "flex w-full cursor-pointer border-b border-gray-200 py-2 px-4 first:rounded-t-lg last:rounded-b-lg last:border-b-0 dark:border-gray-600",
@@ -490,12 +490,12 @@ const theme: FlowbiteTheme = {
   modal: {
     base: "fixed top-0 right-0 left-0 z-50 h-modal overflow-y-auto overflow-x-hidden md:inset-0 md:h-full",
     show: {
-      on: "flex bg-gray-900 bg-opacity-50 dark:bg-opacity-80",
+      on: "flex bg-gray-900/50 dark:bg-gray-900/80",
       off: "hidden",
     },
     content: {
       base: "relative h-full w-full p-4 md:h-auto",
-      inner: "relative rounded-lg bg-white shadow dark:bg-gray-700",
+      inner: "relative rounded-lg bg-white shadow-sm dark:bg-gray-700",
     },
     body: {
       base: "p-6 overflow-y-auto scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700",
@@ -503,7 +503,7 @@ const theme: FlowbiteTheme = {
     },
     header: {
       base: "flex items-center justify-between rounded-t dark:border-gray-600 border-b p-5",
-      popup: "!p-2 !border-b-0",
+      popup: "p-2! border-b-0!",
       title: "text-xl font-medium text-gray-900 dark:text-white w-full",
       close: {
         base: "ml-4 inline-flex items-center rounded-lg bg-transparent p-1.5 text-sm text-gray-400 hover:bg-gray-200 hover:text-gray-900 dark:hover:bg-gray-600 dark:hover:text-white",
@@ -576,7 +576,7 @@ const theme: FlowbiteTheme = {
       },
     },
     toggle: {
-      base: "inline-flex items-center rounded-lg p-2 text-sm text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-200 dark:text-gray-400 dark:hover:bg-gray-700 dark:focus:ring-gray-600 md:hidden",
+      base: "inline-flex items-center rounded-lg p-2 text-sm text-gray-500 hover:bg-gray-100 focus:outline-hidden focus:ring-2 focus:ring-gray-200 dark:text-gray-400 dark:hover:bg-gray-700 dark:focus:ring-gray-600 md:hidden",
       icon: "h-6 w-6 shrink-0",
     },
   },
@@ -661,7 +661,7 @@ const theme: FlowbiteTheme = {
         base: "px-3 flex-1 whitespace-nowrap",
       },
       icon: {
-        base: "h-6 w-6 flex-shrink-0 text-gray-500 transition duration-75 group-hover:text-gray-900 dark:text-gray-400 dark:group-hover:text-white",
+        base: "h-6 w-6 shrink-0 text-gray-500 transition duration-75 group-hover:text-gray-900 dark:text-gray-400 dark:group-hover:text-white",
         active: "text-gray-700 dark:text-gray-100",
       },
     },
@@ -751,10 +751,10 @@ const theme: FlowbiteTheme = {
         underline: "flex-wrap -mb-px border-b border-gray-200 dark:border-gray-700",
         pills: "flex-wrap font-medium text-sm text-gray-500 dark:text-gray-400",
         fullWidth:
-          "hidden text-sm font-medium rounded-lg divide-x divide-gray-200 shadow sm:flex dark:divide-gray-700 dark:text-gray-400",
+          "hidden text-sm font-medium rounded-lg divide-x divide-gray-200 shadow-sm sm:flex dark:divide-gray-700 dark:text-gray-400",
       },
       tabitem: {
-        base: "flex items-center justify-center p-4 text-sm font-medium first:ml-0 disabled:cursor-not-allowed disabled:text-gray-400 disabled:dark:text-gray-500",
+        base: "flex items-center justify-center p-4 text-sm font-medium first:ml-0 disabled:cursor-not-allowed disabled:text-gray-400 dark:disabled:text-gray-500",
         styles: {
           default: {
             base: "rounded-t-lg",
@@ -780,8 +780,8 @@ const theme: FlowbiteTheme = {
           fullWidth: {
             base: "ml-2 first:ml-0 w-full first:rounded-l-lg last:rounded-r-lg",
             active: {
-              on: "inline-block p-4 w-full text-gray-900 bg-gray-100 focus:ring-4 focus:ring-blue-300 active focus:outline-none dark:bg-gray-700 dark:text-white",
-              off: "bg-white hover:text-gray-700 hover:bg-gray-50 focus:ring-4 focus:ring-blue-300 focus:outline-none dark:hover:text-white dark:bg-gray-800 dark:hover:bg-gray-700",
+              on: "inline-block p-4 w-full text-gray-900 bg-gray-100 focus:ring-4 focus:ring-blue-300 active focus:outline-hidden dark:bg-gray-700 dark:text-white",
+              off: "bg-white hover:text-gray-700 hover:bg-gray-50 focus:ring-4 focus:ring-blue-300 focus:outline-hidden dark:hover:text-white dark:bg-gray-800 dark:hover:bg-gray-700",
             },
           },
         },
@@ -791,7 +791,7 @@ const theme: FlowbiteTheme = {
     tabpanel: "p-4",
   },
   toast: {
-    base: "flex w-full max-w-xs items-center rounded-lg bg-white p-4 text-gray-500 shadow dark:bg-gray-800 dark:text-gray-400",
+    base: "flex w-full max-w-xs items-center rounded-lg bg-white p-4 text-gray-500 shadow-sm dark:bg-gray-800 dark:text-gray-400",
     closed: "opacity-0 ease-out",
     removed: "hidden",
     toggle: {
@@ -801,7 +801,7 @@ const theme: FlowbiteTheme = {
   },
   tooltip: {
     target: "w-fit",
-    base: "absolute inline-block rounded-lg py-2 px-3 text-sm font-medium shadow-sm",
+    base: "absolute inline-block rounded-lg py-2 px-3 text-sm font-medium shadow-xs",
     animation: "transition-opacity",
     hidden: "invisible opacity-0",
     style: {

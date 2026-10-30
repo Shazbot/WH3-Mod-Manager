@@ -55,7 +55,7 @@ const PackComparisonModal = memo(
         onClose={onClose}
         size="2xl"
         position="top-center"
-        explicitClasses={["mt-8", "!max-w-5xl", "md:!h-full", "overflow-hidden", "modalDontOverflowWindowHeight"]}
+        explicitClasses={["mt-8", "max-w-5xl!", "md:h-full!", "overflow-hidden", "modalDontOverflowWindowHeight"]}
       >
         <Modal.Header>
           {localized.comparingModsInSave} - {comparison.saveName}
@@ -269,7 +269,7 @@ const SaveGame = memo((props: SaveGameProps) => {
           onClose={onClose}
           size="2xl"
           position="top-center"
-          explicitClasses={["mt-8", "!max-w-7xl", "md:!h-full", "overflow-hidden", "modalDontOverflowWindowHeight"]}
+          explicitClasses={["mt-8", "max-w-7xl!", "md:h-full!", "overflow-hidden", "modalDontOverflowWindowHeight"]}
         >
           <Modal.Header>
             <div className="flex justify-between w-full">
@@ -278,7 +278,7 @@ const SaveGame = memo((props: SaveGameProps) => {
                 value={filterText}
                 placeholder={localized.searchSaves}
                 onChange={(e) => setFilterText(e.target.value)}
-                className="bg-gray-50 w-48 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-none"
+                className="bg-gray-50 w-48 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 focus:outline-hidden"
               />
             </div>
           </Modal.Header>

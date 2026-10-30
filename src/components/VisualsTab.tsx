@@ -986,7 +986,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
     const lines = text.split(/\r?\n/);
 
     return (
-      <pre className="m-0 p-3 whitespace-pre-wrap break-words font-mono text-sm text-gray-200">
+      <pre className="m-0 p-3 whitespace-pre-wrap wrap-break-word font-mono text-sm text-gray-200">
         {lines.map((line, lineIndex) => {
           if (!viewerModelPathRegex.test(line)) {
             viewerModelPathRegex.lastIndex = 0;
@@ -1191,7 +1191,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
             id="visuals-pack-filter"
             value={packFilter}
             onChange={(event) => setPackFilter(event.target.value)}
-            className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white min-w-[12rem]"
+            className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white min-w-48"
           >
             <option value={ALL_VISUALS_PACKS_VALUE}>All packs</option>
             <option value={VANILLA_VISUALS_PACK_VALUE}>Vanilla</option>
@@ -1216,14 +1216,14 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
             aria-haspopup="menu"
             aria-expanded={isOptionsMenuOpen}
             onClick={() => setIsOptionsMenuOpen((currentValue) => !currentValue)}
-            className="rounded border border-gray-600 bg-gray-700 px-3 py-1 text-white hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500"
+            className="rounded border border-gray-600 bg-gray-700 px-3 py-1 text-white hover:bg-gray-600 focus:outline-hidden focus:ring-2 focus:ring-gray-500"
           >
             {localized.options || "Options"}
           </button>
           {isOptionsMenuOpen && (
             <div
               role="menu"
-              className="absolute right-0 z-[250] mt-1 w-48 rounded-lg border border-gray-700 bg-gray-800 p-1 text-left shadow-lg"
+              className="absolute right-0 z-250 mt-1 w-48 rounded-lg border border-gray-700 bg-gray-800 p-1 text-left shadow-lg"
             >
               <button
                 type="button"

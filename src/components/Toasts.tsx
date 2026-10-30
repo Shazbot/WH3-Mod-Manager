@@ -86,7 +86,7 @@ export const Toasts = memo(() => {
     <>
       <VanillaDbCacheBuildProgressCard />
       {isShown && (
-        <div className={"dark fixed w-96 mx-auto left-[1%] bottom-[1%] z-[100]"}>
+        <div className={"dark fixed w-96 mx-auto left-[1%] bottom-[1%] z-100"}>
           {unexpiredToasts(toasts).map((toast) => (
             <Toast key={hash(toast)}>
               <div
