@@ -125,6 +125,10 @@ const UnitPainterTextureEditor = ({
   onTextureHoverEnd,
   onStrokeComplete,
 }: UnitPainterTextureEditorProps) => {
+  // The painter session edits texture buffers in place, and `historyVersion` is only a signal that they changed:
+  // `views` lists it as a dependency without reading it. React Compiler memoizes on what code reads, so it would
+  // keep showing stale textures. Keep this component uncompiled.
+  "use no memo";
   const viewportRef = useRef<HTMLDivElement>(null);
   const textureCanvasRef = useRef<HTMLCanvasElement>(null);
   const selectionMaskCanvasRef = useRef<HTMLCanvasElement>(null);

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState, DragEvent } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, DragEvent } from "react";
 import {
   Background,
   Connection,
@@ -12,7 +12,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { addToast, selectFlowFile, setNodeEditorFavorites } from "../appSlice";
-import { useAppDispatch, useAppSelector } from "../hooks";
+import { useAppDispatch, useAppSelector, useEventCallback } from "../hooks";
 import { useLocalizations } from "../localizationContext";
 import { DBVersion } from "../packFileTypes";
 import { resolveManualFlowSourcePack } from "../flowExecutionSupport";
@@ -53,6 +53,7 @@ import { reactFlowNodeTypes } from "../nodeGraph/nodeTypes";
 import { moveFavoriteNodeType, toggleFavoriteNodeType, withFavoritesSection } from "../nodeGraph/favorites";
 import { FlowNodeDataPatch, FlowOption, SerializedNode, SerializedNodeGraph } from "../nodeGraph/types";
 import FlowPackDialog from "./FlowPackDialog";
+import { runGuarded, runGuardedSync } from "../utility/runGuarded";
 
 interface NodeExecutionResult {
   success: boolean;
@@ -329,7 +330,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack, isAct
   const dispatch = useAppDispatch();
   const localized = useLocalizations();
   const localizedRef = useRef(localized);
-  localizedRef.current = localized;
+  useLayoutEffect(() => {
+    localizedRef.current = localized;
+  });
   const unsavedPacksData = useAppSelector((state) => state.app.unsavedPacksData);
   const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
   const flowFileReloadNonce = useAppSelector((state) => state.app.currentFlowFileReloadNonce);
@@ -372,19 +375,18 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack, isAct
   const [isGraphEnabled, setIsGraphEnabled] = useState(false);
   const [graphStartsEnabled, setGraphStartsEnabled] = useState(true);
 
-  const updateNodeData = useCallback(
-    (nodeId: string, detail: FlowNodeDataPatch) => {
-      const nextGraph = applyNodeDataPatchFromRef(nodesRef, edges, nodeId, detail, {
-        DBNameToDBVersions,
-        defaultTableVersions,
-        sortedTableNames,
-      });
+  // Stored on every node's data, so a stable identity keeps node data from being rebuilt each time edges change;
+  // it always runs the latest version. It reads nodesRef, so React Compiler needs it opaque, as here.
+  const updateNodeData = useEventCallback((nodeId: string, detail: FlowNodeDataPatch) => {
+    const nextGraph = applyNodeDataPatchFromRef(nodesRef, edges, nodeId, detail, {
+      DBNameToDBVersions,
+      defaultTableVersions,
+      sortedTableNames,
+    });
 
-      setNodes(nextGraph.nodes);
-      setEdges(nextGraph.edges);
-    },
-    [DBNameToDBVersions, defaultTableVersions, edges, setEdges, setNodes, sortedTableNames],
-  );
+    setNodes(nextGraph.nodes);
+    setEdges(nextGraph.edges);
+  });
 
   const deleteSelectedNodes = useCallback(() => {
     const nextGraph = deleteSelectedNodesFromGraph(nodesRef.current, edges);
@@ -701,96 +703,99 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack, isAct
 
   const loadNodeGraph = useCallback(
     (jsonContent: string) => {
-      try {
-        const {
-          serializedGraph,
-          nodes: deserializedNodes,
-          edges: loadedEdges,
-          nextNodeId,
-        } = deserializeNodeGraph(jsonContent);
-
-        const loadedNodes: Node[] = deserializedNodes.map((node) => {
-          const serializedNode = serializedGraph.nodes.find((candidate) => candidate.id === node.id)!;
-          const serializedData = serializedNode.data;
-
-          // Add styling for default nodes
-          if (!serializedNode.type) {
-            node.style = {
-              border: "2px solid #3b82f6",
-              borderRadius: "8px",
-              padding: "10px",
-              background: "#374151",
-              color: "#ffffff",
-            };
-          }
-
-          nodeEditorDebugLog("deserialized node type", node.data.type);
-
-          // Debug: Check if generaterows/generaterowsschema node has transformations when loaded
-          if (node.type === "generaterows" || node.type === "generaterowsschema") {
-            nodeEditorDebugLog(`[LOAD] GenerateRows node ${node.id} loaded with:`, {
-              hasTransformations: !!serializedData.transformations,
-              transformationsLength: (serializedData.transformations || []).length,
-              hasOutputTables: !!serializedData.outputTables,
-              outputTablesLength: (serializedData.outputTables || []).length,
-              transformations: serializedData.transformations,
-              outputTables: serializedData.outputTables,
-              hasCustomSchemaData: !!serializedData.customSchemaData,
-              customSchemaData: serializedData.customSchemaData,
-            });
-          }
-
-          // Debug: Check if groupby node has groupByColumns and aggregations when loaded
-          if (node.type === "groupby") {
-            nodeEditorDebugLog(`[LOAD] GroupBy node ${node.id} loaded with:`, {
-              hasGroupByColumns: !!serializedData.groupByColumns,
-              groupByColumnsLength: (serializedData.groupByColumns || []).length,
-              hasAggregations: !!serializedData.aggregations,
-              aggregationsLength: (serializedData.aggregations || []).length,
-              groupByColumns: serializedData.groupByColumns,
-              aggregations: serializedData.aggregations,
-            });
-          }
-          return node;
-        });
-        const hydratedGraph = rehydrateGraph(
-          {
-            nodes: loadedNodes,
+      runGuardedSync(
+        () => {
+          const {
+            serializedGraph,
+            nodes: deserializedNodes,
             edges: loadedEdges,
-          },
-          {
-            DBNameToDBVersions,
-            defaultTableVersions,
-            sortedTableNames,
-          },
-        );
+            nextNodeId,
+          } = deserializeNodeGraph(jsonContent);
 
-        nodeId = nextNodeId;
+          const loadedNodes: Node[] = deserializedNodes.map((node) => {
+            const serializedNode = serializedGraph.nodes.find((candidate) => candidate.id === node.id)!;
+            const serializedData = serializedNode.data;
 
-        setGraphInstanceKey((previousKey) => previousKey + 1);
-        setNodes(hydratedGraph.nodes);
-        setEdges(hydratedGraph.edges);
+            // Add styling for default nodes
+            if (!serializedNode.type) {
+              node.style = {
+                border: "2px solid #3b82f6",
+                borderRadius: "8px",
+                padding: "10px",
+                background: "#374151",
+                color: "#ffffff",
+              };
+            }
 
-        // Load flow options if they exist
-        setFlowOptions(serializedGraph.options || []);
-        setIsGraphEnabled(serializedGraph.isGraphEnabled ?? false);
-        setGraphStartsEnabled(serializedGraph.graphStartsEnabled ?? true);
-        nodeEditorDebugLog(
-          `Loaded graph with ${hydratedGraph.nodes.length} nodes and ${hydratedGraph.edges.length} connections`,
-        );
-      } catch (error) {
-        console.error("Failed to load node graph:", error);
-        dispatch(
-          addToast({
-            type: "warning",
-            messages: [
-              localized.nodeEditorFailedToLoadNodeGraphFile ||
-                "Failed to load the node graph file. Please check the file format.",
-            ],
-            startTime: Date.now(),
-          }),
-        );
-      }
+            nodeEditorDebugLog("deserialized node type", node.data.type);
+
+            // Debug: Check if generaterows/generaterowsschema node has transformations when loaded
+            if (node.type === "generaterows" || node.type === "generaterowsschema") {
+              nodeEditorDebugLog(`[LOAD] GenerateRows node ${node.id} loaded with:`, {
+                hasTransformations: !!serializedData.transformations,
+                transformationsLength: (serializedData.transformations || []).length,
+                hasOutputTables: !!serializedData.outputTables,
+                outputTablesLength: (serializedData.outputTables || []).length,
+                transformations: serializedData.transformations,
+                outputTables: serializedData.outputTables,
+                hasCustomSchemaData: !!serializedData.customSchemaData,
+                customSchemaData: serializedData.customSchemaData,
+              });
+            }
+
+            // Debug: Check if groupby node has groupByColumns and aggregations when loaded
+            if (node.type === "groupby") {
+              nodeEditorDebugLog(`[LOAD] GroupBy node ${node.id} loaded with:`, {
+                hasGroupByColumns: !!serializedData.groupByColumns,
+                groupByColumnsLength: (serializedData.groupByColumns || []).length,
+                hasAggregations: !!serializedData.aggregations,
+                aggregationsLength: (serializedData.aggregations || []).length,
+                groupByColumns: serializedData.groupByColumns,
+                aggregations: serializedData.aggregations,
+              });
+            }
+            return node;
+          });
+          const hydratedGraph = rehydrateGraph(
+            {
+              nodes: loadedNodes,
+              edges: loadedEdges,
+            },
+            {
+              DBNameToDBVersions,
+              defaultTableVersions,
+              sortedTableNames,
+            },
+          );
+
+          nodeId = nextNodeId;
+
+          setGraphInstanceKey((previousKey) => previousKey + 1);
+          setNodes(hydratedGraph.nodes);
+          setEdges(hydratedGraph.edges);
+
+          // Load flow options if they exist
+          setFlowOptions(serializedGraph.options || []);
+          setIsGraphEnabled(serializedGraph.isGraphEnabled ?? false);
+          setGraphStartsEnabled(serializedGraph.graphStartsEnabled ?? true);
+          nodeEditorDebugLog(
+            `Loaded graph with ${hydratedGraph.nodes.length} nodes and ${hydratedGraph.edges.length} connections`,
+          );
+        },
+        (error) => {
+          console.error("Failed to load node graph:", error);
+          dispatch(
+            addToast({
+              type: "warning",
+              messages: [
+                localized.nodeEditorFailedToLoadNodeGraphFile ||
+                  "Failed to load the node graph file. Please check the file format.",
+              ],
+              startTime: Date.now(),
+            }),
+          );
+        },
+      );
     },
     [
       setNodes,
@@ -807,7 +812,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack, isAct
     ],
   );
   const loadNodeGraphRef = useRef(loadNodeGraph);
-  loadNodeGraphRef.current = loadNodeGraph;
+  useLayoutEffect(() => {
+    loadNodeGraphRef.current = loadNodeGraph;
+  });
 
   /** Says which file the new graph landed in, since it is the one Save will overwrite. */
   const toastGraphReplacedOpenFile = useCallback(
@@ -991,46 +998,51 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack, isAct
     const serializedGraph = serializeNodeGraph();
     const flowData = JSON.stringify(serializedGraph, null, 2);
 
-    try {
-      const result = await window.api?.saveNodeFlow(currentFile, flowData, currentPack);
-      if (result?.success) {
-        nodeEditorDebugLog("Flow saved successfully to:", result.filePath);
-        // show success dialog here if this path is revived.
-        dispatch(
-          addToast({
-            type: "success",
-            messages: [localized.nodeEditorFlowSavedSuccessfully || "Flow saved successfully!"],
-            startTime: Date.now(),
-          }),
-        );
-      } else {
-        console.error("Failed to save flow:", result?.error);
-        dispatch(
-          addToast({
-            type: "warning",
-            messages: [
-              `${localized.nodeEditorFailedToSaveFlowPrefix || "Failed to save flow:"} ${
-                result?.error || localized.nodeEditorUnknownError || "Unknown error"
-              }`,
-            ],
-            startTime: Date.now(),
-          }),
-        );
-      }
-    } catch (error) {
-      console.error("Error saving flow:", error);
-      dispatch(
-        addToast({
-          type: "warning",
-          messages: [
-            `${localized.nodeEditorErrorSavingFlowPrefix || "Error saving flow:"} ${
-              error instanceof Error ? error.message : localized.nodeEditorUnknownError || "Unknown error"
-            }`,
-          ],
-          startTime: Date.now(),
-        }),
-      );
-    }
+    await runGuarded(
+      async () => {
+        const result = await window.api?.saveNodeFlow(currentFile, flowData, currentPack);
+        if (result?.success) {
+          nodeEditorDebugLog("Flow saved successfully to:", result.filePath);
+          // show success dialog here if this path is revived.
+          dispatch(
+            addToast({
+              type: "success",
+              messages: [localized.nodeEditorFlowSavedSuccessfully || "Flow saved successfully!"],
+              startTime: Date.now(),
+            }),
+          );
+        } else {
+          console.error("Failed to save flow:", result?.error);
+          dispatch(
+            addToast({
+              type: "warning",
+              messages: [
+                `${localized.nodeEditorFailedToSaveFlowPrefix || "Failed to save flow:"} ${
+                  result?.error || localized.nodeEditorUnknownError || "Unknown error"
+                }`,
+              ],
+              startTime: Date.now(),
+            }),
+          );
+        }
+      },
+      {
+        onError: (error) => {
+          console.error("Error saving flow:", error);
+          dispatch(
+            addToast({
+              type: "warning",
+              messages: [
+                `${localized.nodeEditorErrorSavingFlowPrefix || "Error saving flow:"} ${
+                  error instanceof Error ? error.message : localized.nodeEditorUnknownError || "Unknown error"
+                }`,
+              ],
+              startTime: Date.now(),
+            }),
+          );
+        },
+      },
+    );
   }, [currentFile, currentPack, serializeNodeGraph, dispatch, localized]);
 
   // Node execution system
@@ -1041,105 +1053,111 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack, isAct
     nodeEditorDebugLog("Starting node graph execution in backend...");
     nodeEditorDebugLog("Flow options at execution time:", flowOptions);
 
-    try {
-      if (nodes.length === 0) {
-        console.error("No nodes found in the graph");
+    await runGuarded(
+      async () => {
+        if (nodes.length === 0) {
+          console.error("No nodes found in the graph");
+          dispatch(
+            addToast({
+              type: "warning",
+              messages: [
+                localized.nodeEditorNoNodesFoundAddNodesBeforeExecuting ||
+                  "No nodes found. Add nodes to the graph before executing.",
+              ],
+              startTime: Date.now(),
+            }),
+          );
+          return;
+        }
+
+        // Debug: Check generaterows/generaterowsschema node data before execution
+        const generateRowsNodes = nodes.filter((n) => n.type === "generaterows" || n.type === "generaterowsschema");
+        generateRowsNodes.forEach((grNode) => {
+          const nodeData = grNode.data as Partial<SerializedNode["data"]>;
+          nodeEditorDebugLog(`[PRE-EXECUTION] GenerateRows node ${grNode.id} data:`);
+          nodeEditorDebugLog(`  transformationsLength: ${(nodeData.transformations || []).length}`);
+          nodeEditorDebugLog(`  transformations:`, JSON.stringify(nodeData.transformations));
+          nodeEditorDebugLog(`  outputTablesLength: ${(nodeData.outputTables || []).length}`);
+          nodeEditorDebugLog(`  outputTables:`, JSON.stringify(nodeData.outputTables));
+        });
+
+        // Execute the entire graph in the backend
+        const result = await executeGraphInBackend(
+          nodes,
+          edges,
+          currentPack,
+          flowOptions,
+          resolveManualFlowSourcePack(currentFile, currentPack),
+          currentFile,
+          flowSourcePackName,
+        );
+
+        nodeEditorDebugLog(
+          `Backend graph execution completed: ${result.successCount}/${result.totalExecuted} nodes succeeded`,
+        );
+
+        if (result.error) {
+          console.error("Graph execution error:", result.error);
+        }
+
+        // Show results in alert (in a real app, you'd show this in a better UI)
+        // A node that succeeded but warns - a rule that matched nothing, a pack it could not read -
+        // is the case that used to look like a clean run while producing no output, so its warnings
+        // go in the summary rather than only into the log.
+        const summary = Array.from(result.executionResults.entries())
+          .map(([nodeId, nodeResult]) => {
+            const status = nodeResult.success ? "✅" : "❌" + (nodeResult.error ? ` (${nodeResult.error})` : "");
+            const warningLines = (nodeResult.warnings || []).map((warning) => `\n    ⚠️ ${warning}`).join("");
+            return `${nodeId}: ${status}${warningLines}`;
+          })
+          .join("\n");
+
+        const hasWarnings = Array.from(result.executionResults.values()).some(
+          (nodeResult) => (nodeResult.warnings || []).length > 0,
+        );
+
+        const statusMessage = result.success
+          ? localized.nodeEditorGraphExecutionSuccessful || "✅ Graph execution successful!"
+          : result.failureCount > 0
+            ? localized.nodeEditorGraphExecutionCompletedWithErrors || "❌ Graph execution completed with errors"
+            : localized.nodeEditorGraphExecutionFailed || "❌ Graph execution failed";
+
+        const executionSummaryLabel = localized.nodeEditorExecutionSummaryLabel || "Execution Summary";
+        const nodesSucceededLabel = localized.nodeEditorNodesSucceededLabel || "nodes succeeded";
+        const checkConsoleLabel =
+          localized.nodeEditorCheckConsoleForDetailedResults || "Check console for detailed results.";
+
         dispatch(
           addToast({
-            type: "warning",
+            type: result.successCount === result.totalExecuted && !hasWarnings ? "success" : "warning",
             messages: [
-              localized.nodeEditorNoNodesFoundAddNodesBeforeExecuting ||
-                "No nodes found. Add nodes to the graph before executing.",
+              `${statusMessage}\n\n${executionSummaryLabel} (${result.successCount}/${result.totalExecuted} ${nodesSucceededLabel}):\n${summary}\n\n${checkConsoleLabel}`,
             ],
             startTime: Date.now(),
           }),
         );
-        return;
-      }
-
-      // Debug: Check generaterows/generaterowsschema node data before execution
-      const generateRowsNodes = nodes.filter((n) => n.type === "generaterows" || n.type === "generaterowsschema");
-      generateRowsNodes.forEach((grNode) => {
-        const nodeData = grNode.data as Partial<SerializedNode["data"]>;
-        nodeEditorDebugLog(`[PRE-EXECUTION] GenerateRows node ${grNode.id} data:`);
-        nodeEditorDebugLog(`  transformationsLength: ${(nodeData.transformations || []).length}`);
-        nodeEditorDebugLog(`  transformations:`, JSON.stringify(nodeData.transformations));
-        nodeEditorDebugLog(`  outputTablesLength: ${(nodeData.outputTables || []).length}`);
-        nodeEditorDebugLog(`  outputTables:`, JSON.stringify(nodeData.outputTables));
-      });
-
-      // Execute the entire graph in the backend
-      const result = await executeGraphInBackend(
-        nodes,
-        edges,
-        currentPack,
-        flowOptions,
-        resolveManualFlowSourcePack(currentFile, currentPack),
-        currentFile,
-        flowSourcePackName,
-      );
-
-      nodeEditorDebugLog(
-        `Backend graph execution completed: ${result.successCount}/${result.totalExecuted} nodes succeeded`,
-      );
-
-      if (result.error) {
-        console.error("Graph execution error:", result.error);
-      }
-
-      // Show results in alert (in a real app, you'd show this in a better UI)
-      // A node that succeeded but warns - a rule that matched nothing, a pack it could not read -
-      // is the case that used to look like a clean run while producing no output, so its warnings
-      // go in the summary rather than only into the log.
-      const summary = Array.from(result.executionResults.entries())
-        .map(([nodeId, nodeResult]) => {
-          const status = nodeResult.success ? "✅" : "❌" + (nodeResult.error ? ` (${nodeResult.error})` : "");
-          const warningLines = (nodeResult.warnings || []).map((warning) => `\n    ⚠️ ${warning}`).join("");
-          return `${nodeId}: ${status}${warningLines}`;
-        })
-        .join("\n");
-
-      const hasWarnings = Array.from(result.executionResults.values()).some(
-        (nodeResult) => (nodeResult.warnings || []).length > 0,
-      );
-
-      const statusMessage = result.success
-        ? localized.nodeEditorGraphExecutionSuccessful || "✅ Graph execution successful!"
-        : result.failureCount > 0
-          ? localized.nodeEditorGraphExecutionCompletedWithErrors || "❌ Graph execution completed with errors"
-          : localized.nodeEditorGraphExecutionFailed || "❌ Graph execution failed";
-
-      const executionSummaryLabel = localized.nodeEditorExecutionSummaryLabel || "Execution Summary";
-      const nodesSucceededLabel = localized.nodeEditorNodesSucceededLabel || "nodes succeeded";
-      const checkConsoleLabel =
-        localized.nodeEditorCheckConsoleForDetailedResults || "Check console for detailed results.";
-
-      dispatch(
-        addToast({
-          type: result.successCount === result.totalExecuted && !hasWarnings ? "success" : "warning",
-          messages: [
-            `${statusMessage}\n\n${executionSummaryLabel} (${result.successCount}/${result.totalExecuted} ${nodesSucceededLabel}):\n${summary}\n\n${checkConsoleLabel}`,
-          ],
-          startTime: Date.now(),
-        }),
-      );
-    } catch (error) {
-      console.error("Error during graph execution:", error);
-      dispatch(
-        addToast({
-          type: "warning",
-          messages: [
-            `${localized.nodeEditorGraphExecutionFailedPrefix || "Graph execution failed:"} ${
-              error instanceof Error ? error.message : localized.nodeEditorUnknownError || "Unknown error"
-            }`,
-          ],
-          startTime: Date.now(),
-        }),
-      );
-    } finally {
-      setIsExecuting(false);
-    }
-  }, [nodes, edges, isExecuting, currentFile, currentPack, flowOptions, dispatch, localized]);
+      },
+      {
+        onError: (error) => {
+          console.error("Error during graph execution:", error);
+          dispatch(
+            addToast({
+              type: "warning",
+              messages: [
+                `${localized.nodeEditorGraphExecutionFailedPrefix || "Graph execution failed:"} ${
+                  error instanceof Error ? error.message : localized.nodeEditorUnknownError || "Unknown error"
+                }`,
+              ],
+              startTime: Date.now(),
+            }),
+          );
+        },
+        onFinally: () => {
+          setIsExecuting(false);
+        },
+      },
+    );
+  }, [nodes, edges, isExecuting, currentFile, currentPack, flowOptions, flowSourcePackName, dispatch, localized]);
 
   const selectedUnsavedFlowText =
     currentFile && currentPack
@@ -1159,42 +1177,47 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack, isAct
       }
 
       // If not in unsaved files, read from pack
-      try {
-        const result = await window.api?.readFileFromPack(currentPack, currentFile);
-        if (requestId !== flowLoadRequestIdRef.current) return;
-        if (result?.success && result.text) {
-          loadNodeGraphRef.current(result.text);
-        } else {
-          console.error("Failed to read file from pack:", result?.error);
-          const currentLocalized = localizedRef.current;
-          dispatch(
-            addToast({
-              type: "warning",
-              messages: [
-                `${currentLocalized.nodeEditorFailedToLoadFilePrefix || "Failed to load file:"} ${
-                  result?.error || currentLocalized.nodeEditorUnknownError || "Unknown error"
-                }`,
-              ],
-              startTime: Date.now(),
-            }),
-          );
-        }
-      } catch (error) {
-        if (requestId !== flowLoadRequestIdRef.current) return;
-        console.error("Error loading file:", error);
-        const currentLocalized = localizedRef.current;
-        dispatch(
-          addToast({
-            type: "warning",
-            messages: [
-              `${currentLocalized.nodeEditorErrorLoadingFilePrefix || "Error loading file:"} ${
-                error instanceof Error ? error.message : currentLocalized.nodeEditorUnknownError || "Unknown error"
-              }`,
-            ],
-            startTime: Date.now(),
-          }),
-        );
-      }
+      await runGuarded(
+        async () => {
+          const result = await window.api?.readFileFromPack(currentPack, currentFile);
+          if (requestId !== flowLoadRequestIdRef.current) return;
+          if (result?.success && result.text) {
+            loadNodeGraphRef.current(result.text);
+          } else {
+            console.error("Failed to read file from pack:", result?.error);
+            const currentLocalized = localizedRef.current;
+            dispatch(
+              addToast({
+                type: "warning",
+                messages: [
+                  `${currentLocalized.nodeEditorFailedToLoadFilePrefix || "Failed to load file:"} ${
+                    result?.error || currentLocalized.nodeEditorUnknownError || "Unknown error"
+                  }`,
+                ],
+                startTime: Date.now(),
+              }),
+            );
+          }
+        },
+        {
+          onError: (error) => {
+            if (requestId !== flowLoadRequestIdRef.current) return;
+            console.error("Error loading file:", error);
+            const currentLocalized = localizedRef.current;
+            dispatch(
+              addToast({
+                type: "warning",
+                messages: [
+                  `${currentLocalized.nodeEditorErrorLoadingFilePrefix || "Error loading file:"} ${
+                    error instanceof Error ? error.message : currentLocalized.nodeEditorUnknownError || "Unknown error"
+                  }`,
+                ],
+                startTime: Date.now(),
+              }),
+            );
+          },
+        },
+      );
     };
 
     void loadFileContent();

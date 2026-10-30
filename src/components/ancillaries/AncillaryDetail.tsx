@@ -80,12 +80,14 @@ const AncillaryAbilityEffectTooltip = ({
     middleware: [offset(12), shift({ padding: 8 })],
     whileElementsMounted: autoUpdate,
   });
+  // Destructured once: React Compiler treats later reads of `refs` in render as ref reads.
+  const { setFloating, setPositionReference, setReference } = refs;
 
   const hasAbilities = (abilities?.length ?? 0) > 0;
   const setCursorReference = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       const { clientX, clientY } = event;
-      refs.setPositionReference({
+      setPositionReference({
         getBoundingClientRect: () => ({
           x: clientX,
           y: clientY,
@@ -98,7 +100,7 @@ const AncillaryAbilityEffectTooltip = ({
         }),
       });
     },
-    [refs],
+    [setPositionReference],
   );
   const onMouseEnter = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
@@ -116,19 +118,19 @@ const AncillaryAbilityEffectTooltip = ({
   );
   const onMouseLeave = useCallback(() => {
     setIsOpen(false);
-    refs.setPositionReference(null);
-  }, [refs]);
+    setPositionReference(null);
+  }, [setPositionReference]);
 
   return (
     <>
-      <div ref={refs.setReference} onMouseEnter={onMouseEnter} onMouseMove={onMouseMove} onMouseLeave={onMouseLeave}>
+      <div ref={setReference} onMouseEnter={onMouseEnter} onMouseMove={onMouseMove} onMouseLeave={onMouseLeave}>
         {children}
       </div>
       {isOpen &&
         hasAbilities &&
         createPortal(
           <div
-            ref={refs.setFloating}
+            ref={setFloating}
             style={{ ...floatingStyles, zIndex: 60 }}
             className="pointer-events-none"
             role="tooltip"
@@ -171,13 +173,15 @@ const AncillaryUniquenessTooltip = ({
     middleware: [offset(8), shift({ padding: 8 })],
     whileElementsMounted: autoUpdate,
   });
+  // Destructured once: React Compiler treats later reads of `refs` in render as ref reads.
+  const { setFloating, setReference } = refs;
 
   if (groupings.length === 0) return <>{children}</>;
 
   return (
     <>
       <span
-        ref={refs.setReference}
+        ref={setReference}
         tabIndex={0}
         className="cursor-help border-b border-dotted border-gray-500"
         onMouseEnter={() => setIsOpen(true)}
@@ -190,7 +194,7 @@ const AncillaryUniquenessTooltip = ({
       {isOpen &&
         createPortal(
           <div
-            ref={refs.setFloating}
+            ref={setFloating}
             style={{ ...floatingStyles, zIndex: 60 }}
             className="pointer-events-none"
             role="tooltip"

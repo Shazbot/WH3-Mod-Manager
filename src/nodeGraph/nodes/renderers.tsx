@@ -7700,6 +7700,17 @@ export const EditTextFileNode: React.FC<{ data: EditTextFileNodeData; id: string
 };
 
 /** Configures a packed ONNX bundle or a single packed ONNX model for TableSelection input. */
+// Parses text that must hold a JSON object, returning the object or the message to show.
+const parseJsonObject = (text: string): { value: object } | { error: string } => {
+  try {
+    const value: unknown = JSON.parse(text);
+    if (!value || typeof value !== "object" || Array.isArray(value)) return { error: "Enter a JSON object" };
+    return { value };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+};
+
 export const OnnxFlowNode: React.FC<{ data: OnnxFlowNodeData; id: string }> = ({ data: savedData, id }) => {
   const { isActive: isNodeEditorActive, modalRoot } = useNodeEditorPanel();
   const [draft, setDraft] = useState<OnnxFlowNodeData | null>(null);
@@ -7876,16 +7887,17 @@ export const OnnxFlowNode: React.FC<{ data: OnnxFlowNodeData; id: string }> = ({
   }, [inspection, data.inputBindings, data.outputBindings, data.standaloneInputBindings]);
 
   const applyJson = (text: string, field: "inputBindings" | "outputBindings" | "standaloneInputBindings") => {
-    try {
-      const value: unknown = JSON.parse(text);
-      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Enter a JSON object");
-      setMappingError("");
-      if (field === "inputBindings") updateNode({ inputBindings: value as Record<string, OnnxInputBinding> });
-      else if (field === "outputBindings") updateNode({ outputBindings: value as OnnxFlowNodeData["outputBindings"] });
-      else updateNode({ standaloneInputBindings: value as Record<string, OnnxInputBinding[]> });
-    } catch (error) {
-      setMappingError(error instanceof Error ? error.message : String(error));
+    // Parsed outside a try: React Compiler cannot compile a throw inside try/catch.
+    const parsed = parseJsonObject(text);
+    if ("error" in parsed) {
+      setMappingError(parsed.error);
+      return;
     }
+    const value = parsed.value;
+    setMappingError("");
+    if (field === "inputBindings") updateNode({ inputBindings: value as Record<string, OnnxInputBinding> });
+    else if (field === "outputBindings") updateNode({ outputBindings: value as OnnxFlowNodeData["outputBindings"] });
+    else updateNode({ standaloneInputBindings: value as Record<string, OnnxInputBinding[]> });
   };
 
   const inputSummary = (binding: any) => {

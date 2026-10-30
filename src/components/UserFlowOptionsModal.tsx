@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { setUserFlowOptions } from "../appSlice";
+import { runGuarded } from "../utility/runGuarded";
 import type { FlowOption } from "../nodeGraph/types";
 
 interface FlowWithOptions {
@@ -9,6 +10,53 @@ interface FlowWithOptions {
   graphStartsEnabled: boolean;
   options: FlowOption[];
 }
+
+// Reads each flow file's options and the user's saved values for them. A file that fails to parse is skipped.
+const readFlowOptions = (
+  flowFiles: { name: string; content: string }[],
+  packOptions: Record<string, any> | undefined,
+) => {
+  const loadedFlows: FlowWithOptions[] = [];
+  const initialValues: Record<string, any> = {};
+  for (const flowFile of flowFiles) {
+    try {
+      // Parse the flow file JSON
+      const flowData = JSON.parse(flowFile.content);
+
+      // Extract options from the serialized graph
+      const options = flowData.options || [];
+      const isGraphEnabled = flowData.isGraphEnabled || false;
+      const graphStartsEnabled = flowData.graphStartsEnabled !== false;
+
+      loadedFlows.push({
+        flowName: flowFile.name,
+        isGraphEnabled,
+        graphStartsEnabled,
+        options,
+      });
+
+      // Load saved user values from app state
+      if (packOptions && packOptions[flowFile.name]) {
+        const savedValues = packOptions[flowFile.name];
+
+        // Load graph enabled state if available
+        if (isGraphEnabled && savedValues.graphEnabled !== undefined) {
+          initialValues[`${flowFile.name}_graphEnabled`] = savedValues.graphEnabled;
+        }
+
+        // Load option values
+        if (savedValues.optionValues) {
+          for (const [optionId, value] of Object.entries(savedValues.optionValues)) {
+            initialValues[`${flowFile.name}_${optionId}`] = value;
+          }
+        }
+      }
+    } catch (e) {
+      console.error(`Failed to parse flow file ${flowFile.name}:`, e);
+    }
+  }
+  return { loadedFlows, initialValues };
+};
 
 const UserFlowOptionsModal: React.FC<{
   isOpen: boolean;
@@ -21,80 +69,33 @@ const UserFlowOptionsModal: React.FC<{
   const [userValues, setUserValues] = useState<Record<string, any>>({});
 
   useEffect(() => {
-    if (isOpen && mod) {
-      loadFlowOptions();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!isOpen || !mod) return;
+    void runGuarded(
+      async () => {
+        // Get all flow files from the pack
+        const result = await window.api?.getFlowFilesFromPack(mod.path);
+        if (!result?.flowFiles) return;
+        const { loadedFlows, initialValues } = readFlowOptions(result.flowFiles, userFlowOptions[mod.name]);
+        setFlows(loadedFlows);
+        setUserValues(initialValues);
+      },
+      { onError: (error) => console.error("Error loading flow options:", error) },
+    );
   }, [isOpen, mod, userFlowOptions]);
 
-  const loadFlowOptions = async () => {
-    try {
-      // Get all flow files from the pack
-      const result = await window.api?.getFlowFilesFromPack(mod.path);
-      if (!result) return;
-
-      const loadedFlows: FlowWithOptions[] = [];
-      const initialValues: Record<string, any> = {};
-
-      if (!result.flowFiles) return;
-
-      for (const flowFile of result.flowFiles) {
-        try {
-          // Parse the flow file JSON
-          const flowData = JSON.parse(flowFile.content);
-
-          // Extract options from the serialized graph
-          const options = flowData.options || [];
-          const isGraphEnabled = flowData.isGraphEnabled || false;
-          const graphStartsEnabled = flowData.graphStartsEnabled !== false;
-
-          loadedFlows.push({
-            flowName: flowFile.name,
-            isGraphEnabled,
-            graphStartsEnabled,
-            options,
-          });
-
-          // Load saved user values from app state
-          const packOptions = userFlowOptions[mod.name];
-          if (packOptions && packOptions[flowFile.name]) {
-            const savedValues = packOptions[flowFile.name];
-
-            // Load graph enabled state if available
-            if (isGraphEnabled && savedValues.graphEnabled !== undefined) {
-              initialValues[`${flowFile.name}_graphEnabled`] = savedValues.graphEnabled;
-            }
-
-            // Load option values
-            if (savedValues.optionValues) {
-              for (const [optionId, value] of Object.entries(savedValues.optionValues)) {
-                initialValues[`${flowFile.name}_${optionId}`] = value;
-              }
-            }
-          }
-        } catch (e) {
-          console.error(`Failed to parse flow file ${flowFile.name}:`, e);
-        }
-      }
-
-      setFlows(loadedFlows);
-      setUserValues(initialValues);
-    } catch (error) {
-      console.error("Error loading flow options:", error);
-    }
-  };
-
   const handleOptionValueChange = (flowName: string, optionId: string, value: any) => {
+    const key = `${flowName}_${optionId}`;
     setUserValues((prev) => ({
       ...prev,
-      [`${flowName}_${optionId}`]: value,
+      [key]: value,
     }));
   };
 
   const handleGraphToggle = (flowName: string, enabled: boolean) => {
+    const key = `${flowName}_graphEnabled`;
     setUserValues((prev) => ({
       ...prev,
-      [`${flowName}_graphEnabled`]: enabled,
+      [key]: enabled,
     }));
   };
 

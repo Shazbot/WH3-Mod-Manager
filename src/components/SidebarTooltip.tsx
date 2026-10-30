@@ -16,7 +16,7 @@ import {
 import classNames from "classnames";
 import type { TooltipProps } from "flowbite-react";
 import { useTheme } from "flowbite-react";
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import { createPortal } from "react-dom";
 
 const getArrowPlacement = (placement: string) => {
@@ -40,7 +40,8 @@ const SidebarTooltip = ({
   ...props
 }: TooltipProps) => {
   const theme = useTheme().theme.tooltip;
-  const arrowRef = useRef<HTMLDivElement>(null);
+  // Kept in state rather than a ref so the arrow middleware is added once the arrow element mounts.
+  const [arrowElement, setArrowElement] = useState<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const floatingTooltip = useFloating({
     middleware: [
@@ -48,7 +49,7 @@ const SidebarTooltip = ({
       placement === "auto" ? autoPlacement() : flip(),
       // Keep clear of the title bar, which is layered above tooltips.
       shift({ padding: { top: 36, right: 8, bottom: 8, left: 8 } }),
-      ...(showArrow && arrowRef.current ? [arrow({ element: arrowRef.current })] : []),
+      ...(showArrow && arrowElement ? [arrow({ element: arrowElement })] : []),
     ],
     onOpenChange: setOpen,
     open,
@@ -65,6 +66,7 @@ const SidebarTooltip = ({
     x,
     y,
   } = floatingTooltip;
+  const arrowSide = getArrowPlacement(floatingPlacement);
   const { getFloatingProps, getReferenceProps } = useInteractions([
     useClick(context, { enabled: trigger === "click" }),
     useFocus(context),
@@ -115,13 +117,13 @@ const SidebarTooltip = ({
             [theme.arrow.style.auto]: style === "auto",
           })}
           data-testid="flowbite-tooltip-arrow"
-          ref={arrowRef}
+          ref={setArrowElement}
           style={{
             top: arrowY ?? " ",
             left: arrowX ?? " ",
             right: " ",
             bottom: " ",
-            [getArrowPlacement(floatingPlacement)]: theme.arrow.placement,
+            [arrowSide]: theme.arrow.placement,
           }}
         >
           &nbsp;
