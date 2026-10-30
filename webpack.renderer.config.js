@@ -1,10 +1,36 @@
-const rules = require("./webpack.rules");
+// Copy the shared rules so renderer-only changes don't leak into main/preload.
+const baseRules = require("./webpack.rules");
 const plugins = require("./webpack.plugins");
 const path = require("path");
 
 const isProduction = process.argv[process.argv.indexOf("--mode") + 1] === "production";
 
+const rules = baseRules.map((rule) =>
+  // Generic TS rule: handle only .ts here; .tsx gets its own rule below.
+  rule.test && rule.test.toString() === /\.tsx?$/.toString() ? { ...rule, test: /\.ts$/ } : rule,
+);
+
 rules.push(
+  {
+    // React Compiler (Babel) runs first, then esbuild strips TS/JSX.
+    test: /\.tsx$/,
+    exclude: /(node_modules|\.webpack)/,
+    use: [
+      { loader: "esbuild-loader", options: {} },
+      {
+        loader: "babel-loader",
+        options: {
+          babelrc: false,
+          configFile: false,
+          cacheDirectory: true,
+          plugins: [
+            ["@babel/plugin-syntax-typescript", { isTSX: true }],
+            ["babel-plugin-react-compiler", { target: "18" }],
+          ],
+        },
+      },
+    ],
+  },
   {
     test: /\.css$/,
     use: [{ loader: "style-loader" }, { loader: "css-loader" }, { loader: "postcss-loader" }],
