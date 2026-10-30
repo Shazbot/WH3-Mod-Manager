@@ -1,5 +1,5 @@
-﻿commit: 7d040b9eb4f5cc16342020aace401e0e3aef203d
-version: 0.6.0+7d040b9eb4f5 output=34 scan=2 check=2
-size: 41559962
-sha256: f85b941e3b318fbadda68038d5c71de6b0d72b9faf5adeff4ae36359ec901deb
-built: 2026-10-30T11:51:57Z
+﻿commit: 56ab8a8ef584d6a844a22a1a2241dad83a9abac7
+version: 0.6.0+56ab8a8ef584 output=34 scan=2 check=2
+size: 41578037
+sha256: a00d4c2c9086b577c220703ac43e71b2205b3369f4bb6a3b5fde4e62c18681c5
+built: 2026-10-30T13:19:28Z
