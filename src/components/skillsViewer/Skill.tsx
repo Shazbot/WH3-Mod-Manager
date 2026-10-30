@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -46,8 +47,8 @@ const tooltipHideDelayMs = 150;
 const tooltipLockedHideDelayMs = 300;
 // The least room kept between the tooltip and the skills panel's top or bottom edge.
 const tooltipPanelMargin = 8;
-// Closes the open tooltip, so another card's tooltip appearing closes it.
-let closeOpenTooltip: (() => void) | undefined;
+// The card whose tooltip is open, so another card's tooltip appearing closes it.
+let openTooltip: { id: string; close: () => void } | undefined;
 // The nodes the hovered skill would lock out, which preview the lock chains. Cards subscribe to it, so only the cards
 // whose preview changes re-render.
 const noLockPreview = new Set<string>();
@@ -298,14 +299,15 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
     setIsSpellTooltipLocked(false);
     setHoveredEffect(undefined);
   }, []);
+  const tooltipId = useId();
   const closeTooltip = useCallback(() => {
     clearTimeout(tooltipTimer.current);
     clearTimeout(tooltipHideTimer.current);
     setIsTooltipLocked(false);
     setIsTooltipOpen(false);
     closeEffectTooltip();
-    if (closeOpenTooltip == closeTooltip) closeOpenTooltip = undefined;
-  }, [closeEffectTooltip]);
+    if (openTooltip?.id == tooltipId) openTooltip = undefined;
+  }, [closeEffectTooltip, tooltipId]);
   const openEffectTooltip = (effect: Effect, isSpell: boolean) => {
     closeEffectTooltip();
     setHoveredEffect(effect);
@@ -337,12 +339,12 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
     clearTimeout(tooltipTimer.current);
     if (isTooltipOpen) return startStickDelay();
     tooltipTimer.current = setTimeout(() => {
-      if (closeOpenTooltip != closeTooltip) closeOpenTooltip?.();
-      closeOpenTooltip = closeTooltip;
+      if (openTooltip?.id != tooltipId) openTooltip?.close();
+      openTooltip = { id: tooltipId, close: closeTooltip };
       setIsTooltipOpen(true);
       startStickDelay();
     }, tooltipAppearDelayMs);
-  }, [closeTooltip, isTooltipLocked, isTooltipOpen, startStickDelay]);
+  }, [closeTooltip, isTooltipLocked, isTooltipOpen, startStickDelay, tooltipId]);
   const hideTooltip = useCallback(
     (lockedDelayMs: number) => {
       if (!isTooltipLocked) clearTimeout(tooltipTimer.current);

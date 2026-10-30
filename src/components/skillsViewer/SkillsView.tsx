@@ -9,13 +9,8 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { useAppDispatch, useAppSelector } from "../../hooks";
+import { useAppDispatch, useAppSelector, useEventCallback } from "../../hooks";
 import {
-  setIsCheckingSkillRequirements,
-  setIsShowingSkillsRankPanel,
-  setIsShowingSkillDbKeys,
-  setIsShowingHiddenModifiersInsideSkills,
-  setIsShowingHiddenSkills,
   setSkillNodeLevel,
   setAutoSkillNodeLevels,
 } from "../../appSlice";
@@ -49,8 +44,8 @@ import {
   skillGroupWidth,
   skillVariantStackY,
 } from "./skillPanelLayout";
-import { Dropdown } from "flowbite-react";
 import AddNodeModal from "./AddNodeModal";
+import SkillsToolbar from "./SkillsToolbar";
 import { Modal } from "../../flowbite/components/Modal/index";
 import { getAutoUnlockedLevel, normalizeSkillIconPath, skillIconAssetPath } from "../../skills";
 
@@ -529,8 +524,6 @@ const SkillsView = memo(
 
     const currentRank = useAppSelector((state) => state.app.currentRank);
     const isShowingSkillsRankPanel = useAppSelector((state) => state.app.isShowingSkillsRankPanel);
-    const isShowingSkillDbKeys = useAppSelector((state) => state.app.isShowingSkillDbKeys);
-    const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
     const moddersPrefix = useAppSelector((state) => state.app.moddersPrefix);
 
     useEffect(() => {
@@ -2857,7 +2850,6 @@ const SkillsView = memo(
       [effectiveNodeHeight, setNodes, setEdges, skillsData, resolveSkillIcon],
     );
 
-    const importInputRef = useRef<HTMLInputElement>(null);
 
     // Edit mode: save skill tree as a .pack file
     const handleSavePackConfirm = useCallback(async () => {
@@ -4670,6 +4662,53 @@ const SkillsView = memo(
       }
     }, [editGroups]);
 
+    // The toolbar is memoized, so it gets handlers that keep their identity while nodes and edges change.
+    const onToolbarNewSkillTree = useEventCallback(() => {
+      if (isEditMode) handleResetConfirm();
+      enterEditModeAfterLoad.current = true;
+      window.api?.createNewSkillTree(skillsData.currentSubtype);
+    });
+    const onToolbarToggleEditMode = useEventCallback(() => {
+      if (isEditMode && (isRequirementsMode || isSkillLocksMode)) return;
+      setIsEditMode(!isEditMode);
+    });
+    const onToolbarToggleRequirementsMode = useEventCallback(() => {
+      if (isRequirementsMode) {
+        exitRequirementsMode();
+      } else {
+        enterRequirementsMode();
+      }
+    });
+    const onToolbarToggleSkillLocksMode = useEventCallback(() => {
+      if (isSkillLocksMode) {
+        exitSkillLocksMode();
+      } else {
+        enterSkillLocksMode();
+      }
+    });
+    const onToolbarUndo = useEventCallback(() => handleUndo());
+    const onToolbarRedo = useEventCallback(() => handleRedo());
+    const onToolbarAddNode = useEventCallback(() => {
+      setPlaceholderRow(undefined);
+      setPlaceholderCol(undefined);
+      setIsAddNodeModalOpen(true);
+    });
+    const onToolbarReset = useEventCallback(() => setIsResetConfirmOpen(true));
+    const onToolbarImport = useEventCallback((event: React.ChangeEvent<HTMLInputElement>) => onImport(event));
+    const onToolbarExport = useEventCallback(() => onExport());
+    const onToolbarSavePack = useEventCallback((changesOnly: boolean) => {
+      const ts = Date.now().toString();
+      setSavePackName(`${changesOnly ? "skill_changes" : "custom_skills"}_${subtype}_${ts}`);
+      setSavePackDirectory(undefined);
+      setSavePackCloneAll(false);
+      setSaveChangesMode(changesOnly);
+      setCustomTableName(defaultSkillTableNameTemplate);
+      setCustomKeyPrefix(defaultSkillNodeKeyTemplate);
+      setCustomSkillKeyTemplate(defaultCharacterSkillKeyTemplate);
+      setIsSavePackModalOpen(true);
+    });
+
+
     return (
       <div
         className={`w-full h-full ${isEditMode ? "" : "hideReactFlowHandles"} ${isDragging ? "hide-placeholders" : ""}`}
@@ -4732,311 +4771,27 @@ const SkillsView = memo(
               </div>
             </Panel>
           )}
-          <Panel position="top-left" className="select-none">
-            <div className="flex gap-2 items-start">
-              <div className="hover:bg-gray-700 dark:border-gray-600 border-2 rounded-lg w-fit">
-                <Dropdown dismissOnClick={false} label={localized.options}>
-                  <Dropdown.Item>
-                    <div className="flex items-center min-w-[18em]">
-                      <label htmlFor="isShowingHiddentSkillsCheckbox">
-                        <input
-                          id="isShowingHiddentSkillsCheckbox"
-                          type="checkbox"
-                          checked={!!isShowingHiddentSkills}
-                          onChange={() => {
-                            dispatch(setIsShowingHiddenSkills(!isShowingHiddentSkills));
-                          }}
-                        ></input>
-                        <span className="ml-2">{localized.showHiddenSkills}</span>
-                      </label>
-                    </div>
-                  </Dropdown.Item>
-                  <Dropdown.Item>
-                    <div className="flex items-center">
-                      <label htmlFor="isShowingHiddenModifiersInsideSkillsCheckbox">
-                        <input
-                          id="isShowingHiddenModifiersInsideSkillsCheckbox"
-                          type="checkbox"
-                          checked={!!isShowingHiddenModifiersInsideSkills}
-                          onChange={() => {
-                            dispatch(setIsShowingHiddenModifiersInsideSkills(!isShowingHiddenModifiersInsideSkills));
-                          }}
-                        ></input>
-                        <span className="ml-2">{localized.showHiddenModifiersInsideSkills}</span>
-                      </label>
-                    </div>
-                  </Dropdown.Item>
-                  <Dropdown.Item>
-                    <div className="flex items-center">
-                      <label htmlFor="isCheckingSkillRequirementsCheckbox">
-                        <input
-                          id="isCheckingSkillRequirementsCheckbox"
-                          type="checkbox"
-                          checked={!!isCheckingSkillRequirements}
-                          onChange={() => {
-                            dispatch(setIsCheckingSkillRequirements(!isCheckingSkillRequirements));
-                          }}
-                        ></input>
-                        <span className="ml-2">{localized.checkSkillRequirements}</span>
-                      </label>
-                    </div>
-                  </Dropdown.Item>
-                  <Dropdown.Item>
-                    <div className="flex items-center">
-                      <label htmlFor="isShowingSkillsRankPanelCheckbox">
-                        <input
-                          id="isShowingSkillsRankPanelCheckbox"
-                          type="checkbox"
-                          checked={!!isShowingSkillsRankPanel}
-                          onChange={() => {
-                            dispatch(setIsShowingSkillsRankPanel(!isShowingSkillsRankPanel));
-                          }}
-                        ></input>
-                        <span className="ml-2">{localized.showSkillsRankPanel || "Show rank"}</span>
-                      </label>
-                    </div>
-                  </Dropdown.Item>
-                  <Dropdown.Item>
-                    <div className="flex items-center">
-                      <label htmlFor="isShowingSkillDbKeysCheckbox">
-                        <input
-                          id="isShowingSkillDbKeysCheckbox"
-                          type="checkbox"
-                          checked={!!isShowingSkillDbKeys}
-                          onChange={() => {
-                            dispatch(setIsShowingSkillDbKeys(!isShowingSkillDbKeys));
-                          }}
-                        ></input>
-                        <span className="ml-2">{localized.showSkillDbKeys || "Show DB keys in tooltips"}</span>
-                      </label>
-                    </div>
-                  </Dropdown.Item>
-                  {/* localizing subtype is actually not that useful since we want names_ */}
-                  {/* <Dropdown.Item>
-                <div className="flex items-center">
-                  <label htmlFor="isLocalizingSubtypesCheckbox">
-                    <input
-                      id="isLocalizingSubtypesCheckbox"
-                      type="checkbox"
-                      checked={!!isLocalizingSubtypes}
-                      onChange={() => {
-                        dispatch(setIsLocalizingSubtypes(!isLocalizingSubtypes));
-                      }}
-                    ></input>
-                    <span className="ml-2">{localized.showHiddenModifiersInsideSkills}</span>
-                  </label>
-                </div>
-              </Dropdown.Item> */}
-                </Dropdown>
-              </div>
-              {isFeaturesForModdersEnabled && (
-                <button
-                  className="px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-gray-700"
-                  onClick={() => {
-                    if (isEditMode) handleResetConfirm();
-                    enterEditModeAfterLoad.current = true;
-                    window.api?.createNewSkillTree(skillsData.currentSubtype);
-                  }}
-                >
-                  New Skill Tree
-                </button>
-              )}
-            </div>
-            {displayFactionOptions.length > 0 && (
-              <div className="hover:bg-gray-700 dark:border-gray-600 border-2 rounded-lg mt-2 w-fit">
-                <Dropdown
-                  dismissOnClick={true}
-                  label={
-                    factionFilter === "all"
-                      ? localized.all || "All"
-                      : displayFactionOptions.find((o) => o.value === factionFilter)?.label || factionFilter
-                  }
-                >
-                  <Dropdown.Item onClick={() => setFactionFilter("all")}>
-                    <span>{localized.all || "All"}</span>
-                  </Dropdown.Item>
-                  {displayFactionOptions.map((option) => (
-                    <Dropdown.Item key={option.value} onClick={() => setFactionFilter(option.value)}>
-                      <span>{option.label}</span>
-                    </Dropdown.Item>
-                  ))}
-                </Dropdown>
-              </div>
-            )}
-            {isFeaturesForModdersEnabled && (
-              <div className="mt-2 flex gap-2">
-                <button
-                  className={`px-4 py-2 rounded-lg border-2 dark:border-gray-600 ${
-                    isEditMode ? "bg-green-700 text-white" : "hover:bg-gray-700"
-                  } ${isRequirementsMode || isSkillLocksMode ? "grayscale cursor-not-allowed" : ""}`}
-                  onClick={() => {
-                    if (isEditMode && (isRequirementsMode || isSkillLocksMode)) return;
-                    setIsEditMode(!isEditMode);
-                  }}
-                >
-                  {isEditMode ? localized.editModeOn || "Edit Mode: ON" : localized.edit || "Edit"}
-                </button>
-                {isEditMode && (
-                  <>
-                    <button
-                      className={`ml-4 px-4 py-2 rounded-lg border-2 dark:border-gray-600 ${
-                        isRequirementsMode ? "bg-amber-600 text-white" : "hover:bg-gray-700"
-                      }`}
-                      onClick={() => {
-                        if (isRequirementsMode) {
-                          exitRequirementsMode();
-                        } else {
-                          enterRequirementsMode();
-                        }
-                      }}
-                    >
-                      {isRequirementsMode
-                        ? localized.requirementsModeOn || "Requirements: ON"
-                        : localized.requirements || "Requirements"}
-                    </button>
-                    <button
-                      className={`px-4 py-2 rounded-lg border-2 dark:border-gray-600 ${
-                        isSkillLocksMode ? "bg-red-600 text-white" : "hover:bg-gray-700"
-                      }`}
-                      onClick={() => {
-                        if (isSkillLocksMode) {
-                          exitSkillLocksMode();
-                        } else {
-                          enterSkillLocksMode();
-                        }
-                      }}
-                    >
-                      {isSkillLocksMode
-                        ? localized.skillLocksModeOn || "Skill Locks: ON"
-                        : localized.skillLocks || "Skill Locks"}
-                    </button>
-                    <button
-                      onClick={handleUndo}
-                      disabled={historySize.past === 0}
-                      className="px-3 py-2 rounded-lg border-2 dark:border-gray-600 disabled:opacity-40 hover:bg-gray-700"
-                      title="Undo (Ctrl+Z)"
-                    >
-                      ↩
-                    </button>
-                    <button
-                      onClick={handleRedo}
-                      disabled={historySize.future === 0}
-                      className="px-3 py-2 rounded-lg border-2 dark:border-gray-600 disabled:opacity-40 hover:bg-gray-700"
-                      title="Redo (Ctrl+Y)"
-                    >
-                      ↪
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-            {isEditMode && (
-              <div className="mt-2 flex gap-2">
-                {!isRequirementsMode && !isSkillLocksMode && (
-                  <>
-                    <button
-                      className="px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-gray-700"
-                      onClick={() => {
-                        setPlaceholderRow(undefined);
-                        setPlaceholderCol(undefined);
-                        setIsAddNodeModalOpen(true);
-                      }}
-                    >
-                      {localized.addNode || "Add Node"}
-                    </button>
-                    <button
-                      className="px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-red-700 text-red-400"
-                      onClick={() => setIsResetConfirmOpen(true)}
-                    >
-                      Reset
-                    </button>
-
-                    <div className="hover:bg-green-700 bg-green-600 dark:border-gray-600 border-2 rounded-lg w-fit">
-                      <Dropdown dismissOnClick={false} label={localized.json || "JSON"} color={"info"}>
-                        <Dropdown.Item>
-                          <button
-                            className="px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-gray-700"
-                            onClick={() => importInputRef.current?.click()}
-                          >
-                            {localized.import || "Import"}
-                          </button>
-                          <input
-                            ref={importInputRef}
-                            type="file"
-                            accept=".json"
-                            onChange={onImport}
-                            className="hidden"
-                          />
-                        </Dropdown.Item>
-                        <Dropdown.Item>
-                          <button
-                            className="px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-gray-700"
-                            onClick={onExport}
-                          >
-                            {localized.export || "Export"}
-                          </button>
-                        </Dropdown.Item>
-                      </Dropdown>
-                    </div>
-
-                    <div className="hover:bg-green-700 bg-green-600 dark:border-gray-600 border-2 rounded-lg w-fit">
-                      <Dropdown dismissOnClick={false} label={localized.save} color={"success"}>
-                        <Dropdown.Item>
-                          <button
-                            className="w-36 px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-blue-700 bg-blue-600 text-white"
-                            onClick={() => {
-                              const ts = Date.now().toString();
-                              setSavePackName(`custom_skills_${subtype}_${ts}`);
-                              setSavePackDirectory(undefined);
-                              setSavePackCloneAll(false);
-                              setSaveChangesMode(false);
-                              setCustomTableName(defaultSkillTableNameTemplate);
-                              setCustomKeyPrefix(defaultSkillNodeKeyTemplate);
-                              setCustomSkillKeyTemplate(defaultCharacterSkillKeyTemplate);
-                              setIsSavePackModalOpen(true);
-                            }}
-                          >
-                            {localized.savePack || "Save Whole Tree"}
-                          </button>
-                        </Dropdown.Item>
-                        <Dropdown.Item>
-                          <button
-                            className="w-36 px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-green-700 bg-green-600 text-white"
-                            onClick={() => {
-                              const ts = Date.now().toString();
-                              setSavePackName(`skill_changes_${subtype}_${ts}`);
-                              setSavePackDirectory(undefined);
-                              setSavePackCloneAll(false);
-                              setCustomTableName(defaultSkillTableNameTemplate);
-                              setCustomKeyPrefix(defaultSkillNodeKeyTemplate);
-                              setCustomSkillKeyTemplate(defaultCharacterSkillKeyTemplate);
-                              setIsSavePackModalOpen(true);
-                              setSaveChangesMode(true);
-                            }}
-                          >
-                            {localized.saveOnlyChanges || "Save Only Changes"}
-                          </button>
-                        </Dropdown.Item>
-                      </Dropdown>
-                    </div>
-
-                    {/* <button
-                      className="px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-gray-700"
-                      onClick={onGroupSelected}
-                    >
-                      {localized.group || "Group"}
-                    </button>
-                    <button
-                      className="px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-gray-700"
-                      onClick={onUngroupSelected}
-                    >
-                      {localized.ungroup || "Ungroup"}
-                    </button> */}
-                  </>
-                )}
-              </div>
-            )}
-          </Panel>
+          <SkillsToolbar
+            isEditMode={isEditMode}
+            isRequirementsMode={isRequirementsMode}
+            isSkillLocksMode={isSkillLocksMode}
+            canUndo={historySize.past > 0}
+            canRedo={historySize.future > 0}
+            factionFilter={factionFilter}
+            factionOptions={displayFactionOptions}
+            onFactionFilterChange={setFactionFilter}
+            onNewSkillTree={onToolbarNewSkillTree}
+            onToggleEditMode={onToolbarToggleEditMode}
+            onToggleRequirementsMode={onToolbarToggleRequirementsMode}
+            onToggleSkillLocksMode={onToolbarToggleSkillLocksMode}
+            onUndo={onToolbarUndo}
+            onRedo={onToolbarRedo}
+            onAddNode={onToolbarAddNode}
+            onReset={onToolbarReset}
+            onImport={onToolbarImport}
+            onExport={onToolbarExport}
+            onSavePack={onToolbarSavePack}
+          />
           {!isEditMode && (
             <ViewportPortal>
               <div className="fixed w-full h-full top-0 left-0 pointer-events-none">
