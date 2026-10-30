@@ -718,13 +718,13 @@ describe("unit painter", () => {
       ).toBe(true);
       const positive = replacement
         .exportModifiedTextures()
-        .find((texture) => texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds")?.rgbaBytes;
+        .find((texture) => texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds")?.rgbaBytes.slice();
       expect(positive).toBeDefined();
 
       expect(replacement.updateActiveDecal({ normalStrength: -2 })).toBe(true);
       const negative = replacement
         .exportModifiedTextures()
-        .find((texture) => texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds")?.rgbaBytes;
+        .find((texture) => texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds")?.rgbaBytes.slice();
       expect(negative).toBeDefined();
 
       let foundOppositeSlope = false;
@@ -792,7 +792,7 @@ describe("unit painter", () => {
       ).toBe(true);
       const alphaNormal = session
         .exportModifiedTextures()
-        .find((texture) => texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds")?.rgbaBytes;
+        .find((texture) => texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds")?.rgbaBytes.slice();
       expect(alphaNormal).toBeDefined();
 
       expect(
@@ -804,7 +804,7 @@ describe("unit painter", () => {
       ).toBe(true);
       const embossNormal = session
         .exportModifiedTextures()
-        .find((texture) => texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds")?.rgbaBytes;
+        .find((texture) => texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds")?.rgbaBytes.slice();
       expect(embossNormal).toBeDefined();
       expect(embossNormal).not.toEqual(alphaNormal);
       expect(session.activeDecalInfo?.normalBevelPx).toBe(6);
@@ -815,7 +815,7 @@ describe("unit painter", () => {
       expect(session.updateActiveDecal({ normalStrength: 2 })).toBe(true);
       const secondEmboss = session
         .exportModifiedTextures()
-        .find((texture) => texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds")?.rgbaBytes;
+        .find((texture) => texture.sourceVirtualPath === "variantmeshes\\unit\\body_normal.dds")?.rgbaBytes.slice();
       expect(secondEmboss).toEqual(embossNormal);
     } finally {
       session.dispose();

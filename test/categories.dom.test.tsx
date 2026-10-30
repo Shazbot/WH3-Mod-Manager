@@ -327,7 +327,7 @@ describe("Categories", () => {
     renderCategories();
 
     await screen.findByLabelText("Toggle mod Mod One");
-    const viewport = document.querySelector<HTMLElement>(".ag-body-viewport");
+    const viewport = document.querySelector<HTMLElement>(".ag-grid-viewport");
     expect(viewport).not.toBeNull();
 
     viewport!.scrollTop = 140;

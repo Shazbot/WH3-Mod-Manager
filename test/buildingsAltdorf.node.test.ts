@@ -134,6 +134,8 @@ const flattenView = (view: BuildingsRegionView) => {
 };
 
 describe.skipIf(!haveDumps)("buildings derivation against the in-game Altdorf panel", () => {
+  // Vitest still collects skipped suites; avoid reading optional fixtures during collection.
+  if (!haveDumps) return;
   const tables: BuildingsTableRows = {};
   for (const tableName of BUILDINGS_TABLES) tables[tableName] = readTsvTable(tableName);
   // The DB dump has no start_pos_* tables. Supply the rows extracted from the real startpos.esf.
@@ -313,6 +315,7 @@ describe.skipIf(!haveDbDump)("foreign slot types against the shipped tables", ()
       "CULT",
       "HIDDEN_CULT",
       "MINOR_CULT",
+      "MINOR_CULT_CANNOT_REMOVE",
       "NOR_TRAP",
       "PIRATE_COVE",
       "SEA_PATROL_OUTPOST",
@@ -320,11 +323,17 @@ describe.skipIf(!haveDbDump)("foreign slot types against the shipped tables", ()
       "TYRANTS_DEMANDS",
       "UNDERDEEP",
       "UNDEREMPIRE",
+      "UNDEREMPIRE_ENDGAME",
+      "VAMPIRE_COVEN",
+      "VAMPIRE_LAIR_COMPLETE",
+      "VAMPIRE_LAIR_FOREIGN",
+      "VAMPIRE_LAIR_OWN",
+      "VAMPIRE_LAIR_OWN_COMPLETE",
     ]);
   });
 
-  it("combines the 41 minor cult slot sets into the one template they share", () => {
-    expect(tables.slot_sets_tables.filter((row) => row.type === "MINOR_CULT")).toHaveLength(41);
+  it("combines the 40 minor cult slot sets into the one template they share", () => {
+    expect(tables.slot_sets_tables.filter((row) => row.type === "MINOR_CULT")).toHaveLength(40);
     expect(typeByKey.get("MINOR_CULT")?.slotTemplates).toEqual(["wh3_main_minor_cults"]);
   });
 
@@ -336,9 +345,9 @@ describe.skipIf(!haveDbDump)("foreign slot types against the shipped tables", ()
       "wh3_main_sla_slaanesh",
       "wh3_main_tze_tzeentch",
     ]);
-    // Allied outposts are the broad case: most of the game's cultures, nine named factions.
-    expect(typeByKey.get("ALLIED")?.cultures).toHaveLength(25);
-    expect(typeByKey.get("ALLIED")?.factions).toHaveLength(9);
+    // Allied outposts are the broad case: most of the game's cultures, twelve named factions.
+    expect(typeByKey.get("ALLIED")?.cultures).toHaveLength(26);
+    expect(typeByKey.get("ALLIED")?.factions).toHaveLength(12);
     expect(data.factions.length).toBeGreaterThan(500);
   });
 
@@ -427,10 +436,10 @@ describe.skipIf(!haveDbDump)("foreign slot types against the shipped tables", ()
     const view = resolveRegionBuildings(data, { campaign: CAMPAIGN, region: "", foreignSlotType: "PIRATE_COVE" });
     const chains = new Set(view.bands.flatMap((band) => band.columns.map((column) => column.chainKey)));
     expect(chains.has(boundChain)).toBe(true);
-    // 52 of the 53 the chain set expands to. `wh3_dlc25_gom_chamber_of_the_dark_lady` has a single
+    // 54 of the 55 the chain set expands to. `wh3_dlc25_gom_chamber_of_the_dark_lady` has a single
     // culture variant pinned to one faction, so it needs a culture or faction filter to appear -
     // the same rule that hides any faction-specific building under an unfiltered query.
-    expect(chains.size).toBe(52);
+    expect(chains.size).toBe(54);
     expect(view.settlementTypeOptions).toEqual([]);
     expect(view.settlementTypeDisabled).toBe(true);
   });
@@ -461,16 +470,17 @@ describe.skipIf(!haveDbDump)("horde boards against the shipped tables", () => {
       .flatMap((band) => band.columns.filter((column) => column.chainKey === chainKey))
       .flatMap((column) => column.tiles);
 
-  it("browses the five slot templates the game's force types name", () => {
+  it("browses the six slot templates the game's force types name", () => {
     expect(data.hordeSlotTemplates.map((entry) => entry.slotTemplate)).toEqual([
       "horde_primary",
       "horde_secondary",
+      "horde_primary_dark_fortress",
       "horde_primary_aislinn",
       "nakai_horde_primary",
       "nakai_horde_secondary",
     ]);
-    // Twelve of the fourteen force types name the same pair; the templates are browsed as one board.
-    expect(tables.military_force_type_horde_details_tables.length).toBe(14);
+    // Force types can share template pairs; the templates are browsed as one board.
+    expect(tables.military_force_type_horde_details_tables.length).toBe(17);
   });
 
   it("reaches the horde content whose keys say nothing about hordes", () => {
@@ -568,7 +578,7 @@ describe.skipIf(!haveDbDump)("horde boards against the shipped tables", () => {
 
     // Asserted as a count so a vanilla change moves it rather than passing silently.
     expect(withoutChains).toHaveLength(17);
-    expect(data.cultures).toHaveLength(27);
+    expect(data.cultures).toHaveLength(28);
   });
 
   it("reports nothing off a horde board", () => {

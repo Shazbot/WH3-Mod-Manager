@@ -150,7 +150,8 @@ describe("launchGame", () => {
       },
     ];
 
-    const result = await launchGame(candidates, directory, { earlyExitMs: 100 });
+    // Allow the real Node subprocess to start on Windows and on busy test runners.
+    const result = await launchGame(candidates, directory, { earlyExitMs: 2000 });
 
     expect(result).toMatchObject({ started: true, launch: { launcher: "snap" } });
     expect(fs.readFileSync(markerPath, "utf8")).toBe("yes");
@@ -173,7 +174,7 @@ describe("launchGame", () => {
       args: ["-e", `process.exit(${index + 2})`],
     }));
 
-    const result = await launchGame(candidates, makeDirectory(), { earlyExitMs: 100 });
+    const result = await launchGame(candidates, makeDirectory(), { earlyExitMs: 2000 });
 
     expect(result.started).toBe(false);
     expect(result.started || result.message).toContain("steam: exited with code 2");

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import fs from "node:fs";
 import { mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -124,6 +125,11 @@ describe("vanilla pack files cache", () => {
     });
 
     const windowsVariant = packPath.replaceAll("\\", "/").toUpperCase();
+    // Exercise cache-key aliases even on a case-sensitive filesystem.
+    const originalStat = fs.promises.stat.bind(fs.promises);
+    vi.spyOn(fs.promises, "stat").mockImplementation((file, ...args) =>
+      originalStat(file === windowsVariant ? packPath : file, ...args),
+    );
     const [hasIndex, first, second, modEntry, staleEntry] = await Promise.all([
       cacheApi.hasCurrentVanillaPackIndex(packPath),
       cacheApi.getCurrentVanillaPackIndex(windowsVariant),
