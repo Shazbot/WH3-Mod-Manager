@@ -53,6 +53,7 @@
         "useCache": true
       },
       "hooks": {
+        "postPackage": "require:./scripts/package-cli.cjs",
         "postMake": "require:./scripts/normalize-zip-paths.cjs"
       },
       "packagerConfig": {
