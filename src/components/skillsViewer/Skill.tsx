@@ -49,6 +49,9 @@ const tooltipLockedHideDelayMs = 300;
 const tooltipPanelMargin = 8;
 // The card whose tooltip is open, so another card's tooltip appearing closes it.
 let openTooltip: { id: string; close: () => void } | undefined;
+// Each card's way to take the hover, so a card left under the mouse by a closing tooltip can show its own. The browser
+// only tells a card the mouse is on it once the mouse moves.
+const cardHoverTakers = new WeakMap<Element, () => void>();
 // The nodes the hovered skill would lock out, which preview the lock chains. Cards subscribe to it, so only the cards
 // whose preview changes re-render.
 const noLockPreview = new Set<string>();
@@ -300,11 +303,17 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
     setHoveredEffect(undefined);
   }, []);
   const tooltipId = useId();
+  const cardRef = useRef<HTMLDivElement>(null);
+  // Where the mouse is while it is over this tooltip, so the card under it can take over when the tooltip closes.
+  const pointerInTooltip = useRef<{ x: number; y: number }>(undefined);
+  const handOffPointer = useRef<{ x: number; y: number }>(undefined);
   const closeTooltip = useCallback(() => {
     clearTimeout(tooltipTimer.current);
     clearTimeout(tooltipHideTimer.current);
     setIsTooltipLocked(false);
     setIsTooltipOpen(false);
+    // A tooltip closing under the mouse never hears it leave.
+    pointerInTooltip.current = undefined;
     closeEffectTooltip();
     if (openTooltip?.id == tooltipId) openTooltip = undefined;
   }, [closeEffectTooltip, tooltipId]);
@@ -332,25 +341,55 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
     setLockBarRun((run) => run + 1);
     tooltipTimer.current = setTimeout(() => setIsTooltipLocked(true), tooltipStickDelayMs);
   }, []);
-  const onMouseEnter = useCallback(() => {
-    setIsCardHovered(true);
-    clearTimeout(tooltipHideTimer.current);
-    if (isTooltipLocked) return;
-    clearTimeout(tooltipTimer.current);
-    if (isTooltipOpen) return startStickDelay();
-    tooltipTimer.current = setTimeout(() => {
-      if (openTooltip?.id != tooltipId) openTooltip?.close();
-      openTooltip = { id: tooltipId, close: closeTooltip };
-      setIsTooltipOpen(true);
-      startStickDelay();
-    }, tooltipAppearDelayMs);
-  }, [closeTooltip, isTooltipLocked, isTooltipOpen, startStickDelay, tooltipId]);
+  const onMouseEnter = useCallback(
+    (isImmediate = false) => {
+      // A card handed the hover by a closing tooltip hears the mouse enter again once it moves.
+      if (isCardHovered && isTooltipOpen) return;
+      setIsCardHovered(true);
+      clearTimeout(tooltipHideTimer.current);
+      if (isTooltipLocked) return;
+      clearTimeout(tooltipTimer.current);
+      if (isTooltipOpen) return startStickDelay();
+      const open = () => {
+        if (openTooltip?.id != tooltipId) openTooltip?.close();
+        openTooltip = { id: tooltipId, close: closeTooltip };
+        setIsTooltipOpen(true);
+        startStickDelay();
+      };
+      if (isImmediate) return open();
+      tooltipTimer.current = setTimeout(open, tooltipAppearDelayMs);
+    },
+    [closeTooltip, isCardHovered, isTooltipLocked, isTooltipOpen, startStickDelay, tooltipId],
+  );
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+    cardHoverTakers.set(card, () => onMouseEnter(true));
+    return () => {
+      cardHoverTakers.delete(card);
+    };
+  }, [onMouseEnter]);
+  // Once a tooltip that closed under the mouse is gone, the card it covered shows its tooltip straight away, since the
+  // mouse has already rested on it.
+  useEffect(() => {
+    const pointer = handOffPointer.current;
+    if (isTooltipOpen || !pointer) return;
+    handOffPointer.current = undefined;
+    const card = document.elementFromPoint(pointer.x, pointer.y)?.closest("[data-skill-card]");
+    if (card && card != cardRef.current) cardHoverTakers.get(card)?.();
+  }, [isTooltipOpen]);
   const hideTooltip = useCallback(
     (lockedDelayMs: number) => {
       if (!isTooltipLocked) clearTimeout(tooltipTimer.current);
       if (!isTooltipOpen) return closeTooltip();
       clearTimeout(tooltipHideTimer.current);
-      tooltipHideTimer.current = setTimeout(closeTooltip, isTooltipLocked ? lockedDelayMs : tooltipHideDelayMs);
+      tooltipHideTimer.current = setTimeout(
+        () => {
+          handOffPointer.current = pointerInTooltip.current;
+          closeTooltip();
+        },
+        isTooltipLocked ? lockedDelayMs : tooltipHideDelayMs,
+      );
     },
     [closeTooltip, isTooltipLocked, isTooltipOpen],
   );
@@ -365,7 +404,6 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
   // panel, and a tooltip that fits neither way is moved to stay inside it, its scroll area capped to the panel. It
   // runs after every render while open, since hovering a level or effect changes the tooltip's height, and only sets
   // state when a value moves.
-  const cardRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const tooltipScrollRef = useRef<HTMLDivElement>(null);
   const [tooltipOffsetY, setTooltipOffsetY] = useState(0);
@@ -551,8 +589,10 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
 
   return (
     <>
+      {/* The toolbar's box starts at the card's top while the tooltip is moved down inside it, so only the tooltip takes
+          the mouse. Otherwise the empty strip above the tooltip would cover the next card and keep it from hovering. */}
       <NodeToolbar
-        style={{ fontFamily: '"Libre Baskerville", serif' }}
+        style={{ fontFamily: '"Libre Baskerville", serif', pointerEvents: "none" }}
         isVisible={isTooltipOpen}
         position={Position.Right}
         align="start"
@@ -561,6 +601,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
           ref={tooltipRef}
           className="relative"
           style={{
+            pointerEvents: "auto",
             transform: `translateY(${tooltipOffsetY}px)`,
             width: skillTooltip.width,
             borderStyle: "solid",
@@ -570,7 +611,11 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
             fontSize: skillTooltip.bodySize,
           }}
           onMouseEnter={() => isTooltipLocked && clearTimeout(tooltipHideTimer.current)}
-          onMouseLeave={() => hideTooltip(tooltipHideDelayMs)}
+          onMouseMove={(event) => (pointerInTooltip.current = { x: event.clientX, y: event.clientY })}
+          onMouseLeave={() => {
+            pointerInTooltip.current = undefined;
+            hideTooltip(tooltipHideDelayMs);
+          }}
         >
           {hoveredAttributes && (
             <div
@@ -738,6 +783,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
       </NodeToolbar>
       <div
         ref={cardRef}
+        data-skill-card
         onMouseEnter={() => onMouseEnter()}
         onMouseLeave={() => onMouseLeave()}
         onClick={() => {
