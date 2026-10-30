@@ -43,4 +43,16 @@ describe("getChainColumnXs", () => {
     const xs = getChainColumnXs(skills, { g: members })[0];
     expect(Number.isFinite(xs[1])).toBe(true);
   });
+
+  it("draws variant groups starting on one spot as one item", () => {
+    // Helman Ghorst's campaign row: a base group and its Nagash variant group stack on the same columns.
+    const base = [skill(0, 1), skill(0, 2), skill(0, 3)];
+    const variant = [skill(0, 1, "v1"), skill(0, 2, "v2"), skill(0, 3, "v3")];
+    const skills = [skill(0, 0), ...base, ...variant, skill(0, 4)];
+    const xs = getChainColumnXs(skills, { base, variant })[0];
+    expect(xs[1]).toBe(pitch);
+    expect(xs[2]).toBeUndefined();
+    expect(xs[3]).toBeUndefined();
+    expect(xs[4]).toBe(pitch + groupExtra(3));
+  });
 });

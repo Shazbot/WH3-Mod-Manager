@@ -243,9 +243,15 @@ export function getSkills(
     } as Skill;
   });
 
+  const isVariant = (skill: Skill) => !!skill.faction || !!skill.subculture;
   const skillsGroupedByRow = groupBy(skills, (skill) => skill.x);
   for (const skillsInRow of Object.values(skillsGroupedByRow)) {
-    skillsInRow.sort((firstSkill, secondSkill) => firstSkill.y - secondSkill.y);
+    // Base skills go before the faction/subculture variants on their spot, so the variants share the base's column
+    // whatever order the nodes came in.
+    skillsInRow.sort(
+      (firstSkill, secondSkill) =>
+        firstSkill.y - secondSkill.y || Number(isVariant(firstSkill)) - Number(isVariant(secondSkill)),
+    );
     const startingColumn = (skillsInRow[0].x == 0 && 1) || 0; // first row starts at column 1, other rows at 0
     for (let i = 0, j = 0; i < skillsInRow.length; i++, j++) {
       const currentSkill = skillsInRow[i];

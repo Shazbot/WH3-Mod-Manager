@@ -275,8 +275,10 @@ const editModeNodeHeight = 160; // Larger spacing for edit/requirements mode
  * @returns The x of each column, by row and then column.
  */
 export const getChainColumnXs = (skills: Skill[], groupedSkills: Record<string, Skill[]>) => {
-  const groupsByStart: Record<string, Skill[]> = {};
-  for (const members of Object.values(groupedSkills)) groupsByStart[`${members[0].x}|${members[0].y}`] = members;
+  // Faction variants of a group start on the same spot as it, so a spot can start several groups.
+  const groupsByStart: Record<string, Skill[][]> = {};
+  for (const members of Object.values(groupedSkills))
+    (groupsByStart[`${members[0].x}|${members[0].y}`] ??= []).push(members);
   const rowsToMaxColumn: Record<number, number> = {};
   const skillsByCell: Record<string, Skill[]> = {};
   for (const skill of skills) {
@@ -293,14 +295,14 @@ export const getChainColumnXs = (skills: Skill[], groupedSkills: Record<string, 
     for (let column = 0; column <= maxColumn; column++) {
       if (absorbed.has(column)) continue;
       xs[column] = x;
-      const group = groupsByStart[`${row}|${column}`];
-      if (!group) {
+      const groups = groupsByStart[`${row}|${column}`];
+      if (!groups) {
         x += nodeWidth;
         continue;
       }
-      x += skillGroupWidth(group.length) + nodeWidth - skillEntry.width;
-      const members = new Set(group);
-      for (const member of group) {
+      x += skillGroupWidth(Math.max(...groups.map((group) => group.length))) + nodeWidth - skillEntry.width;
+      const members = new Set(groups.flat());
+      for (const member of members) {
         if (member.x !== Number(row) || member.y === column) continue;
         const cell = skillsByCell[`${row}|${member.y}`] ?? [];
         if (cell.every((cellSkill) => members.has(cellSkill))) absorbed.add(member.y);
