@@ -2,6 +2,7 @@
 const baseRules = require("./webpack.rules");
 const plugins = require("./webpack.plugins");
 const path = require("path");
+const { createBuildLogger } = require("./scripts/react-compiler.cjs");
 
 const isProduction = process.argv[process.argv.indexOf("--mode") + 1] === "production";
 
@@ -25,7 +26,8 @@ rules.push(
           cacheDirectory: true,
           plugins: [
             ["@babel/plugin-syntax-typescript", { isTSX: true }],
-            ["babel-plugin-react-compiler", { target: "18" }],
+            // The logger warns when a component outside the allowlist is skipped (docs/REACT_COMPILER.md).
+            ["babel-plugin-react-compiler", { target: "18", logger: createBuildLogger() }],
           ],
         },
       },

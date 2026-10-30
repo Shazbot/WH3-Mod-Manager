@@ -45,6 +45,7 @@ Before exploring code for these areas, read the matching doc in `docs/`:
 - `WH3_ASSET_HOST.md`: WH3AssetHost pipe protocol, optimize/check modes, versioning.
 - `HEADLESS.md`: headless CLI and MCP pack tools.
 - `NATIVE_PATCHES.md`: native patch manifests, flow templates, launch behaviour.
+- `REACT_COMPILER.md`: React Compiler setup, what stops a component compiling and how to fix it, opt-outs, `yarn check:react-compiler`.
 
 When a change alters what one of these docs describes, update the doc in the same change.
 
