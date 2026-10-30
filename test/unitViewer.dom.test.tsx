@@ -13,6 +13,9 @@ import { iconAssetUrl, unitAssetUrl } from "../src/assetUrls";
 /** Icons reach the renderer as asset protocol URLs now, so the fixtures are URLs too. */
 const iconUrl = (name: string) => iconAssetUrl(1, `ui\\icons\\${name}.png`);
 
+const { previewModel } = vi.hoisted(() => ({ previewModel: vi.fn(() => null) }));
+vi.mock("../src/components/VisualsModelPreview", () => ({ default: previewModel }));
+
 vi.mock("react-virtualized", () => ({
   AutoSizer: ({ children }: { children: (size: { width: number; height: number }) => React.ReactNode }) =>
     children({ width: 320, height: 600 }),
@@ -342,6 +345,74 @@ describe("Unit Viewer UI", () => {
 
     await screen.findByText("Alpha");
     expect(screen.queryByRole("region", { name: "Unit render preview" })).not.toBeInTheDocument();
+  });
+
+  it("uses the configured Pegasus rider and mount animation bins in combined and individual views", async () => {
+    const riderPath = "variantmeshes\\variantmeshdefinitions\\brt_royal_knights.variantmeshdefinition";
+    const mountPath = "variantmeshes\\variantmeshdefinitions\\brt_royal_pegasus.variantmeshdefinition";
+    window.api!.getUnitViewerDetails = vi.fn().mockResolvedValue({
+      success: true,
+      unit: {
+        ...built.units.get("unit_a")!,
+        variantMeshPath: riderPath,
+        mountEntity: { flySpeed: 10 },
+        visualParts: [
+          {
+            role: "rider",
+            label: "Rider",
+            variantMeshPath: riderPath,
+            animationTable: "hu1_bretonnian_hr1_royal_pegasus_lancer",
+          },
+          { role: "mount", label: "Mount", variantMeshPath: mountPath, animationTable: "hr1_pegasus" },
+        ],
+      },
+      icons: {},
+    });
+
+    renderViewer();
+    fireEvent.click(await screen.findByText("Culture"));
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    await waitFor(() =>
+      expect(previewModel).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          assetPath: riderPath,
+          primaryAnimationTable: "hu1_bretonnian_hr1_royal_pegasus_lancer",
+          animationProfile: "riderFlying",
+          companionModels: [
+            expect.objectContaining({
+              assetPath: mountPath,
+              animationTable: "hr1_pegasus",
+              animationProfile: "flying",
+            }),
+          ],
+        }),
+        expect.anything(),
+      ),
+    );
+
+    fireEvent.change(screen.getByLabelText("Preview view"), { target: { value: "mount" } });
+    await waitFor(() =>
+      expect(previewModel).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          assetPath: mountPath,
+          primaryAnimationTable: "hr1_pegasus",
+          animationProfile: "flying",
+        }),
+        expect.anything(),
+      ),
+    );
+
+    fireEvent.change(screen.getByLabelText("Preview view"), { target: { value: "rider" } });
+    await waitFor(() =>
+      expect(previewModel).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          assetPath: riderPath,
+          primaryAnimationTable: "hu1_bretonnian_hr1_royal_pegasus_lancer",
+          animationProfile: "riderFlying",
+        }),
+        expect.anything(),
+      ),
+    );
   });
 
   it("hides missile weapon sections when a unit has no missile weapons", async () => {

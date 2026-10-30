@@ -352,7 +352,7 @@ type VisualsModelPreviewProps = {
   companionModels?: VisualsCompanionModel[];
   /** Role and copy count of the primary model, used for engine attachment placement. */
   primaryModelRole?: string;
-  /** Seat-crew animation table: its standing idle becomes the primary default (war machine crews only). */
+  /** Unit part's animation table: its standing idle takes precedence over the shared model catalog. */
   primaryAnimationTable?: string;
   primaryModelCount?: number;
   /** DB row context used to optionally save the painted VMD for one faction instead of overriding the source VMD. */

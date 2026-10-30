@@ -179,6 +179,8 @@ Errors: those of `exportModel`, plus `InvalidAnimationSelections` when the list 
 
 #### Animation clip cache
 
+Unit Viewer passes each visual part's configured DB animation table to `VisualsModelPreview`, including ordinary riders and mounts in combined and individual views. The table's standing entry for the part's movement profile takes precedence over shared-model catalog defaults, so a knight model shared by multiple mounts uses the pose configured for its current mount.
+
 `src/visuals/animationClipCache.ts` keeps the clips of the loaded model. `VisualsModelPreview` seeds it with the clip that arrives with the model, then prefetches the rest of the catalog after the scene is ready, 20 clips per `exportVisualsModelAnimations` call, capped at 200 cached clips (least recently used goes first). A selected clip that is not cached is fetched alone, ahead of the queue. A cached clip switches with no IPC. The cache is keyed by `animationCatalogKey` (asset, profile, mods, animation table), so a different model or mod set disposes it, drops queued work and ignores in-flight results.
 
 #### `exportPaintedVariant`
