@@ -15,3 +15,13 @@ export async function runGuarded<T>(
     handlers.onFinally?.();
   }
 }
+
+// The synchronous form of runGuarded, for callbacks such as FileReader.onload.
+export function runGuardedSync<T>(work: () => T, onError: (error: unknown) => void): T | undefined {
+  try {
+    return work();
+  } catch (error) {
+    onError(error);
+    return undefined;
+  }
+}

@@ -5,15 +5,14 @@ import React, {
   useContext,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 import { useAppDispatch, useAppSelector, useEventCallback } from "../../hooks";
-import {
-  setSkillNodeLevel,
-  setAutoSkillNodeLevels,
-} from "../../appSlice";
+import { runGuarded, runGuardedSync } from "../../utility/runGuarded";
+import { setSkillNodeLevel, setAutoSkillNodeLevels } from "../../appSlice";
 import deepClone from "clone-deep";
 import "@silevis/reactgrid/styles.css";
 import localizationContext from "../../localizationContext";
@@ -443,7 +442,6 @@ const SkillsView = memo(
      */
     const [editorData, setEditorData] = useState<SkillsEditorData>();
     const prevIsEditModeRef = useRef(isEditMode);
-    let effectiveNodeHeight = isEditMode ? editModeNodeHeight : nodeHeight;
     const [isAddNodeModalOpen, setIsAddNodeModalOpen] = useState(false);
     const [placeholderRow, setPlaceholderRow] = useState<number | undefined>(undefined);
     const [placeholderCol, setPlaceholderCol] = useState<number | undefined>(undefined);
@@ -457,6 +455,8 @@ const SkillsView = memo(
       y: number;
       nodeId: string;
       nodeType: string;
+      // Lock edges as they were when the menu opened; the menu renders from this rather than reading the ref.
+      lockEdges?: SkillEdge[];
     } | null>(null);
     const [isRequirementsMode, setIsRequirementsMode] = useState(initialSnapshot?.isRequirementsMode ?? false);
     const isRequirementsModeRef = useRef(false);
@@ -490,12 +490,14 @@ const SkillsView = memo(
     const skipSubtypeReset = useRef(!!initialSnapshot);
     const skipTransitionEffect = useRef(false);
     const isFirstEditModeTransition = useRef(!initialSnapshot?.isEditMode);
-    const editModeNodesRef = useRef<Nodes[] | null>(null);
-    const editModeEdgesRef = useRef<SkillEdge[] | null>(null);
-    if (initialSnapshot?.isEditMode && editModeNodesRef.current === null) {
-      editModeNodesRef.current = deepClone(initialSnapshot.nodes);
-      editModeEdgesRef.current = deepClone(initialSnapshot.edges as SkillEdge[]);
-    }
+    // A restored snapshot already in edit mode starts with its own nodes and edges as the edit-mode baseline.
+    const [initialEditModeBaseline] = useState(() =>
+      initialSnapshot?.isEditMode
+        ? { nodes: deepClone(initialSnapshot.nodes), edges: deepClone(initialSnapshot.edges as SkillEdge[]) }
+        : undefined,
+    );
+    const editModeNodesRef = useRef<Nodes[] | null>(initialEditModeBaseline?.nodes ?? null);
+    const editModeEdgesRef = useRef<SkillEdge[] | null>(initialEditModeBaseline?.edges ?? null);
     const justAutoGrouped = useRef(false);
     const enterEditModeAfterLoad = useRef(false);
     const historyPast = useRef<EditSnapshot[]>([]);
@@ -503,9 +505,11 @@ const SkillsView = memo(
     const [historySize, setHistorySize] = useState({ past: 0, future: 0 });
     const savePackNameInputRef = useRef<HTMLInputElement>(null);
 
-    isRequirementsModeRef.current = isRequirementsMode;
-    isSkillLocksModeRef.current = isSkillLocksMode;
-    isEditModeRef.current = isEditMode;
+    useLayoutEffect(() => {
+      isRequirementsModeRef.current = isRequirementsMode;
+      isSkillLocksModeRef.current = isSkillLocksMode;
+      isEditModeRef.current = isEditMode;
+    });
 
     useEffect(() => {
       if (isSavePackModalOpen && savePackNameInputRef.current) {
@@ -563,7 +567,7 @@ const SkillsView = memo(
       [editorData?.icons, skillsData.icons],
     );
 
-    let skills = skillsData.currentSkills ?? [];
+    const allSkills = skillsData.currentSkills ?? [];
     const hasSkills = !!skillsData.currentSkills;
     const subtype = skillsData.currentSubtype;
     const currentSkillSetKey = skillsData.subtypesToSet?.[skillsData.currentSubtype]?.[skillsData.currentSubtypeIndex];
@@ -573,7 +577,7 @@ const SkillsView = memo(
     // Compute unique faction/subculture filter options
     const factionFilterOptions: { label: string; value: string }[] = [];
     const seenCombos = new Set<string>();
-    for (const skill of skills) {
+    for (const skill of allSkills) {
       const hasFaction = skill.faction && skill.faction !== "";
       const hasSubculture = skill.subculture && skill.subculture !== "";
       if (!hasFaction && !hasSubculture) continue;
@@ -591,29 +595,31 @@ const SkillsView = memo(
     const hasFactionVariants = factionFilterOptions.length > 0;
 
     // Apply faction/subculture filter
-    if (!isEditMode && factionFilter !== "all" && hasFactionVariants) {
-      skills = skills.filter((skill) => {
-        const hasFaction = skill.faction && skill.faction !== "";
-        const hasSubculture = skill.subculture && skill.subculture !== "";
-        if (!hasFaction && !hasSubculture) return true; // base skills always shown
-        const comboKey = `${skill.faction || ""}|||${skill.subculture || ""}`;
-        return comboKey === factionFilter;
-      });
-    }
+    const factionFilteredSkills =
+      !isEditMode && factionFilter !== "all" && hasFactionVariants
+        ? allSkills.filter((skill) => {
+            const hasFaction = skill.faction && skill.faction !== "";
+            const hasSubculture = skill.subculture && skill.subculture !== "";
+            if (!hasFaction && !hasSubculture) return true; // base skills always shown
+            const comboKey = `${skill.faction || ""}|||${skill.subculture || ""}`;
+            return comboKey === factionFilter;
+          })
+        : allSkills;
 
-    if (!isEditMode && !isShowingHiddentSkills) {
-      skills = skills.filter((skill) => !skill.isHiddentInUI);
-    }
+    const shownSkills =
+      !isEditMode && !isShowingHiddentSkills
+        ? factionFilteredSkills.filter((skill) => !skill.isHiddentInUI)
+        : factionFilteredSkills;
 
     // Clean up group assignments: skills that end up alone in their group after filtering
     // should not be displayed as grouped
     const groupCounts: Record<string, number> = {};
-    for (const skill of skills) {
+    for (const skill of shownSkills) {
       if (skill.group) {
         groupCounts[skill.group] = (groupCounts[skill.group] || 0) + 1;
       }
     }
-    skills = skills.map((skill) => {
+    const skills = shownSkills.map((skill) => {
       if (skill.group && (groupCounts[skill.group] || 0) < 2) {
         return { ...skill, group: undefined };
       }
@@ -631,10 +637,12 @@ const SkillsView = memo(
     // if we need to overlay nodes make the y gap between them bigger (normal mode only —
     // in edit mode effectiveNodeHeight must stay at editModeNodeHeight so snap grid,
     // repositionPlaceholders, and the leaving-edit-mode transition all stay consistent)
-    if (!isEditMode && maxStackSize > 1) {
-      // Room for the deepest stack, so its last card clears the next row.
-      effectiveNodeHeight = nodeHeight + (maxStackSize - 1) * skillVariantStackY;
-    }
+    // Room for the deepest stack, so its last card clears the next row.
+    const effectiveNodeHeight = isEditMode
+      ? editModeNodeHeight
+      : maxStackSize > 1
+        ? nodeHeight + (maxStackSize - 1) * skillVariantStackY
+        : nodeHeight;
     // Like the game, only rows that hold skills take up room, so an unused indent leaves no gap.
     const rowYs: Record<number, number> = {};
     [...new Set(skills.map((skill) => skill.x))]
@@ -888,7 +896,8 @@ const SkillsView = memo(
     // Generate "+" placeholder nodes in empty grid positions (gaps + end of row) in edit mode
     if (isEditMode) {
       const globalMaxCol = skills.length > 0 ? Math.max(...skills.map((s) => s.y)) : 0;
-      for (let r = 0; r < 9; r++) {
+      for (let row = 0; row < 9; row++) {
+        const r = row;
         const skillsInRow = skills.filter((s) => s.x === r);
         const occupiedCols = new Set(skillsInRow.map((s) => s.y));
         const maxColBound = Math.max(skillsInRow.length > 0 ? Math.max(...occupiedCols) + 1 : 0, globalMaxCol + 1, 3);
@@ -1040,23 +1049,26 @@ const SkillsView = memo(
     }, [nodes, edges, editGroups, nextGroupId, lockEdgeLevels, isRequirementsMode, isSkillLocksMode, isEditMode]);
 
     // Undo/redo: restore all edit state from a snapshot
-    const applySnapshot = useCallback((snap: EditSnapshot) => {
-      isRestoringSnapshot.current = true;
-      setNodes(deepClone(snap.nodes));
-      setEdges(deepClone(snap.edges as SkillEdge[]));
-      setEditGroups(snap.editGroups);
-      setNextGroupId(snap.nextGroupId);
-      setLockEdgeLevels(snap.lockEdgeLevels);
-      setIsRequirementsMode(snap.isRequirementsMode);
-      setIsSkillLocksMode(snap.isSkillLocksMode);
-      savedEditEdges.current = deepClone(snap.savedEditEdges) as SkillEdge[];
-      savedLocksEdges.current = deepClone(snap.savedLocksEdges) as SkillEdge[];
-      allLockEdges.current = deepClone(snap.allLockEdges) as SkillEdge[];
-      localNodeToSkillLocks.current = snap.localNodeToSkillLocks ? deepClone(snap.localNodeToSkillLocks) : null;
-      setTimeout(() => {
-        isRestoringSnapshot.current = false;
-      }, 0);
-    }, []);
+    const applySnapshot = useCallback(
+      (snap: EditSnapshot) => {
+        isRestoringSnapshot.current = true;
+        setNodes(deepClone(snap.nodes));
+        setEdges(deepClone(snap.edges as SkillEdge[]));
+        setEditGroups(snap.editGroups);
+        setNextGroupId(snap.nextGroupId);
+        setLockEdgeLevels(snap.lockEdgeLevels);
+        setIsRequirementsMode(snap.isRequirementsMode);
+        setIsSkillLocksMode(snap.isSkillLocksMode);
+        savedEditEdges.current = deepClone(snap.savedEditEdges) as SkillEdge[];
+        savedLocksEdges.current = deepClone(snap.savedLocksEdges) as SkillEdge[];
+        allLockEdges.current = deepClone(snap.allLockEdges) as SkillEdge[];
+        localNodeToSkillLocks.current = snap.localNodeToSkillLocks ? deepClone(snap.localNodeToSkillLocks) : null;
+        setTimeout(() => {
+          isRestoringSnapshot.current = false;
+        }, 0);
+      },
+      [setEdges, setNodes],
+    );
 
     const buildCurrentSnapshot = useCallback(
       (): EditSnapshot => ({
@@ -1182,7 +1194,9 @@ const SkillsView = memo(
       [effectiveNodeHeight],
     );
     const repositionPlaceholdersRef = useRef(repositionPlaceholders);
-    repositionPlaceholdersRef.current = repositionPlaceholders;
+    useLayoutEffect(() => {
+      repositionPlaceholdersRef.current = repositionPlaceholders;
+    });
 
     // Edit mode: handle node deletion (also clean up connected edges)
     const onNodesDelete = useCallback(
@@ -1201,7 +1215,7 @@ const SkillsView = memo(
         }
         setNodes((nds) => repositionPlaceholders(nds, affectedRows));
       },
-      [setEdges, setNodes, repositionPlaceholders, effectiveNodeHeight, captureHistory],
+      [captureHistory, isSkillLocksMode, setEdges, setNodes, effectiveNodeHeight, repositionPlaceholders],
     );
 
     // Edit mode: click an edge to remove it
@@ -1453,7 +1467,7 @@ const SkillsView = memo(
           return result;
         });
       },
-      [setNodes, nodes, editGroups, setEditGroups, repositionPlaceholders],
+      [editGroups, effectiveNodeHeight, nodes, setNodes, repositionPlaceholders],
     );
 
     const skillNodesToLevel = useAppSelector((state) => state.app.skillNodesToLevel);
@@ -1517,7 +1531,13 @@ const SkillsView = memo(
         }
         if ((!isEditMode && !isRequirementsMode && !isSkillLocksMode) || node.type !== "skill") return;
         event.preventDefault();
-        setContextMenu({ x: event.clientX, y: event.clientY, nodeId: node.id, nodeType: "skill" });
+        setContextMenu({
+          x: event.clientX,
+          y: event.clientY,
+          nodeId: node.id,
+          nodeType: "skill",
+          lockEdges: allLockEdges.current,
+        });
       },
       [isEditMode, isRequirementsMode, isSkillLocksMode],
     );
@@ -1698,7 +1718,7 @@ const SkillsView = memo(
 
         setContextMenu(null);
       },
-      [contextMenu, nodes, editGroups, setEditGroups, setNodes, repositionPlaceholders, captureHistory],
+      [contextMenu, captureHistory, nodes, effectiveNodeHeight, editGroups, setNodes, repositionPlaceholders],
     );
 
     // Context menu: delete nodes
@@ -1988,7 +2008,7 @@ const SkillsView = memo(
       }
 
       setContextMenu(null);
-    }, [contextMenu, nodes, effectiveNodeHeight, editGroups, captureHistory]);
+    }, [contextMenu, captureHistory, nodes, effectiveNodeHeight, editGroups, setNodes, repositionPlaceholders]);
 
     const contextMenuMoveRow = useCallback(
       (direction: "left" | "right") => {
@@ -2019,7 +2039,7 @@ const SkillsView = memo(
         });
         setContextMenu(null);
       },
-      [contextMenu, nodes, effectiveNodeHeight, repositionPlaceholders, captureHistory],
+      [contextMenu, captureHistory, nodes, effectiveNodeHeight, setNodes, repositionPlaceholders],
     );
 
     // Context menu: move entire row up or down
@@ -2093,7 +2113,7 @@ const SkillsView = memo(
         });
         setContextMenu(null);
       },
-      [contextMenu, nodes, effectiveNodeHeight, repositionPlaceholders, captureHistory],
+      [contextMenu, captureHistory, nodes, effectiveNodeHeight, setNodes, repositionPlaceholders],
     );
 
     // Context menu: delete all nodes in the same row
@@ -2329,7 +2349,7 @@ const SkillsView = memo(
         });
         setContextMenu(null);
       },
-      [contextMenu, nodes, editGroups, effectiveNodeHeight, repositionPlaceholders, captureHistory],
+      [contextMenu, captureHistory, nodes, editGroups, effectiveNodeHeight, setNodes, repositionPlaceholders],
     );
 
     // Requirements mode: add REQUIRED/SUBSET_REQUIRED edges from context menu
@@ -2741,272 +2761,285 @@ const SkillsView = memo(
 
         const reader = new FileReader();
         reader.onload = (e) => {
-          try {
-            const data = JSON.parse(e.target?.result as string);
-            if (!data.nodes || !Array.isArray(data.nodes)) {
-              setNotification({ message: "Invalid JSON: missing nodes array", type: "error" });
-              return;
-            }
+          runGuardedSync(
+            () => {
+              const data = JSON.parse(e.target?.result as string);
+              if (!data.nodes || !Array.isArray(data.nodes)) {
+                setNotification({ message: "Invalid JSON: missing nodes array", type: "error" });
+                return;
+              }
 
-            // Rebuild editGroups from groups array
-            const newEditGroups: Record<string, string> = {};
-            let maxGroupNum = 0;
-            if (data.groups && Array.isArray(data.groups)) {
-              for (const group of data.groups) {
-                for (const nodeId of group.nodeIds) {
-                  newEditGroups[nodeId] = group.groupId;
+              // Rebuild editGroups from groups array
+              const newEditGroups: Record<string, string> = {};
+              let maxGroupNum = 0;
+              if (data.groups && Array.isArray(data.groups)) {
+                for (const group of data.groups) {
+                  for (const nodeId of group.nodeIds) {
+                    newEditGroups[nodeId] = group.groupId;
+                  }
+                  const match = group.groupId.match(/editGroup_(\d+)/);
+                  if (match) maxGroupNum = Math.max(maxGroupNum, parseInt(match[1]));
                 }
-                const match = group.groupId.match(/editGroup_(\d+)/);
-                if (match) maxGroupNum = Math.max(maxGroupNum, parseInt(match[1]));
               }
-            }
 
-            // Build skill nodes
-            const importedNodes: typeof nodes = data.nodes.map((n: any) => ({
-              id: n.nodeId,
-              type: "skill" as const,
-              position: {
-                x: n.indent * nodeWidth,
-                y: n.tier * effectiveNodeHeight,
-              },
-              sourcePosition: Position.Right,
-              targetPosition: Position.Left,
-              data: {
-                id: n.skillId || n.existingSkillKey || n.nodeId,
-                nodeId: n.nodeId,
-                label: n.label,
-                description: n.description,
-                numLevels: n.maxLevel,
-                unlockRank: (Number(n.unlockRank) || 0) + 1,
-                imgPath: normalizeSkillIconPath(n.imgPath),
-                faction: n.faction || "",
-                subculture: n.subculture || "",
-                effects: n.effects || [],
-                existingSkillKey: n.existingSkillKey,
-                requiredNumParents: n.requiredNumParents || 0,
-                isAbilityIcon: false,
-                isHiddentInUI: n.visibleInUI === false,
-                isCheckingSkillRequirements: false,
-                origIndent: String(n.indent),
-                origTier: String(n.tier),
-                row: n.tier,
-                skillBackground,
-                skillIconBackground,
-                skillLevelImg,
-                tooltipFrame,
-                skillLevelLitIcon,
-                skillIcon: resolveSkillIcon(n.imgPath),
-              },
-            }));
+              // Build skill nodes
+              const importedNodes: typeof nodes = data.nodes.map((n: any) => ({
+                id: n.nodeId,
+                type: "skill" as const,
+                position: {
+                  x: n.indent * nodeWidth,
+                  y: n.tier * effectiveNodeHeight,
+                },
+                sourcePosition: Position.Right,
+                targetPosition: Position.Left,
+                data: {
+                  id: n.skillId || n.existingSkillKey || n.nodeId,
+                  nodeId: n.nodeId,
+                  label: n.label,
+                  description: n.description,
+                  numLevels: n.maxLevel,
+                  unlockRank: (Number(n.unlockRank) || 0) + 1,
+                  imgPath: normalizeSkillIconPath(n.imgPath),
+                  faction: n.faction || "",
+                  subculture: n.subculture || "",
+                  effects: n.effects || [],
+                  existingSkillKey: n.existingSkillKey,
+                  requiredNumParents: n.requiredNumParents || 0,
+                  isAbilityIcon: false,
+                  isHiddentInUI: n.visibleInUI === false,
+                  isCheckingSkillRequirements: false,
+                  origIndent: String(n.indent),
+                  origTier: String(n.tier),
+                  row: n.tier,
+                  skillBackground,
+                  skillIconBackground,
+                  skillLevelImg,
+                  tooltipFrame,
+                  skillLevelLitIcon,
+                  skillIcon: resolveSkillIcon(n.imgPath),
+                },
+              }));
 
-            // Build edges from links
-            const importedEdges: SkillEdge[] = [];
-            if (data.links && Array.isArray(data.links)) {
-              for (const link of data.links) {
-                const id = `e${link.child}-${link.parent}`;
-                importedEdges.push({
-                  id,
-                  source: link.child,
-                  target: link.parent,
-                  type: edgeType,
-                  animated: false,
-                  interactionWidth: 20,
-                  style: { stroke: "#ef4444", strokeWidth: 2 },
-                  data: {
-                    linkType: link.linkType || "REQUIRED",
-                    parentLinkPosition: link.parentLinkPosition,
-                    childLinkPosition: link.childLinkPosition,
-                    parentLinkPositionOffset: link.parentLinkPositionOffset,
-                    childLinkPositionOffset: link.childLinkPositionOffset,
-                  },
-                });
+              // Build edges from links
+              const importedEdges: SkillEdge[] = [];
+              if (data.links && Array.isArray(data.links)) {
+                for (const link of data.links) {
+                  const id = `e${link.child}-${link.parent}`;
+                  importedEdges.push({
+                    id,
+                    source: link.child,
+                    target: link.parent,
+                    type: edgeType,
+                    animated: false,
+                    interactionWidth: 20,
+                    style: { stroke: "#ef4444", strokeWidth: 2 },
+                    data: {
+                      linkType: link.linkType || "REQUIRED",
+                      parentLinkPosition: link.parentLinkPosition,
+                      childLinkPosition: link.childLinkPosition,
+                      parentLinkPositionOffset: link.parentLinkPositionOffset,
+                      childLinkPositionOffset: link.childLinkPositionOffset,
+                    },
+                  });
+                }
               }
-            }
 
-            // Restore skill locks
-            if (data.skillLocks && Array.isArray(data.skillLocks)) {
-              const newLocks: Record<string, [string, number][]> = {};
-              for (const lock of data.skillLocks) {
-                if (!newLocks[lock.lockedNodeId]) newLocks[lock.lockedNodeId] = [];
-                newLocks[lock.lockedNodeId].push([lock.lockingSkillKey, lock.requiredLevel]);
+              // Restore skill locks
+              if (data.skillLocks && Array.isArray(data.skillLocks)) {
+                const newLocks: Record<string, [string, number][]> = {};
+                for (const lock of data.skillLocks) {
+                  if (!newLocks[lock.lockedNodeId]) newLocks[lock.lockedNodeId] = [];
+                  newLocks[lock.lockedNodeId].push([lock.lockingSkillKey, lock.requiredLevel]);
+                }
+                localNodeToSkillLocks.current = newLocks;
+              } else {
+                localNodeToSkillLocks.current = null;
               }
-              localNodeToSkillLocks.current = newLocks;
-            } else {
-              localNodeToSkillLocks.current = null;
-            }
 
-            setEditGroups(newEditGroups);
-            setNextGroupId(maxGroupNum + 1);
-            setNodes(importedNodes);
-            setEdges(importedEdges);
-            setNotification({ message: "Skill tree imported successfully", type: "success" });
-          } catch (err: any) {
-            console.error("Failed to import skill tree:", err);
-            setNotification({ message: `Failed to import: ${err.message}`, type: "error" });
-          }
+              setEditGroups(newEditGroups);
+              setNextGroupId(maxGroupNum + 1);
+              setNodes(importedNodes);
+              setEdges(importedEdges);
+              setNotification({ message: "Skill tree imported successfully", type: "success" });
+            },
+            (err: any) => {
+              console.error("Failed to import skill tree:", err);
+              setNotification({ message: `Failed to import: ${err.message}`, type: "error" });
+            },
+          );
         };
         reader.readAsText(file);
       },
       [effectiveNodeHeight, setNodes, setEdges, skillsData, resolveSkillIcon],
     );
 
-
     // Edit mode: save skill tree as a .pack file
     const handleSavePackConfirm = useCallback(async () => {
       if (!savePackName.trim()) return;
       setIsSavePackProcessing(true);
-      try {
-        const ts = Date.now().toString();
-        const skillNodes = nodes.filter((n) => n.type === "skill");
+      return await runGuarded(
+        async () => {
+          const ts = Date.now().toString();
+          const skillNodes = nodes.filter((n) => n.type === "skill");
 
-        // Build edges with linkType, reversing group container retargeting back to individual nodes
-        const containerToMembers: Record<string, string[]> = {};
-        for (const [nodeId, groupId] of Object.entries(editGroups)) {
-          const containerId = `${groupId}_group`;
-          if (!containerToMembers[containerId]) containerToMembers[containerId] = [];
-          containerToMembers[containerId].push(nodeId);
-        }
+          // Build edges with linkType, reversing group container retargeting back to individual nodes
+          const containerToMembers: Record<string, string[]> = {};
+          for (const [nodeId, groupId] of Object.entries(editGroups)) {
+            const containerId = `${groupId}_group`;
+            if (!containerToMembers[containerId]) containerToMembers[containerId] = [];
+            containerToMembers[containerId].push(nodeId);
+          }
 
-        const expandedEdges: ({ source: string; target: string } & SkillLinkMetadata)[] = [];
-        for (const e of edges) {
-          const sourceMembers = containerToMembers[e.source];
-          const targetMembers = containerToMembers[e.target];
+          const expandedEdges: ({ source: string; target: string } & SkillLinkMetadata)[] = [];
+          for (const e of edges) {
+            const sourceMembers = containerToMembers[e.source];
+            const targetMembers = containerToMembers[e.target];
 
-          if (sourceMembers && targetMembers) {
-            for (const s of sourceMembers) {
-              for (const t of targetMembers) {
-                expandedEdges.push({ source: s, target: t, linkType: "REQUIRED" });
+            if (sourceMembers && targetMembers) {
+              for (const s of sourceMembers) {
+                for (const t of targetMembers) {
+                  expandedEdges.push({ source: s, target: t, linkType: "REQUIRED" });
+                }
               }
-            }
-          } else if (sourceMembers) {
-            for (const s of sourceMembers) {
-              expandedEdges.push({ source: s, target: e.target, linkType: "SUBSET_REQUIRED" });
-            }
-          } else if (targetMembers) {
-            for (const t of targetMembers) {
-              expandedEdges.push({ source: e.source, target: t, linkType: "REQUIRED" });
-            }
-          } else {
-            expandedEdges.push({
-              source: e.source,
-              target: e.target,
-              ...getSkillLinkMetadata(e),
-            });
-          }
-        }
-
-        // Deduplicate: group container expansion can produce duplicate edges
-        const seen = new Set<string>();
-        const dedupedEdges = expandedEdges.filter((e) => {
-          const key = `${e.source}|${e.target}|${e.linkType}`;
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
-
-        const payload: SaveSkillsPackPayload = {
-          subtype,
-          subtypeIndex: skillsData.currentSubtypeIndex,
-          nodes: skillNodes.map((n) => {
-            // Compute absolute position (handle grouped nodes)
-            let absX: number, absY: number;
-            if (n.parentId) {
-              const parent = nodes.find((p) => p.id === n.parentId);
-              absX = (parent?.position.x ?? 0) + n.position.x;
-              absY = (parent?.position.y ?? 0) + n.position.y;
+            } else if (sourceMembers) {
+              for (const s of sourceMembers) {
+                expandedEdges.push({ source: s, target: e.target, linkType: "SUBSET_REQUIRED" });
+              }
+            } else if (targetMembers) {
+              for (const t of targetMembers) {
+                expandedEdges.push({ source: e.source, target: t, linkType: "REQUIRED" });
+              }
             } else {
-              absX = n.position.x;
-              absY = n.position.y;
+              expandedEdges.push({
+                source: e.source,
+                target: e.target,
+                ...getSkillLinkMetadata(e),
+              });
             }
-            return {
-              nodeId: n.id,
-              skillId: n.data.id,
-              label: n.data.label,
-              description: n.data.description,
-              row: Math.round(absY / effectiveNodeHeight),
-              column: Math.round(absX / nodeWidth),
-              maxLevel: n.data.numLevels,
-              unlockRank: toDbUnlockRank(n.data.unlockRank),
-              imgPath: normalizeSkillIconPath(n.data.imgPath),
-              faction: n.data.faction || "",
-              subculture: n.data.subculture || "",
-              effects: n.data.effects,
-              group: editGroups[n.data.nodeId],
-              requiredNumParents: (n.data as any).requiredNumParents || 0,
-              existingSkillKey: n.data.existingSkillKey,
-              visibleInUI: !n.data.isHiddentInUI,
-              cloneSkill: (() => {
-                if (!n.data.existingSkillKey) return false;
-                const originalSkill = skillsData.currentSkills.find((skill) => skill.nodeId === n.data.nodeId);
-                const comparisonSkill =
-                  n.data.existingSkillKey === originalSkill?.id
-                    ? originalSkill
-                    : editorData?.allSkills.find((skill) => skill.key === n.data.existingSkillKey);
-                if (!comparisonSkill) return true;
-                const normalizedComparison = {
-                  ...comparisonSkill,
-                  id: "id" in comparisonSkill ? comparisonSkill.id : comparisonSkill.key,
-                  img: "img" in comparisonSkill ? comparisonSkill.img : comparisonSkill.iconPath,
-                  effects: comparisonSkill.effects.map((effect) => ({ ...effect, key: "", iconData: "" })) as Effect[],
-                  localizedTitle:
-                    "localizedName" in comparisonSkill ? comparisonSkill.localizedName : comparisonSkill.localizedTitle,
-                  localizedDescription:
-                    "localizedDescription" in comparisonSkill
-                      ? comparisonSkill.localizedDescription
-                      : comparisonSkill.localizedDescription,
-                };
-                return !skillMetadataMatches(n.data, normalizedComparison);
-              })(),
-            };
-          }),
-          edges: dedupedEdges,
-          skillLocks: [],
-          packName: savePackName.trim(),
-          packDirectory: savePackDirectory || "",
-          cloneAllSkills: savePackCloneAll,
-          generationTimestamp: ts,
-          tableNameTemplate: customTableName.trim() || defaultSkillTableNameTemplate,
-          nodeKeyTemplate: customKeyPrefix.trim() || defaultSkillNodeKeyTemplate,
-          skillKeyTemplate: customSkillKeyTemplate.trim() || defaultCharacterSkillKeyTemplate,
-        };
+          }
 
-        // Add skill locks data
-        const skillLocksArray: { lockedNodeId: string; lockingSkillKey: string; requiredLevel: number }[] = [];
-        const nodeToSkillLocks = localNodeToSkillLocks.current || skillsData.nodeToSkillLocks || {};
+          // Deduplicate: group container expansion can produce duplicate edges
+          const seen = new Set<string>();
+          const dedupedEdges = expandedEdges.filter((e) => {
+            const key = `${e.source}|${e.target}|${e.linkType}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
 
-        for (const [lockedNodeId, skillAndLevelArray] of Object.entries(nodeToSkillLocks)) {
-          for (const [lockingSkillKey, requiredLevel] of skillAndLevelArray) {
-            const lockingNode = skillNodes.find(
-              (node) =>
-                node.data.id === lockingSkillKey ||
-                node.data.existingSkillKey === lockingSkillKey ||
-                node.data.nodeId === lockingSkillKey,
-            );
-            skillLocksArray.push({
-              lockedNodeId,
-              lockingSkillKey: lockingNode?.data.id || lockingSkillKey,
-              requiredLevel,
+          const payload: SaveSkillsPackPayload = {
+            subtype,
+            subtypeIndex: skillsData.currentSubtypeIndex,
+            nodes: skillNodes.map((n) => {
+              // Compute absolute position (handle grouped nodes)
+              let absX: number, absY: number;
+              if (n.parentId) {
+                const parent = nodes.find((p) => p.id === n.parentId);
+                absX = (parent?.position.x ?? 0) + n.position.x;
+                absY = (parent?.position.y ?? 0) + n.position.y;
+              } else {
+                absX = n.position.x;
+                absY = n.position.y;
+              }
+              return {
+                nodeId: n.id,
+                skillId: n.data.id,
+                label: n.data.label,
+                description: n.data.description,
+                row: Math.round(absY / effectiveNodeHeight),
+                column: Math.round(absX / nodeWidth),
+                maxLevel: n.data.numLevels,
+                unlockRank: toDbUnlockRank(n.data.unlockRank),
+                imgPath: normalizeSkillIconPath(n.data.imgPath),
+                faction: n.data.faction || "",
+                subculture: n.data.subculture || "",
+                effects: n.data.effects,
+                group: editGroups[n.data.nodeId],
+                requiredNumParents: (n.data as any).requiredNumParents || 0,
+                existingSkillKey: n.data.existingSkillKey,
+                visibleInUI: !n.data.isHiddentInUI,
+                cloneSkill: (() => {
+                  if (!n.data.existingSkillKey) return false;
+                  const originalSkill = skillsData.currentSkills.find((skill) => skill.nodeId === n.data.nodeId);
+                  const comparisonSkill =
+                    n.data.existingSkillKey === originalSkill?.id
+                      ? originalSkill
+                      : editorData?.allSkills.find((skill) => skill.key === n.data.existingSkillKey);
+                  if (!comparisonSkill) return true;
+                  const normalizedComparison = {
+                    ...comparisonSkill,
+                    id: "id" in comparisonSkill ? comparisonSkill.id : comparisonSkill.key,
+                    img: "img" in comparisonSkill ? comparisonSkill.img : comparisonSkill.iconPath,
+                    effects: comparisonSkill.effects.map((effect) => ({
+                      ...effect,
+                      key: "",
+                      iconData: "",
+                    })) as Effect[],
+                    localizedTitle:
+                      "localizedName" in comparisonSkill
+                        ? comparisonSkill.localizedName
+                        : comparisonSkill.localizedTitle,
+                    localizedDescription:
+                      "localizedDescription" in comparisonSkill
+                        ? comparisonSkill.localizedDescription
+                        : comparisonSkill.localizedDescription,
+                  };
+                  return !skillMetadataMatches(n.data, normalizedComparison);
+                })(),
+              };
+            }),
+            edges: dedupedEdges,
+            skillLocks: [],
+            packName: savePackName.trim(),
+            packDirectory: savePackDirectory || "",
+            cloneAllSkills: savePackCloneAll,
+            generationTimestamp: ts,
+            tableNameTemplate: customTableName.trim() || defaultSkillTableNameTemplate,
+            nodeKeyTemplate: customKeyPrefix.trim() || defaultSkillNodeKeyTemplate,
+            skillKeyTemplate: customSkillKeyTemplate.trim() || defaultCharacterSkillKeyTemplate,
+          };
+
+          // Add skill locks data
+          const skillLocksArray: { lockedNodeId: string; lockingSkillKey: string; requiredLevel: number }[] = [];
+          const nodeToSkillLocks = localNodeToSkillLocks.current || skillsData.nodeToSkillLocks || {};
+
+          for (const [lockedNodeId, skillAndLevelArray] of Object.entries(nodeToSkillLocks)) {
+            for (const [lockingSkillKey, requiredLevel] of skillAndLevelArray) {
+              const lockingNode = skillNodes.find(
+                (node) =>
+                  node.data.id === lockingSkillKey ||
+                  node.data.existingSkillKey === lockingSkillKey ||
+                  node.data.nodeId === lockingSkillKey,
+              );
+              skillLocksArray.push({
+                lockedNodeId,
+                lockingSkillKey: lockingNode?.data.id || lockingSkillKey,
+                requiredLevel,
+              });
+            }
+          }
+
+          payload.skillLocks = skillLocksArray;
+
+          const result = await window.api?.saveSkillsPack(payload);
+          if (result?.success) {
+            console.log("Pack saved:", result.packName);
+            setNotification({ message: `Pack saved: ${result.packName}`, type: "success" });
+            setIsSavePackModalOpen(false);
+          } else {
+            console.error("Failed to save pack:", result?.error);
+            setNotification({
+              message: `Failed to save pack: ${result?.error || "Unknown error"}`,
+              type: "error",
             });
           }
-        }
-
-        payload.skillLocks = skillLocksArray;
-
-        const result = await window.api?.saveSkillsPack(payload);
-        if (result?.success) {
-          console.log("Pack saved:", result.packName);
-          setNotification({ message: `Pack saved: ${result.packName}`, type: "success" });
-          setIsSavePackModalOpen(false);
-        } else {
-          console.error("Failed to save pack:", result?.error);
-          setNotification({
-            message: `Failed to save pack: ${result?.error || "Unknown error"}`,
-            type: "error",
-          });
-        }
-      } finally {
-        setIsSavePackProcessing(false);
-      }
+        },
+        {
+          onFinally: () => {
+            setIsSavePackProcessing(false);
+          },
+        },
+      );
     }, [
       savePackName,
       savePackDirectory,
@@ -3028,299 +3061,140 @@ const SkillsView = memo(
     const handleSaveChangesConfirm = useCallback(async () => {
       if (!savePackName.trim()) return;
       setIsSavePackProcessing(true);
-      try {
-        const ts = Date.now().toString();
-        const prefix = normalizeGeneratedPrefix(moddersPrefix) || "custom";
-        const setSuffix = buildDefaultSkillSetSuffix(subtype);
-        const nodeKeyTemplate = customKeyPrefix.trim() || defaultSkillNodeKeyTemplate;
-        const skillKeyTemplate = customSkillKeyTemplate.trim() || defaultCharacterSkillKeyTemplate;
-        const usedNodeKeys = new Set<string>(skillsData.currentSkills.map((skill) => skill.nodeId));
-        const usedSkillKeys = new Set<string>([
-          ...skillsData.currentSkills.map((skill) => skill.id),
-          ...(editorData?.allSkills || []).map((skill) => skill.key),
-        ]);
-        const makeUniqueKey = async (baseKey: string, usedKeys: Set<string>) => {
-          let key = baseKey;
-          let suffix = 2;
-          while (usedKeys.has(key)) key = `${baseKey}_${suffix++}`;
-          usedKeys.add(key);
-          return key;
-        };
-        const makeNodeKey = async (row: number, col: number, faction?: string, subculture?: string) =>
-          makeUniqueKey(
-            await appendScopedSkillNodeHash(
-              resolveSkillGenerationTemplate(nodeKeyTemplate, {
-                prefix,
-                setSuffix,
-                timestamp: ts,
-                row: row.toString(),
-                column: col.toString(),
-              }),
-              currentSkillSetCampaignKey,
-              faction,
-              subculture,
-            ),
-            usedNodeKeys,
-          );
-        const makeSkillKey = async (row: number, col: number, faction?: string, subculture?: string) =>
-          makeUniqueKey(
-            await appendScopedSkillNodeHash(
-              resolveSkillGenerationTemplate(skillKeyTemplate, {
-                prefix,
-                setSuffix,
-                timestamp: ts,
-                row: row.toString(),
-                column: col.toString(),
-              }),
-              currentSkillSetCampaignKey,
-              faction,
-              subculture,
-            ),
-            usedSkillKeys,
-          );
-        const skillNodes = nodes.filter((n) => n.type === "skill");
+      return await runGuarded(
+        async () => {
+          const ts = Date.now().toString();
+          const prefix = normalizeGeneratedPrefix(moddersPrefix) || "custom";
+          const setSuffix = buildDefaultSkillSetSuffix(subtype);
+          const nodeKeyTemplate = customKeyPrefix.trim() || defaultSkillNodeKeyTemplate;
+          const skillKeyTemplate = customSkillKeyTemplate.trim() || defaultCharacterSkillKeyTemplate;
+          const usedNodeKeys = new Set<string>(skillsData.currentSkills.map((skill) => skill.nodeId));
+          const usedSkillKeys = new Set<string>([
+            ...skillsData.currentSkills.map((skill) => skill.id),
+            ...(editorData?.allSkills || []).map((skill) => skill.key),
+          ]);
+          const makeUniqueKey = async (baseKey: string, usedKeys: Set<string>) => {
+            let key = baseKey;
+            let suffix = 2;
+            while (usedKeys.has(key)) key = `${baseKey}_${suffix++}`;
+            usedKeys.add(key);
+            return key;
+          };
+          const makeNodeKey = async (row: number, col: number, faction?: string, subculture?: string) =>
+            makeUniqueKey(
+              await appendScopedSkillNodeHash(
+                resolveSkillGenerationTemplate(nodeKeyTemplate, {
+                  prefix,
+                  setSuffix,
+                  timestamp: ts,
+                  row: row.toString(),
+                  column: col.toString(),
+                }),
+                currentSkillSetCampaignKey,
+                faction,
+                subculture,
+              ),
+              usedNodeKeys,
+            );
+          const makeSkillKey = async (row: number, col: number, faction?: string, subculture?: string) =>
+            makeUniqueKey(
+              await appendScopedSkillNodeHash(
+                resolveSkillGenerationTemplate(skillKeyTemplate, {
+                  prefix,
+                  setSuffix,
+                  timestamp: ts,
+                  row: row.toString(),
+                  column: col.toString(),
+                }),
+                currentSkillSetCampaignKey,
+                faction,
+                subculture,
+              ),
+              usedSkillKeys,
+            );
+          const skillNodes = nodes.filter((n) => n.type === "skill");
 
-        // Build group expansion maps (same as handleSavePackConfirm)
-        const containerToMembers: Record<string, string[]> = {};
-        for (const [nodeId, groupId] of Object.entries(editGroups)) {
-          const containerId = `${groupId}_group`;
-          if (!containerToMembers[containerId]) containerToMembers[containerId] = [];
-          containerToMembers[containerId].push(nodeId);
-        }
+          // Build group expansion maps (same as handleSavePackConfirm)
+          const containerToMembers: Record<string, string[]> = {};
+          for (const [nodeId, groupId] of Object.entries(editGroups)) {
+            const containerId = `${groupId}_group`;
+            if (!containerToMembers[containerId]) containerToMembers[containerId] = [];
+            containerToMembers[containerId].push(nodeId);
+          }
 
-        // Expand and dedup current edges
-        const expandedEdges: ({ source: string; target: string } & SkillLinkMetadata)[] = [];
-        for (const e of edges) {
-          const sourceMembers = containerToMembers[e.source];
-          const targetMembers = containerToMembers[e.target];
-          if (sourceMembers && targetMembers) {
-            for (const s of sourceMembers) {
+          // Expand and dedup current edges
+          const expandedEdges: ({ source: string; target: string } & SkillLinkMetadata)[] = [];
+          for (const e of edges) {
+            const sourceMembers = containerToMembers[e.source];
+            const targetMembers = containerToMembers[e.target];
+            if (sourceMembers && targetMembers) {
+              for (const s of sourceMembers) {
+                for (const t of targetMembers) {
+                  expandedEdges.push({ source: s, target: t, linkType: "REQUIRED" });
+                }
+              }
+            } else if (sourceMembers) {
+              for (const s of sourceMembers) {
+                expandedEdges.push({ source: s, target: e.target, linkType: "SUBSET_REQUIRED" });
+              }
+            } else if (targetMembers) {
               for (const t of targetMembers) {
-                expandedEdges.push({ source: s, target: t, linkType: "REQUIRED" });
+                expandedEdges.push({ source: e.source, target: t, linkType: "REQUIRED" });
               }
-            }
-          } else if (sourceMembers) {
-            for (const s of sourceMembers) {
-              expandedEdges.push({ source: s, target: e.target, linkType: "SUBSET_REQUIRED" });
-            }
-          } else if (targetMembers) {
-            for (const t of targetMembers) {
-              expandedEdges.push({ source: e.source, target: t, linkType: "REQUIRED" });
-            }
-          } else {
-            expandedEdges.push({
-              source: e.source,
-              target: e.target,
-              ...getSkillLinkMetadata(e),
-            });
-          }
-        }
-        const seenEdge = new Set<string>();
-        const dedupedEdges = expandedEdges.filter((e) => {
-          const key = `${e.source}|${e.target}|${e.linkType}`;
-          if (seenEdge.has(key)) return false;
-          seenEdge.add(key);
-          return true;
-        });
-
-        // Build original node map from skillsData
-        // skill.x = row (from indent), skill.y = adjusted column (from tier after getSkills repositioning)
-        const origNodeMap = new Map<string, Skill>();
-        for (const skill of skillsData.currentSkills) {
-          origNodeMap.set(skill.nodeId, skill);
-        }
-
-        const currentNodeToSkillLocks = localNodeToSkillLocks.current || skillsData.nodeToSkillLocks || {};
-        const originalNodeIdBySkillKey = new Map<string, string>();
-        for (const skill of skillsData.currentSkills) {
-          originalNodeIdBySkillKey.set(skill.id, skill.nodeId);
-        }
-        const findNodeForSkillKey = (skillKey: string) =>
-          skillNodes.find((node) => {
-            const data = node.data as SkillData;
-            return data.id === skillKey || data.existingSkillKey === skillKey || data.nodeId === skillKey;
-          }) ||
-          (() => {
-            const originalNodeId = originalNodeIdBySkillKey.get(skillKey);
-            return originalNodeId
-              ? skillNodes.find((node) => (node.data as SkillData).nodeId === originalNodeId)
-              : undefined;
-          })();
-
-        // A metadata edit creates a replacement character-skill row even when the node's current
-        // key still looks unchanged. Any target locked by that skill must be replaced too, or its
-        // lock row would continue referring to the old character-skill key.
-        const lockingSkillKeysChanged = new Set<string>();
-        for (const node of skillNodes) {
-          const data = node.data as SkillData;
-          const origSkill = origNodeMap.get(data.nodeId);
-          if (!origSkill) continue;
-
-          const currentSkillKey = data.existingSkillKey || data.id;
-          if (currentSkillKey !== origSkill.id) {
-            lockingSkillKeysChanged.add(origSkill.id);
-            continue;
-          }
-
-          const selectedSkill = data.existingSkillKey
-            ? data.existingSkillKey === origSkill.id
-              ? origSkill
-              : editorData?.allSkills.find((skill) => skill.key === data.existingSkillKey)
-            : undefined;
-          const comparableSkill = selectedSkill
-            ? {
-                id: "id" in selectedSkill ? selectedSkill.id : selectedSkill.key,
-                localizedTitle:
-                  "localizedName" in selectedSkill ? selectedSkill.localizedName : selectedSkill.localizedTitle,
-                localizedDescription: selectedSkill.localizedDescription,
-                img: "img" in selectedSkill ? selectedSkill.img : selectedSkill.iconPath,
-                maxLevel: selectedSkill.maxLevel,
-                unlockRank: selectedSkill.unlockRank,
-                effects: selectedSkill.effects.map((effect) => ({ ...effect, key: "", iconData: "" })) as Effect[],
-              }
-            : undefined;
-          if (!comparableSkill || !skillMetadataMatches(data, comparableSkill)) {
-            lockingSkillKeysChanged.add(origSkill.id);
-          }
-        }
-
-        const currentLockSignature = (locks: [string, number][] = []) =>
-          locks
-            .map(([skillKey, level]) => {
-              const source = findNodeForSkillKey(skillKey);
-              const data = source?.data as SkillData | undefined;
-              return `${data?.existingSkillKey || data?.id || skillKey}|${level}`;
-            })
-            .sort()
-            .join("\n");
-        const lockChangedNodeIds = new Set<string>();
-        for (const [nodeId] of origNodeMap) {
-          const currentLocks = currentNodeToSkillLocks[nodeId] || [];
-          if (
-            currentLockSignature(currentLocks) !== currentLockSignature(skillsData.nodeToSkillLocks?.[nodeId]) ||
-            currentLocks.some(([lockingSkillKey]) => lockingSkillKeysChanged.has(lockingSkillKey))
-          ) {
-            lockChangedNodeIds.add(nodeId);
-          }
-        }
-
-        const edgeSignature = (edge: { source: string; target: string } & Partial<SkillLinkMetadata>) =>
-          [
-            edge.source,
-            edge.target,
-            edge.linkType || "REQUIRED",
-            edge.parentLinkPosition || "",
-            edge.childLinkPosition || "",
-            edge.parentLinkPositionOffset || "",
-            edge.childLinkPositionOffset || "",
-          ].join("|");
-
-        // Build current edges per node, including the link identity and geometry. A metadata-only
-        // edit must be emitted even when the endpoints themselves did not move.
-        const currentEdgesForNode = new Map<string, Set<string>>();
-        for (const e of dedupedEdges) {
-          if (!currentEdgesForNode.has(e.source)) currentEdgesForNode.set(e.source, new Set());
-          if (!currentEdgesForNode.has(e.target)) currentEdgesForNode.set(e.target, new Set());
-          const edgeKey = edgeSignature(e);
-          currentEdgesForNode.get(e.source)!.add(edgeKey);
-          currentEdgesForNode.get(e.target)!.add(edgeKey);
-        }
-
-        // Build original edges from every DB link, using the same group-container expansion as
-        // dedupedEdges. The normal viewer intentionally collapses some links, but edit mode restores
-        // all of them; comparing only Skill.linkedToNode would mark an untouched tree as changed.
-        const skillNodeIds = new Set(skillNodes.map((n) => n.id));
-        const skillGroupForOrig = new Map<string, string>();
-        for (const skill of skillsData.currentSkills) {
-          if (skill.group) skillGroupForOrig.set(skill.nodeId, skill.group);
-        }
-        const seenOrigKey = new Set<string>();
-        const origEdgesForNode = new Map<string, Set<string>>();
-        const addOrigEdge = (src: string, tgt: string, metadata: SkillLinkMetadata) => {
-          const key = edgeSignature({ source: src, target: tgt, ...metadata });
-          if (seenOrigKey.has(key)) return;
-          seenOrigKey.add(key);
-          if (!origEdgesForNode.has(src)) origEdgesForNode.set(src, new Set());
-          origEdgesForNode.get(src)!.add(key);
-          if (!origEdgesForNode.has(tgt)) origEdgesForNode.set(tgt, new Set());
-          origEdgesForNode.get(tgt)!.add(key);
-        };
-        for (const [parentNodeId, links] of Object.entries(skillsData.nodeLinks)) {
-          if (!skillNodeIds.has(parentNodeId)) continue;
-          for (const link of links) {
-            if (!skillNodeIds.has(link.child)) continue;
-            const srcGroup = skillGroupForOrig.get(parentNodeId);
-            const tgtGroup = skillGroupForOrig.get(link.child);
-            const src = srcGroup ? `${srcGroup}_group` : parentNodeId;
-            const tgt = tgtGroup ? `${tgtGroup}_group` : link.child;
-            const srcMembers = containerToMembers[src];
-            const tgtMembers = containerToMembers[tgt];
-            if (srcMembers && tgtMembers) {
-              for (const s of srcMembers) {
-                for (const t of tgtMembers) addOrigEdge(s, t, { linkType: "REQUIRED" });
-              }
-            } else if (srcMembers) {
-              for (const s of srcMembers) addOrigEdge(s, tgt, { linkType: "SUBSET_REQUIRED" });
-            } else if (tgtMembers) {
-              for (const t of tgtMembers) addOrigEdge(src, t, { linkType: "REQUIRED" });
             } else {
-              addOrigEdge(src, tgt, {
-                linkType: link.linkType || "REQUIRED",
-                parentLinkPosition: link.parentLinkPosition,
-                childLinkPosition: link.childLinkPosition,
-                parentLinkPositionOffset: link.parentLinkPositionOffset,
-                childLinkPositionOffset: link.childLinkPositionOffset,
+              expandedEdges.push({
+                source: e.source,
+                target: e.target,
+                ...getSkillLinkMetadata(e),
               });
             }
           }
-        }
+          const seenEdge = new Set<string>();
+          const dedupedEdges = expandedEdges.filter((e) => {
+            const key = `${e.source}|${e.target}|${e.linkType}`;
+            if (seenEdge.has(key)) return false;
+            seenEdge.add(key);
+            return true;
+          });
 
-        // Compute absolute positions for current nodes
-        const getAbsPos = (n: (typeof skillNodes)[0]) => {
-          if (n.parentId) {
-            const parent = nodes.find((p) => p.id === n.parentId);
-            return {
-              x: (parent?.position.x ?? 0) + n.position.x,
-              y: (parent?.position.y ?? 0) + n.position.y,
-            };
+          // Build original node map from skillsData
+          // skill.x = row (from indent), skill.y = adjusted column (from tier after getSkills repositioning)
+          const origNodeMap = new Map<string, Skill>();
+          for (const skill of skillsData.currentSkills) {
+            origNodeMap.set(skill.nodeId, skill);
           }
-          return { x: n.position.x, y: n.position.y };
-        };
 
-        const overrideNodes: SaveSkillsChangesPayload["overrideNodes"] = [];
-        const replacedNodes: SaveSkillsChangesPayload["replacedNodes"] = [];
-        const newNodes: SaveSkillsChangesPayload["newNodes"] = [];
-        const deletedNodeKeys: string[] = [];
-        const currentNodeIds = new Set<string>();
+          const currentNodeToSkillLocks = localNodeToSkillLocks.current || skillsData.nodeToSkillLocks || {};
+          const originalNodeIdBySkillKey = new Map<string, string>();
+          for (const skill of skillsData.currentSkills) {
+            originalNodeIdBySkillKey.set(skill.id, skill.nodeId);
+          }
+          const findNodeForSkillKey = (skillKey: string) =>
+            skillNodes.find((node) => {
+              const data = node.data as SkillData;
+              return data.id === skillKey || data.existingSkillKey === skillKey || data.nodeId === skillKey;
+            }) ||
+            (() => {
+              const originalNodeId = originalNodeIdBySkillKey.get(skillKey);
+              return originalNodeId
+                ? skillNodes.find((node) => (node.data as SkillData).nodeId === originalNodeId)
+                : undefined;
+            })();
 
-        // Map from original nodeId -> replacement key (for edge remapping)
-        const nodeKeyMap = new Map<string, string>(); // oldNodeId -> finalNodeKey
+          // A metadata edit creates a replacement character-skill row even when the node's current
+          // key still looks unchanged. Any target locked by that skill must be replaced too, or its
+          // lock row would continue referring to the old character-skill key.
+          const lockingSkillKeysChanged = new Set<string>();
+          for (const node of skillNodes) {
+            const data = node.data as SkillData;
+            const origSkill = origNodeMap.get(data.nodeId);
+            if (!origSkill) continue;
 
-        for (const n of skillNodes) {
-          const data = n.data as SkillData;
-          const abs = getAbsPos(n);
-          const currentRow = Math.round(abs.y / effectiveNodeHeight);
-          const currentCol = Math.round(abs.x / nodeWidth);
-          const origSkill = origNodeMap.get(data.nodeId);
-
-          if (origSkill) {
-            // Identify original nodes by node key, not by the currently selected skill. This keeps
-            // an original node an override even after the user switches it to a custom skill.
-            const origNodeId = data.nodeId;
-            currentNodeIds.add(origNodeId);
-            const origEdges = origEdgesForNode.get(origNodeId) || new Set<string>();
-            const currEdges = currentEdgesForNode.get(n.id) || new Set<string>();
-            const edgesChanged =
-              origEdges.size !== currEdges.size ||
-              [...origEdges].some((e) => !currEdges.has(e)) ||
-              [...currEdges].some((e) => !origEdges.has(e));
-            const posChanged = currentRow !== origSkill.x || currentCol !== origSkill.y;
-            const skillChanged = (data.existingSkillKey || data.id) !== origSkill.id;
-            const factionChanged = (data.faction || "") !== (origSkill.faction || "");
-            const subcultureChanged = (data.subculture || "") !== (origSkill.subculture || "");
-            const visibilityChanged = data.isHiddentInUI !== origSkill.isHiddentInUI;
-            const requiredNumParentsChanged =
-              (data.requiredNumParents || 0) !== (skillsData.nodeRequirements?.[origNodeId]?.numMultiple || 0);
+            const currentSkillKey = data.existingSkillKey || data.id;
+            if (currentSkillKey !== origSkill.id) {
+              lockingSkillKeysChanged.add(origSkill.id);
+              continue;
+            }
 
             const selectedSkill = data.existingSkillKey
               ? data.existingSkillKey === origSkill.id
@@ -3339,229 +3213,398 @@ const SkillsView = memo(
                   effects: selectedSkill.effects.map((effect) => ({ ...effect, key: "", iconData: "" })) as Effect[],
                 }
               : undefined;
-            const skillMetadataChanged = !comparableSkill || !skillMetadataMatches(data, comparableSkill);
-            const needsLockReplacement = lockChangedNodeIds.has(origNodeId);
-            const needsReplacement =
-              edgesChanged ||
-              posChanged ||
-              skillChanged ||
-              factionChanged ||
-              subcultureChanged ||
-              skillMetadataChanged ||
-              needsLockReplacement;
-
-            if (needsReplacement) {
-              const newNodeKey = await makeNodeKey(currentRow, currentCol, data.faction, data.subculture);
-              const newSkillKey = skillMetadataChanged
-                ? await makeSkillKey(currentRow, currentCol, data.faction, data.subculture)
-                : undefined;
-              nodeKeyMap.set(origNodeId, newNodeKey);
-              replacedNodes.push({
-                originalNodeKey: origNodeId,
-                newNodeKey,
-                characterSkillKey: newSkillKey || data.existingSkillKey || data.id,
-                newSkillKey,
-                ...(newSkillKey
-                  ? {
-                      label: data.label,
-                      description: data.description,
-                      imgPath: normalizeSkillIconPath(data.imgPath),
-                      unlockRank: toDbUnlockRank(data.unlockRank),
-                      effects: data.effects,
-                      maxLevel: data.numLevels,
-                    }
-                  : {}),
-                tier: currentCol,
-                indent: currentRow,
-                faction: data.faction || "",
-                subculture: data.subculture || "",
-                requiredNumParents: (data as any).requiredNumParents || 0,
-                visibleInUI: !data.isHiddentInUI,
-              });
-            } else if (
-              posChanged ||
-              skillChanged ||
-              factionChanged ||
-              subcultureChanged ||
-              visibilityChanged ||
-              requiredNumParentsChanged
-            ) {
-              nodeKeyMap.set(origNodeId, origNodeId);
-              overrideNodes.push({
-                originalNodeKey: origNodeId,
-                characterSkillKey: data.existingSkillKey || data.id,
-                tier: currentCol,
-                indent: currentRow,
-                faction: data.faction || "",
-                subculture: data.subculture || "",
-                requiredNumParents: (data as any).requiredNumParents || 0,
-                visibleInUI: !data.isHiddentInUI,
-              });
-            } else {
-              nodeKeyMap.set(origNodeId, origNodeId);
+            if (!comparableSkill || !skillMetadataMatches(data, comparableSkill)) {
+              lockingSkillKeysChanged.add(origSkill.id);
             }
-          } else {
-            // New node (pasted/added), whether it reuses an existing skill or creates one.
-            const newNodeKey = await makeNodeKey(currentRow, currentCol, data.faction, data.subculture);
-            const selectedExistingSkill = data.existingSkillKey
-              ? editorData?.allSkills.find((skill) => skill.key === data.existingSkillKey)
-              : undefined;
-            const comparableExistingSkill = selectedExistingSkill
-              ? {
-                  id: selectedExistingSkill.key,
-                  localizedTitle: selectedExistingSkill.localizedName,
-                  localizedDescription: selectedExistingSkill.localizedDescription,
-                  img: selectedExistingSkill.iconPath,
-                  maxLevel: selectedExistingSkill.maxLevel,
-                  unlockRank: selectedExistingSkill.unlockRank,
-                  effects: selectedExistingSkill.effects.map((effect) => ({
-                    ...effect,
-                    key: "",
-                    iconData: "",
-                  })) as Effect[],
+          }
+
+          const currentLockSignature = (locks: [string, number][] = []) =>
+            locks
+              .map(([skillKey, level]) => {
+                const source = findNodeForSkillKey(skillKey);
+                const data = source?.data as SkillData | undefined;
+                return `${data?.existingSkillKey || data?.id || skillKey}|${level}`;
+              })
+              .sort()
+              .join("\n");
+          const lockChangedNodeIds = new Set<string>();
+          for (const [nodeId] of origNodeMap) {
+            const currentLocks = currentNodeToSkillLocks[nodeId] || [];
+            if (
+              currentLockSignature(currentLocks) !== currentLockSignature(skillsData.nodeToSkillLocks?.[nodeId]) ||
+              currentLocks.some(([lockingSkillKey]) => lockingSkillKeysChanged.has(lockingSkillKey))
+            ) {
+              lockChangedNodeIds.add(nodeId);
+            }
+          }
+
+          const edgeSignature = (edge: { source: string; target: string } & Partial<SkillLinkMetadata>) =>
+            [
+              edge.source,
+              edge.target,
+              edge.linkType || "REQUIRED",
+              edge.parentLinkPosition || "",
+              edge.childLinkPosition || "",
+              edge.parentLinkPositionOffset || "",
+              edge.childLinkPositionOffset || "",
+            ].join("|");
+
+          // Build current edges per node, including the link identity and geometry. A metadata-only
+          // edit must be emitted even when the endpoints themselves did not move.
+          const currentEdgesForNode = new Map<string, Set<string>>();
+          for (const e of dedupedEdges) {
+            if (!currentEdgesForNode.has(e.source)) currentEdgesForNode.set(e.source, new Set());
+            if (!currentEdgesForNode.has(e.target)) currentEdgesForNode.set(e.target, new Set());
+            const edgeKey = edgeSignature(e);
+            currentEdgesForNode.get(e.source)!.add(edgeKey);
+            currentEdgesForNode.get(e.target)!.add(edgeKey);
+          }
+
+          // Build original edges from every DB link, using the same group-container expansion as
+          // dedupedEdges. The normal viewer intentionally collapses some links, but edit mode restores
+          // all of them; comparing only Skill.linkedToNode would mark an untouched tree as changed.
+          const skillNodeIds = new Set(skillNodes.map((n) => n.id));
+          const skillGroupForOrig = new Map<string, string>();
+          for (const skill of skillsData.currentSkills) {
+            if (skill.group) skillGroupForOrig.set(skill.nodeId, skill.group);
+          }
+          const seenOrigKey = new Set<string>();
+          const origEdgesForNode = new Map<string, Set<string>>();
+          const addOrigEdge = (src: string, tgt: string, metadata: SkillLinkMetadata) => {
+            const key = edgeSignature({ source: src, target: tgt, ...metadata });
+            if (seenOrigKey.has(key)) return;
+            seenOrigKey.add(key);
+            if (!origEdgesForNode.has(src)) origEdgesForNode.set(src, new Set());
+            origEdgesForNode.get(src)!.add(key);
+            if (!origEdgesForNode.has(tgt)) origEdgesForNode.set(tgt, new Set());
+            origEdgesForNode.get(tgt)!.add(key);
+          };
+          for (const [parentNodeId, links] of Object.entries(skillsData.nodeLinks)) {
+            if (!skillNodeIds.has(parentNodeId)) continue;
+            for (const link of links) {
+              if (!skillNodeIds.has(link.child)) continue;
+              const srcGroup = skillGroupForOrig.get(parentNodeId);
+              const tgtGroup = skillGroupForOrig.get(link.child);
+              const src = srcGroup ? `${srcGroup}_group` : parentNodeId;
+              const tgt = tgtGroup ? `${tgtGroup}_group` : link.child;
+              const srcMembers = containerToMembers[src];
+              const tgtMembers = containerToMembers[tgt];
+              if (srcMembers && tgtMembers) {
+                for (const s of srcMembers) {
+                  for (const t of tgtMembers) addOrigEdge(s, t, { linkType: "REQUIRED" });
                 }
-              : undefined;
-            const shouldCloneExistingSkill =
-              !!data.existingSkillKey &&
-              (!comparableExistingSkill || !skillMetadataMatches(data, comparableExistingSkill));
-            const newSkillKey = shouldCloneExistingSkill
-              ? await makeSkillKey(currentRow, currentCol, data.faction, data.subculture)
-              : data.existingSkillKey || (await makeSkillKey(currentRow, currentCol, data.faction, data.subculture));
-            nodeKeyMap.set(n.id, newNodeKey);
-            newNodes.push({
-              newNodeKey,
-              newSkillKey,
-              shouldCreateCharacterSkill: !data.existingSkillKey || shouldCloneExistingSkill,
-              tier: currentCol,
-              indent: currentRow,
-              faction: data.faction || "",
-              subculture: data.subculture || "",
-              requiredNumParents: (data as any).requiredNumParents || 0,
-              label: data.label,
-              description: data.description,
-              imgPath: normalizeSkillIconPath(data.imgPath),
-              unlockRank: toDbUnlockRank(data.unlockRank),
-              effects: data.effects,
-              maxLevel: data.numLevels,
-              visibleInUI: !data.isHiddentInUI,
+              } else if (srcMembers) {
+                for (const s of srcMembers) addOrigEdge(s, tgt, { linkType: "SUBSET_REQUIRED" });
+              } else if (tgtMembers) {
+                for (const t of tgtMembers) addOrigEdge(src, t, { linkType: "REQUIRED" });
+              } else {
+                addOrigEdge(src, tgt, {
+                  linkType: link.linkType || "REQUIRED",
+                  parentLinkPosition: link.parentLinkPosition,
+                  childLinkPosition: link.childLinkPosition,
+                  parentLinkPositionOffset: link.parentLinkPositionOffset,
+                  childLinkPositionOffset: link.childLinkPositionOffset,
+                });
+              }
+            }
+          }
+
+          // Compute absolute positions for current nodes
+          const getAbsPos = (n: (typeof skillNodes)[0]) => {
+            if (n.parentId) {
+              const parent = nodes.find((p) => p.id === n.parentId);
+              return {
+                x: (parent?.position.x ?? 0) + n.position.x,
+                y: (parent?.position.y ?? 0) + n.position.y,
+              };
+            }
+            return { x: n.position.x, y: n.position.y };
+          };
+
+          const overrideNodes: SaveSkillsChangesPayload["overrideNodes"] = [];
+          const replacedNodes: SaveSkillsChangesPayload["replacedNodes"] = [];
+          const newNodes: SaveSkillsChangesPayload["newNodes"] = [];
+          const deletedNodeKeys: string[] = [];
+          const currentNodeIds = new Set<string>();
+
+          // Map from original nodeId -> replacement key (for edge remapping)
+          const nodeKeyMap = new Map<string, string>(); // oldNodeId -> finalNodeKey
+
+          for (const n of skillNodes) {
+            const data = n.data as SkillData;
+            const abs = getAbsPos(n);
+            const currentRow = Math.round(abs.y / effectiveNodeHeight);
+            const currentCol = Math.round(abs.x / nodeWidth);
+            const origSkill = origNodeMap.get(data.nodeId);
+
+            if (origSkill) {
+              // Identify original nodes by node key, not by the currently selected skill. This keeps
+              // an original node an override even after the user switches it to a custom skill.
+              const origNodeId = data.nodeId;
+              currentNodeIds.add(origNodeId);
+              const origEdges = origEdgesForNode.get(origNodeId) || new Set<string>();
+              const currEdges = currentEdgesForNode.get(n.id) || new Set<string>();
+              const edgesChanged =
+                origEdges.size !== currEdges.size ||
+                [...origEdges].some((e) => !currEdges.has(e)) ||
+                [...currEdges].some((e) => !origEdges.has(e));
+              const posChanged = currentRow !== origSkill.x || currentCol !== origSkill.y;
+              const skillChanged = (data.existingSkillKey || data.id) !== origSkill.id;
+              const factionChanged = (data.faction || "") !== (origSkill.faction || "");
+              const subcultureChanged = (data.subculture || "") !== (origSkill.subculture || "");
+              const visibilityChanged = data.isHiddentInUI !== origSkill.isHiddentInUI;
+              const requiredNumParentsChanged =
+                (data.requiredNumParents || 0) !== (skillsData.nodeRequirements?.[origNodeId]?.numMultiple || 0);
+
+              const selectedSkill = data.existingSkillKey
+                ? data.existingSkillKey === origSkill.id
+                  ? origSkill
+                  : editorData?.allSkills.find((skill) => skill.key === data.existingSkillKey)
+                : undefined;
+              const comparableSkill = selectedSkill
+                ? {
+                    id: "id" in selectedSkill ? selectedSkill.id : selectedSkill.key,
+                    localizedTitle:
+                      "localizedName" in selectedSkill ? selectedSkill.localizedName : selectedSkill.localizedTitle,
+                    localizedDescription: selectedSkill.localizedDescription,
+                    img: "img" in selectedSkill ? selectedSkill.img : selectedSkill.iconPath,
+                    maxLevel: selectedSkill.maxLevel,
+                    unlockRank: selectedSkill.unlockRank,
+                    effects: selectedSkill.effects.map((effect) => ({ ...effect, key: "", iconData: "" })) as Effect[],
+                  }
+                : undefined;
+              const skillMetadataChanged = !comparableSkill || !skillMetadataMatches(data, comparableSkill);
+              const needsLockReplacement = lockChangedNodeIds.has(origNodeId);
+              const needsReplacement =
+                edgesChanged ||
+                posChanged ||
+                skillChanged ||
+                factionChanged ||
+                subcultureChanged ||
+                skillMetadataChanged ||
+                needsLockReplacement;
+
+              if (needsReplacement) {
+                const newNodeKey = await makeNodeKey(currentRow, currentCol, data.faction, data.subculture);
+                const newSkillKey = skillMetadataChanged
+                  ? await makeSkillKey(currentRow, currentCol, data.faction, data.subculture)
+                  : undefined;
+                nodeKeyMap.set(origNodeId, newNodeKey);
+                replacedNodes.push({
+                  originalNodeKey: origNodeId,
+                  newNodeKey,
+                  characterSkillKey: newSkillKey || data.existingSkillKey || data.id,
+                  newSkillKey,
+                  ...(newSkillKey
+                    ? {
+                        label: data.label,
+                        description: data.description,
+                        imgPath: normalizeSkillIconPath(data.imgPath),
+                        unlockRank: toDbUnlockRank(data.unlockRank),
+                        effects: data.effects,
+                        maxLevel: data.numLevels,
+                      }
+                    : {}),
+                  tier: currentCol,
+                  indent: currentRow,
+                  faction: data.faction || "",
+                  subculture: data.subculture || "",
+                  requiredNumParents: (data as any).requiredNumParents || 0,
+                  visibleInUI: !data.isHiddentInUI,
+                });
+              } else if (
+                posChanged ||
+                skillChanged ||
+                factionChanged ||
+                subcultureChanged ||
+                visibilityChanged ||
+                requiredNumParentsChanged
+              ) {
+                nodeKeyMap.set(origNodeId, origNodeId);
+                overrideNodes.push({
+                  originalNodeKey: origNodeId,
+                  characterSkillKey: data.existingSkillKey || data.id,
+                  tier: currentCol,
+                  indent: currentRow,
+                  faction: data.faction || "",
+                  subculture: data.subculture || "",
+                  requiredNumParents: (data as any).requiredNumParents || 0,
+                  visibleInUI: !data.isHiddentInUI,
+                });
+              } else {
+                nodeKeyMap.set(origNodeId, origNodeId);
+              }
+            } else {
+              // New node (pasted/added), whether it reuses an existing skill or creates one.
+              const newNodeKey = await makeNodeKey(currentRow, currentCol, data.faction, data.subculture);
+              const selectedExistingSkill = data.existingSkillKey
+                ? editorData?.allSkills.find((skill) => skill.key === data.existingSkillKey)
+                : undefined;
+              const comparableExistingSkill = selectedExistingSkill
+                ? {
+                    id: selectedExistingSkill.key,
+                    localizedTitle: selectedExistingSkill.localizedName,
+                    localizedDescription: selectedExistingSkill.localizedDescription,
+                    img: selectedExistingSkill.iconPath,
+                    maxLevel: selectedExistingSkill.maxLevel,
+                    unlockRank: selectedExistingSkill.unlockRank,
+                    effects: selectedExistingSkill.effects.map((effect) => ({
+                      ...effect,
+                      key: "",
+                      iconData: "",
+                    })) as Effect[],
+                  }
+                : undefined;
+              const shouldCloneExistingSkill =
+                !!data.existingSkillKey &&
+                (!comparableExistingSkill || !skillMetadataMatches(data, comparableExistingSkill));
+              const newSkillKey = shouldCloneExistingSkill
+                ? await makeSkillKey(currentRow, currentCol, data.faction, data.subculture)
+                : data.existingSkillKey || (await makeSkillKey(currentRow, currentCol, data.faction, data.subculture));
+              nodeKeyMap.set(n.id, newNodeKey);
+              newNodes.push({
+                newNodeKey,
+                newSkillKey,
+                shouldCreateCharacterSkill: !data.existingSkillKey || shouldCloneExistingSkill,
+                tier: currentCol,
+                indent: currentRow,
+                faction: data.faction || "",
+                subculture: data.subculture || "",
+                requiredNumParents: (data as any).requiredNumParents || 0,
+                label: data.label,
+                description: data.description,
+                imgPath: normalizeSkillIconPath(data.imgPath),
+                unlockRank: toDbUnlockRank(data.unlockRank),
+                effects: data.effects,
+                maxLevel: data.numLevels,
+                visibleInUI: !data.isHiddentInUI,
+              });
+            }
+          }
+
+          // Detect deleted nodes
+          for (const [origNodeId] of origNodeMap) {
+            if (!currentNodeIds.has(origNodeId)) {
+              deletedNodeKeys.push(origNodeId);
+            }
+          }
+
+          // Build edges for replaced and new nodes (using final node keys)
+          const changedNodeIds = new Set<string>([
+            ...replacedNodes.map((n) => n.newNodeKey),
+            ...newNodes.map((n) => n.newNodeKey),
+          ]);
+          // We need edges where at least one endpoint is a replaced or new node
+          const payloadEdges: SaveSkillsChangesPayload["edges"] = [];
+          for (const e of dedupedEdges) {
+            const sourceKey = nodeKeyMap.get(e.source) || e.source;
+            const targetKey = nodeKeyMap.get(e.target) || e.target;
+            // Include edge if either end is a replaced/new node
+            if (changedNodeIds.has(sourceKey) || changedNodeIds.has(targetKey)) {
+              payloadEdges.push({
+                parentKey: sourceKey,
+                childKey: targetKey,
+                linkType: e.linkType,
+                parentLinkPosition: e.parentLinkPosition,
+                childLinkPosition: e.childLinkPosition,
+                parentLinkPositionOffset: e.parentLinkPositionOffset,
+                childLinkPositionOffset: e.childLinkPositionOffset,
+              });
+            }
+          }
+
+          // Resolve every node's final character-skill key before serializing locks. This handles
+          // reused skills, generated custom skills, and cloned metadata replacements uniformly.
+          const finalSkillKeyByNodeId = new Map<string, string>();
+          for (const n of skillNodes) {
+            const data = n.data as SkillData;
+            const replacement = replacedNodes.find((node) => node.originalNodeKey === data.nodeId);
+            const finalNodeKey = nodeKeyMap.get(n.id) || n.id;
+            const newNode = newNodes.find((node) => node.newNodeKey === finalNodeKey);
+            finalSkillKeyByNodeId.set(
+              data.nodeId,
+              replacement?.newSkillKey ||
+                replacement?.characterSkillKey ||
+                newNode?.newSkillKey ||
+                data.existingSkillKey ||
+                data.id,
+            );
+          }
+
+          // Skill locks for changed nodes. A lock edit replaces its target node so removed vanilla
+          // locks cannot survive in the old node's composite-key rows.
+          const skillLocksArray: SaveSkillsChangesPayload["skillLocks"] = [];
+          for (const [lockedNodeId, locks] of Object.entries(currentNodeToSkillLocks)) {
+            const finalKey = nodeKeyMap.get(lockedNodeId);
+            if (!finalKey || !changedNodeIds.has(finalKey)) continue;
+            for (const [lockingSkillKey, requiredLevel] of locks) {
+              const lockingNode = findNodeForSkillKey(lockingSkillKey);
+              skillLocksArray.push({
+                lockedNodeKey: finalKey,
+                lockingSkillKey: lockingNode
+                  ? finalSkillKeyByNodeId.get(lockingNode.data.nodeId) || lockingSkillKey
+                  : lockingSkillKey,
+                requiredLevel,
+              });
+            }
+          }
+
+          const payload: SaveSkillsChangesPayload = {
+            subtype,
+            subtypeIndex: skillsData.currentSubtypeIndex,
+            overrideNodes,
+            replacedNodes,
+            newNodes,
+            deletedNodeKeys,
+            edges: payloadEdges,
+            skillLocks: skillLocksArray,
+            packName: savePackName.trim(),
+            packDirectory: savePackDirectory || "",
+            generationTimestamp: ts,
+            tableNameTemplate: customTableName.trim() || defaultSkillTableNameTemplate,
+            nodeKeyTemplate: nodeKeyTemplate,
+            skillKeyTemplate: skillKeyTemplate,
+          };
+
+          console.log("Save Changes payload:", payload);
+          const result = await window.api?.saveSkillsChanges(payload);
+          if (result?.success) {
+            console.log("Changes pack saved:", result.packName);
+            setNotification({ message: `Changes pack saved: ${result.packName}`, type: "success" });
+            setIsSavePackModalOpen(false);
+          } else {
+            console.error("Failed to save changes pack:", result?.error);
+            setNotification({
+              message: `Failed to save changes pack: ${result?.error || "Unknown error"}`,
+              type: "error",
             });
           }
-        }
-
-        // Detect deleted nodes
-        for (const [origNodeId] of origNodeMap) {
-          if (!currentNodeIds.has(origNodeId)) {
-            deletedNodeKeys.push(origNodeId);
-          }
-        }
-
-        // Build edges for replaced and new nodes (using final node keys)
-        const changedNodeIds = new Set<string>([
-          ...replacedNodes.map((n) => n.newNodeKey),
-          ...newNodes.map((n) => n.newNodeKey),
-        ]);
-        // We need edges where at least one endpoint is a replaced or new node
-        const payloadEdges: SaveSkillsChangesPayload["edges"] = [];
-        for (const e of dedupedEdges) {
-          const sourceKey = nodeKeyMap.get(e.source) || e.source;
-          const targetKey = nodeKeyMap.get(e.target) || e.target;
-          // Include edge if either end is a replaced/new node
-          if (changedNodeIds.has(sourceKey) || changedNodeIds.has(targetKey)) {
-            payloadEdges.push({
-              parentKey: sourceKey,
-              childKey: targetKey,
-              linkType: e.linkType,
-              parentLinkPosition: e.parentLinkPosition,
-              childLinkPosition: e.childLinkPosition,
-              parentLinkPositionOffset: e.parentLinkPositionOffset,
-              childLinkPositionOffset: e.childLinkPositionOffset,
-            });
-          }
-        }
-
-        // Resolve every node's final character-skill key before serializing locks. This handles
-        // reused skills, generated custom skills, and cloned metadata replacements uniformly.
-        const finalSkillKeyByNodeId = new Map<string, string>();
-        for (const n of skillNodes) {
-          const data = n.data as SkillData;
-          const replacement = replacedNodes.find((node) => node.originalNodeKey === data.nodeId);
-          const finalNodeKey = nodeKeyMap.get(n.id) || n.id;
-          const newNode = newNodes.find((node) => node.newNodeKey === finalNodeKey);
-          finalSkillKeyByNodeId.set(
-            data.nodeId,
-            replacement?.newSkillKey ||
-              replacement?.characterSkillKey ||
-              newNode?.newSkillKey ||
-              data.existingSkillKey ||
-              data.id,
-          );
-        }
-
-        // Skill locks for changed nodes. A lock edit replaces its target node so removed vanilla
-        // locks cannot survive in the old node's composite-key rows.
-        const skillLocksArray: SaveSkillsChangesPayload["skillLocks"] = [];
-        for (const [lockedNodeId, locks] of Object.entries(currentNodeToSkillLocks)) {
-          const finalKey = nodeKeyMap.get(lockedNodeId);
-          if (!finalKey || !changedNodeIds.has(finalKey)) continue;
-          for (const [lockingSkillKey, requiredLevel] of locks) {
-            const lockingNode = findNodeForSkillKey(lockingSkillKey);
-            skillLocksArray.push({
-              lockedNodeKey: finalKey,
-              lockingSkillKey: lockingNode
-                ? finalSkillKeyByNodeId.get(lockingNode.data.nodeId) || lockingSkillKey
-                : lockingSkillKey,
-              requiredLevel,
-            });
-          }
-        }
-
-        const payload: SaveSkillsChangesPayload = {
-          subtype,
-          subtypeIndex: skillsData.currentSubtypeIndex,
-          overrideNodes,
-          replacedNodes,
-          newNodes,
-          deletedNodeKeys,
-          edges: payloadEdges,
-          skillLocks: skillLocksArray,
-          packName: savePackName.trim(),
-          packDirectory: savePackDirectory || "",
-          generationTimestamp: ts,
-          tableNameTemplate: customTableName.trim() || defaultSkillTableNameTemplate,
-          nodeKeyTemplate: nodeKeyTemplate,
-          skillKeyTemplate: skillKeyTemplate,
-        };
-
-        console.log("Save Changes payload:", payload);
-        const result = await window.api?.saveSkillsChanges(payload);
-        if (result?.success) {
-          console.log("Changes pack saved:", result.packName);
-          setNotification({ message: `Changes pack saved: ${result.packName}`, type: "success" });
-          setIsSavePackModalOpen(false);
-        } else {
-          console.error("Failed to save changes pack:", result?.error);
-          setNotification({
-            message: `Failed to save changes pack: ${result?.error || "Unknown error"}`,
-            type: "error",
-          });
-        }
-      } finally {
-        setIsSavePackProcessing(false);
-      }
+        },
+        {
+          onFinally: () => {
+            setIsSavePackProcessing(false);
+          },
+        },
+      );
     }, [
       savePackName,
-      savePackDirectory,
-      nodes,
-      edges,
+      moddersPrefix,
       subtype,
-      skillsData,
-      editGroups,
-      effectiveNodeHeight,
-      customTableName,
       customKeyPrefix,
       customSkillKeyTemplate,
-      moddersPrefix,
-      editorData,
+      skillsData.currentSkills,
+      skillsData.nodeToSkillLocks,
+      skillsData.currentSubtypeIndex,
+      skillsData.nodeLinks,
+      skillsData.nodeRequirements,
+      editorData?.allSkills,
+      nodes,
+      savePackDirectory,
+      customTableName,
+      currentSkillSetCampaignKey,
+      editGroups,
+      edges,
+      effectiveNodeHeight,
     ]);
 
     const handleResetConfirm = useCallback(() => {
@@ -4708,7 +4751,6 @@ const SkillsView = memo(
       setIsSavePackModalOpen(true);
     });
 
-
     return (
       <div
         className={`w-full h-full ${isEditMode ? "" : "hideReactFlowHandles"} ${isDragging ? "hide-placeholders" : ""}`}
@@ -5116,7 +5158,6 @@ const SkillsView = memo(
               // Build groupKey mapping: nodes sharing the same editGroups groupId get the same key
               const groupIdToKey = new Map<string, string>();
               const nodeIdToClipboard = new Map<string, string>();
-              let groupKeyCounter = 0;
               clipboard = withPos.map(({ node, row, col }, index) => {
                 const data = node.data as SkillData;
                 const clipboardId = `${index}:${node.id}`;
@@ -5125,7 +5166,7 @@ const SkillsView = memo(
                 let groupKey: string | undefined;
                 if (groupId) {
                   if (!groupIdToKey.has(groupId)) {
-                    groupIdToKey.set(groupId, String(groupKeyCounter++));
+                    groupIdToKey.set(groupId, String(groupIdToKey.size));
                   }
                   groupKey = groupIdToKey.get(groupId);
                 }
@@ -5535,7 +5576,7 @@ const SkillsView = memo(
                     targetNode &&
                     (() => {
                       const targetId = contextMenu.nodeId;
-                      const hasExisting = allLockEdges.current.some((e) =>
+                      const hasExisting = (contextMenu.lockEdges ?? []).some((e) =>
                         selectedNodes.some(
                           (n) =>
                             (e.source === targetId && e.target === n.id) ||
