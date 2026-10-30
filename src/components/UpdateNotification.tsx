@@ -1,4 +1,4 @@
-import { Button, Toast } from "flowbite-react";
+import { Button, Toast, ToastToggle } from "flowbite-react";
 import React, { memo, useCallback, useContext } from "react";
 import localizationContext from "../localizationContext";
 import { useDispatch } from "react-redux";
@@ -52,12 +52,12 @@ export const UpdateNotification = memo(
               </a>
             )}
             <div className="flex gap-2 w-full">
-              <Button size="sm" onClick={onDownloadClick}>
+              <Button color="blue" size="sm" onClick={onDownloadClick}>
                 {localized.download}
               </Button>
             </div>
           </div>
-          <Toast.Toggle />
+          <ToastToggle />
         </div>
       </Toast>
     );

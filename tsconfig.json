@@ -15,6 +15,7 @@
     "resolveJsonModule": true,
     "paths": {
       "@/*": ["./*"],
+      "flowbite-react/store": ["node_modules/flowbite-react/dist/store/index.d.cts"],
       "@modelcontextprotocol/server": ["node_modules/@modelcontextprotocol/server/dist/index.d.cts"],
       "@modelcontextprotocol/server/stdio": ["node_modules/@modelcontextprotocol/server/dist/stdio.d.cts"],
       "*": ["node_modules/*"]

@@ -1,6 +1,6 @@
 import React, { memo, useContext, useRef } from "react";
 import { Panel } from "@xyflow/react";
-import { Dropdown } from "flowbite-react";
+import { Dropdown, DropdownItem } from "flowbite-react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import {
   setIsCheckingSkillRequirements,
@@ -84,8 +84,8 @@ const SkillsToolbar = ({
     <Panel position="top-left" className="select-none">
       <div className="flex gap-2 items-start">
         <div className="hover:bg-gray-700 dark:border-gray-600 border-2 rounded-lg w-fit">
-          <Dropdown dismissOnClick={false} label={localized.options}>
-            <Dropdown.Item>
+          <Dropdown dismissOnClick={false} label={localized.options} color="blue">
+            <DropdownItem>
               <div className="flex items-center min-w-[18em]">
                 <label htmlFor="isShowingHiddentSkillsCheckbox">
                   <input
@@ -99,8 +99,8 @@ const SkillsToolbar = ({
                   <span className="ml-2">{localized.showHiddenSkills}</span>
                 </label>
               </div>
-            </Dropdown.Item>
-            <Dropdown.Item>
+            </DropdownItem>
+            <DropdownItem>
               <div className="flex items-center">
                 <label htmlFor="isShowingHiddenModifiersInsideSkillsCheckbox">
                   <input
@@ -114,8 +114,8 @@ const SkillsToolbar = ({
                   <span className="ml-2">{localized.showHiddenModifiersInsideSkills}</span>
                 </label>
               </div>
-            </Dropdown.Item>
-            <Dropdown.Item>
+            </DropdownItem>
+            <DropdownItem>
               <div className="flex items-center">
                 <label htmlFor="isCheckingSkillRequirementsCheckbox">
                   <input
@@ -129,8 +129,8 @@ const SkillsToolbar = ({
                   <span className="ml-2">{localized.checkSkillRequirements}</span>
                 </label>
               </div>
-            </Dropdown.Item>
-            <Dropdown.Item>
+            </DropdownItem>
+            <DropdownItem>
               <div className="flex items-center">
                 <label htmlFor="isShowingSkillsRankPanelCheckbox">
                   <input
@@ -144,8 +144,8 @@ const SkillsToolbar = ({
                   <span className="ml-2">{localized.showSkillsRankPanel || "Show rank"}</span>
                 </label>
               </div>
-            </Dropdown.Item>
-            <Dropdown.Item>
+            </DropdownItem>
+            <DropdownItem>
               <div className="flex items-center">
                 <label htmlFor="isShowingSkillDbKeysCheckbox">
                   <input
@@ -159,7 +159,7 @@ const SkillsToolbar = ({
                   <span className="ml-2">{localized.showSkillDbKeys || "Show DB keys in tooltips"}</span>
                 </label>
               </div>
-            </Dropdown.Item>
+            </DropdownItem>
           </Dropdown>
         </div>
         {isFeaturesForModdersEnabled && (
@@ -174,6 +174,7 @@ const SkillsToolbar = ({
       {factionOptions.length > 0 && (
         <div className="hover:bg-gray-700 dark:border-gray-600 border-2 rounded-lg mt-2 w-fit">
           <Dropdown
+            color="blue"
             dismissOnClick={true}
             label={
               factionFilter === "all"
@@ -181,13 +182,13 @@ const SkillsToolbar = ({
                 : factionOptions.find((o) => o.value === factionFilter)?.label || factionFilter
             }
           >
-            <Dropdown.Item onClick={() => onFactionFilterChange("all")}>
+            <DropdownItem onClick={() => onFactionFilterChange("all")}>
               <span>{localized.all || "All"}</span>
-            </Dropdown.Item>
+            </DropdownItem>
             {factionOptions.map((option) => (
-              <Dropdown.Item key={option.value} onClick={() => onFactionFilterChange(option.value)}>
+              <DropdownItem key={option.value} onClick={() => onFactionFilterChange(option.value)}>
                 <span>{option.label}</span>
-              </Dropdown.Item>
+              </DropdownItem>
             ))}
           </Dropdown>
         </div>
@@ -262,8 +263,8 @@ const SkillsToolbar = ({
               </button>
 
               <div className="hover:bg-green-700 bg-green-600 dark:border-gray-600 border-2 rounded-lg w-fit">
-                <Dropdown dismissOnClick={false} label={localized.json || "JSON"} color={"info"}>
-                  <Dropdown.Item>
+                <Dropdown dismissOnClick={false} label={localized.json || "JSON"} color="blue">
+                  <DropdownItem>
                     <button
                       className="px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-gray-700"
                       onClick={() => importInputRef.current?.click()}
@@ -271,36 +272,36 @@ const SkillsToolbar = ({
                       {localized.import || "Import"}
                     </button>
                     <input ref={importInputRef} type="file" accept=".json" onChange={onImport} className="hidden" />
-                  </Dropdown.Item>
-                  <Dropdown.Item>
+                  </DropdownItem>
+                  <DropdownItem>
                     <button
                       className="px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-gray-700"
                       onClick={onExport}
                     >
                       {localized.export || "Export"}
                     </button>
-                  </Dropdown.Item>
+                  </DropdownItem>
                 </Dropdown>
               </div>
 
               <div className="hover:bg-green-700 bg-green-600 dark:border-gray-600 border-2 rounded-lg w-fit">
-                <Dropdown dismissOnClick={false} label={localized.save} color={"success"}>
-                  <Dropdown.Item>
+                <Dropdown dismissOnClick={false} label={localized.save} color="green">
+                  <DropdownItem>
                     <button
                       className="w-36 px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-blue-700 bg-blue-600 text-white"
                       onClick={() => onSavePack(false)}
                     >
                       {localized.savePack || "Save Whole Tree"}
                     </button>
-                  </Dropdown.Item>
-                  <Dropdown.Item>
+                  </DropdownItem>
+                  <DropdownItem>
                     <button
                       className="w-36 px-4 py-2 rounded-lg border-2 dark:border-gray-600 hover:bg-green-700 bg-green-600 text-white"
                       onClick={() => onSavePack(true)}
                     >
                       {localized.saveOnlyChanges || "Save Only Changes"}
                     </button>
-                  </Dropdown.Item>
+                  </DropdownItem>
                 </Dropdown>
               </div>
             </>

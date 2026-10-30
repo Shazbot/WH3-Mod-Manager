@@ -1,3 +1,4 @@
+import { configureFlowbite } from "../../src/flowbite/runtime";
 import { afterEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
@@ -5,6 +6,7 @@ import "@testing-library/jest-dom/vitest";
 const isDomEnvironment = typeof window !== "undefined" && typeof document !== "undefined";
 
 if (isDomEnvironment) {
+  configureFlowbite();
   Object.defineProperty(window, "matchMedia", {
     writable: true,
     value: vi.fn().mockImplementation((query: string) => ({

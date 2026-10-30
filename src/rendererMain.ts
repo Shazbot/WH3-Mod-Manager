@@ -1,3 +1,4 @@
+import { configureFlowbite } from "./flowbite/runtime";
 import "./index.css";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-material.css";
@@ -63,6 +64,7 @@ import { isWorkshopMod } from "./modSources";
 import { PackedFile } from "./packFileTypes";
 import { SupportedGames } from "./supportedGames";
 
+configureFlowbite();
 setupRendererLogging();
 
 window.api?.subscribedToMods((event, ids: string[]) => {

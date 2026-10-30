@@ -42,9 +42,8 @@ vi.mock("@xyflow/react", () => {
 vi.mock("../src/components/skillsViewer/Skill", () => ({ default: () => null }));
 vi.mock("../src/components/skillsViewer/AddNodeModal", () => ({ default: () => null }));
 vi.mock("flowbite-react", () => ({
-  Dropdown: Object.assign(({ children }: { children?: React.ReactNode }) => <>{children}</>, {
-    Item: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-  }),
+  Dropdown: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+  DropdownItem: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
 vi.mock("../src/flowbite/components/Modal/index", () => {
   const Modal = ({ children, show }: { children?: React.ReactNode; show?: boolean }) => (show ? <>{children}</> : null);

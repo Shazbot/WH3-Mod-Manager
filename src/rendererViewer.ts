@@ -1,3 +1,4 @@
+import { configureFlowbite } from "./flowbite/runtime";
 import "./index.css";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-material.css";
@@ -26,6 +27,7 @@ import { DBFieldName, DBFileName, DBVersion, Pack, PackedFile } from "./packFile
 import { dataFromBackend, doneRequests, packDataStore } from "./components/viewer/packDataStore";
 import { tableNameWithDBPrefix } from "./utility/packFileHelpers";
 
+configureFlowbite();
 setupRendererLogging();
 
 const stripUnsavedFileBuffers = (unsavedFileData: PackedFile[]): PackedFile[] =>

@@ -1,3 +1,4 @@
+import { configureFlowbite } from "./flowbite/runtime";
 import "./index.css";
 
 import store from "./store";
@@ -5,6 +6,7 @@ import { renderTechTreesWindow } from "./appTechTrees";
 import { setupRendererLogging } from "./rendererCommon";
 import { setCurrentLanguage, setIsFeaturesForModdersEnabled, setModdersPrefix, setStartArgs } from "./appSlice";
 
+configureFlowbite();
 setupRendererLogging();
 
 window.api?.techTreesAreReady();

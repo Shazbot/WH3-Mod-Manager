@@ -14,7 +14,7 @@ import {
   useEdgesState,
   useNodesState,
 } from "@xyflow/react";
-import { Dropdown } from "flowbite-react";
+import { Dropdown, DropdownItem } from "flowbite-react";
 import "@xyflow/react/dist/style.css";
 import { Modal } from "../../flowbite/components/Modal/index";
 import { useAppSelector } from "../../hooks";
@@ -1859,8 +1859,8 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
             ))}
           </select>
         )}
-        <Dropdown dismissOnClick={false} label="View" color="gray" className="min-w-[12rem]">
-          <Dropdown.Item className="p-0">
+        <Dropdown dismissOnClick={false} label="View" color="light" className="min-w-[12rem]">
+          <DropdownItem className="p-0">
             <label className="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 cursor-pointer select-none">
               <input
                 type="checkbox"
@@ -1869,8 +1869,8 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
               />
               Show hidden
             </label>
-          </Dropdown.Item>
-          <Dropdown.Item className="p-0">
+          </DropdownItem>
+          <DropdownItem className="p-0">
             <label className="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 cursor-pointer select-none">
               <input
                 type="checkbox"
@@ -1879,8 +1879,8 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
               />
               Show tech keys
             </label>
-          </Dropdown.Item>
-          <Dropdown.Item className="p-0">
+          </DropdownItem>
+          <DropdownItem className="p-0">
             <label className="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 cursor-pointer select-none">
               <input
                 type="checkbox"
@@ -1889,7 +1889,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
               />
               Check requirements
             </label>
-          </Dropdown.Item>
+          </DropdownItem>
         </Dropdown>
         {canEditTechnologyTrees && (
           <label className="text-xs flex items-center gap-1 cursor-pointer select-none">
@@ -1942,8 +1942,8 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
               Redo
             </button>
             <div className="hover:bg-green-700 bg-green-600 border-2 border-gray-600 rounded-lg w-fit">
-              <Dropdown dismissOnClick={false} label="Save" color={"success"}>
-                <Dropdown.Item>
+              <Dropdown dismissOnClick={false} label="Save" color="green">
+                <DropdownItem>
                   <button
                     className="w-36 px-4 py-2 rounded-lg border-2 border-gray-600 hover:bg-blue-700 bg-blue-600 text-white disabled:opacity-60"
                     disabled={isSaving || !technologyTree}
@@ -1951,8 +1951,8 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
                   >
                     Save Whole Tree
                   </button>
-                </Dropdown.Item>
-                <Dropdown.Item>
+                </DropdownItem>
+                <DropdownItem>
                   <button
                     className="w-36 px-4 py-2 rounded-lg border-2 border-gray-600 hover:bg-green-700 bg-green-600 text-white disabled:opacity-60"
                     disabled={isSaving || !technologyTree || isBlankTree}
@@ -1960,7 +1960,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
                   >
                     Save Only Changes
                   </button>
-                </Dropdown.Item>
+                </DropdownItem>
               </Dropdown>
             </div>
           </>

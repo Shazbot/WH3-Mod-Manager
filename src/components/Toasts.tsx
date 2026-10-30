@@ -1,4 +1,4 @@
-import { Toast } from "flowbite-react";
+import { Toast, ToastToggle } from "flowbite-react";
 import React, { memo, useCallback, useContext, useEffect, useState } from "react";
 import { HiCheck, HiOutlineInformationCircle, HiX } from "react-icons/hi";
 import { useAppDispatch, useAppSelector } from "../hooks";
@@ -60,9 +60,12 @@ export const Toasts = memo(() => {
   const dispatch = useAppDispatch();
   const localized: Record<string, string> = useContext(localizationContext);
 
-  const onToastClicked = useCallback((toast: Toast) => {
-    dispatch(setToastDismissed(toast));
-  }, [dispatch]);
+  const onToastClicked = useCallback(
+    (toast: Toast) => {
+      dispatch(setToastDismissed(toast));
+    },
+    [dispatch],
+  );
 
   // const toasts = getTestToasts();
   const toasts = useAppSelector((state) => state.app.toasts);
@@ -104,7 +107,7 @@ export const Toasts = memo(() => {
                   );
                 })}
               </div>
-              <Toast.Toggle onClick={() => onToastClicked(toast)} />
+              <ToastToggle onClick={() => onToastClicked(toast)} />
             </Toast>
           ))}
         </div>

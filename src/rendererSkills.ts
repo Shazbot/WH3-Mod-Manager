@@ -1,3 +1,4 @@
+import { configureFlowbite } from "./flowbite/runtime";
 import "./index.css";
 
 import store from "./store";
@@ -12,6 +13,7 @@ import {
   setStartArgs,
 } from "./appSlice";
 
+configureFlowbite();
 setupRendererLogging();
 
 let hasReceivedSkillsViewOptions = false;
