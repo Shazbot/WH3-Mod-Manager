@@ -30,7 +30,7 @@ const BuildingSetBand = memo(
   }: BuildingSetBandProps) => (
     <section
       className="buildingSetBand flex shrink-0 flex-col"
-      style={{ ["--building-band-colour" as string]: band.colour }}
+      style={{ "--building-band-colour": band.colour } as React.CSSProperties}
     >
       <div
         className="grid flex-1 content-end gap-x-[var(--building-column-gap)] gap-y-[var(--building-gap)] px-[calc(var(--building-gap)*2)] pt-[var(--building-gap)]"

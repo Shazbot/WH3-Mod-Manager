@@ -8,6 +8,7 @@ import { LOC_TABLE, newRowsByTable, type BuildingsEditState } from "../../buildi
 import { getPackNameFromPath } from "../../utility/packFileHelpers";
 import type { PackRowsByTable } from "../../utility/packRowsForSave";
 import type { DBVersion } from "../../packFileTypes";
+import { runGuarded } from "../../utility/runGuarded";
 
 export type BuildingsSaveModalProps = {
   state: BuildingsEditState;
@@ -60,117 +61,126 @@ const BuildingsSaveModal = memo(({ state, tableSchemas, moddersPrefix, onClose, 
   const save = async () => {
     setIsSaving(true);
     setResult(undefined);
-    try {
-      const isNew = target === "new";
-      const destination = isNew ? `memory://${newPackName.trim()}` : packPath;
-      if (!isNew && !destination) {
-        setResult({ kind: "error", message: localized.buildingsSavePickPack || "Pick a pack to save into." });
-        return;
-      }
-      if (isNew && !newPackName.trim()) {
-        setResult({ kind: "error", message: localized.buildingsSaveNameNewPack || "Give the new pack a name." });
-        return;
-      }
-
-      let resolvedNewPackDirectory = newPackDirectory.trim();
-      if (isNew && !resolvedNewPackDirectory) {
-        resolvedNewPackDirectory = (await window.api?.getDataFolder()) ?? "";
-        if (!resolvedNewPackDirectory) {
-          setResult({ kind: "error", message: localized.buildingsSavePickFolder || "Pick a folder for the new pack." });
+    await runGuarded(
+      async () => {
+        const isNew = target === "new";
+        const destination = isNew ? `memory://${newPackName.trim()}` : packPath;
+        if (!isNew && !destination) {
+          setResult({ kind: "error", message: localized.buildingsSavePickPack || "Pick a pack to save into." });
           return;
         }
-      }
-
-      let existingFileNames: string[] = [];
-      let existingRowsByTable: PackRowsByTable | undefined;
-      if (!isNew) {
-        if (skipDuplicateRows) {
-          const packData = await window.api?.getPackRowsForSave(
-            destination,
-            Object.keys(rowsByTable).filter((table) => table !== LOC_TABLE),
-            Boolean(rowsByTable[LOC_TABLE]),
-          );
-          if (!packData) {
-            setResult({
-              kind: "error",
-              message: localized.buildingsSaveInspectFailed || "Could not inspect the target pack before saving.",
-            });
-            return;
-          }
-          existingFileNames = packData.fileNames;
-          existingRowsByTable = packData.rowsByTable;
-        } else {
-          // The target can be in the preset without ever having been opened in the renderer. Inspect
-          // the pack on disk instead of treating a missing packsData entry as an empty pack, and also
-          // include files another editor has staged but not written yet.
-          const diskFileNames = await window.api?.getPackFilesList(destination);
-          if (!diskFileNames) {
-            setResult({
-              kind: "error",
-              message: localized.buildingsSaveInspectFailed || "Could not inspect the target pack before saving.",
-            });
-            return;
-          }
-          existingFileNames = [...diskFileNames, ...(unsavedPacksData[destination] ?? []).map((file) => file.name)];
+        if (isNew && !newPackName.trim()) {
+          setResult({ kind: "error", message: localized.buildingsSaveNameNewPack || "Give the new pack a name." });
+          return;
         }
-      }
-      const { files, skippedTables } = buildPackedFilesFromNewRows({
-        state,
-        tableSchemas,
-        fileName: buildBuildingsFileName(moddersPrefix, existingFileNames),
-        existingRowsByTable: skipDuplicateRows ? existingRowsByTable : undefined,
-      });
-      if (files.length === 0) {
-        setResult({ kind: "error", message: localized.buildingsSaveNothing || "Nothing to save." });
-        return;
-      }
 
-      for (const file of files) {
-        const staged = await window.api?.saveDBTableEdits(destination, file);
-        if (staged && !staged.success) {
+        let resolvedNewPackDirectory = newPackDirectory.trim();
+        if (isNew && !resolvedNewPackDirectory) {
+          resolvedNewPackDirectory = (await window.api?.getDataFolder()) ?? "";
+          if (!resolvedNewPackDirectory) {
+            setResult({
+              kind: "error",
+              message: localized.buildingsSavePickFolder || "Pick a folder for the new pack.",
+            });
+            return;
+          }
+        }
+
+        let existingFileNames: string[] = [];
+        let existingRowsByTable: PackRowsByTable | undefined;
+        if (!isNew) {
+          if (skipDuplicateRows) {
+            const packData = await window.api?.getPackRowsForSave(
+              destination,
+              Object.keys(rowsByTable).filter((table) => table !== LOC_TABLE),
+              Boolean(rowsByTable[LOC_TABLE]),
+            );
+            if (!packData) {
+              setResult({
+                kind: "error",
+                message: localized.buildingsSaveInspectFailed || "Could not inspect the target pack before saving.",
+              });
+              return;
+            }
+            existingFileNames = packData.fileNames;
+            existingRowsByTable = packData.rowsByTable;
+          } else {
+            // The target can be in the preset without ever having been opened in the renderer. Inspect
+            // the pack on disk instead of treating a missing packsData entry as an empty pack, and also
+            // include files another editor has staged but not written yet.
+            const diskFileNames = await window.api?.getPackFilesList(destination);
+            if (!diskFileNames) {
+              setResult({
+                kind: "error",
+                message: localized.buildingsSaveInspectFailed || "Could not inspect the target pack before saving.",
+              });
+              return;
+            }
+            existingFileNames = [...diskFileNames, ...(unsavedPacksData[destination] ?? []).map((file) => file.name)];
+          }
+        }
+        const { files, skippedTables } = buildPackedFilesFromNewRows({
+          state,
+          tableSchemas,
+          fileName: buildBuildingsFileName(moddersPrefix, existingFileNames),
+          existingRowsByTable: skipDuplicateRows ? existingRowsByTable : undefined,
+        });
+        if (files.length === 0) {
+          setResult({ kind: "error", message: localized.buildingsSaveNothing || "Nothing to save." });
+          return;
+        }
+
+        for (const file of files) {
+          const staged = await window.api?.saveDBTableEdits(destination, file);
+          if (staged && !staged.success) {
+            setResult({
+              kind: "error",
+              message:
+                staged.error ||
+                (localized.buildingsSaveStageFailed || "Could not stage {{file}}.").replace("{{file}}", file.name),
+            });
+            return;
+          }
+        }
+
+        const written = isNew
+          ? await window.api?.savePackAsWithUnsavedFiles(destination, newPackName.trim(), resolvedNewPackDirectory)
+          : await window.api?.savePackWithUnsavedFiles(destination);
+
+        if (!written?.success) {
           setResult({
             kind: "error",
-            message:
-              staged.error ||
-              (localized.buildingsSaveStageFailed || "Could not stage {{file}}.").replace("{{file}}", file.name),
+            message: written?.error || localized.buildingsSaveWriteFailed || "The pack could not be written.",
           });
           return;
         }
-      }
 
-      const written = isNew
-        ? await window.api?.savePackAsWithUnsavedFiles(destination, newPackName.trim(), resolvedNewPackDirectory)
-        : await window.api?.savePackWithUnsavedFiles(destination);
-
-      if (!written?.success) {
+        const skipped =
+          skippedTables.length > 0
+            ? ` ${localized.buildingsSaveSkipped || "Skipped (no schema):"} ${skippedTables.join(", ")}.`
+            : "";
+        const warning = written.warning ? ` ${written.warning}` : "";
         setResult({
-          kind: "error",
-          message: written?.error || localized.buildingsSaveWriteFailed || "The pack could not be written.",
+          kind: "ok",
+          message:
+            (localized.buildingsSaveWrote || "Wrote {{count}} table file(s) to {{path}}.")
+              .replace("{{count}}", `${files.length}`)
+              .replace("file(s)", files.length === 1 ? "file" : "files")
+              .replace("{{path}}", `${written.savedPath ?? destination}`) +
+            warning +
+            skipped,
         });
-        return;
-      }
-
-      const skipped =
-        skippedTables.length > 0
-          ? ` ${localized.buildingsSaveSkipped || "Skipped (no schema):"} ${skippedTables.join(", ")}.`
-          : "";
-      const warning = written.warning ? ` ${written.warning}` : "";
-      setResult({
-        kind: "ok",
-        message:
-          (localized.buildingsSaveWrote || "Wrote {{count}} table file(s) to {{path}}.")
-            .replace("{{count}}", `${files.length}`)
-            .replace("file(s)", files.length === 1 ? "file" : "files")
-            .replace("{{path}}", `${written.savedPath ?? destination}`) +
-          warning +
-          skipped,
-      });
-      onSaved(written.savedPath ?? destination);
-    } catch (error) {
-      setResult({ kind: "error", message: error instanceof Error ? error.message : String(error) });
-    } finally {
-      setIsSaving(false);
-    }
+        onSaved(written.savedPath ?? destination);
+      },
+      {
+        onError: (error: any) => {
+          setResult({ kind: "error", message: error instanceof Error ? error.message : String(error) });
+        },
+        onFinally: () => {
+          setIsSaving(false);
+        },
+      },
+    );
   };
 
   return (

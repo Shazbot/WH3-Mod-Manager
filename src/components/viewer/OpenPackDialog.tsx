@@ -7,6 +7,7 @@ import {
   groupViewerPackCatalog,
   type ViewerPackCatalogEntry,
 } from "../../utility/viewerPackCatalog";
+import { runGuarded } from "../../utility/runGuarded";
 
 type OpenPackDialogProps = {
   show: boolean;
@@ -41,29 +42,35 @@ const OpenPackDialog = ({ show, currentPackPath, onClose, onOpenPack }: OpenPack
     setIsLoadingCatalog(true);
 
     const loadCatalog = async () => {
-      try {
-        const result = await window.api?.getViewerPackCatalog();
-        if (cancelled) return;
-        if (!result?.success) {
-          throw new Error(result?.error || localized.viewerFailedToLoadModPacks || "Failed to load mod packs");
-        }
+      await runGuarded(
+        async () => {
+          const result = await window.api?.getViewerPackCatalog();
+          if (cancelled) return;
+          if (!result?.success) {
+            throw new Error(result?.error || localized.viewerFailedToLoadModPacks || "Failed to load mod packs");
+          }
 
-        const catalog = result.packs || [];
-        setPackCatalog(catalog);
-        const initialPack =
-          catalog.find((pack) => packPathKey(pack.path) === packPathKey(currentPackPath || "")) || catalog[0];
-        if (initialPack) setSelectedPackPath(initialPack.path);
-      } catch (catalogError) {
-        if (!cancelled) {
-          setError(
-            catalogError instanceof Error
-              ? catalogError.message
-              : localized.viewerFailedToLoadModPacks || "Failed to load mod packs",
-          );
-        }
-      } finally {
-        if (!cancelled) setIsLoadingCatalog(false);
-      }
+          const catalog = result.packs || [];
+          setPackCatalog(catalog);
+          const initialPack =
+            catalog.find((pack) => packPathKey(pack.path) === packPathKey(currentPackPath || "")) || catalog[0];
+          if (initialPack) setSelectedPackPath(initialPack.path);
+        },
+        {
+          onError: (catalogError: any) => {
+            if (!cancelled) {
+              setError(
+                catalogError instanceof Error
+                  ? catalogError.message
+                  : localized.viewerFailedToLoadModPacks || "Failed to load mod packs",
+              );
+            }
+          },
+          onFinally: () => {
+            if (!cancelled) setIsLoadingCatalog(false);
+          },
+        },
+      );
     };
 
     void loadCatalog();

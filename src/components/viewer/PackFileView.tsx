@@ -16,6 +16,7 @@ import {
   getPackedFileMimeType,
   getPackedFileViewerKind,
 } from "@/src/utility/packFileViewing";
+import { runGuarded } from "../../utility/runGuarded";
 
 type PackFileViewProps = {
   packPath: string;
@@ -38,8 +39,8 @@ type LoadState =
 
 const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps) => {
   const localized: Record<string, string> = useContext(localizationContext);
-  const selectCurrentPackData = useMemo(makeSelectCurrentPackData, []);
-  const selectCurrentPackUnsavedFiles = useMemo(makeSelectCurrentPackUnsavedFiles, []);
+  const selectCurrentPackData = useMemo(() => makeSelectCurrentPackData(), []);
+  const selectCurrentPackUnsavedFiles = useMemo(() => makeSelectCurrentPackUnsavedFiles(), []);
   const packData = useAppSelector((state) => selectCurrentPackData(state, packPath));
   const unsavedFiles = useAppSelector((state) => selectCurrentPackUnsavedFiles(state, packPath));
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
@@ -54,7 +55,8 @@ const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps
   const openedTextFileKey = viewerKind === "text" ? openedFileKey : "";
   const packName = getPackNameFromPath(packPath) ?? packPath;
   const canEditTextFile = viewerKind === "text" && isFeaturesForModdersEnabled && !vanillaPackNames.includes(packName);
-  const hydratedTextFileKeyRef = useRef<string | null>(null);
+  // Which file workingText was loaded for. State, not a ref, because render reads it.
+  const [hydratedTextFileKey, setHydratedTextFileKey] = useState<string | null>(null);
   const latestWorkingTextRef = useRef<string | undefined>(undefined);
   const persistedTextRef = useRef("");
   const saveTimeoutRef = useRef<number | null>(null);
@@ -166,15 +168,15 @@ const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps
     if (loadState.fileKey !== openedFileKey) return;
 
     const nextText = loadState.text || "";
-    const shouldHydrate = hydratedTextFileKeyRef.current !== openedTextFileKey || workingText == null;
+    const shouldHydrate = hydratedTextFileKey !== openedTextFileKey || workingText == null;
     if (!shouldHydrate) return;
 
-    hydratedTextFileKeyRef.current = openedTextFileKey;
+    setHydratedTextFileKey(openedTextFileKey);
     setWorkingText(nextText);
     setPersistedText(nextText);
     setIsPersisting(false);
     latestWorkingTextRef.current = nextText;
-  }, [loadState, openedFileKey, openedTextFileKey, viewerKind, workingText]);
+  }, [hydratedTextFileKey, loadState, openedFileKey, openedTextFileKey, viewerKind, workingText]);
 
   const persistText = useCallback(
     async (nextText: string, options?: { suppressDialog?: boolean }) => {
@@ -183,37 +185,42 @@ const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps
       const requestId = ++saveRequestIdRef.current;
       setIsPersisting(true);
 
-      try {
-        const result = await window.api?.saveTextPackedFileEdits(packPath, filePath, nextText);
-        if (!result?.success) {
-          throw new Error(
-            result?.error || localized.viewerFailedToStoreTextFileEdits || "Failed to store text file edits",
-          );
-        }
+      return await runGuarded(
+        async () => {
+          const result = await window.api?.saveTextPackedFileEdits(packPath, filePath, nextText);
+          if (!result?.success) {
+            throw new Error(
+              result?.error || localized.viewerFailedToStoreTextFileEdits || "Failed to store text file edits",
+            );
+          }
 
-        if (requestId === saveRequestIdRef.current) {
-          setPersistedText(nextText);
-          setIsPersisting(false);
-        }
+          if (requestId === saveRequestIdRef.current) {
+            setPersistedText(nextText);
+            setIsPersisting(false);
+          }
 
-        return true;
-      } catch (error) {
-        if (requestId === saveRequestIdRef.current) {
-          setIsPersisting(false);
-        }
-        if (!options?.suppressDialog) {
-          showDialog(
-            (localized.viewerFailedToSaveFile || "Failed to save {{path}}: {{error}}")
-              .replace("{{path}}", filePath)
-              .replace(
-                "{{error}}",
-                error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
-              ),
-            { title: localized.viewerSaveFailed || "Save Failed" },
-          );
-        }
-        return false;
-      }
+          return true;
+        },
+        {
+          onError: (error: any) => {
+            if (requestId === saveRequestIdRef.current) {
+              setIsPersisting(false);
+            }
+            if (!options?.suppressDialog) {
+              showDialog(
+                (localized.viewerFailedToSaveFile || "Failed to save {{path}}: {{error}}")
+                  .replace("{{path}}", filePath)
+                  .replace(
+                    "{{error}}",
+                    error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
+                  ),
+                { title: localized.viewerSaveFailed || "Save Failed" },
+              );
+            }
+            return false;
+          },
+        },
+      );
     },
     [canEditTextFile, filePath, localized, packPath, showDialog],
   );
@@ -279,7 +286,7 @@ const PackFileView = memo(({ packPath, filePath, showDialog }: PackFileViewProps
   const loadedState = loadState as Extract<LoadState, { status: "loaded" }>;
   // workingText belongs to whichever file was hydrated last. Until this file has been hydrated -
   // one render after its content lands - show what was loaded rather than the last file's edits.
-  const isWorkingTextForThisFile = hydratedTextFileKeyRef.current === openedTextFileKey && workingText != null;
+  const isWorkingTextForThisFile = hydratedTextFileKey === openedTextFileKey && workingText != null;
   const displayedText = isWorkingTextForThisFile ? workingText : (loadedState.text ?? "");
   const hasPendingTextChanges = canEditTextFile && displayedText !== persistedText;
 

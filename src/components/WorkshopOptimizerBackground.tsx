@@ -1,6 +1,6 @@
 import React, { memo, useContext, useEffect, useMemo, useState } from "react";
 
-import { useAppSelector } from "../hooks";
+import { useAppSelector, useEventCallback } from "../hooks";
 import localizationContext from "../localizationContext";
 
 const interpolate = (template: string, values: Record<string, string | number>): string =>
@@ -32,32 +32,34 @@ const WorkshopOptimizerBackground = memo(() => {
     [enabledMods, optimize, workshopModStagingMode],
   );
 
+  // Sends the enabled mods to the main process. The effect below schedules it only when the signature changes,
+  // since the signature covers everything the main process needs from the mods.
+  const sendEnabledMods = useEventCallback(() => {
+    window.api?.updateWorkshopOptimizerBackground?.(
+      enabledMods.map((mod) => ({
+        name: mod.name,
+        path: mod.path,
+        modDirectory: mod.modDirectory,
+        isEnabled: mod.isEnabled,
+        isInModding: mod.isInModding,
+        isInData: mod.isInData,
+        loadOrder: mod.loadOrder,
+        humanName: mod.humanName,
+        sourceKind: mod.sourceKind,
+        sourceId: mod.sourceId,
+        // The dependency edges go into the cache keys: without them the keys differ from a launch's.
+        workshopId: mod.workshopId,
+        reqModIdToName: mod.reqModIdToName,
+        dependencyPacks: mod.dependencyPacks,
+      })),
+      { optimize: !!optimize, workshopModStagingMode },
+    );
+  });
+
   useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      window.api?.updateWorkshopOptimizerBackground?.(
-        enabledMods.map((mod) => ({
-          name: mod.name,
-          path: mod.path,
-          modDirectory: mod.modDirectory,
-          isEnabled: mod.isEnabled,
-          isInModding: mod.isInModding,
-          isInData: mod.isInData,
-          loadOrder: mod.loadOrder,
-          humanName: mod.humanName,
-          sourceKind: mod.sourceKind,
-          sourceId: mod.sourceId,
-          // The dependency edges go into the cache keys: without them the keys differ from a launch's.
-          workshopId: mod.workshopId,
-          reqModIdToName: mod.reqModIdToName,
-          dependencyPacks: mod.dependencyPacks,
-        })),
-        { optimize: !!optimize, workshopModStagingMode },
-      );
-    }, 500);
+    const timeout = window.setTimeout(sendEnabledMods, 500);
     return () => window.clearTimeout(timeout);
-    // The signature covers everything the main process needs from the mods.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature]);
+  }, [signature, sendEnabledMods]);
 
   useEffect(() => {
     const unsubscribe = window.api?.onWorkshopOptimizerBackgroundStatus?.((_event, nextStatus) =>

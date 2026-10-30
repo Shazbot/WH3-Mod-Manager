@@ -2862,9 +2862,11 @@ const SkillsView = memo(
               setEdges(importedEdges);
               setNotification({ message: "Skill tree imported successfully", type: "success" });
             },
-            (err: any) => {
-              console.error("Failed to import skill tree:", err);
-              setNotification({ message: `Failed to import: ${err.message}`, type: "error" });
+            {
+              onError: (err: any) => {
+                console.error("Failed to import skill tree:", err);
+                setNotification({ message: `Failed to import: ${err.message}`, type: "error" });
+              },
             },
           );
         };

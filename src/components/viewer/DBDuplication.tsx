@@ -24,6 +24,7 @@ import {
 } from "./dbCloneSelection";
 import type { PackedFile } from "../../packFileTypes";
 import { applyDBCloneGlobalKey, getDBCloneGlobalKey, normalizeDBCloneModdersPrefix } from "./dbCloneGlobalKey";
+import { runGuarded } from "../../utility/runGuarded";
 
 const getAllNodesInTree = (tree: IViewerTreeNodeWithData | IViewerTreeNode) => {
   const getAllNodesInTreeIter = (
@@ -170,57 +171,63 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
     setExpandedNodesByName([]);
 
     const buildTree = async () => {
-      try {
-        beginOverlayOperation();
-        setDuplicationError("");
-        const treeNodeResult = await window.api?.buildDBReferenceTree(
-          packPath,
-          {
-            dbName: currentDBTableSelection.dbName,
-            dbSubname: currentDBTableSelection.dbSubname,
-            packPath: currentDBTableSelection.packPath,
-          } as DBTableSelection,
-          deepCloneTarget,
-          [],
-          [],
-          undefined,
-        );
-
-        if (!isCurrentRequest || requestId !== treeBuildRequestId.current) return;
-
-        if (treeNodeResult) {
-          console.log("buildDBReferenceTree RECIEVED", treeNodeResult);
-          console.log(
-            "currentDBTableSelection:",
-            currentDBTableSelection,
-            "deepCloneTarget:",
-            deepCloneTarget,
-            "packPath:",
+      await runGuarded(
+        async () => {
+          beginOverlayOperation();
+          setDuplicationError("");
+          const treeNodeResult = await window.api?.buildDBReferenceTree(
             packPath,
+            {
+              dbName: currentDBTableSelection.dbName,
+              dbSubname: currentDBTableSelection.dbSubname,
+              packPath: currentDBTableSelection.packPath,
+            } as DBTableSelection,
+            deepCloneTarget,
+            [],
+            [],
+            undefined,
           );
-          setTreeData(treeNodeResult);
-          setNodeNameToRenameValue({});
-          const preselectedTables =
-            launchSource == "buildings" && currentDBTableSelection.dbName == "building_culture_variants_tables"
-              ? BUILDINGS_CULTURE_VARIANT_PRESELECT_TABLES
-              : [];
-          const preselectedNodeNames = getDBCloneInitialSelectedNodeNames(
-            treeNodeResult,
-            preselectedTables,
-            BUILDINGS_CULTURE_VARIANT_PRESELECT_ALL_TABLES,
-          );
-          setSelectedNodesByName(preselectedNodeNames);
-          setExpandedNodesByName(getDBCloneExpandedNodeNamesForSelection(treeNodeResult, preselectedNodeNames));
-        } else {
-          setDuplicationError(localized.viewerDbCloneBuildFailed || "DB Clone could not build the reference tree.");
-        }
-      } catch (error) {
-        if (!isCurrentRequest || requestId !== treeBuildRequestId.current) return;
-        console.error("Failed to build reference tree:", error);
-        setDuplicationError(error instanceof Error ? error.message : String(error));
-      } finally {
-        endOverlayOperation();
-      }
+
+          if (!isCurrentRequest || requestId !== treeBuildRequestId.current) return;
+
+          if (treeNodeResult) {
+            console.log("buildDBReferenceTree RECIEVED", treeNodeResult);
+            console.log(
+              "currentDBTableSelection:",
+              currentDBTableSelection,
+              "deepCloneTarget:",
+              deepCloneTarget,
+              "packPath:",
+              packPath,
+            );
+            setTreeData(treeNodeResult);
+            setNodeNameToRenameValue({});
+            const preselectedTables =
+              launchSource == "buildings" && currentDBTableSelection.dbName == "building_culture_variants_tables"
+                ? BUILDINGS_CULTURE_VARIANT_PRESELECT_TABLES
+                : [];
+            const preselectedNodeNames = getDBCloneInitialSelectedNodeNames(
+              treeNodeResult,
+              preselectedTables,
+              BUILDINGS_CULTURE_VARIANT_PRESELECT_ALL_TABLES,
+            );
+            setSelectedNodesByName(preselectedNodeNames);
+            setExpandedNodesByName(getDBCloneExpandedNodeNamesForSelection(treeNodeResult, preselectedNodeNames));
+          } else {
+            setDuplicationError(localized.viewerDbCloneBuildFailed || "DB Clone could not build the reference tree.");
+          }
+        },
+        {
+          onError: (error: any) => {
+            if (!isCurrentRequest || requestId !== treeBuildRequestId.current) return;
+            console.error("Failed to build reference tree:", error);
+            setDuplicationError(error instanceof Error ? error.message : String(error));
+          },
+          onFinally: () => {
+            endOverlayOperation();
+          },
+        },
+      );
     };
 
     buildTree();
@@ -587,73 +594,81 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
         )
       : nodeNameToRenameValue;
 
-    try {
-      beginOverlayOperation();
-      setIsSaving(true);
-      setDuplicationError("");
-      setIsErrorOpen(false);
-      setDuplicationSuccessMessage("");
-      setIsSuccessOpen(false);
-      setDuplicationProgress({
-        stage: "validating",
-        message: localized.viewerStartingClone || "Starting clone",
-      });
-      const result = await window.api?.executeDBDuplication(
-        packData.packPath,
-        selectedNodeNames,
-        nodeNameToDataLookup,
-        renameValuesForSave,
-        defaultNodeNameToRenameValue,
-        treeData,
-        { isAppendSave, savePackedFileName, savePackFileName, destination },
-      );
+    await runGuarded(
+      async () => {
+        beginOverlayOperation();
+        setIsSaving(true);
+        setDuplicationError("");
+        setIsErrorOpen(false);
+        setDuplicationSuccessMessage("");
+        setIsSuccessOpen(false);
+        setDuplicationProgress({
+          stage: "validating",
+          message: localized.viewerStartingClone || "Starting clone",
+        });
+        const result = await window.api?.executeDBDuplication(
+          packData.packPath,
+          selectedNodeNames,
+          nodeNameToDataLookup,
+          renameValuesForSave,
+          defaultNodeNameToRenameValue,
+          treeData,
+          { isAppendSave, savePackedFileName, savePackFileName, destination },
+        );
 
-      if (!result?.ok) {
-        console.error(
-          "executeDBDuplication failed:",
-          result?.error ?? (localized.viewerUnknownError || "Unknown error"),
-        );
-        setDuplicationError(result?.error ?? (localized.viewerUnknownDuplicationError || "Unknown duplication error"));
-        setIsErrorOpen(true);
-      } else if (destination == "memory") {
-        if (!result.generatedPackedFiles) {
+        if (!result?.ok) {
+          console.error(
+            "executeDBDuplication failed:",
+            result?.error ?? (localized.viewerUnknownError || "Unknown error"),
+          );
           setDuplicationError(
-            localized.viewerCloneMissingRows || "DB Clone completed without returning any generated rows.",
+            result?.error ?? (localized.viewerUnknownDuplicationError || "Unknown duplication error"),
           );
           setIsErrorOpen(true);
-          return;
-        }
-        if (!onSaveToBuildings) {
-          setDuplicationError(
-            (
-              localized.viewerCloneMemoryTargetUnavailable ||
-              "The {{name}} tab is not available to receive the generated rows."
-            ).replace("{{name}}", memoryTargetName),
+        } else if (destination == "memory") {
+          if (!result.generatedPackedFiles) {
+            setDuplicationError(
+              localized.viewerCloneMissingRows || "DB Clone completed without returning any generated rows.",
+            );
+            setIsErrorOpen(true);
+            return;
+          }
+          if (!onSaveToBuildings) {
+            setDuplicationError(
+              (
+                localized.viewerCloneMemoryTargetUnavailable ||
+                "The {{name}} tab is not available to receive the generated rows."
+              ).replace("{{name}}", memoryTargetName),
+            );
+            setIsErrorOpen(true);
+            return;
+          }
+          onSaveToBuildings(result.generatedPackedFiles);
+        } else {
+          console.log("executeDBDuplication success, output:", result.outputPackPath);
+          if (openInWindows && result.outputPackPath) {
+            window.api?.openPack(result.outputPackPath);
+          }
+          setDuplicationSuccessMessage(
+            result.outputPackPath
+              ? (localized.viewerCreatedPack || "Created pack:\n{{path}}").replace("{{path}}", result.outputPackPath)
+              : localized.viewerCloneCompleted || "Clone completed successfully.",
           );
+          setIsSuccessOpen(true);
+        }
+      },
+      {
+        onError: (error: any) => {
+          console.error("executeDBDuplication IPC failed:", error);
+          setDuplicationError(error instanceof Error ? error.message : String(error));
           setIsErrorOpen(true);
-          return;
-        }
-        onSaveToBuildings(result.generatedPackedFiles);
-      } else {
-        console.log("executeDBDuplication success, output:", result.outputPackPath);
-        if (openInWindows && result.outputPackPath) {
-          window.api?.openPack(result.outputPackPath);
-        }
-        setDuplicationSuccessMessage(
-          result.outputPackPath
-            ? (localized.viewerCreatedPack || "Created pack:\n{{path}}").replace("{{path}}", result.outputPackPath)
-            : localized.viewerCloneCompleted || "Clone completed successfully.",
-        );
-        setIsSuccessOpen(true);
-      }
-    } catch (error) {
-      console.error("executeDBDuplication IPC failed:", error);
-      setDuplicationError(error instanceof Error ? error.message : String(error));
-      setIsErrorOpen(true);
-    } finally {
-      setIsSaving(false);
-      endOverlayOperation();
-    }
+        },
+        onFinally: () => {
+          setIsSaving(false);
+          endOverlayOperation();
+        },
+      },
+    );
 
     // dispatch(setDeepCloneTarget(undefined));
 
@@ -990,7 +1005,7 @@ const DBDuplication = memo(({ launchSource, onSaveToBuildings }: DBDuplicationPr
 
 const ArrowIcon = ({ isOpen, className }: { isOpen: boolean; className?: string }) => {
   const baseClass = "arrow";
-  const classes = cx(baseClass, { [`${baseClass}--closed`]: !isOpen }, { [`${baseClass}--open`]: isOpen }, className);
+  const classes = cx(baseClass, { "arrow--closed": !isOpen }, { "arrow--open": isOpen }, className);
   return <IoMdArrowDropright className={classes} />;
 };
 

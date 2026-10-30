@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useMemo, useRef } from "react";
+import React, { memo, useEffect, useMemo, useRef, useLayoutEffect } from "react";
 import { useAppSelector } from "../../hooks";
 import { useDeferredWhileInactive } from "../useDeferredWhileInactive";
 import SkillsViewer from "./SkillsViewer";
@@ -23,7 +23,9 @@ const SkillsTab = memo(({ isActive = true }: SkillsTabProps) => {
     [currentGame, enabledMods],
   );
   const modsRef = useRef(mods);
-  modsRef.current = mods;
+  useLayoutEffect(() => {
+    modsRef.current = mods;
+  });
   // While hidden this stays at the signature the tab last saw, so enabling a mod elsewhere queues the
   // rebuild instead of running it; switching back releases the current signature and rebuilds once.
   const signatureToRequest = useDeferredWhileInactive(isActive, enabledModsSignature);

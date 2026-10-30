@@ -132,7 +132,7 @@ const Onboarding = memo(() => {
       dispatch(setIsOnboardingToRun(false));
       dispatch(setWasOnboardingEverRun(true));
     }
-  }, []);
+  }, [dispatch]);
 
   return (
     <>

@@ -32,6 +32,7 @@ import RenameModal from "./RenameModal";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import localizationContext from "../localizationContext";
 import { getModSourceKind, isWorkshopMod } from "../modSources";
+import { runGuarded } from "../utility/runGuarded";
 
 type ModDropdownOptionsProps = {
   mod?: Mod;
@@ -100,40 +101,46 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
       if (isComparingToWorkshop) return;
       setIsComparingToWorkshop(true);
 
-      try {
-        const result = await window.api?.compareModsByteForByte(mod.path, workshopMod.path);
-        if (!result?.success || result.identical === undefined) {
-          throw new Error(result?.error || "The comparison could not be completed.");
-        }
+      await runGuarded(
+        async () => {
+          const result = await window.api?.compareModsByteForByte(mod.path, workshopMod.path);
+          if (!result?.success || result.identical === undefined) {
+            throw new Error(result?.error || "The comparison could not be completed.");
+          }
 
-        dispatch(
-          addToast({
-            type: result.identical ? "success" : "info",
-            messages: [
-              result.identical
-                ? localized.modMatchesWorkshop || `${mod.name} is byte-for-byte identical to the Workshop version.`
-                : localized.modDiffersFromWorkshop || `${mod.name} differs from the Workshop version.`,
-            ],
-            duration: 8000,
-            startTime: Date.now(),
-          }),
-        );
-      } catch (error) {
-        dispatch(
-          addToast({
-            type: "warning",
-            messages: [
-              `${localized.compareToWorkshopFailed || "Failed to compare with the Workshop version:"} ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            ],
-            duration: 8000,
-            startTime: Date.now(),
-          }),
-        );
-      } finally {
-        setIsComparingToWorkshop(false);
-      }
+          dispatch(
+            addToast({
+              type: result.identical ? "success" : "info",
+              messages: [
+                result.identical
+                  ? localized.modMatchesWorkshop || `${mod.name} is byte-for-byte identical to the Workshop version.`
+                  : localized.modDiffersFromWorkshop || `${mod.name} differs from the Workshop version.`,
+              ],
+              duration: 8000,
+              startTime: Date.now(),
+            }),
+          );
+        },
+        {
+          onError: (error: any) => {
+            dispatch(
+              addToast({
+                type: "warning",
+                messages: [
+                  `${localized.compareToWorkshopFailed || "Failed to compare with the Workshop version:"} ${
+                    error instanceof Error ? error.message : String(error)
+                  }`,
+                ],
+                duration: 8000,
+                startTime: Date.now(),
+              }),
+            );
+          },
+          onFinally: () => {
+            setIsComparingToWorkshop(false);
+          },
+        },
+      );
     },
     [dispatch, isComparingToWorkshop, localized],
   );

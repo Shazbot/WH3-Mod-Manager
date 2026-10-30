@@ -149,9 +149,12 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
   const [iconSearch, setIconSearch] = useState("");
 
   // All available effects from vanilla game + enabled mods with raw localization
+  const allEffects = editorData?.allEffects;
+  const allSkills = editorData?.allSkills;
+  const allSkillIcons = editorData?.allSkillIcons;
   const effectOptions = useMemo(() => {
-    if (!editorData?.allEffects) return [];
-    return editorData.allEffects
+    if (!allEffects) return [];
+    return allEffects
       .map((e) => ({
         value: e.effectKey,
         label: stripLocImgTags(e.localizedKey) || e.effectKey,
@@ -168,28 +171,28 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
         } as Effect,
       }))
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, [editorData?.allEffects, icons]);
+  }, [allEffects, icons]);
 
   // All available skills from vanilla game + enabled mods
   const skillOptions = useMemo(() => {
-    if (!editorData?.allSkills) return [];
-    return editorData.allSkills
+    if (!allSkills) return [];
+    return allSkills
       .map((s) => ({
         value: s.key,
         label: s.localizedName,
         effectsCount: s.effects.length,
       }))
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, [editorData?.allSkills]);
+  }, [allSkills]);
 
   // All available skill icons from vanilla game + enabled mods
   const iconOptions = useMemo(() => {
-    if (!editorData?.allSkillIcons) return [];
-    return editorData.allSkillIcons.map((icon) => ({
+    if (!allSkillIcons) return [];
+    return allSkillIcons.map((icon) => ({
       value: icon.path,
       label: icon.name,
     }));
-  }, [editorData?.allSkillIcons]);
+  }, [allSkillIcons]);
 
   // Filtered icons for grid picker
   const filteredIcons = useMemo(() => {
@@ -609,12 +612,13 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
                         <input
                           type="number"
                           value={effectValues[`${activeLevel}_${opt.value}`] ?? "0"}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            const key = `${activeLevel}_${opt.value}`;
                             setEffectValues((prev) => ({
                               ...prev,
-                              [`${activeLevel}_${opt.value}`]: e.target.value,
-                            }))
-                          }
+                              [key]: e.target.value,
+                            }));
+                          }}
                           className={inputClass + " !w-24"}
                         />
                       </div>

@@ -18,6 +18,8 @@ type SkillTab = {
 };
 
 let nextTabId = 1;
+// Hands out the next id; components call this because React Compiler cannot compile `nextTabId++` on a module variable.
+const takeNextTabId = () => nextTabId++;
 let nextSkillsRequestId = 1;
 const SKILL_NODE_SET_MARKER = "_skill_node_set_";
 // Each prefetched tree is a few hundred KB, so only the most recently hovered ones are kept.
@@ -181,7 +183,7 @@ const SkillsViewer = memo(() => {
       else replacedTab.current = { selectionKey: selectionKey(newTabSelection) };
       pendingActiveTab.current = null;
       snapshotCurrentTab();
-      const id = `tab_${nextTabId++}`;
+      const id = `tab_${takeNextTabId()}`;
       const newTab: SkillTab = {
         id,
         subtype: newTabSelection.subtype,
@@ -231,7 +233,7 @@ const SkillsViewer = memo(() => {
           staleSelectionKeys.current.delete(selectionKey(initialSelection));
         }
       }
-      const id = `tab_${nextTabId++}`;
+      const id = `tab_${takeNextTabId()}`;
       const newTab: SkillTab = {
         id,
         subtype: skillsData.currentSubtype,
@@ -337,7 +339,7 @@ const SkillsViewer = memo(() => {
       const previous = replaced.previous;
       // The first click opened its own tab, so there is nothing to move.
       if (!previous) return;
-      const restoredTab = { ...previous, id: `tab_${nextTabId++}` };
+      const restoredTab = { ...previous, id: `tab_${takeNextTabId()}` };
       // The loaded tree keeps its tab id so its view stays mounted.
       setTabs((prev) => {
         const current = prev.find((tab) => tab.id === previous.id);

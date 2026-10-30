@@ -165,7 +165,8 @@ const ModCustomizationRows = memo(
         columnIndexForEnabled: number | null,
         operation?: PackDataOverwriteOperation,
       ) => {
-        for (let i = 0; i < data.length; i++) {
+        for (let rowIndex = 0; rowIndex < data.length; rowIndex++) {
+          const i = rowIndex;
           const isMatch = columnIndices.reduce((acc, currentIndex) => {
             return acc && data[i][currentIndex] == rowData[currentIndex];
           }, true);
@@ -205,7 +206,7 @@ const ModCustomizationRows = memo(
           }
         }
       },
-      [],
+      [dispatch],
     );
 
     const getDefaultEnabledValue = useCallback(

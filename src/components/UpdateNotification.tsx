@@ -27,7 +27,7 @@ export const UpdateNotification = memo(
         }),
       );
       await window.api?.downloadAndInstallUpdate(downloadURL);
-    }, [downloadURL]);
+    }, [dispatch, downloadURL, setIsUpdateAvailable]);
 
     const onReleaseNotesClick = useCallback(() => {
       window.open(releaseNotesURL);

@@ -85,11 +85,13 @@ const BuildingsBoard = memo(
         <div
           ref={boardRef}
           className="buildingsBoard relative flex w-max items-stretch"
-          style={{
-            ["--building-tile" as string]: `${Math.round(BASE_TILE_PX * zoom)}px`,
-            ["--building-gap" as string]: `${Math.max(4, Math.round(BASE_ROW_GAP_PX * zoom))}px`,
-            ["--building-column-gap" as string]: `${Math.max(4, Math.round(BASE_COLUMN_GAP_PX * zoom))}px`,
-          }}
+          style={
+            {
+              "--building-tile": `${Math.round(BASE_TILE_PX * zoom)}px`,
+              "--building-gap": `${Math.max(4, Math.round(BASE_ROW_GAP_PX * zoom))}px`,
+              "--building-column-gap": `${Math.max(4, Math.round(BASE_COLUMN_GAP_PX * zoom))}px`,
+            } as React.CSSProperties
+          }
         >
           {layout.bands.map((band) => (
             <BuildingSetBand

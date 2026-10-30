@@ -40,7 +40,7 @@ const ModTagPicker = memo(() => {
 
   const onClose = useCallback(() => {
     dispatch(setIsModTagPickerOpen(false));
-  }, []);
+  }, [dispatch]);
 
   const onTagChange = (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
     if (!newValue) return;

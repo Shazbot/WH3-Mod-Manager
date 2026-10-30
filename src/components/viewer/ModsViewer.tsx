@@ -49,6 +49,55 @@ import { isLoadOrderRulesPackedFilePath } from "@/src/utility/loadOrderRulesFile
 import { getVisibleRecentPackCount, MAX_RECENT_PACKS, sanitizeRecentPackPaths } from "@/src/utility/recentPackPaths";
 import { useKeepMountedOnceActive } from "../useKeepMountedOnceActive";
 import type { GlobalSearchDbResult, GlobalSearchLocResult, GlobalSearchResult } from "@/src/globalSearch/types";
+import { runGuarded } from "../../utility/runGuarded";
+
+// Choosing a pack's tree sub-tab scans its whole file list, so the choice is cached per pack against the inputs it
+// reads. A plain memo over the three maps would rescan every open pack whenever any one of them changed, which is
+// once per table edit. The cache lives at module level, not in a ref, because render reads it; it is a pure memo of
+// its inputs, so sharing it between viewers is safe.
+type PreferredTreeTabArgs = Parameters<typeof getPreferredTreeTab>;
+const preferredTreeTabCache: Record<
+  string,
+  {
+    packData: PackViewData | undefined;
+    unsavedFiles: PackedFile[] | undefined;
+    openTabs: PreferredTreeTabArgs[0]["openTabs"];
+    activeTabId: string | null;
+    preferredTab: "db" | "files";
+  }
+> = {};
+
+const getPreferredTreeTabCached = (
+  packTab: PreferredTreeTabArgs[0],
+  packsDataByPath: PreferredTreeTabArgs[1],
+  unsavedPacksDataByPath: PreferredTreeTabArgs[2],
+): "db" | "files" => {
+  const packData = packsDataByPath[packTab.packPath];
+  const unsavedFiles = unsavedPacksDataByPath[packTab.packPath];
+  const cached = preferredTreeTabCache[packTab.packPath];
+  if (
+    cached &&
+    cached.packData === packData &&
+    cached.unsavedFiles === unsavedFiles &&
+    cached.openTabs === packTab.openTabs &&
+    cached.activeTabId === packTab.activeTabId
+  ) {
+    return cached.preferredTab;
+  }
+  const preferredTab = getPreferredTreeTab(packTab, packsDataByPath, unsavedPacksDataByPath);
+  preferredTreeTabCache[packTab.packPath] = {
+    packData,
+    unsavedFiles,
+    openTabs: packTab.openTabs,
+    activeTabId: packTab.activeTabId,
+    preferredTab,
+  };
+  return preferredTab;
+};
+
+const forgetPreferredTreeTab = (packPath: string) => {
+  delete preferredTreeTabCache[packPath];
+};
 
 type ViewerTabKind = "db" | "flow" | "file" | "loadOrderRules";
 
@@ -205,8 +254,8 @@ const ModsViewer = memo(() => {
   const staleViewerPackPaths = useAppSelector((state) => state.app.staleViewerPackPaths);
   const recentPackPaths = useAppSelector((state) => state.app.recentPackPaths);
   const dbPackName = gameToPackWithDBTablesName[currentGame] || "db.pack";
-  const selectCurrentPackData = useMemo(makeSelectCurrentPackData, []);
-  const selectCurrentPackUnsavedFiles = useMemo(makeSelectCurrentPackUnsavedFiles, []);
+  const selectCurrentPackData = useMemo(() => makeSelectCurrentPackData(), []);
+  const selectCurrentPackUnsavedFiles = useMemo(() => makeSelectCurrentPackUnsavedFiles(), []);
 
   const [isOpen, setIsOpen] = React.useState(true);
   const [isSaveAsModalOpen, setIsSaveAsModalOpen] = React.useState(false);
@@ -289,56 +338,18 @@ const ModsViewer = memo(() => {
     [recentPackPaths],
   );
 
-  const preferredTreeTabCacheRef = useRef<
-    Record<
-      string,
-      {
-        packData: PackViewData | undefined;
-        unsavedFiles: PackedFile[] | undefined;
-        openTabs: ViewerTab[];
-        activeTabId: string | null;
-        preferredTab: "db" | "files";
-      }
-    >
-  >({});
   // Choosing the tree's sub-tab scans a pack's whole file list, so it is cached per pack against the
   // inputs it actually reads. A plain memo over the three maps would rescan every open pack whenever
   // any one of them changed, which is once per table edit.
   const preferredTreeTabByPackPath = useMemo(() => {
-    const cache = preferredTreeTabCacheRef.current;
     const preferredTabs: Record<string, "db" | "files"> = {};
-
     for (const packTab of packTabs) {
-      const packData = packsDataByPath[packTab.packPath];
-      const unsavedFiles = unsavedPacksDataByPath[packTab.packPath];
-      const cached = cache[packTab.packPath];
-      if (
-        cached &&
-        cached.packData === packData &&
-        cached.unsavedFiles === unsavedFiles &&
-        cached.openTabs === packTab.openTabs &&
-        cached.activeTabId === packTab.activeTabId
-      ) {
-        preferredTabs[packTab.packPath] = cached.preferredTab;
-        continue;
-      }
-
-      const preferredTab = getPreferredTreeTab(packTab, packsDataByPath, unsavedPacksDataByPath);
-      cache[packTab.packPath] = {
-        packData,
-        unsavedFiles,
-        openTabs: packTab.openTabs,
-        activeTabId: packTab.activeTabId,
-        preferredTab,
-      };
-      preferredTabs[packTab.packPath] = preferredTab;
+      preferredTabs[packTab.packPath] = getPreferredTreeTabCached(packTab, packsDataByPath, unsavedPacksDataByPath);
     }
-
     return preferredTabs;
   }, [packTabs, packsDataByPath, unsavedPacksDataByPath]);
 
   const treeViewRefs = useRef<Record<string, PackTablesTreeViewHandle | null>>({});
-  const treeViewRefCallbacksRef = useRef<Record<string, React.RefCallback<PackTablesTreeViewHandle>>>({});
   const viewerRootRef = useRef<HTMLDivElement>(null);
   const sidebarResizableRef = useRef<Resizable>(null);
   const fileMenuRef = useRef<HTMLDivElement>(null);
@@ -391,17 +402,6 @@ const ModsViewer = memo(() => {
   /** For outcomes worth confirming but not worth a click to dismiss, like a successful save. */
   const showToast = useCallback((message: string) => {
     setToast(message);
-  }, []);
-
-  const getTreeViewRef = useCallback((packPath: string) => {
-    const existingCallback = treeViewRefCallbacksRef.current[packPath];
-    if (existingCallback) return existingCallback;
-
-    const callback: React.RefCallback<PackTablesTreeViewHandle> = (handle) => {
-      treeViewRefs.current[packPath] = handle;
-    };
-    treeViewRefCallbacksRef.current[packPath] = callback;
-    return callback;
   }, []);
 
   useEffect(() => {
@@ -1059,181 +1059,187 @@ const ModsViewer = memo(() => {
       destinationFilePath?: string,
     ) => {
       setIsCopyProcessing(true);
-      try {
-        const sourceTableName = getDBTableNameForCopy(source.filePath);
-        if (sourceTableName && !overwriteExisting) {
-          const targetFileNames = await getTargetPackFileNames(targetPackPath);
-          if (targetFileNames) {
-            const hasTableName = (tableName: string) =>
-              [...targetFileNames].some((filePath) => {
-                const targetTableName = getDBTableNameForCopy(filePath);
-                return targetTableName?.toLowerCase() === tableName.toLowerCase();
-              });
+      return await runGuarded(
+        async () => {
+          const sourceTableName = getDBTableNameForCopy(source.filePath);
+          if (sourceTableName && !overwriteExisting) {
+            const targetFileNames = await getTargetPackFileNames(targetPackPath);
+            if (targetFileNames) {
+              const hasTableName = (tableName: string) =>
+                [...targetFileNames].some((filePath) => {
+                  const targetTableName = getDBTableNameForCopy(filePath);
+                  return targetTableName?.toLowerCase() === tableName.toLowerCase();
+                });
 
-            if (destinationFilePath) {
-              const destinationTableName = getDBTableNameForCopy(destinationFilePath);
-              if (destinationTableName && hasTableName(destinationTableName)) {
-                showDialog(
-                  (
-                    localized.viewerTableDestinationExists ||
-                    'The destination already contains a table named "{{name}}"'
-                  ).replace("{{name}}", destinationTableName),
-                  { title: localized.viewerTableAlreadyExists || "Table Already Exists" },
-                );
+              if (destinationFilePath) {
+                const destinationTableName = getDBTableNameForCopy(destinationFilePath);
+                if (destinationTableName && hasTableName(destinationTableName)) {
+                  showDialog(
+                    (
+                      localized.viewerTableDestinationExists ||
+                      'The destination already contains a table named "{{name}}"'
+                    ).replace("{{name}}", destinationTableName),
+                    { title: localized.viewerTableAlreadyExists || "Table Already Exists" },
+                  );
+                  return;
+                }
+              }
+
+              const hasSameTableName = !destinationFilePath && hasTableName(sourceTableName);
+              if (hasSameTableName) {
+                setCopyTableNameRequest({
+                  source,
+                  targetPackPath,
+                  openAfterCopy,
+                  tableName: sourceTableName,
+                  filePath: source.filePath,
+                  exactFileExists: [...targetFileNames].some(
+                    (filePath) => copyPackPathKey(filePath) === copyPackPathKey(source.filePath),
+                  ),
+                });
+                setCopyTableName(sourceTableName);
                 return;
               }
             }
-
-            const hasSameTableName = !destinationFilePath && hasTableName(sourceTableName);
-            if (hasSameTableName) {
-              setCopyTableNameRequest({
-                source,
-                targetPackPath,
-                openAfterCopy,
-                tableName: sourceTableName,
-                filePath: source.filePath,
-                exactFileExists: [...targetFileNames].some(
-                  (filePath) => copyPackPathKey(filePath) === copyPackPathKey(source.filePath),
-                ),
-              });
-              setCopyTableName(sourceTableName);
-              return;
-            }
           }
-        }
 
-        let result:
-          | {
-              success: boolean;
-              targetPackPath?: string;
-              filePath?: string;
-              overwriteRequired?: boolean;
-              tableNameRequired?: boolean;
-              tableName?: string;
-              error?: string;
+          let result:
+            | {
+                success: boolean;
+                targetPackPath?: string;
+                filePath?: string;
+                overwriteRequired?: boolean;
+                tableNameRequired?: boolean;
+                tableName?: string;
+                error?: string;
+              }
+            | undefined;
+
+          if (source.kind === "dbRows") {
+            if (!source.rows || !source.tableSchema) {
+              result = {
+                success: false,
+                error: localized.viewerSelectedRowsNoSchema || "The selected rows do not have a table schema",
+              };
+            } else {
+              const copiedFile: PackedFile = {
+                name: destinationFilePath || source.filePath,
+                file_size: 0,
+                start_pos: -1,
+                is_compressed: false,
+                schemaFields: source.rows.flat(),
+                tableSchema: source.tableSchema,
+                version: source.version,
+              };
+              const saveResult = await window.api?.saveDBTableEdits(targetPackPath, copiedFile);
+              result = saveResult?.success
+                ? { success: true, targetPackPath, filePath: copiedFile.name }
+                : {
+                    success: false,
+                    error: saveResult?.error || localized.viewerFailedToSaveCopiedRows || "Failed to save copied rows",
+                  };
             }
-          | undefined;
-
-        if (source.kind === "dbRows") {
-          if (!source.rows || !source.tableSchema) {
-            result = {
-              success: false,
-              error: localized.viewerSelectedRowsNoSchema || "The selected rows do not have a table schema",
-            };
+          } else if (destinationFilePath) {
+            result = await window.api?.copyPackedFileToPack(
+              source.packPath,
+              source.filePath,
+              targetPackPath,
+              overwriteExisting,
+              destinationFilePath,
+            );
           } else {
-            const copiedFile: PackedFile = {
-              name: destinationFilePath || source.filePath,
-              file_size: 0,
-              start_pos: -1,
-              is_compressed: false,
-              schemaFields: source.rows.flat(),
-              tableSchema: source.tableSchema,
-              version: source.version,
-            };
-            const saveResult = await window.api?.saveDBTableEdits(targetPackPath, copiedFile);
-            result = saveResult?.success
-              ? { success: true, targetPackPath, filePath: copiedFile.name }
-              : {
-                  success: false,
-                  error: saveResult?.error || localized.viewerFailedToSaveCopiedRows || "Failed to save copied rows",
-                };
+            result = await window.api?.copyPackedFileToPack(
+              source.packPath,
+              source.filePath,
+              targetPackPath,
+              overwriteExisting,
+            );
           }
-        } else if (destinationFilePath) {
-          result = await window.api?.copyPackedFileToPack(
-            source.packPath,
-            source.filePath,
-            targetPackPath,
-            overwriteExisting,
-            destinationFilePath,
-          );
-        } else {
-          result = await window.api?.copyPackedFileToPack(
-            source.packPath,
-            source.filePath,
-            targetPackPath,
-            overwriteExisting,
-          );
-        }
 
-        if (result?.tableNameRequired && !destinationFilePath && !overwriteExisting) {
-          setCopyTableNameRequest({
-            source,
-            targetPackPath,
-            openAfterCopy,
-            tableName: result.tableName || sourceTableName || "",
-            filePath: result.filePath || source.filePath,
-            exactFileExists: false,
-          });
-          setCopyTableName(result.tableName || sourceTableName || "");
-          return;
-        }
-        if (result?.overwriteRequired && !overwriteExisting) {
-          setCopyOverwriteRequest({
-            source,
-            targetPackPath,
-            openAfterCopy,
-            filePath: result.filePath || source.filePath,
-          });
-          return;
-        }
-        if (!result?.success) {
-          showDialog(
-            (localized.viewerFailedToCopyFile || "Failed to copy {{path}}: {{error}}")
-              .replace("{{path}}", source.filePath)
-              .replace("{{error}}", result?.error || localized.viewerUnknownError || "Unknown error"),
-            { title: localized.viewerCopyFailed || "Copy Failed" },
-          );
-          return;
-        }
+          if (result?.tableNameRequired && !destinationFilePath && !overwriteExisting) {
+            setCopyTableNameRequest({
+              source,
+              targetPackPath,
+              openAfterCopy,
+              tableName: result.tableName || sourceTableName || "",
+              filePath: result.filePath || source.filePath,
+              exactFileExists: false,
+            });
+            setCopyTableName(result.tableName || sourceTableName || "");
+            return;
+          }
+          if (result?.overwriteRequired && !overwriteExisting) {
+            setCopyOverwriteRequest({
+              source,
+              targetPackPath,
+              openAfterCopy,
+              filePath: result.filePath || source.filePath,
+            });
+            return;
+          }
+          if (!result?.success) {
+            showDialog(
+              (localized.viewerFailedToCopyFile || "Failed to copy {{path}}: {{error}}")
+                .replace("{{path}}", source.filePath)
+                .replace("{{error}}", result?.error || localized.viewerUnknownError || "Unknown error"),
+              { title: localized.viewerCopyFailed || "Copy Failed" },
+            );
+            return;
+          }
 
-        setCopyOverwriteRequest(null);
-        setCopyTableNameRequest(null);
-        setCopyTableName("");
-        if (!openAfterCopy) return;
+          setCopyOverwriteRequest(null);
+          setCopyTableNameRequest(null);
+          setCopyTableName("");
+          if (!openAfterCopy) return;
 
-        const copiedPackPath = result.targetPackPath || targetPackPath;
-        const copiedFilePath = result.filePath || destinationFilePath || source.filePath;
-        const targetWasAlreadyOpen = packTabs.some((packTab) => packTab.packPath === copiedPackPath);
-        if (!targetWasAlreadyOpen && !copiedPackPath.startsWith("memory://")) {
-          // This asks the main process to load the destination's file index and register its viewer
-          // tab. The local tab is opened immediately below so the copied file can be selected in the
-          // same interaction, even while that index is still arriving.
-          window.api?.requestOpenModInViewer(copiedPackPath);
-        }
-        openOrActivatePackTab(copiedPackPath);
+          const copiedPackPath = result.targetPackPath || targetPackPath;
+          const copiedFilePath = result.filePath || destinationFilePath || source.filePath;
+          const targetWasAlreadyOpen = packTabs.some((packTab) => packTab.packPath === copiedPackPath);
+          if (!targetWasAlreadyOpen && !copiedPackPath.startsWith("memory://")) {
+            // This asks the main process to load the destination's file index and register its viewer
+            // tab. The local tab is opened immediately below so the copied file can be selected in the
+            // same interaction, even while that index is still arriving.
+            window.api?.requestOpenModInViewer(copiedPackPath);
+          }
+          openOrActivatePackTab(copiedPackPath);
 
-        if ((source.kind === "db" || source.kind === "dbRows") && source.dbSelection) {
-          const copiedTable = parseDBTablePath(copiedFilePath);
-          handleOpenDBTable({
-            ...source.dbSelection,
-            ...(copiedTable
-              ? {
-                  dbFolder: copiedTable.dbFolder,
-                  dbName: copiedTable.dbName,
-                  dbSubname: copiedTable.dbSubname,
-                }
-              : {}),
-            packPath: copiedPackPath,
-          });
-        } else if (copiedFilePath.startsWith("whmmflows\\")) {
-          handleOpenFlowFile({ flowFile: copiedFilePath, packPath: copiedPackPath });
-        } else {
-          handleOpenPackedFile({ filePath: copiedFilePath, packPath: copiedPackPath });
-        }
-      } catch (error) {
-        console.error("Error copying packed file into another pack:", error);
-        showDialog(
-          (localized.viewerFailedToCopyFile || "Failed to copy {{path}}: {{error}}")
-            .replace("{{path}}", source.filePath)
-            .replace(
-              "{{error}}",
-              error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
-            ),
-          { title: localized.viewerCopyFailed || "Copy Failed" },
-        );
-      } finally {
-        setIsCopyProcessing(false);
-      }
+          if ((source.kind === "db" || source.kind === "dbRows") && source.dbSelection) {
+            const copiedTable = parseDBTablePath(copiedFilePath);
+            handleOpenDBTable({
+              ...source.dbSelection,
+              ...(copiedTable
+                ? {
+                    dbFolder: copiedTable.dbFolder,
+                    dbName: copiedTable.dbName,
+                    dbSubname: copiedTable.dbSubname,
+                  }
+                : {}),
+              packPath: copiedPackPath,
+            });
+          } else if (copiedFilePath.startsWith("whmmflows\\")) {
+            handleOpenFlowFile({ flowFile: copiedFilePath, packPath: copiedPackPath });
+          } else {
+            handleOpenPackedFile({ filePath: copiedFilePath, packPath: copiedPackPath });
+          }
+        },
+        {
+          onError: (error: any) => {
+            console.error("Error copying packed file into another pack:", error);
+            showDialog(
+              (localized.viewerFailedToCopyFile || "Failed to copy {{path}}: {{error}}")
+                .replace("{{path}}", source.filePath)
+                .replace(
+                  "{{error}}",
+                  error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
+                ),
+              { title: localized.viewerCopyFailed || "Copy Failed" },
+            );
+          },
+          onFinally: () => {
+            setIsCopyProcessing(false);
+          },
+        },
+      );
     },
     [
       handleOpenDBTable,
@@ -1261,50 +1267,56 @@ const ModsViewer = memo(() => {
     async (items: PackImportItem[]) => {
       if (!importConflictRequest || isImportProcessing) return;
       setIsImportProcessing(true);
-      try {
-        const result = await window.api?.applyPackImportFromDisk?.(importConflictRequest.packPath, items);
-        const errors = [
-          ...importConflictRequest.plan.errors.map((error) => `${error.diskPath || "Import"}: ${error.message}`),
-          ...(result?.errors ?? []).map(
-            (error) => `${error.diskPath || localized.viewerImport || "Import"}: ${error.message}`,
-          ),
-        ];
-        if (!result?.success && errors.length === 0) {
-          errors.push(localized.viewerImportUnknownError || "Unknown import error");
-        }
-        if (errors.length > 0) {
-          showDialog(
-            (
-              localized.viewerImportedWithErrors ||
-              "Imported {{imported}} file(s), but {{failed}} file(s) failed:\n{{errors}}"
-            )
-              .replace("{{imported}}", String(result?.importedCount ?? 0))
-              .replace("{{failed}}", String(errors.length))
-              .replace("{{errors}}", errors.join("\n")),
-            { title: localized.viewerImportFinishedWithErrors || "Import Finished With Errors" },
-          );
-        } else {
-          showDialog(
-            (localized.viewerImportedSuccess || "Imported {{count}} file(s). Press Save to write the pack.").replace(
-              "{{count}}",
-              String(result?.importedCount ?? 0),
+      await runGuarded(
+        async () => {
+          const result = await window.api?.applyPackImportFromDisk?.(importConflictRequest.packPath, items);
+          const errors = [
+            ...importConflictRequest.plan.errors.map((error) => `${error.diskPath || "Import"}: ${error.message}`),
+            ...(result?.errors ?? []).map(
+              (error) => `${error.diskPath || localized.viewerImport || "Import"}: ${error.message}`,
             ),
-            { title: localized.viewerImportComplete || "Import Complete" },
-          );
-        }
-      } catch (error) {
-        console.error("Error importing files after conflict confirmation:", error);
-        showDialog(
-          (localized.viewerErrorImportingPackedFiles || "Error importing packed files: {{error}}").replace(
-            "{{error}}",
-            error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
-          ),
-          { title: localized.viewerImportFailed || "Import Failed" },
-        );
-      } finally {
-        setIsImportProcessing(false);
-        setImportConflictRequest(null);
-      }
+          ];
+          if (!result?.success && errors.length === 0) {
+            errors.push(localized.viewerImportUnknownError || "Unknown import error");
+          }
+          if (errors.length > 0) {
+            showDialog(
+              (
+                localized.viewerImportedWithErrors ||
+                "Imported {{imported}} file(s), but {{failed}} file(s) failed:\n{{errors}}"
+              )
+                .replace("{{imported}}", String(result?.importedCount ?? 0))
+                .replace("{{failed}}", String(errors.length))
+                .replace("{{errors}}", errors.join("\n")),
+              { title: localized.viewerImportFinishedWithErrors || "Import Finished With Errors" },
+            );
+          } else {
+            showDialog(
+              (localized.viewerImportedSuccess || "Imported {{count}} file(s). Press Save to write the pack.").replace(
+                "{{count}}",
+                String(result?.importedCount ?? 0),
+              ),
+              { title: localized.viewerImportComplete || "Import Complete" },
+            );
+          }
+        },
+        {
+          onError: (error: any) => {
+            console.error("Error importing files after conflict confirmation:", error);
+            showDialog(
+              (localized.viewerErrorImportingPackedFiles || "Error importing packed files: {{error}}").replace(
+                "{{error}}",
+                error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
+              ),
+              { title: localized.viewerImportFailed || "Import Failed" },
+            );
+          },
+          onFinally: () => {
+            setIsImportProcessing(false);
+            setImportConflictRequest(null);
+          },
+        },
+      );
     },
     [importConflictRequest, isImportProcessing, localized, showDialog],
   );
@@ -1367,8 +1379,9 @@ const ModsViewer = memo(() => {
   }, [packTabs, packsDataByPath]);
 
   const handleCloseTab = useCallback(
-    (tabId: string, packPath = activePackPathRef.current) => {
-      const targetPackPath = packPath;
+    (tabId: string, packPath?: string) => {
+      // Resolved here rather than as a default parameter, which React Compiler cannot compile.
+      const targetPackPath = packPath === undefined ? activePackPathRef.current : packPath;
       if (!targetPackPath) return;
       const targetPackTab = packTabs.find((packTab) => packTab.packPath === targetPackPath);
       if (targetPackTab?.openTabs.length === 1 && targetPackTab.openTabs[0]?.id === tabId) {
@@ -1658,43 +1671,49 @@ const ModsViewer = memo(() => {
   const reloadPackFromDisk = useCallback(
     async (packPath: string) => {
       setIsReloadingPackPath(packPath);
-      try {
-        const result = await window.api?.reloadPackForViewer(packPath);
-        if (!result?.success || !result.packData) {
-          showDialog(
-            (localized.viewerReloadPackError || "Failed to reload pack: {{error}}").replace(
-              "{{error}}",
-              result?.error || localized.viewerUnknownError || "Unknown error",
-            ),
-            { title: localized.viewerReloadFailed || "Reload Failed" },
-          );
-          return false;
-        }
+      return await runGuarded(
+        async () => {
+          const result = await window.api?.reloadPackForViewer(packPath);
+          if (!result?.success || !result.packData) {
+            showDialog(
+              (localized.viewerReloadPackError || "Failed to reload pack: {{error}}").replace(
+                "{{error}}",
+                result?.error || localized.viewerUnknownError || "Unknown error",
+              ),
+              { title: localized.viewerReloadFailed || "Reload Failed" },
+            );
+            return false;
+          }
 
-        clearPackDataStoreForPack(packPath);
-        clearPreparedTableForPack(packPath);
-        removeTableHistoryEntries((entry) => entry.tab.packPath === packPath);
-        dispatch(removePackData(packPath));
-        dispatch(setPacksData([result.packData]));
-        dispatch(clearViewerPackStale(packPath));
-        setPackTabs((previous) =>
-          previous.map((packTab) =>
-            packTab.packPath === packPath ? { ...packTab, openTabs: [], activeTabId: null } : packTab,
-          ),
-        );
-        return true;
-      } catch (error) {
-        showDialog(
-          (localized.viewerReloadPackError || "Failed to reload pack: {{error}}").replace(
-            "{{error}}",
-            error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
-          ),
-          { title: localized.viewerReloadFailed || "Reload Failed" },
-        );
-        return false;
-      } finally {
-        setIsReloadingPackPath(null);
-      }
+          clearPackDataStoreForPack(packPath);
+          clearPreparedTableForPack(packPath);
+          removeTableHistoryEntries((entry) => entry.tab.packPath === packPath);
+          dispatch(removePackData(packPath));
+          dispatch(setPacksData([result.packData]));
+          dispatch(clearViewerPackStale(packPath));
+          setPackTabs((previous) =>
+            previous.map((packTab) =>
+              packTab.packPath === packPath ? { ...packTab, openTabs: [], activeTabId: null } : packTab,
+            ),
+          );
+          return true;
+        },
+        {
+          onError: (error: any) => {
+            showDialog(
+              (localized.viewerReloadPackError || "Failed to reload pack: {{error}}").replace(
+                "{{error}}",
+                error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
+              ),
+              { title: localized.viewerReloadFailed || "Reload Failed" },
+            );
+            return false;
+          },
+          onFinally: () => {
+            setIsReloadingPackPath(null);
+          },
+        },
+      );
     },
     [dispatch, localized, removeTableHistoryEntries, showDialog],
   );
@@ -1712,49 +1731,54 @@ const ModsViewer = memo(() => {
 
   const savePackNow = useCallback(
     async (packPath: string) => {
-      try {
-        const result = await window.api?.savePackWithUnsavedFiles(packPath);
-        if (result?.success) {
-          console.log("Pack saved successfully:", result.savedPath);
-          if (result.replacedOriginal !== false) {
-            // The main process invalidates its pack cache and sends the staged files as the new base
-            // data. Drop renderer-side parsed/prepared copies too, otherwise reference navigation or a
-            // later table switch can still read the pre-save snapshot.
-            clearPackDataStoreForPack(packPath);
-            clearPreparedTableForPack(packPath);
-            dispatch(clearViewerPackStale(packPath));
-          }
-          // A warning is something to read, so it keeps the dialog; a plain success does not.
-          if (result.warning) {
-            showDialog(
-              `${result.warning}\n\n${(localized.viewerSavedTo || "Saved to: {{path}}").replace("{{path}}", result.savedPath ?? "")}`,
-              { title: localized.viewerPackSaved || "Pack Saved" },
-            );
+      await runGuarded(
+        async () => {
+          const result = await window.api?.savePackWithUnsavedFiles(packPath);
+          if (result?.success) {
+            console.log("Pack saved successfully:", result.savedPath);
+            if (result.replacedOriginal !== false) {
+              // The main process invalidates its pack cache and sends the staged files as the new base
+              // data. Drop renderer-side parsed/prepared copies too, otherwise reference navigation or a
+              // later table switch can still read the pre-save snapshot.
+              clearPackDataStoreForPack(packPath);
+              clearPreparedTableForPack(packPath);
+              dispatch(clearViewerPackStale(packPath));
+            }
+            // A warning is something to read, so it keeps the dialog; a plain success does not.
+            if (result.warning) {
+              showDialog(
+                `${result.warning}\n\n${(localized.viewerSavedTo || "Saved to: {{path}}").replace("{{path}}", result.savedPath ?? "")}`,
+                { title: localized.viewerPackSaved || "Pack Saved" },
+              );
+            } else {
+              showToast(
+                (localized.viewerPackSavedTo || "Pack saved to: {{path}}").replace("{{path}}", result.savedPath ?? ""),
+              );
+            }
           } else {
-            showToast(
-              (localized.viewerPackSavedTo || "Pack saved to: {{path}}").replace("{{path}}", result.savedPath ?? ""),
+            console.error("Failed to save pack:", result?.error);
+            showDialog(
+              (localized.viewerSavePackError || "Failed to save pack: {{error}}").replace(
+                "{{error}}",
+                result?.error || localized.viewerUnknownError || "Unknown error",
+              ),
+              { title: localized.viewerSaveFailed || "Save Failed" },
             );
           }
-        } else {
-          console.error("Failed to save pack:", result?.error);
-          showDialog(
-            (localized.viewerSavePackError || "Failed to save pack: {{error}}").replace(
-              "{{error}}",
-              result?.error || localized.viewerUnknownError || "Unknown error",
-            ),
-            { title: localized.viewerSaveFailed || "Save Failed" },
-          );
-        }
-      } catch (error) {
-        console.error("Error saving pack:", error);
-        showDialog(
-          (localized.viewerSavePackException || "Error saving pack: {{error}}").replace(
-            "{{error}}",
-            error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
-          ),
-          { title: localized.viewerSaveFailed || "Save Failed" },
-        );
-      }
+        },
+        {
+          onError: (error: any) => {
+            console.error("Error saving pack:", error);
+            showDialog(
+              (localized.viewerSavePackException || "Error saving pack: {{error}}").replace(
+                "{{error}}",
+                error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
+              ),
+              { title: localized.viewerSaveFailed || "Save Failed" },
+            );
+          },
+        },
+      );
     },
     [dispatch, localized, showDialog, showToast],
   );
@@ -1793,80 +1817,91 @@ const ModsViewer = memo(() => {
 
       setIsSaveAsProcessing(true);
 
-      try {
-        const result = await window.api?.savePackAsWithUnsavedFiles(
-          activeViewerPackPath,
-          saveAsPackName.trim(),
-          saveAsDirectory,
-          overwriteExisting,
-        );
-        if (result?.alreadyExists) {
-          // Nothing was written; ask before replacing what is there.
-          setOverwriteConfirmPath(result.savedPath ?? "");
-        } else if (result?.success) {
-          console.log("Pack saved as successfully:", result.savedPath);
-          setIsSaveAsModalOpen(false);
-          setOverwriteConfirmPath(null);
-          setSaveAsPackName("");
-          setSaveAsDirectory(undefined);
-          if (result.warning) {
-            showDialog(
-              `${result.warning}\n\n${(localized.viewerPackPath || "Pack: {{path}}").replace("{{path}}", result.savedPath ?? "")}`,
-              {
-                title: localized.viewerPackSaved || "Pack Saved",
-              },
-            );
+      await runGuarded(
+        async () => {
+          const result = await window.api?.savePackAsWithUnsavedFiles(
+            activeViewerPackPath,
+            saveAsPackName.trim(),
+            saveAsDirectory,
+            overwriteExisting,
+          );
+          if (result?.alreadyExists) {
+            // Nothing was written; ask before replacing what is there.
+            setOverwriteConfirmPath(result.savedPath ?? "");
+          } else if (result?.success) {
+            console.log("Pack saved as successfully:", result.savedPath);
+            setIsSaveAsModalOpen(false);
+            setOverwriteConfirmPath(null);
+            setSaveAsPackName("");
+            setSaveAsDirectory(undefined);
+            if (result.warning) {
+              showDialog(
+                `${result.warning}\n\n${(localized.viewerPackPath || "Pack: {{path}}").replace("{{path}}", result.savedPath ?? "")}`,
+                {
+                  title: localized.viewerPackSaved || "Pack Saved",
+                },
+              );
+            } else {
+              showToast(
+                (localized.viewerPackSavedTo || "Pack saved to: {{path}}").replace("{{path}}", result.savedPath ?? ""),
+              );
+            }
           } else {
-            showToast(
-              (localized.viewerPackSavedTo || "Pack saved to: {{path}}").replace("{{path}}", result.savedPath ?? ""),
+            console.error("Failed to save pack as:", result?.error);
+            showDialog(
+              (localized.viewerSavePackAsError || "Failed to save pack as: {{error}}").replace(
+                "{{error}}",
+                result?.error || localized.viewerUnknownError || "Unknown error",
+              ),
+              { title: localized.viewerSaveFailed || "Save Failed" },
             );
           }
-        } else {
-          console.error("Failed to save pack as:", result?.error);
-          showDialog(
-            (localized.viewerSavePackAsError || "Failed to save pack as: {{error}}").replace(
-              "{{error}}",
-              result?.error || localized.viewerUnknownError || "Unknown error",
-            ),
-            { title: localized.viewerSaveFailed || "Save Failed" },
-          );
-        }
-      } catch (error) {
-        console.error("Error saving pack as:", error);
-        showDialog(
-          (localized.viewerSavePackAsException || "Error saving pack as: {{error}}").replace(
-            "{{error}}",
-            error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
-          ),
-          { title: localized.viewerSaveFailed || "Save Failed" },
-        );
-      } finally {
-        setIsSaveAsProcessing(false);
-      }
+        },
+        {
+          onError: (error: any) => {
+            console.error("Error saving pack as:", error);
+            showDialog(
+              (localized.viewerSavePackAsException || "Error saving pack as: {{error}}").replace(
+                "{{error}}",
+                error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
+              ),
+              { title: localized.viewerSaveFailed || "Save Failed" },
+            );
+          },
+          onFinally: () => {
+            setIsSaveAsProcessing(false);
+          },
+        },
+      );
     },
     [activeViewerPackPath, localized, saveAsDirectory, saveAsPackName, showDialog, showToast],
   );
 
   const handleSelectSaveAsDirectory = useCallback(async () => {
-    try {
-      const selectedDirectory = await window.api?.selectDirectory(saveAsDirectory);
-      if (selectedDirectory) {
-        setSaveAsDirectory(selectedDirectory);
-      }
-      // The folder dialog is parented on this window, but focus can still land on the main window
-      // when it closes, leaving the half-filled modal behind another window.
-      window.focus();
-      saveAsPackNameInputRef.current?.focus();
-    } catch (error) {
-      console.error("Error selecting directory:", error);
-      showDialog(
-        (localized.viewerDirectorySelectionError || "Error selecting directory: {{error}}").replace(
-          "{{error}}",
-          error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
-        ),
-        { title: localized.viewerDirectorySelectionFailed || "Directory Selection Failed" },
-      );
-    }
+    await runGuarded(
+      async () => {
+        const selectedDirectory = await window.api?.selectDirectory(saveAsDirectory);
+        if (selectedDirectory) {
+          setSaveAsDirectory(selectedDirectory);
+        }
+        // The folder dialog is parented on this window, but focus can still land on the main window
+        // when it closes, leaving the half-filled modal behind another window.
+        window.focus();
+        saveAsPackNameInputRef.current?.focus();
+      },
+      {
+        onError: (error: any) => {
+          console.error("Error selecting directory:", error);
+          showDialog(
+            (localized.viewerDirectorySelectionError || "Error selecting directory: {{error}}").replace(
+              "{{error}}",
+              error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
+            ),
+            { title: localized.viewerDirectorySelectionFailed || "Directory Selection Failed" },
+          );
+        },
+      },
+    );
   }, [localized, saveAsDirectory, showDialog]);
 
   const handleNewPack = () => {
@@ -1918,35 +1953,41 @@ const ModsViewer = memo(() => {
 
     setIsNewPackProcessing(true);
 
-    try {
-      const packName = newPackName.trim();
-      const packPath = `memory://${packName}`;
+    await runGuarded(
+      async () => {
+        const packName = newPackName.trim();
+        const packPath = `memory://${packName}`;
 
-      const newPackData: PackViewData = {
-        packName: packName,
-        packPath: packPath,
-        tables: [],
-        packedFiles: {},
-      };
+        const newPackData: PackViewData = {
+          packName: packName,
+          packPath: packPath,
+          tables: [],
+          packedFiles: {},
+        };
 
-      dispatch(setPacksData([newPackData]));
-      openOrActivatePackTab(packPath);
+        dispatch(setPacksData([newPackData]));
+        openOrActivatePackTab(packPath);
 
-      console.log("Pack created in memory:", packName);
-      setIsNewPackModalOpen(false);
-      setNewPackName("");
-    } catch (error) {
-      console.error("Error creating pack:", error);
-      showDialog(
-        (localized.viewerCreatePackError || "Error creating pack: {{error}}").replace(
-          "{{error}}",
-          error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
-        ),
-        { title: localized.viewerCreateFailed || "Create Failed" },
-      );
-    } finally {
-      setIsNewPackProcessing(false);
-    }
+        console.log("Pack created in memory:", packName);
+        setIsNewPackModalOpen(false);
+        setNewPackName("");
+      },
+      {
+        onError: (error: any) => {
+          console.error("Error creating pack:", error);
+          showDialog(
+            (localized.viewerCreatePackError || "Error creating pack: {{error}}").replace(
+              "{{error}}",
+              error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
+            ),
+            { title: localized.viewerCreateFailed || "Create Failed" },
+          );
+        },
+        onFinally: () => {
+          setIsNewPackProcessing(false);
+        },
+      },
+    );
   }, [dispatch, localized, newPackName, openOrActivatePackTab, showDialog]);
 
   const closePackTab = useCallback(
@@ -1967,9 +2008,8 @@ const ModsViewer = memo(() => {
       clearPackDataStoreForPack(packPath);
       clearPreparedTableForPack(packPath);
       // referencesHash is global to the renderer and is refreshed by the next pack data-store update.
-      delete preferredTreeTabCacheRef.current[packPath];
+      forgetPreferredTreeTab(packPath);
       delete treeViewRefs.current[packPath];
-      delete treeViewRefCallbacksRef.current[packPath];
       suppressDefaultTableOpenForPackPathsRef.current.delete(packPath);
       dispatch(removePackData(packPath));
       window.api?.viewerClosedPack?.(packPath);
@@ -2778,7 +2818,9 @@ const ModsViewer = memo(() => {
                         }
                       >
                         <PackTablesTreeView
-                          ref={getTreeViewRef(packTab.packPath)}
+                          ref={(handle) => {
+                            treeViewRefs.current[packTab.packPath] = handle;
+                          }}
                           packPath={packTab.packPath}
                           preferredTab={preferredTreeTabByPackPath[packTab.packPath] ?? "db"}
                           tableFilter={dbTableFilter}

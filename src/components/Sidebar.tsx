@@ -34,6 +34,7 @@ import { Modal } from "../flowbite";
 import { getConflictingStartposMods } from "../utility/startposConflicts";
 import { getEnabledMods } from "../modsHelpers";
 import { splitIgnoredMissingModDependencies } from "../utility/frontend/missingModDependencies";
+import { runGuarded } from "../utility/runGuarded";
 
 type OptionType = {
   value: string;
@@ -451,29 +452,34 @@ const Sidebar = memo(() => {
   };
 
   const getUpdateData = async () => {
-    try {
-      const appUpdateData = await window.api?.getUpdateData();
-      if (!appUpdateData) return;
-      if (appUpdateData.updateExists && appUpdateData.downloadURL) {
-        console.log("UPDATE EXISTS");
-        setIsUpdateAvailable(true);
-        setDownloadURL(appUpdateData.downloadURL);
+    await runGuarded(
+      async () => {
+        const appUpdateData = await window.api?.getUpdateData();
+        if (!appUpdateData) return;
+        if (appUpdateData.updateExists && appUpdateData.downloadURL) {
+          console.log("UPDATE EXISTS");
+          setIsUpdateAvailable(true);
+          setDownloadURL(appUpdateData.downloadURL);
 
-        if (appUpdateData.releaseNotesURL) {
-          setReleaseNotesURL(appUpdateData.releaseNotesURL);
-        }
+          if (appUpdateData.releaseNotesURL) {
+            setReleaseNotesURL(appUpdateData.releaseNotesURL);
+          }
 
-        if (updateNotificationTimeoutId.current) {
-          clearTimeout(updateNotificationTimeoutId.current);
+          if (updateNotificationTimeoutId.current) {
+            clearTimeout(updateNotificationTimeoutId.current);
+          }
+          updateNotificationTimeoutId.current = setTimeout(() => {
+            setIsUpdateAvailable(false);
+            updateNotificationTimeoutId.current = undefined;
+          }, 15000);
         }
-        updateNotificationTimeoutId.current = setTimeout(() => {
-          setIsUpdateAvailable(false);
-          updateNotificationTimeoutId.current = undefined;
-        }, 15000);
-      }
-    } catch (err) {
-      console.log(err);
-    }
+      },
+      {
+        onError: (err: any) => {
+          console.log(err);
+        },
+      },
+    );
   };
   useEffect(() => {
     getUpdateData();
@@ -611,14 +617,11 @@ const Sidebar = memo(() => {
     setIsWorkshopRepairModalOpen(false);
   };
 
-  const isDependencyEnabledByPackName = useCallback(
-    (reqId: string): boolean => {
-      const modInAllById = allMods.find((mod) => mod.workshopId == reqId);
-      if (!modInAllById) return false;
-      return enabledMods.some((enabledMod) => enabledMod.name == modInAllById.name);
-    },
-    [allMods, enabledMods],
-  );
+  const isDependencyEnabledByPackName = (reqId: string): boolean => {
+    const modInAllById = allMods.find((mod) => mod.workshopId == reqId);
+    if (!modInAllById) return false;
+    return enabledMods.some((enabledMod) => enabledMod.name == modInAllById.name);
+  };
 
   const allMissingModDependencies = enabledMods
     .filter((mod) => mod.reqModIdToName && mod.reqModIdToName.length > 0)

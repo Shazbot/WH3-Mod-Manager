@@ -19,7 +19,7 @@ const ModCustomization = memo(() => {
 
   const closePanel = useCallback(() => {
     dispatch(setModBeingCustomized(undefined));
-  }, []);
+  }, [dispatch]);
 
   const [isSpinnerClosed, setIsSpinnerClosed] = useState(false);
   const [modsMergeSort, setModsMergeSort] = useState<ModCustomizationSorts>("UnitKey");

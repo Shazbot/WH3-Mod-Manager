@@ -45,6 +45,7 @@ import type {
   UnitViewerCharacterExperienceData,
   UnitViewerLordOption,
 } from "../unitViewer/types";
+import { runGuarded, runGuardedSync } from "../utility/runGuarded";
 
 type EsfMapTabProps = {
   isActive?: boolean;
@@ -403,7 +404,9 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   );
   const signatureToRequest = useDeferredWhileInactive(isActive, enabledModsSignature);
   const enabledModsRef = useRef(enabledMods);
-  enabledModsRef.current = enabledMods;
+  useLayoutEffect(() => {
+    enabledModsRef.current = enabledMods;
+  });
   const staticCanvasRef = useRef<HTMLCanvasElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mapSurfaceRef = useRef<HTMLDivElement>(null);
@@ -660,7 +663,9 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     () => JSON.stringify([...characterThumbnailPaths].sort()),
     [characterThumbnailPaths],
   );
-  characterThumbnailPathsRef.current = characterThumbnailPaths;
+  useLayoutEffect(() => {
+    characterThumbnailPathsRef.current = characterThumbnailPaths;
+  });
   const resolvedCharacterThumbnailPathSet = useMemo(
     () => new Set(resolvedCharacterThumbnailPaths),
     [resolvedCharacterThumbnailPaths],
@@ -1127,138 +1132,158 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const exportOwnership = async () => {
     if (!map || isTransferringOwnership) return;
     setIsTransferringOwnership(true);
-    try {
-      let extendedExport;
-      try {
-        if (
-          extendedState &&
-          extendedDelta?.actions.some((action) => action.type === "update_character") &&
-          !characterExperience
-        ) {
-          throw new Error("Character experience data is still loading; try exporting again in a moment.");
+    await runGuarded(
+      async () => {
+        let failed = false;
+        const extendedExport = runGuardedSync(
+          () => {
+            if (
+              extendedState &&
+              extendedDelta?.actions.some((action) => action.type === "update_character") &&
+              !characterExperience
+            ) {
+              throw new Error("Character experience data is still loading; try exporting again in a moment.");
+            }
+            const exportDelta =
+              extendedState && characterExperience
+                ? buildExtendedMapDelta(extendedState.baseline, extendedState.document, {
+                    campaign: map.campaignKey,
+                    characterExperience,
+                    pendingConfederations: extendedState.pendingConfederations,
+                  })
+                : extendedDelta;
+            return extendedState && exportDelta ? buildExtendedMapExport(regionOwnership(map), exportDelta) : undefined;
+          },
+          {
+            onError: (reason) => {
+              failed = true;
+              showOwnershipToast("warning", [reason instanceof Error ? reason.message : String(reason)]);
+            },
+          },
+        );
+        if (failed) return;
+        const result = await window.api?.exportRegionOwnership(
+          extendedExport ? formatExtendedMapExportJson(extendedExport) : formatRegionOwnershipJson(map),
+          extendedExport ? "map_extended_out.json" : "map.json",
+        );
+        if (!result || result.canceled) return;
+        if (result.success) {
+          showOwnershipToast("success", [
+            mapMessage(
+              extendedExport ? "mapExtendedExported" : "mapOwnershipExported",
+              extendedExport ? "Extended map changes written to {{path}}" : "Region ownership written to {{path}}",
+              { path: result.savedPath ?? "" },
+            ),
+          ]);
+        } else {
+          showOwnershipToast("warning", [
+            mapMessage("mapOwnershipExportFailed", "Could not write the region ownership file: {{error}}", {
+              error: result.error ?? "",
+            }),
+          ]);
         }
-        const exportDelta =
-          extendedState && characterExperience
-            ? buildExtendedMapDelta(extendedState.baseline, extendedState.document, {
-                campaign: map.campaignKey,
-                characterExperience,
-                pendingConfederations: extendedState.pendingConfederations,
-              })
-            : extendedDelta;
-        extendedExport =
-          extendedState && exportDelta ? buildExtendedMapExport(regionOwnership(map), exportDelta) : undefined;
-      } catch (reason) {
-        showOwnershipToast("warning", [reason instanceof Error ? reason.message : String(reason)]);
-        return;
-      }
-      const result = await window.api?.exportRegionOwnership(
-        extendedExport ? formatExtendedMapExportJson(extendedExport) : formatRegionOwnershipJson(map),
-        extendedExport ? "map_extended_out.json" : "map.json",
-      );
-      if (!result || result.canceled) return;
-      if (result.success) {
-        showOwnershipToast("success", [
-          mapMessage(
-            extendedExport ? "mapExtendedExported" : "mapOwnershipExported",
-            extendedExport ? "Extended map changes written to {{path}}" : "Region ownership written to {{path}}",
-            { path: result.savedPath ?? "" },
-          ),
-        ]);
-      } else {
-        showOwnershipToast("warning", [
-          mapMessage("mapOwnershipExportFailed", "Could not write the region ownership file: {{error}}", {
-            error: result.error ?? "",
-          }),
-        ]);
-      }
-    } finally {
-      setIsTransferringOwnership(false);
-    }
+      },
+      {
+        onFinally: () => {
+          setIsTransferringOwnership(false);
+        },
+      },
+    );
   };
 
   const importOwnership = async () => {
     if (!baseMap || isTransferringOwnership) return;
     setIsTransferringOwnership(true);
-    try {
-      const result = await window.api?.importRegionOwnership();
-      if (!result || result.canceled) return;
+    await runGuarded(
+      async () => {
+        const result = await window.api?.importRegionOwnership();
+        if (!result || result.canceled) return;
 
-      const importFailed = (reason: string) =>
-        showOwnershipToast("warning", [
-          mapMessage("mapOwnershipImportFailed", "Could not read the region ownership file: {{error}}", {
-            error: reason,
-          }),
-        ]);
-      if (!result.success || result.text === undefined) {
-        importFailed(result.error ?? mapText("mapOwnershipImportUnknownError", "Unknown error"));
-        return;
-      }
-      const detected = parseMapFile(result.text);
-      if ("error" in detected) {
-        importFailed(detected.error);
-        return;
-      }
-      const ownership =
-        detected.format === "legacy"
-          ? detected.ownership
-          : Object.fromEntries(detected.document.regions.map((region) => [region.region, region.faction]));
-      const { edits, unknownRegions, unknownFactions } = ownershipEditsFromImport(baseMap, ownership, baseMap.factions);
-      if (detected.format === "extended") {
-        const importedMap = applyOwnershipEdits(baseMap, edits, factionsByKey);
-        setExtendedImportUndo(captureExtendedMapImportUndo());
-        setOwnershipBaseline(regionOwnership(importedMap));
-        setOwnershipEdits({});
-        setEditHistory([]);
-        setExtendedState(createExtendedMapEditState(detected.document));
-        setExtendedHistory([]);
-        setSelectedCharacterKey(undefined);
-        setSelectedFactionKey(undefined);
-        setShowCharacters(true);
-      } else {
-        pushEditHistory();
-        setOwnershipBaseline({});
-        setOwnershipEdits(edits);
-        setExtendedImportUndo(undefined);
-        setExtendedState(undefined);
-        setExtendedHistory([]);
-        setSelectedCharacterKey(undefined);
-        setSelectedFactionKey(undefined);
-        setShowCharacters(false);
-      }
+        const importFailed = (reason: string) =>
+          showOwnershipToast("warning", [
+            mapMessage("mapOwnershipImportFailed", "Could not read the region ownership file: {{error}}", {
+              error: reason,
+            }),
+          ]);
+        if (!result.success || result.text === undefined) {
+          importFailed(result.error ?? mapText("mapOwnershipImportUnknownError", "Unknown error"));
+          return;
+        }
+        const detected = parseMapFile(result.text);
+        if ("error" in detected) {
+          importFailed(detected.error);
+          return;
+        }
+        const ownership =
+          detected.format === "legacy"
+            ? detected.ownership
+            : Object.fromEntries(detected.document.regions.map((region) => [region.region, region.faction]));
+        const { edits, unknownRegions, unknownFactions } = ownershipEditsFromImport(
+          baseMap,
+          ownership,
+          baseMap.factions,
+        );
+        if (detected.format === "extended") {
+          const importedMap = applyOwnershipEdits(baseMap, edits, factionsByKey);
+          setExtendedImportUndo(captureExtendedMapImportUndo());
+          setOwnershipBaseline(regionOwnership(importedMap));
+          setOwnershipEdits({});
+          setEditHistory([]);
+          setExtendedState(createExtendedMapEditState(detected.document));
+          setExtendedHistory([]);
+          setSelectedCharacterKey(undefined);
+          setSelectedFactionKey(undefined);
+          setShowCharacters(true);
+        } else {
+          pushEditHistory();
+          setOwnershipBaseline({});
+          setOwnershipEdits(edits);
+          setExtendedImportUndo(undefined);
+          setExtendedState(undefined);
+          setExtendedHistory([]);
+          setSelectedCharacterKey(undefined);
+          setSelectedFactionKey(undefined);
+          setShowCharacters(false);
+        }
 
-      const messages = [
-        mapMessage(
-          "mapOwnershipImported",
-          detected.format === "extended"
-            ? "Imported extended map data and ownership for {{count}} region(s)."
-            : detected.format === "extended-export"
-              ? "Imported ownership and {{count}} extended action(s); action data is applied by the campaign importer."
-              : "Imported ownership for {{count}} region(s).",
-          {
-            count: detected.format === "extended-export" ? detected.document.actions.length : Object.keys(edits).length,
-          },
-        ),
-      ];
-      if (unknownRegions.length > 0) {
-        messages.push(
-          mapMessage("mapOwnershipUnknownRegions", "{{count}} region(s) skipped, not in this campaign: {{keys}}", {
-            count: unknownRegions.length,
-            keys: unknownRegions.slice(0, 5).join(", "),
-          }),
-        );
-      }
-      if (unknownFactions.length > 0) {
-        messages.push(
-          mapMessage("mapOwnershipUnknownFactions", "{{count}} unknown faction key(s) kept as written: {{keys}}", {
-            count: unknownFactions.length,
-            keys: unknownFactions.slice(0, 5).join(", "),
-          }),
-        );
-      }
-      showOwnershipToast(unknownRegions.length + unknownFactions.length > 0 ? "warning" : "success", messages);
-    } finally {
-      setIsTransferringOwnership(false);
-    }
+        const messages = [
+          mapMessage(
+            "mapOwnershipImported",
+            detected.format === "extended"
+              ? "Imported extended map data and ownership for {{count}} region(s)."
+              : detected.format === "extended-export"
+                ? "Imported ownership and {{count}} extended action(s); action data is applied by the campaign importer."
+                : "Imported ownership for {{count}} region(s).",
+            {
+              count:
+                detected.format === "extended-export" ? detected.document.actions.length : Object.keys(edits).length,
+            },
+          ),
+        ];
+        if (unknownRegions.length > 0) {
+          messages.push(
+            mapMessage("mapOwnershipUnknownRegions", "{{count}} region(s) skipped, not in this campaign: {{keys}}", {
+              count: unknownRegions.length,
+              keys: unknownRegions.slice(0, 5).join(", "),
+            }),
+          );
+        }
+        if (unknownFactions.length > 0) {
+          messages.push(
+            mapMessage("mapOwnershipUnknownFactions", "{{count}} unknown faction key(s) kept as written: {{keys}}", {
+              count: unknownFactions.length,
+              keys: unknownFactions.slice(0, 5).join(", "),
+            }),
+          );
+        }
+        showOwnershipToast(unknownRegions.length + unknownFactions.length > 0 ? "warning" : "success", messages);
+      },
+      {
+        onFinally: () => {
+          setIsTransferringOwnership(false);
+        },
+      },
+    );
   };
 
   useEffect(() => {

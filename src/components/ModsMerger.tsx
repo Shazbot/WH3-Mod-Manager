@@ -138,7 +138,7 @@ const ModsMerger = React.memo(() => {
           !allDependencyPacks.some((packName) => packName == mod.name),
       );
     },
-    [mods],
+    [allDependencyPacks],
   );
 
   const onSelectNumModsChange = useCallback(
@@ -155,7 +155,7 @@ const ModsMerger = React.memo(() => {
         );
       }
     },
-    [modsToUse],
+    [modsToUse, modsWithoutDependencies],
   );
   const onSelectExistingMergerChange = useCallback(
     (newValue: SingleValue<ExistingMergerOptionType>, actionMeta: ActionMeta<ExistingMergerOptionType>) => {
@@ -174,7 +174,7 @@ const ModsMerger = React.memo(() => {
         );
       }
     },
-    [mergerMods],
+    [mergerMods, modsToUse, modsWithoutDependencies],
   );
 
   const options: NumModsOptionType[] = useMemo(
@@ -200,7 +200,7 @@ const ModsMerger = React.memo(() => {
       mods.filter((mod) => modsToMergeArray.some((modToMergeId) => modToMergeId == mod.workshopId)),
     );
     setIsOpen(false);
-  }, [modsToMerge]);
+  }, [mods, modsToMerge]);
 
   const toggleMergeSorting = useCallback(() => {
     if (modsMergeSort == "Merge") setModsMergeSort("MergeDesc");

@@ -1219,6 +1219,9 @@ const getDefaultFactionPreviewFaction = (context?: UnitPainterUnitVariantContext
 };
 
 const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
+  // This component drives a three.js scene imperatively, changing scene objects in place through refs, which
+  // React Compiler would treat as unchanged. Keep it uncompiled.
+  "use no memo";
   const {
     assetPath,
     animationProfile = "ground",

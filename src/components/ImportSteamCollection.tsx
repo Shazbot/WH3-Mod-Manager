@@ -3,6 +3,7 @@ import React, { memo, useContext, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { addToast, setIsImportSteamCollectionOpen } from "../appSlice";
 import localizationContext from "../localizationContext";
+import { runGuarded } from "../utility/runGuarded";
 
 const ImportSteamCollection = memo(() => {
   const dispatch = useAppDispatch();
@@ -39,34 +40,39 @@ const ImportSteamCollection = memo(() => {
 
   const onSteamCollectionURLChanged = async (steamCollectionURL: string) => {
     console.log("onSteamCollectionURLChanged");
-    try {
-      setSteamCollectionURL(steamCollectionURL);
-      if (steamCollectionURL == "") {
-        return;
-      }
-      const steamCollectionTitle = await window.api?.getSteamCollectionName(steamCollectionURL);
-      console.log("new:", steamCollectionTitle);
-      if (steamCollectionTitle && steamCollectionTitle != "") {
-        setPresetName(steamCollectionTitle);
-      } else {
-        dispatch(
-          addToast({
-            messages: ["loc:failedFetchingSteamCollection"],
-            startTime: Date.now(),
-            type: "warning",
-          }),
-        );
-      }
-    } catch (e) {
-      dispatch(
-        addToast({
-          messages: ["loc:failedFetchingSteamCollection"],
-          startTime: Date.now(),
-          type: "warning",
-        }),
-      );
-      console.log(e);
-    }
+    await runGuarded(
+      async () => {
+        setSteamCollectionURL(steamCollectionURL);
+        if (steamCollectionURL == "") {
+          return;
+        }
+        const steamCollectionTitle = await window.api?.getSteamCollectionName(steamCollectionURL);
+        console.log("new:", steamCollectionTitle);
+        if (steamCollectionTitle && steamCollectionTitle != "") {
+          setPresetName(steamCollectionTitle);
+        } else {
+          dispatch(
+            addToast({
+              messages: ["loc:failedFetchingSteamCollection"],
+              startTime: Date.now(),
+              type: "warning",
+            }),
+          );
+        }
+      },
+      {
+        onError: (e: any) => {
+          dispatch(
+            addToast({
+              messages: ["loc:failedFetchingSteamCollection"],
+              startTime: Date.now(),
+              type: "warning",
+            }),
+          );
+          console.log(e);
+        },
+      },
+    );
   };
 
   return (

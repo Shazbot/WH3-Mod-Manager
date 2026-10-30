@@ -3,6 +3,7 @@ import React, { useMemo, useState, memo, useCallback } from "react";
 import { useAppSelector } from "../hooks";
 import { useLocalizations } from "../localizationContext";
 import classNames from "classnames";
+import { runGuarded } from "../utility/runGuarded";
 
 export interface SaveGameProps {
   isOpen: boolean;
@@ -200,54 +201,59 @@ const SaveGame = memo((props: SaveGameProps) => {
 
   const onComparePacksClick = useCallback(
     async (saveName: string) => {
-      try {
-        const packNames = await window.api?.getListOfPacksInSave(saveName);
-        if (!packNames) return;
+      await runGuarded(
+        async () => {
+          const packNames = await window.api?.getListOfPacksInSave(saveName);
+          if (!packNames) return;
 
-        // Packs to ignore in comparisons
-        const ignoredPacks = new Set([
-          "data.pack",
-          "wh2_main.pack",
-          "wh2_main_vortex.pack",
-          "wh2_main_chaos.pack",
-          "wh3_main.pack",
-          "wh3_main_chaos.pack",
-          "wh3_main_combi.pack",
-          "three_kingdoms.pack",
-          "data_rome2.pack",
-          "attilla.pack",
-          "jap_campaign.pack",
-          "jap_loc.pack",
-          "patch.pack",
-          "main.pack",
-          "patch_1.pack",
-          "patch_2.pack",
-          "!!!!out.pack",
-        ]);
+          // Packs to ignore in comparisons
+          const ignoredPacks = new Set([
+            "data.pack",
+            "wh2_main.pack",
+            "wh2_main_vortex.pack",
+            "wh2_main_chaos.pack",
+            "wh3_main.pack",
+            "wh3_main_chaos.pack",
+            "wh3_main_combi.pack",
+            "three_kingdoms.pack",
+            "data_rome2.pack",
+            "attilla.pack",
+            "jap_campaign.pack",
+            "jap_loc.pack",
+            "patch.pack",
+            "main.pack",
+            "patch_1.pack",
+            "patch_2.pack",
+            "!!!!out.pack",
+          ]);
 
-        const enabledPacks = mods.filter((mod) => mod.isEnabled).map((mod) => mod.name);
+          const enabledPacks = mods.filter((mod) => mod.isEnabled).map((mod) => mod.name);
 
-        const packsInSaveSet = new Set(packNames);
-        const enabledPacksSet = new Set(enabledPacks);
+          const packsInSaveSet = new Set(packNames);
+          const enabledPacksSet = new Set(enabledPacks);
 
-        const common = packNames.filter((pack) => enabledPacksSet.has(pack));
-        const missingFromEnabled = packNames.filter((pack) => !enabledPacksSet.has(pack) && !ignoredPacks.has(pack));
-        const extraInEnabled = enabledPacks.filter((pack) => !packsInSaveSet.has(pack));
+          const common = packNames.filter((pack) => enabledPacksSet.has(pack));
+          const missingFromEnabled = packNames.filter((pack) => !enabledPacksSet.has(pack) && !ignoredPacks.has(pack));
+          const extraInEnabled = enabledPacks.filter((pack) => !packsInSaveSet.has(pack));
 
-        const comparison: PackComparison = {
-          saveName,
-          packsInSave: packNames,
-          enabledPacks,
-          missingFromEnabled,
-          extraInEnabled,
-          common,
-        };
+          const comparison: PackComparison = {
+            saveName,
+            packsInSave: packNames,
+            enabledPacks,
+            missingFromEnabled,
+            extraInEnabled,
+            common,
+          };
 
-        setPackComparison(comparison);
-        setIsComparisonModalOpen(true);
-      } catch (error) {
-        console.error("Failed to get packs from save:", error);
-      }
+          setPackComparison(comparison);
+          setIsComparisonModalOpen(true);
+        },
+        {
+          onError: (error: any) => {
+            console.error("Failed to get packs from save:", error);
+          },
+        },
+      );
     },
     [mods],
   );

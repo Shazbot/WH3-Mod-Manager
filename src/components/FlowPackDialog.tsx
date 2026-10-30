@@ -5,6 +5,7 @@ import { Modal } from "../flowbite";
 import { useAppDispatch } from "../hooks";
 import { useLocalizations } from "../localizationContext";
 import { normalizePackedFlowName, type FlowPackCatalogEntry } from "../nodeGraph/flowPackOperations";
+import { runGuarded } from "../utility/runGuarded";
 
 type FlowPackDialogMode = "load" | "save";
 
@@ -58,23 +59,29 @@ const FlowPackDialog: React.FC<FlowPackDialogProps> = ({
     setError(undefined);
     setFlowFiles([]);
     setSelectedFlowName("");
-    try {
-      const result = await window.api?.getFlowFilesFromPack(packPath);
-      if (requestId !== flowRequestId.current) return;
-      if (!result?.success) {
-        if (!tolerateMissing) setError(result?.error || "Failed to inspect the selected pack");
-        return;
-      }
-      const nextFlows = (result.flowFiles || []).toSorted((first, second) => first.name.localeCompare(second.name));
-      setFlowFiles(nextFlows);
-      setSelectedFlowName(nextFlows[0]?.name || "");
-    } catch (loadError) {
-      if (requestId === flowRequestId.current && !tolerateMissing) {
-        setError(loadError instanceof Error ? loadError.message : "Failed to inspect the selected pack");
-      }
-    } finally {
-      if (requestId === flowRequestId.current) setIsLoadingFlows(false);
-    }
+    await runGuarded(
+      async () => {
+        const result = await window.api?.getFlowFilesFromPack(packPath);
+        if (requestId !== flowRequestId.current) return;
+        if (!result?.success) {
+          if (!tolerateMissing) setError(result?.error || "Failed to inspect the selected pack");
+          return;
+        }
+        const nextFlows = (result.flowFiles || []).toSorted((first, second) => first.name.localeCompare(second.name));
+        setFlowFiles(nextFlows);
+        setSelectedFlowName(nextFlows[0]?.name || "");
+      },
+      {
+        onError: (loadError: any) => {
+          if (requestId === flowRequestId.current && !tolerateMissing) {
+            setError(loadError instanceof Error ? loadError.message : "Failed to inspect the selected pack");
+          }
+        },
+        onFinally: () => {
+          if (requestId === flowRequestId.current) setIsLoadingFlows(false);
+        },
+      },
+    );
   }, []);
 
   useEffect(() => {
@@ -152,37 +159,43 @@ const FlowPackDialog: React.FC<FlowPackDialogProps> = ({
 
     setIsSaving(true);
     setError(undefined);
-    try {
-      const result = await window.api?.saveFlowToPack(
-        selectedPackPath,
-        normalizedFlowName,
-        getFlowData(),
-        overwriteExisting,
-      );
-      if (result?.alreadyExists) {
-        setPendingOverwrite(true);
-        return;
-      }
-      if (!result?.success || !result.packPath || !result.flowName) {
-        setError(result?.error || "Failed to save the flow");
-        return;
-      }
+    await runGuarded(
+      async () => {
+        const result = await window.api?.saveFlowToPack(
+          selectedPackPath,
+          normalizedFlowName,
+          getFlowData(),
+          overwriteExisting,
+        );
+        if (result?.alreadyExists) {
+          setPendingOverwrite(true);
+          return;
+        }
+        if (!result?.success || !result.packPath || !result.flowName) {
+          setError(result?.error || "Failed to save the flow");
+          return;
+        }
 
-      dispatch(
-        addToast({
-          type: "success",
-          messages: [`Saved ${shortFlowName(result.flowName)} to ${result.packPath}`],
-          startTime: Date.now(),
-        }),
-      );
-      window.api?.getPackData(result.packPath);
-      onOpenFlow({ packPath: result.packPath, flowFile: result.flowName });
-      onClose();
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Failed to save the flow");
-    } finally {
-      setIsSaving(false);
-    }
+        dispatch(
+          addToast({
+            type: "success",
+            messages: [`Saved ${shortFlowName(result.flowName)} to ${result.packPath}`],
+            startTime: Date.now(),
+          }),
+        );
+        window.api?.getPackData(result.packPath);
+        onOpenFlow({ packPath: result.packPath, flowFile: result.flowName });
+        onClose();
+      },
+      {
+        onError: (saveError: any) => {
+          setError(saveError instanceof Error ? saveError.message : "Failed to save the flow");
+        },
+        onFinally: () => {
+          setIsSaving(false);
+        },
+      },
+    );
   };
 
   return (

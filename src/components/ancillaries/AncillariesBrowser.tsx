@@ -107,12 +107,13 @@ const AncillariesBrowser = memo(
       const sortWithinBucket = (ancillaries: AncillarySummary[]) => {
         if (disableUniquenessSorting) return ancillaries;
 
-        return [...ancillaries].sort(
-          (a, b) =>
-            (uniquenessGroupingOrder.get(a.uniquenessGrouping?.groupKey ?? "") ?? Number.MAX_SAFE_INTEGER) -
-              (uniquenessGroupingOrder.get(b.uniquenessGrouping?.groupKey ?? "") ?? Number.MAX_SAFE_INTEGER) ||
-            a.localizedName.localeCompare(b.localizedName),
-        );
+        const groupOrder = (ancillary: AncillarySummary) =>
+          uniquenessGroupingOrder.get(ancillary.uniquenessGrouping?.groupKey ?? "") ?? Number.MAX_SAFE_INTEGER;
+        return [...ancillaries].sort((a, b) => {
+          const byGroup = groupOrder(a) - groupOrder(b);
+          if (byGroup !== 0) return byGroup;
+          return a.localizedName.localeCompare(b.localizedName);
+        });
       };
       const byCategory = new Map<string, AncillarySummary[]>();
       for (const ancillary of matching) {

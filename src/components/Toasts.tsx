@@ -62,7 +62,7 @@ export const Toasts = memo(() => {
 
   const onToastClicked = useCallback((toast: Toast) => {
     dispatch(setToastDismissed(toast));
-  }, []);
+  }, [dispatch]);
 
   // const toasts = getTestToasts();
   const toasts = useAppSelector((state) => state.app.toasts);

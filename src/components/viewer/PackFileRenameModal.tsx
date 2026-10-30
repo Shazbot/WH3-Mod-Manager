@@ -13,6 +13,7 @@ import {
 import type { ExistingPackFilePaths } from "../../utility/packImportPlan";
 import { normalizePackFilePath, normalizePackFilePathKey } from "../../utility/packFilePathUtils";
 import { getParentPackFolder } from "../../utility/packFolderPaths";
+import { runGuarded } from "../../utility/runGuarded";
 
 type PackFileRenameModalProps = {
   show: boolean;
@@ -288,11 +289,16 @@ const PackFileRenameModal: React.FC<PackFileRenameModalProps> = ({
   const handleApply = async () => {
     if (!canApply) return;
     setIsApplying(true);
-    try {
-      await onApply(previewPlan.entries);
-    } finally {
-      setIsApplying(false);
-    }
+    await runGuarded(
+      async () => {
+        await onApply(previewPlan.entries);
+      },
+      {
+        onFinally: () => {
+          setIsApplying(false);
+        },
+      },
+    );
   };
 
   return (

@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, useLayoutEffect } from "react";
 import { Modal } from "../../flowbite";
 import { useAppSelector } from "../../hooks";
 import { useLocalizations } from "../../localizationContext";
@@ -42,7 +42,9 @@ const AncillariesTab = memo(({ isActive = true }: AncillariesTabProps) => {
   // the rebuild instead of running it; switching back releases the current signature.
   const signatureToRequest = useDeferredWhileInactive(isActive, enabledModsSignature);
   const enabledModsRef = useRef(enabledMods);
-  enabledModsRef.current = enabledMods;
+  useLayoutEffect(() => {
+    enabledModsRef.current = enabledMods;
+  });
 
   const [catalog, setCatalog] = useState<AncillariesCatalog>();
   const [detail, setDetail] = useState<AncillaryDetailModel>();

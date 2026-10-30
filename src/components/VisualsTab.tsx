@@ -9,6 +9,7 @@ import { AutoSizer, CellMeasurer, CellMeasurerCache, List, type ListRowProps } f
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark, faChevronRight } from "@fortawesome/free-solid-svg-icons";
 import VisualsModelPreview from "./VisualsModelPreview";
+import { runGuarded } from "../utility/runGuarded";
 
 type VisualsUnitEntry = {
   unitKey: string;
@@ -88,7 +89,11 @@ type VisualsPackOption = {
 };
 
 let nextVisualsTabId = 1;
+// Hands out the next id; components call this because React Compiler cannot compile `nextVisualsTabId++` on a module variable.
+const takeNextVisualsTabId = () => nextVisualsTabId++;
 let nextVisualsRequestId = 1;
+// Hands out the next id; components call this because React Compiler cannot compile `nextVisualsRequestId++` on a module variable.
+const takeNextVisualsRequestId = () => nextVisualsRequestId++;
 
 const collator = new Intl.Collator("en");
 const viewerModelPathRegex =
@@ -230,7 +235,9 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
   );
   const enabledModsKeyToRequest = useDeferredWhileInactive(isActive, enabledModsKey);
   const enabledModsRef = useRef(enabledMods);
-  enabledModsRef.current = enabledMods;
+  useLayoutEffect(() => {
+    enabledModsRef.current = enabledMods;
+  });
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -256,39 +263,45 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
       setIsLoadingUnits(true);
       setUnitsError(null);
       setViewerMessage(null);
-      try {
-        const result = await window.api?.getVisualsUnitsData(enabledModsRef.current);
-        if (isCancelled) return;
-        if (!result?.success || !result.sessionId || !result.units) {
-          setUnits([]);
-          setSessionId(null);
-          setUnitsError(result?.error || "Failed to load visuals units data");
+      await runGuarded(
+        async () => {
+          const result = await window.api?.getVisualsUnitsData(enabledModsRef.current);
+          if (isCancelled) return;
+          if (!result?.success || !result.sessionId || !result.units) {
+            setUnits([]);
+            setSessionId(null);
+            setUnitsError(result?.error || "Failed to load visuals units data");
+            if (shouldResetViewer) {
+              setTabs([]);
+              setActiveTabId(null);
+            }
+            setFileResults([]);
+            setFileResultsTotal(0);
+            return;
+          }
+
+          setUnits(result.units);
+          setSessionId(result.sessionId);
           if (shouldResetViewer) {
             setTabs([]);
             setActiveTabId(null);
           }
+          loadedEnabledModsKeyRef.current = enabledModsKeyToRequest;
           setFileResults([]);
           setFileResultsTotal(0);
-          return;
-        }
-
-        setUnits(result.units);
-        setSessionId(result.sessionId);
-        if (shouldResetViewer) {
-          setTabs([]);
-          setActiveTabId(null);
-        }
-        loadedEnabledModsKeyRef.current = enabledModsKeyToRequest;
-        setFileResults([]);
-        setFileResultsTotal(0);
-      } catch (error) {
-        if (isCancelled) return;
-        setUnits([]);
-        setSessionId(null);
-        setUnitsError(error instanceof Error ? error.message : "Failed to load visuals units data");
-      } finally {
-        if (!isCancelled) setIsLoadingUnits(false);
-      }
+        },
+        {
+          onError: (error: any) => {
+            if (isCancelled) return;
+            setUnits([]);
+            setSessionId(null);
+            setUnitsError(error instanceof Error ? error.message : "Failed to load visuals units data");
+          },
+          onFinally: () => {
+            if (!isCancelled) setIsLoadingUnits(false);
+          },
+        },
+      );
     };
 
     run();
@@ -596,11 +609,11 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
 
     setViewerMessage(null);
 
-    const requestId = nextVisualsRequestId++;
+    const requestId = takeNextVisualsRequestId();
     let targetTabId = activeTabId;
 
     if (mode === "new" || !activeTabId || tabs.length === 0) {
-      targetTabId = `visuals_tab_${nextVisualsTabId++}`;
+      targetTabId = `visuals_tab_${takeNextVisualsTabId()}`;
       const newTab: VisualsViewerTab = {
         id: targetTabId,
         label: getTabLabel(filePath),
@@ -877,24 +890,37 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
 
     setIsExtracting(true);
     setViewerMessage(null);
-    try {
-      const outputDirectory = await window.api?.selectDirectory();
-      if (!outputDirectory) return;
-      const extractVisualsFiles = window.api?.extractVisualsFilesToDirectory;
-      const result = excludeCommonTextures
-        ? await extractVisualsFiles?.(sessionId, outputDirectory, targetPaths, preserveFolders, preferredPackPath, true)
-        : await extractVisualsFiles?.(sessionId, outputDirectory, targetPaths, preserveFolders, preferredPackPath);
-      if (!result?.success) {
-        setViewerMessage(result?.error || "Failed to extract visual files.");
-        return;
-      }
-      const skippedMessage = result.skipped.length > 0 ? ` (${result.skipped.length} skipped)` : "";
-      setViewerMessage(`Extracted ${result.writtenCount} file(s) to: ${outputDirectory}${skippedMessage}`);
-    } catch (error) {
-      setViewerMessage(error instanceof Error ? error.message : "Failed to extract visual files.");
-    } finally {
-      setIsExtracting(false);
-    }
+    await runGuarded(
+      async () => {
+        const outputDirectory = await window.api?.selectDirectory();
+        if (!outputDirectory) return;
+        const extractVisualsFiles = window.api?.extractVisualsFilesToDirectory;
+        const result = excludeCommonTextures
+          ? await extractVisualsFiles?.(
+              sessionId,
+              outputDirectory,
+              targetPaths,
+              preserveFolders,
+              preferredPackPath,
+              true,
+            )
+          : await extractVisualsFiles?.(sessionId, outputDirectory, targetPaths, preserveFolders, preferredPackPath);
+        if (!result?.success) {
+          setViewerMessage(result?.error || "Failed to extract visual files.");
+          return;
+        }
+        const skippedMessage = result.skipped.length > 0 ? ` (${result.skipped.length} skipped)` : "";
+        setViewerMessage(`Extracted ${result.writtenCount} file(s) to: ${outputDirectory}${skippedMessage}`);
+      },
+      {
+        onError: (error: any) => {
+          setViewerMessage(error instanceof Error ? error.message : "Failed to extract visual files.");
+        },
+        onFinally: () => {
+          setIsExtracting(false);
+        },
+      },
+    );
   };
 
   const onExtractIsolatedContextAction = async () => {
@@ -908,31 +934,37 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
 
     setIsExtracting(true);
     setViewerMessage(null);
-    try {
-      const outputDirectory = await window.api?.selectDirectory();
-      if (!outputDirectory) return;
-      const result = await window.api?.extractVisualsFilesToDirectory(
-        sessionId,
-        outputDirectory,
-        [targetPath],
-        true,
-        preferredPackPath,
-        false,
-        true,
-      );
-      if (!result?.success) {
-        setViewerMessage(result?.error || "Failed to extract isolated visual files.");
-        return;
-      }
-      const skippedMessage = result.skipped.length > 0 ? ` (${result.skipped.length} skipped)` : "";
-      setViewerMessage(
-        `Extracted isolated asset tree (${result.writtenCount} file(s)) to: ${outputDirectory}${skippedMessage}`,
-      );
-    } catch (error) {
-      setViewerMessage(error instanceof Error ? error.message : "Failed to extract isolated visual files.");
-    } finally {
-      setIsExtracting(false);
-    }
+    await runGuarded(
+      async () => {
+        const outputDirectory = await window.api?.selectDirectory();
+        if (!outputDirectory) return;
+        const result = await window.api?.extractVisualsFilesToDirectory(
+          sessionId,
+          outputDirectory,
+          [targetPath],
+          true,
+          preferredPackPath,
+          false,
+          true,
+        );
+        if (!result?.success) {
+          setViewerMessage(result?.error || "Failed to extract isolated visual files.");
+          return;
+        }
+        const skippedMessage = result.skipped.length > 0 ? ` (${result.skipped.length} skipped)` : "";
+        setViewerMessage(
+          `Extracted isolated asset tree (${result.writtenCount} file(s)) to: ${outputDirectory}${skippedMessage}`,
+        );
+      },
+      {
+        onError: (error: any) => {
+          setViewerMessage(error instanceof Error ? error.message : "Failed to extract isolated visual files.");
+        },
+        onFinally: () => {
+          setIsExtracting(false);
+        },
+      },
+    );
   };
 
   const closeTab = (tabId: string) => {

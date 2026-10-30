@@ -782,18 +782,20 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ currentFile, currentPack, isAct
             `Loaded graph with ${hydratedGraph.nodes.length} nodes and ${hydratedGraph.edges.length} connections`,
           );
         },
-        (error) => {
-          console.error("Failed to load node graph:", error);
-          dispatch(
-            addToast({
-              type: "warning",
-              messages: [
-                localized.nodeEditorFailedToLoadNodeGraphFile ||
-                  "Failed to load the node graph file. Please check the file format.",
-              ],
-              startTime: Date.now(),
-            }),
-          );
+        {
+          onError: (error) => {
+            console.error("Failed to load node graph:", error);
+            dispatch(
+              addToast({
+                type: "warning",
+                messages: [
+                  localized.nodeEditorFailedToLoadNodeGraphFile ||
+                    "Failed to load the node graph file. Please check the file format.",
+                ],
+                startTime: Date.now(),
+              }),
+            );
+          },
         },
       );
     },

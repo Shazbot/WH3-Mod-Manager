@@ -177,9 +177,9 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
     const baseClass = "arrow";
     const classes = cx(
       baseClass,
-      { [`${baseClass}--closed`]: !isOpen },
-      { [`${baseClass}--open`]: isOpen },
-      { [`rotate-90`]: isOpen },
+      { "arrow--closed": !isOpen },
+      { "arrow--open": isOpen },
+      { "rotate-90": isOpen },
       className,
       "w-4",
       "h-4",

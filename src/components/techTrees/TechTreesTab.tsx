@@ -5,8 +5,11 @@ import { Resizable } from "re-resizable";
 import { Modal } from "../../flowbite/components/Modal/index";
 import TechTreeCanvas from "./TechTreeCanvas";
 import { useAppSelector } from "../../hooks";
+import { runGuarded } from "../../utility/runGuarded";
 
 let nextTabId = 1;
+// Hands out the next id; components call this because React Compiler cannot compile `nextTabId++` on a module variable.
+const takeNextTabId = () => nextTabId++;
 
 type TechTab = {
   id: string;
@@ -32,35 +35,40 @@ const TechTreesTab = memo(() => {
   useEffect(() => {
     const loadNodeSets = async () => {
       setIsLoadingSets(true);
-      try {
-        const fetchedSets = await window.api?.getTechnologyNodeSets();
-        if (!fetchedSets) return;
-        setNodeSets(fetchedSets);
-        const fetchedSetsByKey = new Map(fetchedSets.map((nodeSet) => [nodeSet.key, nodeSet]));
-        setTabs((previousTabs) => {
-          const refreshedTabs = previousTabs
-            .filter((tab) => tab.isBlank || fetchedSetsByKey.has(tab.setKey))
-            .map((tab) => {
-              if (tab.isBlank) return tab;
-              const nodeSet = fetchedSetsByKey.get(tab.setKey);
-              return nodeSet ? { ...tab, label: nodeSet.localizedName || nodeSet.key } : tab;
-            });
-          if (refreshedTabs.length > 0 || fetchedSets.length < 1) {
-            setActiveTabId((currentTabId) =>
-              currentTabId && refreshedTabs.some((tab) => tab.id === currentTabId)
-                ? currentTabId
-                : refreshedTabs[0]?.id || null,
-            );
-            return refreshedTabs;
-          }
-          const id = `tab_${nextTabId++}`;
-          const firstSet = fetchedSets[0];
-          setActiveTabId(id);
-          return [{ id, setKey: firstSet.key, label: firstSet.localizedName || firstSet.key }];
-        });
-      } finally {
-        setIsLoadingSets(false);
-      }
+      return await runGuarded(
+        async () => {
+          const fetchedSets = await window.api?.getTechnologyNodeSets();
+          if (!fetchedSets) return;
+          setNodeSets(fetchedSets);
+          const fetchedSetsByKey = new Map(fetchedSets.map((nodeSet) => [nodeSet.key, nodeSet]));
+          setTabs((previousTabs) => {
+            const refreshedTabs = previousTabs
+              .filter((tab) => tab.isBlank || fetchedSetsByKey.has(tab.setKey))
+              .map((tab) => {
+                if (tab.isBlank) return tab;
+                const nodeSet = fetchedSetsByKey.get(tab.setKey);
+                return nodeSet ? { ...tab, label: nodeSet.localizedName || nodeSet.key } : tab;
+              });
+            if (refreshedTabs.length > 0 || fetchedSets.length < 1) {
+              setActiveTabId((currentTabId) =>
+                currentTabId && refreshedTabs.some((tab) => tab.id === currentTabId)
+                  ? currentTabId
+                  : refreshedTabs[0]?.id || null,
+              );
+              return refreshedTabs;
+            }
+            const id = `tab_${takeNextTabId()}`;
+            const firstSet = fetchedSets[0];
+            setActiveTabId(id);
+            return [{ id, setKey: firstSet.key, label: firstSet.localizedName || firstSet.key }];
+          });
+        },
+        {
+          onFinally: () => {
+            setIsLoadingSets(false);
+          },
+        },
+      );
     };
     loadNodeSets();
   }, [currentLanguage, isUsingEnglishLocalizations]);
@@ -97,7 +105,7 @@ const TechTreesTab = memo(() => {
   const openSetInActiveTab = useCallback(
     (nodeSet: TechnologyNodeSetSummary) => {
       if (!activeTabId) {
-        const id = `tab_${nextTabId++}`;
+        const id = `tab_${takeNextTabId()}`;
         setTabs([{ id, setKey: nodeSet.key, label: nodeSet.localizedName || nodeSet.key }]);
         setActiveTabId(id);
       } else {
@@ -120,7 +128,7 @@ const TechTreesTab = memo(() => {
   );
 
   const openSetInNewTab = useCallback((nodeSet: TechnologyNodeSetSummary) => {
-    const id = `tab_${nextTabId++}`;
+    const id = `tab_${takeNextTabId()}`;
     setTabs((prev) => [...prev, { id, setKey: nodeSet.key, label: nodeSet.localizedName || nodeSet.key }]);
     setActiveTabId(id);
   }, []);
@@ -153,7 +161,7 @@ const TechTreesTab = memo(() => {
     (nodeSetName: string) => {
       const templateSetKey = tabs.find((tab) => tab.id === activeTabId && !tab.isBlank)?.setKey || nodeSets[0]?.key;
       if (!templateSetKey) return;
-      const id = `tab_${nextTabId++}`;
+      const id = `tab_${takeNextTabId()}`;
       setTabs((prev) => [
         ...prev,
         {

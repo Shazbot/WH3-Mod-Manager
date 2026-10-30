@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Modal } from "../flowbite/components/Modal/index";
 import { useLocalizations } from "../localizationContext";
 import type { Wh3AssetHostDecisionAction, Wh3AssetHostDecisionRequest } from "../wh3AssetHostClient";
+import { runGuarded } from "../utility/runGuarded";
 
 const Wh3AssetHostDecisionModal = () => {
   const localized = useLocalizations();
@@ -17,19 +18,25 @@ const Wh3AssetHostDecisionModal = () => {
 
       setIsResponding(true);
       setResponseError(null);
-      try {
-        const result = await window.api?.respondWh3AssetHostDecision(pendingRequest.requestId, action);
-        if (result?.success === false) {
-          setResponseError(result.error || "The asset-host decision could not be sent.");
-          return;
-        }
-        requestRef.current = null;
-        setRequest(null);
-      } catch (error) {
-        setResponseError(error instanceof Error ? error.message : "The asset-host decision could not be sent.");
-      } finally {
-        setIsResponding(false);
-      }
+      await runGuarded(
+        async () => {
+          const result = await window.api?.respondWh3AssetHostDecision(pendingRequest.requestId, action);
+          if (result?.success === false) {
+            setResponseError(result.error || "The asset-host decision could not be sent.");
+            return;
+          }
+          requestRef.current = null;
+          setRequest(null);
+        },
+        {
+          onError: (error: any) => {
+            setResponseError(error instanceof Error ? error.message : "The asset-host decision could not be sent.");
+          },
+          onFinally: () => {
+            setIsResponding(false);
+          },
+        },
+      );
     },
     [isResponding],
   );

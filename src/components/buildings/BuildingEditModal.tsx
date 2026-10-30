@@ -18,6 +18,7 @@ import type {
   BuildingsOption,
   BuildingsTile,
 } from "../../buildingsData/types";
+import { runGuarded } from "../../utility/runGuarded";
 
 export type BuildingEditModalProps = {
   tile: BuildingsTile;
@@ -250,15 +251,23 @@ const BuildingEditModal = memo(
 
     const copyInfoEntry = useCallback(
       async (entry: BuildingInfoEntry) => {
-        if (entry.value === undefined || entry.value === "") return;
-        try {
-          await copyTextToClipboard(entry.value);
-          setNote(
-            (localized.buildingsInfoCopied || "Copied {{label}} to the clipboard.").replace("{{label}}", entry.label),
-          );
-        } catch {
-          setNote((localized.buildingsInfoCopyFailed || "Could not copy {{label}}.").replace("{{label}}", entry.label));
-        }
+        const value = entry.value;
+        if (value === undefined || value === "") return;
+        await runGuarded(
+          async () => {
+            await copyTextToClipboard(value);
+            setNote(
+              (localized.buildingsInfoCopied || "Copied {{label}} to the clipboard.").replace("{{label}}", entry.label),
+            );
+          },
+          {
+            onError: (_error: any) => {
+              setNote(
+                (localized.buildingsInfoCopyFailed || "Could not copy {{label}}.").replace("{{label}}", entry.label),
+              );
+            },
+          },
+        );
       },
       [localized.buildingsInfoCopied, localized.buildingsInfoCopyFailed],
     );
@@ -390,39 +399,45 @@ const BuildingEditModal = memo(
     const cloneCai = async () => {
       setIsCloningCai(true);
       setNote(undefined);
-      try {
-        const response = await fetchCaiRows(caiSource);
-        if (!response.success || !response.rowsByTable) {
-          setNote(response.error || localized.buildingsCaiReadFailed || "Could not read that chain's CAI rows.");
-          return;
-        }
-        const rows = cloneCaiRows({
-          fromChainKey: caiSource,
-          toChainKey: tile.chainKey,
-          rowsByTable: response.rowsByTable,
-          fromSuperChain: response.superChain,
-        });
-        if (rows.length === 0) {
-          setNote(
-            (localized.buildingsCaiNoRows || "{{chain}} has no CAI rows of its own to copy.").replace(
-              "{{chain}}",
-              caiSource,
-            ),
+      await runGuarded(
+        async () => {
+          const response = await fetchCaiRows(caiSource);
+          if (!response.success || !response.rowsByTable) {
+            setNote(response.error || localized.buildingsCaiReadFailed || "Could not read that chain's CAI rows.");
+            return;
+          }
+          const rows = cloneCaiRows({
+            fromChainKey: caiSource,
+            toChainKey: tile.chainKey,
+            rowsByTable: response.rowsByTable,
+            fromSuperChain: response.superChain,
+          });
+          if (rows.length === 0) {
+            setNote(
+              (localized.buildingsCaiNoRows || "{{chain}} has no CAI rows of its own to copy.").replace(
+                "{{chain}}",
+                caiSource,
+              ),
+            );
+            return;
+          }
+          emit(
+            rows,
+            { ...numericIdCursors },
+            (localized.buildingsCaiRowsCopied || "Copied {{count}} CAI row(s).")
+              .replace("{{count}}", `${rows.length}`)
+              .replace("row(s)", rows.length === 1 ? "row" : "rows"),
           );
-          return;
-        }
-        emit(
-          rows,
-          { ...numericIdCursors },
-          (localized.buildingsCaiRowsCopied || "Copied {{count}} CAI row(s).")
-            .replace("{{count}}", `${rows.length}`)
-            .replace("row(s)", rows.length === 1 ? "row" : "rows"),
-        );
-      } catch (error) {
-        setNote(error instanceof Error ? error.message : String(error));
-      } finally {
-        setIsCloningCai(false);
-      }
+        },
+        {
+          onError: (error: any) => {
+            setNote(error instanceof Error ? error.message : String(error));
+          },
+          onFinally: () => {
+            setIsCloningCai(false);
+          },
+        },
+      );
     };
 
     return (

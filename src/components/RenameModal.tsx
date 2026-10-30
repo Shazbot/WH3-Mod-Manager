@@ -3,6 +3,7 @@ import { Modal } from "../flowbite";
 import { useAppSelector } from "../hooks";
 import { useLocalizations } from "../localizationContext";
 import { escapeRegExp } from "../utility/packFileRenamePlan";
+import { runGuarded } from "../utility/runGuarded";
 
 interface RenameModalProps {
   show: boolean;
@@ -111,22 +112,28 @@ const RenameModal: React.FC<RenameModalProps> = ({ show, onClose, mod, mods }) =
     if (!isDev && previewData.length === 0) return;
 
     setIsRenaming(true);
-    try {
-      await Promise.all(
-        targetMods.map((targetMod) =>
-          window.api?.renamePackedFiles(targetMod.path, searchRegex, replaceText, useRegex, isDev, pathFilter),
-        ),
-      );
+    await runGuarded(
+      async () => {
+        await Promise.all(
+          targetMods.map((targetMod) =>
+            window.api?.renamePackedFiles(targetMod.path, searchRegex, replaceText, useRegex, isDev, pathFilter),
+          ),
+        );
 
-      // Refresh the mod data or show success message
-      console.log("Rename operation completed successfully");
-      onClose();
-    } catch (error) {
-      console.error("Rename operation failed:", error);
-      // Show error message to user
-    } finally {
-      setIsRenaming(false);
-    }
+        // Refresh the mod data or show success message
+        console.log("Rename operation completed successfully");
+        onClose();
+      },
+      {
+        onError: (error: any) => {
+          console.error("Rename operation failed:", error);
+          // Show error message to user
+        },
+        onFinally: () => {
+          setIsRenaming(false);
+        },
+      },
+    );
   };
 
   useEffect(() => {

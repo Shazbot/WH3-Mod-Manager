@@ -67,6 +67,7 @@ import {
 import { selectConfigSavePayload } from "../config/configSavePayload";
 import { hideableMainWindowTabs } from "../utility/frontend/mainWindowTabs";
 import CompressionAnalysis from "./CompressionAnalysis";
+import { runGuarded } from "../utility/runGuarded";
 
 const cleanData = () => {
   window.api?.cleanData();
@@ -228,40 +229,46 @@ const OptionsDrawer = memo(() => {
     }
 
     setIsLoadingWorkshopStagingFolderInfo(true);
-    try {
-      const result = await getWorkshopModStagingInfo();
-      if (!result?.success) {
-        setWorkshopStagingFolderInfo({ size: 0, hasContents: false });
-        setWorkshopStagingFolderMessage({
-          message:
-            result?.error ||
-            formatWorkshopStagingError(
+    await runGuarded(
+      async () => {
+        const result = await getWorkshopModStagingInfo();
+        if (!result?.success) {
+          setWorkshopStagingFolderInfo({ size: 0, hasContents: false });
+          setWorkshopStagingFolderMessage({
+            message:
+              result?.error ||
+              formatWorkshopStagingError(
+                localized.automaticWorkshopStagingFolderSizeFailed,
+                "Could not read folder size.",
+                "Unknown error",
+              ),
+            isError: true,
+          });
+          return;
+        }
+
+        setWorkshopStagingFolderInfo({
+          size: Math.max(0, result.size || 0),
+          hasContents: result.hasContents ?? (result.size || 0) > 0,
+        });
+      },
+      {
+        onError: (error: any) => {
+          const detail = error instanceof Error ? error.message : String(error);
+          setWorkshopStagingFolderMessage({
+            message: formatWorkshopStagingError(
               localized.automaticWorkshopStagingFolderSizeFailed,
               "Could not read folder size.",
-              "Unknown error",
+              detail,
             ),
-          isError: true,
-        });
-        return;
-      }
-
-      setWorkshopStagingFolderInfo({
-        size: Math.max(0, result.size || 0),
-        hasContents: result.hasContents ?? (result.size || 0) > 0,
-      });
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      setWorkshopStagingFolderMessage({
-        message: formatWorkshopStagingError(
-          localized.automaticWorkshopStagingFolderSizeFailed,
-          "Could not read folder size.",
-          detail,
-        ),
-        isError: true,
-      });
-    } finally {
-      setIsLoadingWorkshopStagingFolderInfo(false);
-    }
+            isError: true,
+          });
+        },
+        onFinally: () => {
+          setIsLoadingWorkshopStagingFolderInfo(false);
+        },
+      },
+    );
   }, [localized.automaticWorkshopStagingFolderSizeFailed]);
 
   useEffect(() => {
@@ -271,18 +278,23 @@ const OptionsDrawer = memo(() => {
   const refreshWorkshopOptimizerCacheInfo = useCallback(async () => {
     const getInfo = window.api?.getWorkshopOptimizerCacheInfo;
     if (!getInfo) return;
-    try {
-      const result = await getInfo();
-      if (result?.success) {
-        setLastOptimizerRun(result.lastRun);
-        setWorkshopOptimizerCacheInfo({
-          size: Math.max(0, result.size || 0),
-          hasContents: result.hasContents ?? (result.size || 0) > 0,
-        });
-      }
-    } catch {
-      // The cache size is informational; the clear button simply stays hidden.
-    }
+    await runGuarded(
+      async () => {
+        const result = await getInfo();
+        if (result?.success) {
+          setLastOptimizerRun(result.lastRun);
+          setWorkshopOptimizerCacheInfo({
+            size: Math.max(0, result.size || 0),
+            hasContents: result.hasContents ?? (result.size || 0) > 0,
+          });
+        }
+      },
+      {
+        onError: (_error: any) => {
+          // The cache size is informational; the clear button simply stays hidden.
+        },
+      },
+    );
   }, []);
 
   useEffect(() => {
@@ -311,26 +323,34 @@ const OptionsDrawer = memo(() => {
       if (!clear) return;
       setIsClearingWorkshopOptimizerCache(true);
       setWorkshopStagingFolderMessage(undefined);
-      try {
-        const result = await clear(options);
-        setWorkshopStagingFolderMessage(
-          result?.success
-            ? { message: localized.workshopOptimizerCacheCleared || "Cleared optimized mods cache.", isError: false }
-            : {
-                message:
-                  result?.error || localized.workshopOptimizerCacheBusy || "Could not clear the optimized mods cache.",
-                isError: true,
-              },
-        );
-        await refreshWorkshopOptimizerCacheInfo();
-      } catch (error) {
-        setWorkshopStagingFolderMessage({
-          message: error instanceof Error ? error.message : String(error),
-          isError: true,
-        });
-      } finally {
-        setIsClearingWorkshopOptimizerCache(false);
-      }
+      await runGuarded(
+        async () => {
+          const result = await clear(options);
+          setWorkshopStagingFolderMessage(
+            result?.success
+              ? { message: localized.workshopOptimizerCacheCleared || "Cleared optimized mods cache.", isError: false }
+              : {
+                  message:
+                    result?.error ||
+                    localized.workshopOptimizerCacheBusy ||
+                    "Could not clear the optimized mods cache.",
+                  isError: true,
+                },
+          );
+          await refreshWorkshopOptimizerCacheInfo();
+        },
+        {
+          onError: (error: any) => {
+            setWorkshopStagingFolderMessage({
+              message: error instanceof Error ? error.message : String(error),
+              isError: true,
+            });
+          },
+          onFinally: () => {
+            setIsClearingWorkshopOptimizerCache(false);
+          },
+        },
+      );
     },
     [localized.workshopOptimizerCacheBusy, localized.workshopOptimizerCacheCleared, refreshWorkshopOptimizerCacheInfo],
   );
@@ -356,43 +376,49 @@ const OptionsDrawer = memo(() => {
 
     setIsClearingWorkshopStaging(true);
     setWorkshopStagingFolderMessage(undefined);
-    try {
-      const result = await clearWorkshopModStaging();
-      if (!result?.success) {
-        setWorkshopStagingFolderMessage({
-          message:
-            result?.code === "GAME_RUNNING"
-              ? localized.automaticWorkshopStagingGameRunning ||
-                "Cannot clear copied Workshop mods while the game is running. Close the game and try again."
-              : result?.error ||
-                formatWorkshopStagingError(
-                  localized.automaticWorkshopStagingClearFailed,
-                  "Could not clear copied Workshop mods.",
-                  "Unknown error",
-                ),
-          isError: true,
-        });
-        return;
-      }
+    await runGuarded(
+      async () => {
+        const result = await clearWorkshopModStaging();
+        if (!result?.success) {
+          setWorkshopStagingFolderMessage({
+            message:
+              result?.code === "GAME_RUNNING"
+                ? localized.automaticWorkshopStagingGameRunning ||
+                  "Cannot clear copied Workshop mods while the game is running. Close the game and try again."
+                : result?.error ||
+                  formatWorkshopStagingError(
+                    localized.automaticWorkshopStagingClearFailed,
+                    "Could not clear copied Workshop mods.",
+                    "Unknown error",
+                  ),
+            isError: true,
+          });
+          return;
+        }
 
-      setWorkshopStagingFolderMessage({
-        message: localized.automaticWorkshopStagingCleared || "Cleared copied Workshop mods.",
-        isError: false,
-      });
-      await refreshWorkshopStagingFolderInfo();
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      setWorkshopStagingFolderMessage({
-        message: formatWorkshopStagingError(
-          localized.automaticWorkshopStagingClearFailed,
-          "Could not clear copied Workshop mods.",
-          detail,
-        ),
-        isError: true,
-      });
-    } finally {
-      setIsClearingWorkshopStaging(false);
-    }
+        setWorkshopStagingFolderMessage({
+          message: localized.automaticWorkshopStagingCleared || "Cleared copied Workshop mods.",
+          isError: false,
+        });
+        await refreshWorkshopStagingFolderInfo();
+      },
+      {
+        onError: (error: any) => {
+          const detail = error instanceof Error ? error.message : String(error);
+          setWorkshopStagingFolderMessage({
+            message: formatWorkshopStagingError(
+              localized.automaticWorkshopStagingClearFailed,
+              "Could not clear copied Workshop mods.",
+              detail,
+            ),
+            isError: true,
+          });
+        },
+        onFinally: () => {
+          setIsClearingWorkshopStaging(false);
+        },
+      },
+    );
   }, [
     localized.automaticWorkshopStagingClearFailed,
     localized.automaticWorkshopStagingCleared,
@@ -490,30 +516,35 @@ const OptionsDrawer = memo(() => {
     async (customSourceId: string) => {
       setSyncingCustomFolderId(customSourceId);
       setModFolderMessage("");
-      try {
-        const result = await window.api?.syncWorkshopModsToCustomFolder({
-          customSourceId,
-          enabledWorkshopModNames: enabledMods.filter(isWorkshopMod).map((mod) => mod.name),
-        });
-        if (!result?.success) {
-          setModFolderMessage(result?.error || "Failed to update the custom mod folder.");
-          return;
-        }
+      await runGuarded(
+        async () => {
+          const result = await window.api?.syncWorkshopModsToCustomFolder({
+            customSourceId,
+            enabledWorkshopModNames: enabledMods.filter(isWorkshopMod).map((mod) => mod.name),
+          });
+          if (!result?.success) {
+            setModFolderMessage(result?.error || "Failed to update the custom mod folder.");
+            return;
+          }
 
-        const updatedCount = result.updated?.length || 0;
-        const addedCount = result.added?.length || 0;
-        const failedCount = result.failed?.length || 0;
-        const failureSuffix = failedCount ? ` ${failedCount} file(s) failed.` : "";
-        setModFolderMessage(
-          updatedCount === 0 && addedCount === 0
-            ? failedCount > 0
-              ? `Failed to copy ${failedCount} Workshop file(s).`
-              : "No Workshop updates or newly enabled Workshop mods were found."
-            : `Updated ${updatedCount} and added ${addedCount} Workshop mod(s).${failureSuffix}`,
-        );
-      } finally {
-        setSyncingCustomFolderId(undefined);
-      }
+          const updatedCount = result.updated?.length || 0;
+          const addedCount = result.added?.length || 0;
+          const failedCount = result.failed?.length || 0;
+          const failureSuffix = failedCount ? ` ${failedCount} file(s) failed.` : "";
+          setModFolderMessage(
+            updatedCount === 0 && addedCount === 0
+              ? failedCount > 0
+                ? `Failed to copy ${failedCount} Workshop file(s).`
+                : "No Workshop updates or newly enabled Workshop mods were found."
+              : `Updated ${updatedCount} and added ${addedCount} Workshop mod(s).${failureSuffix}`,
+          );
+        },
+        {
+          onFinally: () => {
+            setSyncingCustomFolderId(undefined);
+          },
+        },
+      );
     },
     [enabledMods],
   );

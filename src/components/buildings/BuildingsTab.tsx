@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, useLayoutEffect } from "react";
 import { autoUpdate, flip, offset, shift, useFloating } from "@floating-ui/react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import { useLocalizations } from "../../localizationContext";
@@ -76,7 +76,9 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
   // the rebuild instead of running it; switching back releases it and rebuilds once.
   const signatureToRequest = useDeferredWhileInactive(isActive, enabledModsSignature);
   const enabledModsRef = useRef(enabledMods);
-  enabledModsRef.current = enabledMods;
+  useLayoutEffect(() => {
+    enabledModsRef.current = enabledMods;
+  });
 
   const [catalog, setCatalog] = useState<BuildingsCatalog | undefined>();
   const [view, setView] = useState<BuildingsRegionView | undefined>();
@@ -103,20 +105,22 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
     middleware: [offset(12), flip(), shift({ padding: 8 })],
     whileElementsMounted: autoUpdate,
   });
+  // Destructured once: React Compiler treats later reads of `refs` in render as ref reads.
+  const { setFloating, setReference } = refs;
 
   const onTileHover = useCallback(
     (tile: BuildingsTile | undefined, element: HTMLElement | undefined) => {
       setHoveredTile(tile);
-      refs.setReference(element ?? null);
+      setReference(element ?? null);
     },
-    [refs],
+    [setReference],
   );
 
   // A new view replaces every tile, so anything still hovered is a tile that no longer exists.
   useEffect(() => {
     setHoveredTile(undefined);
-    refs.setReference(null);
-  }, [refs, view]);
+    setReference(null);
+  }, [setReference, view]);
 
   const deepClone = useBuildingsDeepClone(catalog?.dbPackPath);
   const closeDeepClone = deepClone.close;
@@ -599,7 +603,7 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
       {/* Keep the tooltip outside the board's z-0 stacking context so it can clear the filter dropdowns. */}
       {activeSubTab === "board" && hoveredTile && (
         <div
-          ref={refs.setFloating}
+          ref={setFloating}
           style={{ ...floatingStyles, zIndex: 60 }}
           className="pointer-events-none"
           role="tooltip"

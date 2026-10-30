@@ -35,6 +35,7 @@ import {
   higherPriorityDatabaseFile,
   higherPriorityPack,
 } from "../modCompat/compatViewModels";
+import { runGuarded } from "../utility/runGuarded";
 
 const matchTablePartOfFileName = /.*?\\(.*?)\\.*?/;
 const dbTableNameFromFileName = (fileName: string) => fileName.match(matchTablePartOfFileName)?.[1] || fileName;
@@ -67,25 +68,30 @@ const CompatScreen = memo(() => {
   const exportReport = useCallback(
     async (format: "json" | "html") => {
       setIsExportingReport(true);
-      try {
-        const modsChecked = useEnabledModsOnly ? enabledMods : sortedMods;
-        const reportMods = modsChecked.map((mod) => ({
-          name: mod.name,
-          isEnabled: mod.isEnabled,
-          loadOrder: mod.loadOrder ?? null,
-        }));
-        const reportText =
-          format === "html"
-            ? formatCompatReportHtml(packCollisions, reportMods, {
-                scopeLabel: useEnabledModsOnly ? "Enabled mods only" : "All discovered mods",
-              })
-            : formatCompatReport(packCollisions, reportMods);
-        const result = await window.api?.exportCompatReport(reportText, `compat-report.${format}`);
-        if (result?.success) console.log("compat report written to", result.savedPath);
-        else if (result && !result.canceled) console.error("compat report export failed:", result.error);
-      } finally {
-        setIsExportingReport(false);
-      }
+      await runGuarded(
+        async () => {
+          const modsChecked = useEnabledModsOnly ? enabledMods : sortedMods;
+          const reportMods = modsChecked.map((mod) => ({
+            name: mod.name,
+            isEnabled: mod.isEnabled,
+            loadOrder: mod.loadOrder ?? null,
+          }));
+          const reportText =
+            format === "html"
+              ? formatCompatReportHtml(packCollisions, reportMods, {
+                  scopeLabel: useEnabledModsOnly ? "Enabled mods only" : "All discovered mods",
+                })
+              : formatCompatReport(packCollisions, reportMods);
+          const result = await window.api?.exportCompatReport(reportText, `compat-report.${format}`);
+          if (result?.success) console.log("compat report written to", result.savedPath);
+          else if (result && !result.canceled) console.error("compat report export failed:", result.error);
+        },
+        {
+          onFinally: () => {
+            setIsExportingReport(false);
+          },
+        },
+      );
     },
     [packCollisions, enabledMods, sortedMods, useEnabledModsOnly],
   );
@@ -207,7 +213,7 @@ const CompatScreen = memo(() => {
   const groupedDisplayPackFileCollisions: Record<string, PackFileCollision[]> = {};
   for (const collision of filteredDisplayPackFileCollisions) {
     const topLevelFolder = topLevelFolderFromFileName(collision.fileName);
-    groupedDisplayPackFileCollisions[topLevelFolder] ||= [];
+    if (!groupedDisplayPackFileCollisions[topLevelFolder]) groupedDisplayPackFileCollisions[topLevelFolder] = [];
     groupedDisplayPackFileCollisions[topLevelFolder].push(collision);
   }
   const displayTopLevelFolders = Object.keys(groupedDisplayPackFileCollisions).sort(compareModNames);
@@ -215,7 +221,7 @@ const CompatScreen = memo(() => {
   const groupedDisplayPackTableCollisions: Record<string, PackTableCollision[]> = {};
   for (const collision of filteredDisplayPackTableCollisions) {
     const dbName = dbTableNameFromFileName(collision.fileName);
-    groupedDisplayPackTableCollisions[dbName] ||= [];
+    if (!groupedDisplayPackTableCollisions[dbName]) groupedDisplayPackTableCollisions[dbName] = [];
     groupedDisplayPackTableCollisions[dbName].push(collision);
   }
   const displayDbTableNames = Object.keys(groupedDisplayPackTableCollisions).sort(compareModNames);

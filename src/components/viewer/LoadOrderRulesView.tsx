@@ -16,6 +16,7 @@ import {
 } from "@/src/utility/loadOrderRulesFile";
 import { normalizeLoadOrderPackName } from "@/src/loadOrderRules";
 import selectStyle from "@/src/styles/selectStyle";
+import { runGuarded } from "../../utility/runGuarded";
 
 type PackNameOption = {
   value: string;
@@ -41,8 +42,8 @@ type LoadOrderRulesViewProps = {
  */
 const LoadOrderRulesView = memo(({ packPath, filePath, showDialog }: LoadOrderRulesViewProps) => {
   const localized: Record<string, string> = useContext(localizationContext);
-  const selectCurrentPackData = useMemo(makeSelectCurrentPackData, []);
-  const selectCurrentPackUnsavedFiles = useMemo(makeSelectCurrentPackUnsavedFiles, []);
+  const selectCurrentPackData = useMemo(() => makeSelectCurrentPackData(), []);
+  const selectCurrentPackUnsavedFiles = useMemo(() => makeSelectCurrentPackUnsavedFiles(), []);
   const packData = useAppSelector((state) => selectCurrentPackData(state, packPath));
   const unsavedFiles = useAppSelector((state) => selectCurrentPackUnsavedFiles(state, packPath));
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
@@ -68,13 +69,18 @@ const LoadOrderRulesView = memo(({ packPath, filePath, showDialog }: LoadOrderRu
     let isCancelled = false;
 
     const loadPackCatalog = async () => {
-      try {
-        const result = await window.api?.getViewerPackCatalog();
-        if (isCancelled || !result?.success) return;
-        setPackCatalog(result.packs ?? []);
-      } catch (catalogError) {
-        console.error("Load order rules: could not load the pack catalog:", catalogError);
-      }
+      await runGuarded(
+        async () => {
+          const result = await window.api?.getViewerPackCatalog();
+          if (isCancelled || !result?.success) return;
+          setPackCatalog(result.packs ?? []);
+        },
+        {
+          onError: (catalogError: any) => {
+            console.error("Load order rules: could not load the pack catalog:", catalogError);
+          },
+        },
+      );
     };
 
     void loadPackCatalog();

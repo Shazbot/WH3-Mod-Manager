@@ -14,6 +14,7 @@ import { GiSettingsKnobs } from "react-icons/gi";
 
 // Create lazy-loaded icon components for heavy icons
 import React from "react";
+import { runGuarded } from "../../utility/runGuarded";
 
 // Keep these imports explicit. A template-literal import creates a Webpack context rooted at
 // `react-icons`, which package exports do not expose as a directory and which breaks the renderer
@@ -76,17 +77,22 @@ export const LazyIcon = ({
 
   React.useEffect(() => {
     const loadIcon = async () => {
-      try {
-        const loadIconSet = iconSetLoaders[iconSet];
-        if (!loadIconSet) throw new Error(`Unknown icon set: ${iconSet}`);
-        const iconModule = (await loadIconSet()) as LazyIconModule;
-        const Icon = iconModule[iconName];
-        if (Icon) {
-          setIconComponent(() => Icon);
-        }
-      } catch (error) {
-        console.warn(`Failed to load icon ${iconName} from ${iconSet}:`, error);
-      }
+      await runGuarded(
+        async () => {
+          const loadIconSet = iconSetLoaders[iconSet];
+          if (!loadIconSet) throw new Error(`Unknown icon set: ${iconSet}`);
+          const iconModule = (await loadIconSet()) as LazyIconModule;
+          const Icon = iconModule[iconName];
+          if (Icon) {
+            setIconComponent(() => Icon);
+          }
+        },
+        {
+          onError: (error: any) => {
+            console.warn(`Failed to load icon ${iconName} from ${iconSet}:`, error);
+          },
+        },
+      );
     };
 
     loadIcon();

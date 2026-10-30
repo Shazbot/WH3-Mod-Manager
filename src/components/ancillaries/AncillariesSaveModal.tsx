@@ -8,6 +8,7 @@ import { LOC_TABLE, newRowsByTable, type AncillariesEditState } from "../../anci
 import { getPackNameFromPath } from "../../utility/packFileHelpers";
 import type { PackRowsByTable } from "../../utility/packRowsForSave";
 import type { DBVersion } from "../../packFileTypes";
+import { runGuarded } from "../../utility/runGuarded";
 
 export type AncillariesSaveModalProps = {
   state: AncillariesEditState;
@@ -61,111 +62,117 @@ const AncillariesSaveModal = memo(
     const save = async () => {
       setIsSaving(true);
       setResult(undefined);
-      try {
-        const isNew = target === "new";
-        const destination = isNew ? `memory://${newPackName.trim()}` : packPath;
-        if (!isNew && !destination) {
-          setResult({ kind: "error", message: localized.ancillariesSavePickPack || "Pick a pack to save into." });
-          return;
-        }
-        if (isNew && !newPackName.trim()) {
-          setResult({ kind: "error", message: localized.ancillariesSaveNameNewPack || "Give the new pack a name." });
-          return;
-        }
+      await runGuarded(
+        async () => {
+          const isNew = target === "new";
+          const destination = isNew ? `memory://${newPackName.trim()}` : packPath;
+          if (!isNew && !destination) {
+            setResult({ kind: "error", message: localized.ancillariesSavePickPack || "Pick a pack to save into." });
+            return;
+          }
+          if (isNew && !newPackName.trim()) {
+            setResult({ kind: "error", message: localized.ancillariesSaveNameNewPack || "Give the new pack a name." });
+            return;
+          }
 
-        let resolvedNewPackDirectory = newPackDirectory.trim();
-        if (isNew && !resolvedNewPackDirectory) {
-          resolvedNewPackDirectory = (await window.api?.getDataFolder()) ?? "";
-          if (!resolvedNewPackDirectory) {
+          let resolvedNewPackDirectory = newPackDirectory.trim();
+          if (isNew && !resolvedNewPackDirectory) {
+            resolvedNewPackDirectory = (await window.api?.getDataFolder()) ?? "";
+            if (!resolvedNewPackDirectory) {
+              setResult({
+                kind: "error",
+                message: localized.ancillariesSavePickFolder || "Pick a folder for the new pack.",
+              });
+              return;
+            }
+          }
+
+          let existingFileNames: string[] = [];
+          let existingRowsByTable: PackRowsByTable | undefined;
+          if (!isNew) {
+            if (skipDuplicateRows) {
+              const packData = await window.api?.getPackRowsForSave(
+                destination,
+                Object.keys(rowsByTable).filter((table) => table !== LOC_TABLE),
+                Boolean(rowsByTable[LOC_TABLE]),
+              );
+              if (!packData) {
+                setResult({
+                  kind: "error",
+                  message: localized.ancillariesSaveInspectFailed || "Could not inspect the target pack before saving.",
+                });
+                return;
+              }
+              existingFileNames = packData.fileNames;
+              existingRowsByTable = packData.rowsByTable;
+            } else {
+              // The target can be in the preset without ever having been opened in the renderer. Inspect
+              // the pack on disk instead of treating a missing packsData entry as an empty pack, and also
+              // include files another editor has staged but not written yet.
+              const diskFileNames = await window.api?.getPackFilesList(destination);
+              if (!diskFileNames) {
+                setResult({
+                  kind: "error",
+                  message: localized.ancillariesSaveInspectFailed || "Could not inspect the target pack before saving.",
+                });
+                return;
+              }
+              existingFileNames = [...diskFileNames, ...(unsavedPacksData[destination] ?? []).map((file) => file.name)];
+            }
+          }
+          const { files, skippedTables } = buildPackedFilesFromNewRows({
+            state,
+            tableSchemas,
+            fileName: buildAncillariesFileName(moddersPrefix, existingFileNames),
+            existingRowsByTable: skipDuplicateRows ? existingRowsByTable : undefined,
+          });
+          if (files.length === 0) {
+            setResult({ kind: "error", message: localized.ancillariesSaveNothing || "Nothing to save." });
+            return;
+          }
+
+          for (const file of files) {
+            const staged = await window.api?.saveDBTableEdits(destination, file);
+            if (staged && !staged.success) {
+              setResult({ kind: "error", message: staged.error || `Could not stage ${file.name}.` });
+              return;
+            }
+          }
+
+          const written = isNew
+            ? await window.api?.savePackAsWithUnsavedFiles(destination, newPackName.trim(), resolvedNewPackDirectory)
+            : await window.api?.savePackWithUnsavedFiles(destination);
+
+          if (!written?.success) {
             setResult({
               kind: "error",
-              message: localized.ancillariesSavePickFolder || "Pick a folder for the new pack.",
+              message: written?.error || localized.ancillariesSaveWriteFailed || "The pack could not be written.",
             });
             return;
           }
-        }
 
-        let existingFileNames: string[] = [];
-        let existingRowsByTable: PackRowsByTable | undefined;
-        if (!isNew) {
-          if (skipDuplicateRows) {
-            const packData = await window.api?.getPackRowsForSave(
-              destination,
-              Object.keys(rowsByTable).filter((table) => table !== LOC_TABLE),
-              Boolean(rowsByTable[LOC_TABLE]),
-            );
-            if (!packData) {
-              setResult({
-                kind: "error",
-                message: localized.ancillariesSaveInspectFailed || "Could not inspect the target pack before saving.",
-              });
-              return;
-            }
-            existingFileNames = packData.fileNames;
-            existingRowsByTable = packData.rowsByTable;
-          } else {
-            // The target can be in the preset without ever having been opened in the renderer. Inspect
-            // the pack on disk instead of treating a missing packsData entry as an empty pack, and also
-            // include files another editor has staged but not written yet.
-            const diskFileNames = await window.api?.getPackFilesList(destination);
-            if (!diskFileNames) {
-              setResult({
-                kind: "error",
-                message: localized.ancillariesSaveInspectFailed || "Could not inspect the target pack before saving.",
-              });
-              return;
-            }
-            existingFileNames = [...diskFileNames, ...(unsavedPacksData[destination] ?? []).map((file) => file.name)];
-          }
-        }
-        const { files, skippedTables } = buildPackedFilesFromNewRows({
-          state,
-          tableSchemas,
-          fileName: buildAncillariesFileName(moddersPrefix, existingFileNames),
-          existingRowsByTable: skipDuplicateRows ? existingRowsByTable : undefined,
-        });
-        if (files.length === 0) {
-          setResult({ kind: "error", message: localized.ancillariesSaveNothing || "Nothing to save." });
-          return;
-        }
-
-        for (const file of files) {
-          const staged = await window.api?.saveDBTableEdits(destination, file);
-          if (staged && !staged.success) {
-            setResult({ kind: "error", message: staged.error || `Could not stage ${file.name}.` });
-            return;
-          }
-        }
-
-        const written = isNew
-          ? await window.api?.savePackAsWithUnsavedFiles(destination, newPackName.trim(), resolvedNewPackDirectory)
-          : await window.api?.savePackWithUnsavedFiles(destination);
-
-        if (!written?.success) {
+          const skipped =
+            skippedTables.length > 0
+              ? ` ${localized.ancillariesSaveSkipped || "Skipped (no schema):"} ${skippedTables.join(", ")}.`
+              : "";
+          const warning = written.warning ? ` ${written.warning}` : "";
           setResult({
-            kind: "error",
-            message: written?.error || localized.ancillariesSaveWriteFailed || "The pack could not be written.",
+            kind: "ok",
+            message: `${(localized.ancillariesSaveWrote || "Wrote {{count}} table file(s) to {{path}}.")
+              .replace("{{count}}", `${files.length}`)
+              .replace("{{path}}", `${written.savedPath ?? destination}`)}${warning}${skipped}`,
           });
-          return;
-        }
-
-        const skipped =
-          skippedTables.length > 0
-            ? ` ${localized.ancillariesSaveSkipped || "Skipped (no schema):"} ${skippedTables.join(", ")}.`
-            : "";
-        const warning = written.warning ? ` ${written.warning}` : "";
-        setResult({
-          kind: "ok",
-          message: `${(localized.ancillariesSaveWrote || "Wrote {{count}} table file(s) to {{path}}.")
-            .replace("{{count}}", `${files.length}`)
-            .replace("{{path}}", `${written.savedPath ?? destination}`)}${warning}${skipped}`,
-        });
-        onSaved(written.savedPath ?? destination);
-      } catch (error) {
-        setResult({ kind: "error", message: error instanceof Error ? error.message : String(error) });
-      } finally {
-        setIsSaving(false);
-      }
+          onSaved(written.savedPath ?? destination);
+        },
+        {
+          onError: (error: any) => {
+            setResult({ kind: "error", message: error instanceof Error ? error.message : String(error) });
+          },
+          onFinally: () => {
+            setIsSaving(false);
+          },
+        },
+      );
     };
 
     return (

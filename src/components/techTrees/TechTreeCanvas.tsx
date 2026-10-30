@@ -24,6 +24,7 @@ import AddTechNodeModal, { TechNodeFormData } from "./AddTechNodeModal";
 import TechTreeLinkEdge from "./TechTreeLinkEdge";
 import { buildTechTreeLinkGeometry } from "./techTreeLinkGeometry";
 import { getTechnologyNodeScopeValues, hasBaseNodesOnlyNodes, resolveTechTreeScopeSelection } from "./techTreeScope";
+import { runGuarded } from "../../utility/runGuarded";
 
 const NODE_WIDTH = 325;
 const NODE_HEIGHT = 140;
@@ -302,43 +303,48 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
     const loadTree = async () => {
       if (!setKey) return;
       setIsLoadingTree(true);
-      try {
-        if (isBlankTree) {
-          const templateTree = templateSetKey ? await window.api?.getTechnologyTree(templateSetKey) : undefined;
-          if (cancelled) return;
-          const blankTree = buildBlankTechnologyTree(setKey, templateTree);
-          setTechnologyTree(blankTree);
-          setUiTabToNodes(blankTree.uiTabToNodes);
-        } else {
-          const fetchedTree = await window.api?.getTechnologyTree(setKey);
-          if (cancelled) return;
-          setTechnologyTree(fetchedTree);
-          setUiTabToNodes(fetchedTree?.uiTabToNodes || {});
-        }
-        setSelectedUiTab("all");
-        setSelectedScopeKey("");
-        setIsEditMode(isBlankTree && canEditTechnologyTrees);
-        setChangedNodePositions({});
-        setChangedLinks({});
-        setHiddenOverrides({});
-        setAddedNodes([]);
-        setSavePackDirectory(undefined);
-        setDeletedNodeKeys(new Set());
-        setDeletedLinks(new Set());
-        setEditedNodes({});
-        setContextMenu(null);
-        setEditLinkTarget(null);
-        setIsRequirementsMode(false);
-        setUnlockedNodeKeys(new Set());
-        setIsCheckingRequirements(false);
-        setIsSaveModalOpen(false);
-        setNotification(null);
-        historyPast.current = [];
-        historyFuture.current = [];
-        setHistorySize({ past: 0, future: 0 });
-      } finally {
-        if (!cancelled) setIsLoadingTree(false);
-      }
+      await runGuarded(
+        async () => {
+          if (isBlankTree) {
+            const templateTree = templateSetKey ? await window.api?.getTechnologyTree(templateSetKey) : undefined;
+            if (cancelled) return;
+            const blankTree = buildBlankTechnologyTree(setKey, templateTree);
+            setTechnologyTree(blankTree);
+            setUiTabToNodes(blankTree.uiTabToNodes);
+          } else {
+            const fetchedTree = await window.api?.getTechnologyTree(setKey);
+            if (cancelled) return;
+            setTechnologyTree(fetchedTree);
+            setUiTabToNodes(fetchedTree?.uiTabToNodes || {});
+          }
+          setSelectedUiTab("all");
+          setSelectedScopeKey("");
+          setIsEditMode(isBlankTree && canEditTechnologyTrees);
+          setChangedNodePositions({});
+          setChangedLinks({});
+          setHiddenOverrides({});
+          setAddedNodes([]);
+          setSavePackDirectory(undefined);
+          setDeletedNodeKeys(new Set());
+          setDeletedLinks(new Set());
+          setEditedNodes({});
+          setContextMenu(null);
+          setEditLinkTarget(null);
+          setIsRequirementsMode(false);
+          setUnlockedNodeKeys(new Set());
+          setIsCheckingRequirements(false);
+          setIsSaveModalOpen(false);
+          setNotification(null);
+          historyPast.current = [];
+          historyFuture.current = [];
+          setHistorySize({ past: 0, future: 0 });
+        },
+        {
+          onFinally: () => {
+            if (!cancelled) setIsLoadingTree(false);
+          },
+        },
+      );
     };
     loadTree();
     return () => {
@@ -1684,43 +1690,48 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
     );
 
     setIsSaving(true);
-    try {
-      const result = await window.api?.saveTechnologyChanges({
-        setKey: technologyTree.set.key,
-        packName: savePackName.trim(),
-        packDirectory: savePackDirectory || "",
-        tableNameOverride: tableNameOverride.trim() || undefined,
-        changedNodes,
-        changedLinks: remappedChangedLinks,
-        hiddenTechnologies,
-        newNodes: resolvedNewNodes.map(({ resolvedNode }) => resolvedNode),
-        deletedNodeKeys: deletedNodeKeysArray,
-        deletedLinkKeys: deletedLinkKeysArray,
-        editedNodes: editedNodesArray,
-        uiTabToNodes: remappedUiTabToNodes,
-      });
+    await runGuarded(
+      async () => {
+        const result = await window.api?.saveTechnologyChanges({
+          setKey: technologyTree.set.key,
+          packName: savePackName.trim(),
+          packDirectory: savePackDirectory || "",
+          tableNameOverride: tableNameOverride.trim() || undefined,
+          changedNodes,
+          changedLinks: remappedChangedLinks,
+          hiddenTechnologies,
+          newNodes: resolvedNewNodes.map(({ resolvedNode }) => resolvedNode),
+          deletedNodeKeys: deletedNodeKeysArray,
+          deletedLinkKeys: deletedLinkKeysArray,
+          editedNodes: editedNodesArray,
+          uiTabToNodes: remappedUiTabToNodes,
+        });
 
-      if (!result?.success) {
-        setNotification({ message: `Failed to save: ${result?.error || "Unknown error"}`, type: "error" });
-        return;
-      }
-
-      setNotification({
-        message: result.warning || `Saved ${result.packName} to ${result.packPath}`,
-        type: result.warning ? "warning" : "success",
-      });
-      if (!isBlankTree) {
-        const refreshedTree = await window.api?.getTechnologyTree(technologyTree.set.key);
-        if (refreshedTree) {
-          setTechnologyTree(refreshedTree);
-          setUiTabToNodes(refreshedTree.uiTabToNodes);
+        if (!result?.success) {
+          setNotification({ message: `Failed to save: ${result?.error || "Unknown error"}`, type: "error" });
+          return;
         }
-        resetStateAfterSave();
-      }
-      setIsSaveModalOpen(false);
-    } finally {
-      setIsSaving(false);
-    }
+
+        setNotification({
+          message: result.warning || `Saved ${result.packName} to ${result.packPath}`,
+          type: result.warning ? "warning" : "success",
+        });
+        if (!isBlankTree) {
+          const refreshedTree = await window.api?.getTechnologyTree(technologyTree.set.key);
+          if (refreshedTree) {
+            setTechnologyTree(refreshedTree);
+            setUiTabToNodes(refreshedTree.uiTabToNodes);
+          }
+          resetStateAfterSave();
+        }
+        setIsSaveModalOpen(false);
+      },
+      {
+        onFinally: () => {
+          setIsSaving(false);
+        },
+      },
+    );
   }, [
     buildChangesPayload,
     resetStateAfterSave,
@@ -1748,29 +1759,34 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
     }
 
     setIsSaving(true);
-    try {
-      const result = await window.api?.saveTechnologyPack(payload);
-      if (!result?.success) {
-        setNotification({ message: `Failed to save: ${result?.error || "Unknown error"}`, type: "error" });
-        return;
-      }
-
-      setNotification({
-        message: result.warning || `Saved ${result.packName} to ${result.packPath}`,
-        type: result.warning ? "warning" : "success",
-      });
-      if (!isBlankTree) {
-        const refreshedTree = await window.api?.getTechnologyTree(technologyTree.set.key);
-        if (refreshedTree) {
-          setTechnologyTree(refreshedTree);
-          setUiTabToNodes(refreshedTree.uiTabToNodes);
+    await runGuarded(
+      async () => {
+        const result = await window.api?.saveTechnologyPack(payload);
+        if (!result?.success) {
+          setNotification({ message: `Failed to save: ${result?.error || "Unknown error"}`, type: "error" });
+          return;
         }
-        resetStateAfterSave();
-      }
-      setIsSaveModalOpen(false);
-    } finally {
-      setIsSaving(false);
-    }
+
+        setNotification({
+          message: result.warning || `Saved ${result.packName} to ${result.packPath}`,
+          type: result.warning ? "warning" : "success",
+        });
+        if (!isBlankTree) {
+          const refreshedTree = await window.api?.getTechnologyTree(technologyTree.set.key);
+          if (refreshedTree) {
+            setTechnologyTree(refreshedTree);
+            setUiTabToNodes(refreshedTree.uiTabToNodes);
+          }
+          resetStateAfterSave();
+        }
+        setIsSaveModalOpen(false);
+      },
+      {
+        onFinally: () => {
+          setIsSaving(false);
+        },
+      },
+    );
   }, [buildWholeTreePayload, isBlankTree, resetStateAfterSave, savePackName, technologyTree]);
 
   const openSaveModal = useCallback(

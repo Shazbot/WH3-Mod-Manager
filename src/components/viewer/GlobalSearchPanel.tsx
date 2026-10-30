@@ -22,6 +22,7 @@ import {
   type GlobalSearchSkippedFile,
   type GlobalSearchSource,
 } from "@/src/globalSearch/types";
+import { runGuarded } from "../../utility/runGuarded";
 
 export type GlobalSearchOpenPack = { packPath: string; label: string };
 
@@ -153,13 +154,18 @@ const GlobalSearchPanel = memo(
     useEffect(() => {
       let isCancelled = false;
       void (async () => {
-        try {
-          const result = await window.api?.getViewerPackCatalog();
-          if (isCancelled || !result?.success) return;
-          setPackCatalog(result.packs || []);
-        } catch (catalogError) {
-          console.error("Global search: could not load the pack catalog:", catalogError);
-        }
+        await runGuarded(
+          async () => {
+            const result = await window.api?.getViewerPackCatalog();
+            if (isCancelled || !result?.success) return;
+            setPackCatalog(result.packs || []);
+          },
+          {
+            onError: (catalogError: any) => {
+              console.error("Global search: could not load the pack catalog:", catalogError);
+            },
+          },
+        );
       })();
       return () => {
         isCancelled = true;
@@ -243,42 +249,48 @@ const GlobalSearchPanel = memo(
         sources,
       };
 
-      try {
-        const response = await window.api?.runGlobalSearch(request);
-        if (activeSearchIdRef.current !== searchId) return;
+      await runGuarded(
+        async () => {
+          const response = await window.api?.runGlobalSearch(request);
+          if (activeSearchIdRef.current !== searchId) return;
 
-        if (!response) {
-          setError(localized.globalSearchBackendNoResponse || "The search backend did not respond.");
-          return;
-        }
-        if (!response.success) {
-          setError(response.error || localized.globalSearchFailed || "The search failed.");
-          return;
-        }
+          if (!response) {
+            setError(localized.globalSearchBackendNoResponse || "The search backend did not respond.");
+            return;
+          }
+          if (!response.success) {
+            setError(response.error || localized.globalSearchFailed || "The search failed.");
+            return;
+          }
 
-        // The response carries the full result set, streamed batches included, so replacing rather
-        // than appending is what keeps a batch that arrived twice from showing twice.
-        setResults(response.results);
-        setWarnings(response.warnings || []);
-        setSkippedFiles(response.skippedFiles || []);
-        setIsTruncated(response.truncated);
-        setWasCanceled(response.canceled);
-      } catch (searchError) {
-        if (activeSearchIdRef.current !== searchId) return;
-        const message = searchError instanceof Error ? searchError.message : String(searchError);
-        // Until the main-process handler exists, `invoke` rejects with "No handler registered".
-        setError(
-          message.includes("No handler registered")
-            ? localized.globalSearchUnavailableBuild ||
-                "Global search is not available in this build: the main-process handler is not registered yet."
-            : message,
-        );
-      } finally {
-        if (activeSearchIdRef.current === searchId) {
-          setIsSearching(false);
-          activeSearchIdRef.current = null;
-        }
-      }
+          // The response carries the full result set, streamed batches included, so replacing rather
+          // than appending is what keeps a batch that arrived twice from showing twice.
+          setResults(response.results);
+          setWarnings(response.warnings || []);
+          setSkippedFiles(response.skippedFiles || []);
+          setIsTruncated(response.truncated);
+          setWasCanceled(response.canceled);
+        },
+        {
+          onError: (searchError: any) => {
+            if (activeSearchIdRef.current !== searchId) return;
+            const message = searchError instanceof Error ? searchError.message : String(searchError);
+            // Until the main-process handler exists, `invoke` rejects with "No handler registered".
+            setError(
+              message.includes("No handler registered")
+                ? localized.globalSearchUnavailableBuild ||
+                    "Global search is not available in this build: the main-process handler is not registered yet."
+                : message,
+            );
+          },
+          onFinally: () => {
+            if (activeSearchIdRef.current === searchId) {
+              setIsSearching(false);
+              activeSearchIdRef.current = null;
+            }
+          },
+        },
+      );
     }, [canSearch, caseSensitive, isRegex, kinds, localized, query, sources]);
 
     const handleStop = useCallback(() => {

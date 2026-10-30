@@ -2,6 +2,7 @@ import React, { useContext, useState } from "react";
 import type { ShowViewerDialog } from "./viewerDialogs";
 import localizationContext from "../../localizationContext";
 import ContextMenuSubmenu from "./ContextMenuSubmenu";
+import { runGuarded } from "../../utility/runGuarded";
 
 export type CopyIntoSubmenuProps = {
   sourcePackPath: string;
@@ -48,25 +49,31 @@ const CopyIntoSubmenu = ({
     if (packCatalog.length > 0) return;
 
     setIsLoadingPackCatalog(true);
-    try {
-      const result = await window.api?.getViewerPackCatalog();
-      if (!result?.success) {
-        throw new Error(result?.error || localized.viewerFailedToLoadModPacks || "Failed to load mod packs");
-      }
-      setPackCatalog(result.packs || []);
-    } catch (error) {
-      console.error("Error loading viewer pack catalog:", error);
-      showDialog(
-        (localized.viewerLoadModPacksError || "Failed to load mod packs: {{error}}").replace(
-          "{{error}}",
-          error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
-        ),
-        { title: localized.viewerPackSelectionFailed || "Pack Selection Failed" },
-      );
-      setIsPackPickerOpen(false);
-    } finally {
-      setIsLoadingPackCatalog(false);
-    }
+    await runGuarded(
+      async () => {
+        const result = await window.api?.getViewerPackCatalog();
+        if (!result?.success) {
+          throw new Error(result?.error || localized.viewerFailedToLoadModPacks || "Failed to load mod packs");
+        }
+        setPackCatalog(result.packs || []);
+      },
+      {
+        onError: (error: any) => {
+          console.error("Error loading viewer pack catalog:", error);
+          showDialog(
+            (localized.viewerLoadModPacksError || "Failed to load mod packs: {{error}}").replace(
+              "{{error}}",
+              error instanceof Error ? error.message : localized.viewerUnknownError || "Unknown error",
+            ),
+            { title: localized.viewerPackSelectionFailed || "Pack Selection Failed" },
+          );
+          setIsPackPickerOpen(false);
+        },
+        onFinally: () => {
+          setIsLoadingPackCatalog(false);
+        },
+      },
+    );
   };
 
   const selectTarget = (targetPackPath: string) => {
