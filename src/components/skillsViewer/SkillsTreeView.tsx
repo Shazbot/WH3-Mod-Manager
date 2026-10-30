@@ -3,7 +3,6 @@ import { useAppSelector } from "../../hooks";
 import { IoMdArrowDropright } from "react-icons/io";
 import TreeView, { INode, ITreeViewOnSelectProps, flattenTree } from "react-accessible-treeview";
 import cx from "classnames";
-import "@silevis/reactgrid/styles.css";
 import { buildKeyPrefixDisplay } from "../viewer/viewerHelpers";
 
 type SkillsTreeViewProps = {

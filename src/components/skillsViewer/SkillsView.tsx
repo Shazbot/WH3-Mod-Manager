@@ -14,7 +14,6 @@ import { useAppDispatch, useAppSelector, useEventCallback } from "../../hooks";
 import { runGuarded, runGuardedSync } from "../../utility/runGuarded";
 import { setSkillNodeLevel, setAutoSkillNodeLevels } from "../../appSlice";
 import deepClone from "clone-deep";
-import "@silevis/reactgrid/styles.css";
 import localizationContext from "../../localizationContext";
 
 import {

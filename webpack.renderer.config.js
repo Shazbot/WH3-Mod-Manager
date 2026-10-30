@@ -86,13 +86,6 @@ module.exports = {
               priority: 10,
               enforce: true,
             },
-            handsontable: {
-              test: /[\/]node_modules[\/](@handsontable|handsontable)[\/]/,
-              name: "renderer-handsontable",
-              chunks: "async",
-              priority: 20,
-              enforce: true,
-            },
             reactIcons: {
               test: /[\/]node_modules[\/]react-icons[\/]/,
               name: "renderer-react-icons",

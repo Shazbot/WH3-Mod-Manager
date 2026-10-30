@@ -512,32 +512,6 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   display: none;
 }
 
-.handsontable th div.ht_nestingButton.ht_nestingCollapse:after {
-  display: none;
-}
-
-.ht_nestingButton {
-  display: none;
-}
-
-.handsontable th.ht_nestingLevels span:last-child {
-  padding-left: 0 !important;
-}
-
-.handsontable td {
-}
-
-#categoriesTableContainer .htFocusCatcher,
-#categoriesTableContainer .ht_clone_top {
-  display: none;
-}
-
-.ht_clone_top,
-.ht_clone_left,
-.ht_clone_top_left_corner {
-  z-index: 50 !important;
-}
-
 .my-cell {
   width: 1px;
   height: 1px;
@@ -550,29 +524,6 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
 
 #left-sidebar li {
   outline: none;
-}
-
-#categoriesTableContainer .ht_clone_inline_start.ht_clone_left.handsontable {
-  display: none;
-}
-
-#categoriesTableContainer .ht_clone_top_inline_start_corner {
-  display: none;
-}
-
-#categoriesTableContainer .handsontable .ht_clone_inline_start thead,
-#categoriesTableContainer .handsontable .ht_master thead,
-#categoriesTableContainer .handsontable .ht_master tr th {
-  visibility: visible !important;
-}
-
-/* horizontally center the enable checkbox in the category panel */
-.htCheckboxRendererInput {
-  margin: 0 auto !important;
-}
-
-.disable-border .htBorders {
-  display: none !important;
 }
 
 .border-slate-100-opacity-6 {

@@ -15,7 +15,6 @@ import type { INode } from "react-accessible-treeview";
 import { AutoSizer, List, type ListRowProps } from "react-virtualized";
 import Select, { SingleValue } from "react-select";
 import cx from "classnames";
-import "@silevis/reactgrid/styles.css";
 import {
   DEFAULT_DB_TABLE_ROOT,
   UNUSED_DB_TABLE_ROOT,
