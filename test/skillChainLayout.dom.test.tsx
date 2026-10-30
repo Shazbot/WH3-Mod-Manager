@@ -48,6 +48,14 @@ describe("getChainColumnXs", () => {
     expect(Number.isFinite(xs[1])).toBe(true);
   });
 
+  it("gives a group member's faction variant no slot of its own", () => {
+    // Skulltaker's Legacy of Blood: its Archaon variant shares the base skill's spot inside the group.
+    const members = [skill(0, 1), skill(0, 2), skill(0, 2, "archaon"), skill(0, 3)];
+    const skills = [skill(0, 0), ...members, skill(0, 4)];
+    const xs = getChainColumnXs(skills, { g: members })[0];
+    expect(xs[4]).toBe(pitch + groupExtra(3));
+  });
+
   it("draws variant groups starting on one spot as one item", () => {
     // Helman Ghorst's campaign row: a base group and its Nagash variant group stack on the same columns.
     const base = [skill(0, 1), skill(0, 2), skill(0, 3)];

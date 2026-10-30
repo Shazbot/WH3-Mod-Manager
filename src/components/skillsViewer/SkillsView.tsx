@@ -287,6 +287,13 @@ export const filterSkillsByFactionCombo = <T extends FactionFilterable>(skills: 
 };
 const editModeNodeHeight = 160; // Larger spacing for edit/requirements mode
 
+/**
+ * Gets the columns a group's cards take. Faction variants on one spot share its column, so they stack in one slot.
+ * @param members The group's skills.
+ * @returns The columns, left to right.
+ */
+const getGroupColumns = (members: Skill[]) => [...new Set(members.map((member) => member.y))].sort((a, b) => a - b);
+
 /** How far left of a row's first card its stack bracket sits, and how far its ticks reach. */
 const stackBracket = { gapX: 20, tickWidth: 8 };
 
@@ -349,7 +356,10 @@ export const getChainColumnXs = (skills: Skill[], groupedSkills: Record<string, 
         x += nodeWidth;
         continue;
       }
-      x += skillGroupWidth(Math.max(...groups.map((group) => group.length))) + nodeWidth - skillEntry.width;
+      x +=
+        skillGroupWidth(Math.max(...groups.map((group) => getGroupColumns(group).length))) +
+        nodeWidth -
+        skillEntry.width;
       const members = new Set(groups.flat());
       for (const member of members) {
         if (member.x !== Number(row) || member.y === column) continue;
@@ -676,22 +686,24 @@ const SkillsView = memo(
       const spot = getStackSpot(skill);
       stackSizes[spot] = (stackSizes[spot] || 0) + 1;
     }
-    const maxStackSize = Math.max(1, ...Object.values(stackSizes));
 
-    // if we need to overlay nodes make the y gap between them bigger (normal mode only —
-    // in edit mode effectiveNodeHeight must stay at editModeNodeHeight so snap grid,
-    // repositionPlaceholders, and the leaving-edit-mode transition all stay consistent)
-    // Room for the deepest stack, so its last card clears the next row.
-    const effectiveNodeHeight = isEditMode
-      ? editModeNodeHeight
-      : maxStackSize > 1
-        ? nodeHeight + (maxStackSize - 1) * skillVariantStackY
-        : nodeHeight;
-    // Like the game, only rows that hold skills take up room, so an unused indent leaves no gap.
+    // In edit mode effectiveNodeHeight must stay at editModeNodeHeight so snap grid, repositionPlaceholders, and the
+    // leaving-edit-mode transition all stay consistent.
+    const effectiveNodeHeight = isEditMode ? editModeNodeHeight : nodeHeight;
+    // Like the game, only rows that hold skills take up room, so an unused indent leaves no gap. Each row is tall
+    // enough for its own deepest stack, so its last card clears the next row.
+    const rowsToMaxStackSize: Record<number, number> = {};
+    for (const skill of skills) {
+      rowsToMaxStackSize[skill.x] = Math.max(rowsToMaxStackSize[skill.x] ?? 1, stackSizes[getStackSpot(skill)]);
+    }
     const rowYs: Record<number, number> = {};
-    [...new Set(skills.map((skill) => skill.x))]
-      .sort((a, b) => a - b)
-      .forEach((row, index) => (rowYs[row] = index * effectiveNodeHeight));
+    let rowY = 0;
+    for (const row of Object.keys(rowsToMaxStackSize)
+      .map(Number)
+      .sort((a, b) => a - b)) {
+      rowYs[row] = rowY;
+      rowY += effectiveNodeHeight + (rowsToMaxStackSize[row] - 1) * skillVariantStackY;
+    }
     // console.log("with group:", skills.filter((skill) => skill.group).length);
     const groupedSkills = groupBy(
       skills.filter((skill) => skill.group),
@@ -757,11 +769,11 @@ const SkillsView = memo(
             ...groupArtStyle,
             backgroundColor: "transparent",
             zIndex: "0",
-            width: skillGroupWidth(skills.length),
+            width: skillGroupWidth(getGroupColumns(skills).length),
             height: groupHeight,
           },
           className: "reactFlowGroup",
-          width: skillGroupWidth(skills.length),
+          width: skillGroupWidth(getGroupColumns(skills).length),
           height: groupHeight,
         });
       }
@@ -858,7 +870,7 @@ const SkillsView = memo(
         if (skill.group) {
           const skillsInGroup = groupedSkills[skill.group];
           if (skillsInGroup && skillsInGroup.length > 1) {
-            const index = skillsInGroup.indexOf(skill);
+            const index = skillsInGroup.includes(skill) ? getGroupColumns(skillsInGroup).indexOf(skill.y) : -1;
             if (index > -1) {
               position = {
                 y: -skillGroup.artY + indexInSameCoords * skillVariantStackY,
