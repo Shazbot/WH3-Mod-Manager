@@ -264,7 +264,27 @@ const groupBoxWidth = (numSkills: number) => (numSkills - 1) * nodeWidth + skill
  * @param skill The skill to look up.
  * @returns Its indent and tier, joined.
  */
-const getStackSpot = (skill: Skill) => `${skill.origIndent}|${skill.origTier}`;
+const getStackSpot = (skill: Pick<Skill, "origIndent" | "origTier">) => `${skill.origIndent}|${skill.origTier}`;
+
+type FactionFilterable = Pick<Skill, "faction" | "subculture" | "origIndent" | "origTier">;
+const getFactionComboKey = (skill: FactionFilterable) =>
+  skill.faction || skill.subculture ? `${skill.faction || ""}|||${skill.subculture || ""}` : undefined;
+
+/**
+ * Keeps the skills a faction/subculture filter shows. Like the game, a variant replaces the base skill on its spot.
+ * @param skills The skills to filter.
+ * @param comboKey The filter's faction and subculture, joined.
+ * @returns The variants of that combo and the base skills none of them replaces.
+ */
+export const filterSkillsByFactionCombo = <T extends FactionFilterable>(skills: T[], comboKey: string) => {
+  const replacedSpots = new Set(
+    skills.filter((skill) => getFactionComboKey(skill) === comboKey).map((skill) => getStackSpot(skill)),
+  );
+  return skills.filter((skill) => {
+    const skillComboKey = getFactionComboKey(skill);
+    return skillComboKey ? skillComboKey === comboKey : !replacedSpots.has(getStackSpot(skill));
+  });
+};
 const editModeNodeHeight = 160; // Larger spacing for edit/requirements mode
 
 /**
@@ -598,13 +618,7 @@ const SkillsView = memo(
     // Apply faction/subculture filter
     const factionFilteredSkills =
       !isEditMode && factionFilter !== "all" && hasFactionVariants
-        ? allSkills.filter((skill) => {
-            const hasFaction = skill.faction && skill.faction !== "";
-            const hasSubculture = skill.subculture && skill.subculture !== "";
-            if (!hasFaction && !hasSubculture) return true; // base skills always shown
-            const comboKey = `${skill.faction || ""}|||${skill.subculture || ""}`;
-            return comboKey === factionFilter;
-          })
+        ? filterSkillsByFactionCombo(allSkills, factionFilter)
         : allSkills;
 
     const shownSkills =
@@ -4155,19 +4169,20 @@ const SkillsView = memo(
         editModeEdgesRef.current = deepClone(edges);
         const isSkillNode = (node: Nodes) => node.type === "skill" && !(node.data as any)?.isGrouping;
         const isGroupNode = (node: Nodes) => node.className === "reactFlowGroup" && (node.data as any)?.isGrouping;
+        const factionFilteredIds =
+          factionFilter !== "all" && hasFactionVariants
+            ? new Set(
+                filterSkillsByFactionCombo(
+                  nodes.filter(isSkillNode).map((node) => ({ ...(node.data as SkillData), id: node.id })),
+                  factionFilter,
+                ).map((data) => data.id),
+              )
+            : undefined;
         const isVisibleInNormalMode = (node: Nodes) => {
           if (!isSkillNode(node)) return true;
           const data = node.data as SkillData;
           if (!isShowingHiddentSkills && data.isHiddentInUI) return false;
-          if (factionFilter !== "all" && hasFactionVariants) {
-            const hasFaction = data.faction && data.faction !== "";
-            const hasSubculture = data.subculture && data.subculture !== "";
-            if (hasFaction || hasSubculture) {
-              const comboKey = `${data.faction || ""}|||${data.subculture || ""}`;
-              if (comboKey !== factionFilter) return false;
-            }
-          }
-          return true;
+          return !factionFilteredIds || factionFilteredIds.has(node.id);
         };
 
         const visibleSkillIds = new Set(

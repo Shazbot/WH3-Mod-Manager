@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { getChainColumnXs } from "../src/components/skillsViewer/SkillsView";
+import { filterSkillsByFactionCombo, getChainColumnXs } from "../src/components/skillsViewer/SkillsView";
 import { skillEntry, skillGroupWidth } from "../src/components/skillsViewer/skillPanelLayout";
 
 vi.mock("@xyflow/react", () => ({
@@ -54,5 +54,21 @@ describe("getChainColumnXs", () => {
     expect(xs[2]).toBeUndefined();
     expect(xs[3]).toBeUndefined();
     expect(xs[4]).toBe(pitch + groupExtra(3));
+  });
+});
+
+describe("filterSkillsByFactionCombo", () => {
+  const entry = (id: string, tier: string, subculture = "") =>
+    ({ id, origIndent: "5", origTier: tier, faction: "", subculture }) as unknown as Skill;
+  const nag = "|||wh3_dlc29_sc_nag_undead_legions";
+
+  it("replaces a base skill with the filtered variant on its spot", () => {
+    const skills = [
+      entry("base_01", "0"),
+      entry("nag_01", "0", "wh3_dlc29_sc_nag_undead_legions"),
+      entry("vmp_01", "0", "wh_main_sc_vmp_vampire_counts"),
+      entry("base_02", "1"),
+    ];
+    expect(filterSkillsByFactionCombo(skills, nag).map((skill) => skill.id)).toEqual(["nag_01", "base_02"]);
   });
 });
