@@ -3,6 +3,7 @@ import React, {
   RefObject,
   useCallback,
   useContext,
+  useDeferredValue,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -147,7 +148,9 @@ type LoadOrderScrollSnapshot = {
 
 const ModRows = memo((props: ModRowsProps) => {
   const dispatch = useAppDispatch();
-  const filter = useAppSelector((state) => state.app.filter);
+  const liveFilter = useAppSelector((state) => state.app.filter);
+  // The sidebar input shows the live value; the list re-filters at low priority so typing stays smooth on big mod lists.
+  const filter = useDeferredValue(liveFilter);
   const hiddenModNamesList = useAppSelector((state) => state.app.hiddenModNames);
   const alwaysEnabledModNamesList = useAppSelector((state) => state.app.alwaysEnabledModNames);
   const canDisableAlwaysEnabledMods = useAppSelector((state) => state.app.canDisableAlwaysEnabledMods);

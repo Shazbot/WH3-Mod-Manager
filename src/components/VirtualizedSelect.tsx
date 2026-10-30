@@ -60,40 +60,44 @@ type MeasurementCache = {
 
 const emptyMeasuredHeights = new Map<number, number>();
 
-type MenuListOuterProps = React.HTMLAttributes<HTMLDivElement> & { children?: React.ReactNode };
+type MenuListOuterProps = React.HTMLAttributes<HTMLDivElement> & {
+  children?: React.ReactNode;
+  ref?: React.Ref<HTMLDivElement>;
+};
 const menuListInnerProps = createContext<React.HTMLAttributes<HTMLDivElement>>({});
 const menuListPadding = createContext({ top: 0, bottom: 0 });
 
-const VirtualizedMenuListOuter = React.forwardRef<HTMLDivElement, MenuListOuterProps>(
-  ({ children, ...listProps }, ref) => {
-    const innerProps = React.useContext(menuListInnerProps);
-    return (
-      <div {...innerProps} {...listProps} ref={ref}>
-        {children}
-      </div>
-    );
-  },
-);
+const VirtualizedMenuListOuter = ({ children, ref, ...listProps }: MenuListOuterProps) => {
+  const innerProps = React.useContext(menuListInnerProps);
+  return (
+    <div {...innerProps} {...listProps} ref={ref}>
+      {children}
+    </div>
+  );
+};
 VirtualizedMenuListOuter.displayName = "VirtualizedMenuListOuter";
 
-const VirtualizedMenuListInner = React.forwardRef<HTMLDivElement, MenuListOuterProps & { style?: React.CSSProperties }>(
-  ({ children, style, ...innerProps }, ref) => {
-    const padding = React.useContext(menuListPadding);
-    return (
-      <div
-        {...innerProps}
-        ref={ref}
-        style={{
-          ...style,
-          height: (Number.parseFloat(String(style?.height ?? 0)) || 0) + padding.top + padding.bottom,
-          boxSizing: "border-box",
-        }}
-      >
-        {children}
-      </div>
-    );
-  },
-);
+const VirtualizedMenuListInner = ({
+  children,
+  style,
+  ref,
+  ...innerProps
+}: MenuListOuterProps & { style?: React.CSSProperties }) => {
+  const padding = React.useContext(menuListPadding);
+  return (
+    <div
+      {...innerProps}
+      ref={ref}
+      style={{
+        ...style,
+        height: (Number.parseFloat(String(style?.height ?? 0)) || 0) + padding.top + padding.bottom,
+        boxSizing: "border-box",
+      }}
+    >
+      {children}
+    </div>
+  );
+};
 VirtualizedMenuListInner.displayName = "VirtualizedMenuListInner";
 
 const VirtualizedMenuRow = ({

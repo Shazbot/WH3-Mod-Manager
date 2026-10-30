@@ -1,7 +1,7 @@
 import classNames from "classnames";
 import type { ComponentProps, ReactNode } from "react";
 import React from "react";
-import { forwardRef } from "react";
+import type { Ref } from "react";
 import { excludeClassName } from "../../helpers/exclude";
 import type { FlowbiteColors } from "../Flowbite/FlowbiteTheme";
 import { useTheme } from "../Flowbite/ThemeContext";
@@ -17,21 +17,25 @@ export interface TextareaProps extends Omit<ComponentProps<"textarea">, "classNa
   color?: keyof TextareaColors;
 }
 
-export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ shadow, helperText, color = "gray", ...props }, ref) => {
-    const theme = useTheme().theme.formControls.textarea;
-    const theirProps = excludeClassName(props);
-    return (
-      <>
-        <textarea
-          ref={ref}
-          className={classNames(theme.base, theme.colors[color], theme.withShadow[shadow ? "on" : "off"])}
-          {...theirProps}
-        />
-        {helperText && <HelperText color={color}>{helperText}</HelperText>}
-      </>
-    );
-  },
-);
+export const Textarea = ({
+  shadow,
+  helperText,
+  color = "gray",
+  ref,
+  ...props
+}: TextareaProps & { ref?: Ref<HTMLTextAreaElement> }) => {
+  const theme = useTheme().theme.formControls.textarea;
+  const theirProps = excludeClassName(props);
+  return (
+    <>
+      <textarea
+        ref={ref}
+        className={classNames(theme.base, theme.colors[color], theme.withShadow[shadow ? "on" : "off"])}
+        {...theirProps}
+      />
+      {helperText && <HelperText color={color}>{helperText}</HelperText>}
+    </>
+  );
+};
 
 Textarea.displayName = "Textarea";

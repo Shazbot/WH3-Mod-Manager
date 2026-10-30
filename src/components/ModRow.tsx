@@ -1,6 +1,6 @@
 import { faCamera, faEraser, faFileArchive } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import React, { CSSProperties, forwardRef, memo, useContext, useMemo } from "react";
+import React, { CSSProperties, memo, useContext, useMemo } from "react";
 import { Tooltip } from "flowbite-react";
 import classNames from "classnames";
 import { formatDistanceToNow } from "date-fns";
@@ -198,347 +198,224 @@ const ConfigIcons = ({
   </>
 );
 
-const ModRow = forwardRef<HTMLDivElement, ModRowProps>(
-  (
-    {
-      loadOrderIndex,
-      mod,
-      style,
-      onRowHoverStart,
-      onRowHoverEnd,
-      onSetLoadOrderMode,
-      onSelectLoadOrderPosition,
-      onModToggled,
-      onModOpenInViewer,
-      onModRightClick,
-      onRemoveModOrder,
-      isAlwaysEnabled,
-      isEnabledInMergedMod,
-      areThumbnailsEnabled,
-      isAuthorEnabled,
-      hasSubbedTimeColumn,
-      ghostClass,
-      thumbnailSrc,
-      decodedHumanName,
-      decodedAuthor,
-      customFolderPath,
-      hasDbCustomization,
-      hasFlowCustomization,
-      hasPackDataOverwrite,
-      isLast,
-      rowIndex,
-      domIdSuffix,
-      activeLoadOrderPosition,
-      isLoadOrderPlacementMode,
-      isLoadOrderPlacementSource,
-      isRecentlyReordered,
-      sortingType,
-      canReorder,
-      showPositionIndex,
-      layout,
-      showConfigColumn,
-      onCustomizeModClicked,
-      onCustomizeModRightClick,
-      onFlowOptionsClicked,
-      gridClass,
-    },
-    ref,
-  ) => {
-    const localization: Record<string, string> = useContext(localizationContext);
+const ModRow = ({
+  loadOrderIndex,
+  mod,
+  style,
+  onRowHoverStart,
+  onRowHoverEnd,
+  onSetLoadOrderMode,
+  onSelectLoadOrderPosition,
+  onModToggled,
+  onModOpenInViewer,
+  onModRightClick,
+  onRemoveModOrder,
+  isAlwaysEnabled,
+  isEnabledInMergedMod,
+  areThumbnailsEnabled,
+  isAuthorEnabled,
+  hasSubbedTimeColumn,
+  ghostClass,
+  thumbnailSrc,
+  decodedHumanName,
+  decodedAuthor,
+  customFolderPath,
+  hasDbCustomization,
+  hasFlowCustomization,
+  hasPackDataOverwrite,
+  isLast,
+  rowIndex,
+  domIdSuffix,
+  activeLoadOrderPosition,
+  isLoadOrderPlacementMode,
+  isLoadOrderPlacementSource,
+  isRecentlyReordered,
+  sortingType,
+  canReorder,
+  showPositionIndex,
+  layout,
+  showConfigColumn,
+  onCustomizeModClicked,
+  onCustomizeModRightClick,
+  onFlowOptionsClicked,
+  gridClass,
+  ref,
+}: ModRowProps & { ref?: React.Ref<HTMLDivElement> }) => {
+  const localization: Record<string, string> = useContext(localizationContext);
 
-    const isShowingSubbedTime = hasSubbedTimeColumn || isSubbedTimeSort(sortingType);
-    const subbedTimeValue = useMemo(
-      () =>
-        (isShowingSubbedTime && mod.subbedTime != null && mod.subbedTime != -1 && formatLastChanged(mod.subbedTime)) ||
-        "",
-      [isShowingSubbedTime, mod.subbedTime],
-    );
-    const modLastChanged = getModLastChanged(mod);
-    const timeColumnValue = useMemo(
-      () =>
-        (!hasSubbedTimeColumn && isSubbedTimeSort(sortingType) && subbedTimeValue) ||
-        (modLastChanged && formatLastChanged(modLastChanged)) ||
-        "",
-      [hasSubbedTimeColumn, sortingType, subbedTimeValue, modLastChanged],
-    );
+  const isShowingSubbedTime = hasSubbedTimeColumn || isSubbedTimeSort(sortingType);
+  const subbedTimeValue = useMemo(
+    () =>
+      (isShowingSubbedTime && mod.subbedTime != null && mod.subbedTime != -1 && formatLastChanged(mod.subbedTime)) ||
+      "",
+    [isShowingSubbedTime, mod.subbedTime],
+  );
+  const modLastChanged = getModLastChanged(mod);
+  const timeColumnValue = useMemo(
+    () =>
+      (!hasSubbedTimeColumn && isSubbedTimeSort(sortingType) && subbedTimeValue) ||
+      (modLastChanged && formatLastChanged(modLastChanged)) ||
+      "",
+    [hasSubbedTimeColumn, sortingType, subbedTimeValue, modLastChanged],
+  );
 
-    const isCompact = layout === "compact";
-    const rowId = domIdSuffix ? `${mod.name}-${domIdSuffix}` : mod.name;
-    const checkboxIdSuffix = domIdSuffix ? `-${domIdSuffix}` : "";
-    // The checkbox ID is based on a stable fallback rather than assuming every row has a Workshop ID;
-    // grouped category views add a suffix because they can render the same mod more than once.
-    const checkboxIdentity = mod.workshopId || mod.path || mod.name;
-    const checkboxId = `mod-enabled-${encodeURIComponent(checkboxIdentity)}${checkboxIdSuffix}`;
+  const isCompact = layout === "compact";
+  const rowId = domIdSuffix ? `${mod.name}-${domIdSuffix}` : mod.name;
+  const checkboxIdSuffix = domIdSuffix ? `-${domIdSuffix}` : "";
+  // The checkbox ID is based on a stable fallback rather than assuming every row has a Workshop ID;
+  // grouped category views add a suffix because they can render the same mod more than once.
+  const checkboxIdentity = mod.workshopId || mod.path || mod.name;
+  const checkboxId = `mod-enabled-${encodeURIComponent(checkboxIdentity)}${checkboxIdSuffix}`;
 
-    /*
-     * A data mod with no workshop counterpart has neither a title nor an author, so the pack name is the
-     * only thing identifying it. Rather than leave it small under a blank line, it takes over the primary
-     * line. Keyed on the missing metadata rather than on isInData, so any mod with a blank title reads the
-     * same way.
-     */
-    const hasHumanName = decodedHumanName.trim() !== "";
-    const hasAuthor = isAuthorEnabled && decodedAuthor.trim() !== "";
+  /*
+   * A data mod with no workshop counterpart has neither a title nor an author, so the pack name is the
+   * only thing identifying it. Rather than leave it small under a blank line, it takes over the primary
+   * line. Keyed on the missing metadata rather than on isInData, so any mod with a blank title reads the
+   * same way.
+   */
+  const hasHumanName = decodedHumanName.trim() !== "";
+  const hasAuthor = isAuthorEnabled && decodedAuthor.trim() !== "";
 
-    // A pinned load order is worth showing wherever the mod appears, since it survives being disabled and
-    // is honoured again on re-enable. The derived index is only meaningful in a list whose order is the
-    // one the game will use, so the dual layout's disabled pane leaves the cell blank instead.
-    const loadOrderNumber =
-      (mod.loadOrder != undefined && <span className="text-blue-500 font-bold">{mod.loadOrder + 1}</span>) ||
-      (showPositionIndex && <span>{loadOrderIndex + 1}</span>) ||
-      null;
+  // A pinned load order is worth showing wherever the mod appears, since it survives being disabled and
+  // is honoured again on re-enable. The derived index is only meaningful in a list whose order is the
+  // one the game will use, so the dual layout's disabled pane leaves the cell blank instead.
+  const loadOrderNumber =
+    (mod.loadOrder != undefined && <span className="text-blue-500 font-bold">{mod.loadOrder + 1}</span>) ||
+    (showPositionIndex && <span>{loadOrderIndex + 1}</span>) ||
+    null;
 
-    const reorderButton = (
-      <button
-        type="button"
-        className={`${isLoadOrderPlacementSource ? "" : "hidden"} absolute left-0 self-center cursor-pointer first:p-0 z-10`}
-        id={`load-order-icon-${rowId}`}
-        title={localization.setLoadOrderMode || "Set load order"}
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          onSetLoadOrderMode(mod);
-        }}
-      >
-        <BsArrowDownUp />
-      </button>
-    );
+  const reorderButton = (
+    <button
+      type="button"
+      className={`${isLoadOrderPlacementSource ? "" : "hidden"} absolute left-0 self-center cursor-pointer first:p-0 z-10`}
+      id={`load-order-icon-${rowId}`}
+      title={localization.setLoadOrderMode || "Set load order"}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onSetLoadOrderMode(mod);
+      }}
+    >
+      <BsArrowDownUp />
+    </button>
+  );
 
-    const placementGhost = (position: number) => (
-      <button
-        type="button"
-        id={`enabled-mod-placeholder-${position}`}
-        aria-label={`${localization.selectNewLoadOrderPosition || "Select new load order / position"} ${position + 1}`}
-        className={
-          `drop-ghost h-10 cursor-pointer transition-colors hover:bg-blue-700/40 hover:opacity-100 ${ghostClass} ` +
-          (activeLoadOrderPosition === position ? "bg-blue-700/40" : "opacity-70")
-        }
-        onClick={() => onSelectLoadOrderPosition(position)}
-      ></button>
-    );
+  const placementGhost = (position: number) => (
+    <button
+      type="button"
+      id={`enabled-mod-placeholder-${position}`}
+      aria-label={`${localization.selectNewLoadOrderPosition || "Select new load order / position"} ${position + 1}`}
+      className={
+        `drop-ghost h-10 cursor-pointer transition-colors hover:bg-blue-700/40 hover:opacity-100 ${ghostClass} ` +
+        (activeLoadOrderPosition === position ? "bg-blue-700/40" : "opacity-70")
+      }
+      onClick={() => onSelectLoadOrderPosition(position)}
+    ></button>
+  );
 
-    return (
-      <div
-        className={`relative grid row-div-paddings ${isCompact ? "row-div-paddings-compact" : ""} ${
-          isLoadOrderPlacementMode ? "" : "row-hover-highlight"
-        } ${gridClass} ${
-          isLoadOrderPlacementSource ? "row-bg-color-manually" : ""
-        } ${isRecentlyReordered ? "recently-reordered-row" : ""}`}
-        key={mod.name}
-        onMouseEnter={(e) => onRowHoverStart(e)}
-        onMouseLeave={(e) => onRowHoverEnd(e)}
-        onClickCapture={(event) => {
-          if (!event.ctrlKey || event.button !== 0) return;
+  return (
+    <div
+      className={`relative grid row-div-paddings ${isCompact ? "row-div-paddings-compact" : ""} ${
+        isLoadOrderPlacementMode ? "" : "row-hover-highlight"
+      } ${gridClass} ${
+        isLoadOrderPlacementSource ? "row-bg-color-manually" : ""
+      } ${isRecentlyReordered ? "recently-reordered-row" : ""}`}
+      key={mod.name}
+      onMouseEnter={(e) => onRowHoverStart(e)}
+      onMouseLeave={(e) => onRowHoverEnd(e)}
+      onClickCapture={(event) => {
+        if (!event.ctrlKey || event.button !== 0) return;
 
-          // Controls inside a row keep their own Ctrl-click behaviour. The rest of the row opens the
-          // viewer before a label can activate its checkbox.
-          if (event.target instanceof Element && event.target.closest("button, input, .bigger-gear-icon")) return;
+        // Controls inside a row keep their own Ctrl-click behaviour. The rest of the row opens the
+        // viewer before a label can activate its checkbox.
+        if (event.target instanceof Element && event.target.closest("button, input, .bigger-gear-icon")) return;
 
-          event.preventDefault();
-          event.stopPropagation();
-          onModOpenInViewer(mod);
-        }}
-        id={rowId}
-        data-load-order={mod.loadOrder}
-        style={style}
-        ref={ref}
-      >
-        {isLoadOrderPlacementMode && placementGhost(rowIndex)}
+        event.preventDefault();
+        event.stopPropagation();
+        onModOpenInViewer(mod);
+      }}
+      id={rowId}
+      data-load-order={mod.loadOrder}
+      style={style}
+      ref={ref}
+    >
+      {isLoadOrderPlacementMode && placementGhost(rowIndex)}
 
-        {(isCompact && (
-          <>
-            {/*
-             * The compact layout has no enabled column, so the checkbox stays in the DOM purely as the
-             * target every cell's <label htmlFor> points at - that is what makes clicking a row move the
-             * mod between the two lists.
-             */}
-            <div
-              id={`load-order-row-anchor-${rowId}`}
-              className="relative flex justify-center items-center"
-              onContextMenu={(event) => {
-                event.preventDefault();
-                onRemoveModOrder(mod);
-              }}
-            >
-              {loadOrderNumber}
-              {canReorder && reorderButton}
-              <input
-                className="sr-only"
-                type="checkbox"
-                name={checkboxIdentity}
-                id={checkboxId}
-                checked={mod.isEnabled}
-                disabled={isLoadOrderPlacementMode}
-                onChange={() => onModToggled(mod)}
-              ></input>
-            </div>
+      {(isCompact && (
+        <>
+          {/*
+           * The compact layout has no enabled column, so the checkbox stays in the DOM purely as the
+           * target every cell's <label htmlFor> points at - that is what makes clicking a row move the
+           * mod between the two lists.
+           */}
+          <div
+            id={`load-order-row-anchor-${rowId}`}
+            className="relative flex justify-center items-center"
+            onContextMenu={(event) => {
+              event.preventDefault();
+              onRemoveModOrder(mod);
+            }}
+          >
+            {loadOrderNumber}
+            {canReorder && reorderButton}
+            <input
+              className="sr-only"
+              type="checkbox"
+              name={checkboxIdentity}
+              id={checkboxId}
+              checked={mod.isEnabled}
+              disabled={isLoadOrderPlacementMode}
+              onChange={() => onModToggled(mod)}
+            ></input>
+          </div>
 
-            {areThumbnailsEnabled && (
-              <div onContextMenu={(e) => onModRightClick(e, mod)} className="flex place-items-center">
-                <label className="cursor-pointer" htmlFor={checkboxId}>
-                  <img className="mod-row-thumb aspect-square" src={thumbnailSrc} decoding="async"></img>
-                </label>
-              </div>
-            )}
-
-            <div className="flex flex-col justify-center min-w-0" onContextMenu={(e) => onModRightClick(e, mod)}>
-              <label className="cursor-pointer min-w-0" htmlFor={checkboxId}>
-                {(hasHumanName && (
-                  <span
-                    className={classNames("block", "truncate", "mod-row-title", {
-                      ["text-violet-400"]: isAlwaysEnabled,
-                    })}
-                    title={decodedHumanName}
-                  >
-                    {decodedHumanName}
-                  </span>
-                )) || (
-                  // PackName colours itself by source, and those colours were picked for a small
-                  // secondary line. Promoted to the primary line the data-mod orange glares, so the line
-                  // is knocked back - dimming here rather than in PackName keeps the wide layout as it is.
-                  <span className="block truncate mod-row-title opacity-80" title={mod.name}>
-                    <PackName
-                      mod={mod}
-                      isEnabledInMergedMod={isEnabledInMergedMod}
-                      customFolderPath={customFolderPath}
-                    />
-                  </span>
-                )}
-                {hasAuthor && (
-                  <span className="block truncate mod-row-meta opacity-75" title={decodedAuthor}>
-                    {decodedAuthor}
-                  </span>
-                )}
-                {hasHumanName && (
-                  <span className="block truncate mod-row-meta opacity-90" title={mod.name}>
-                    <PackName
-                      mod={mod}
-                      isEnabledInMergedMod={isEnabledInMergedMod}
-                      customFolderPath={customFolderPath}
-                    />
-                  </span>
-                )}
+          {areThumbnailsEnabled && (
+            <div onContextMenu={(e) => onModRightClick(e, mod)} className="flex place-items-center">
+              <label className="cursor-pointer" htmlFor={checkboxId}>
+                <img className="mod-row-thumb aspect-square" src={thumbnailSrc} decoding="async"></img>
               </label>
             </div>
+          )}
 
-            <div className="flex place-items-center" onContextMenu={(e) => onModRightClick(e, mod)}>
-              <label className="cursor-pointer mod-row-meta" htmlFor={checkboxId}>
-                {timeColumnValue}
-              </label>
-            </div>
-
-            {showConfigColumn && (
-              <div className="flex place-items-center justify-center gap-2">
-                <ConfigIcons
-                  {...{
-                    mod,
-                    hasDbCustomization,
-                    hasFlowCustomization,
-                    hasPackDataOverwrite,
-                    onCustomizeModClicked,
-                    onCustomizeModRightClick,
-                    onFlowOptionsClicked,
-                  }}
-                />
-              </div>
-            )}
-          </>
-        )) || (
-          <>
-            <div
-              id={`load-order-row-anchor-${rowId}`}
-              className="flex justify-center items-center"
-              onContextMenu={(event) => {
-                event.preventDefault();
-                onRemoveModOrder(mod);
-              }}
-            >
-              {loadOrderNumber}
-            </div>
-            <div className="relative grid">
-              {(!canReorder && (
-                <span className="make-tooltip-inline absolute self-center tooltip-width-20">
-                  <Tooltip
-                    placement="right"
-                    style="light"
-                    content={
-                      <span className="text-slate-200">
-                        Mod order can only be changed in the Enabled Mods tab. List of tabs is located in the top-left
-                        of the window. You can also use the Ctrl+2 shortcut.
-                      </span>
-                    }
-                  >
-                    <div
-                      className="hidden absolute left-0 self-center cursor-not-allowed first:p-0 z-10"
-                      id={`load-order-icon-${mod.name}`}
-                    >
-                      <BsArrowDownUp opacity={0.5} />
-                    </div>
-                  </Tooltip>
+          <div className="flex flex-col justify-center min-w-0" onContextMenu={(e) => onModRightClick(e, mod)}>
+            <label className="cursor-pointer min-w-0" htmlFor={checkboxId}>
+              {(hasHumanName && (
+                <span
+                  className={classNames("block", "truncate", "mod-row-title", {
+                    ["text-violet-400"]: isAlwaysEnabled,
+                  })}
+                  title={decodedHumanName}
+                >
+                  {decodedHumanName}
                 </span>
-              )) ||
-                reorderButton}
-              <form className={"grid place-items-center h-full " + (areThumbnailsEnabled ? "bigger-checkbox" : "")}>
-                <input
-                  style={
-                    (isAlwaysEnabled && {
-                      color: "#6D28D9",
-                    }) ||
-                    {}
-                  }
-                  type="checkbox"
-                  name={checkboxIdentity}
-                  id={checkboxId}
-                  checked={mod.isEnabled}
-                  disabled={isLoadOrderPlacementMode}
-                  onChange={() => onModToggled(mod)}
-                ></input>
-              </form>
-            </div>
-            <div
-              onContextMenu={(e) => onModRightClick(e, mod)}
-              className={"flex place-items-center grid-area-autohide " + (areThumbnailsEnabled ? "" : "hidden")}
-            >
-              <label className="cursor-pointer" htmlFor={checkboxId}>
-                {areThumbnailsEnabled && (
-                  <img className="max-w-24 aspect-square" src={thumbnailSrc} decoding="async"></img>
-                )}
-              </label>
-            </div>
-            <div className="flex place-items-center w-min-[0px]" onContextMenu={(e) => onModRightClick(e, mod)}>
-              <label className="max-w-full inline-block wrap-break-word cursor-pointer" htmlFor={checkboxId}>
-                <PackName mod={mod} isEnabledInMergedMod={isEnabledInMergedMod} customFolderPath={customFolderPath} />
-              </label>
-            </div>
-            <div className="flex place-items-center" onContextMenu={(e) => onModRightClick(e, mod)}>
-              <label className="cursor-pointer" htmlFor={checkboxId}>
-                {decodedHumanName}
-              </label>
-            </div>
-            <div
-              onContextMenu={(e) => onModRightClick(e, mod)}
-              className={"flex place-items-center grid-area-autohide " + (isAuthorEnabled ? "" : "hidden")}
-            >
-              <label className="cursor-pointer" htmlFor={checkboxId}>
-                <span className="break-all">{decodedAuthor}</span>
-              </label>
-            </div>
-            <div className="flex place-items-center grid-area-autohide" onContextMenu={(e) => onModRightClick(e, mod)}>
-              <label
-                style={{ height: areThumbnailsEnabled ? "28px" : "24px" }}
-                className="cursor-pointer"
-                htmlFor={checkboxId}
-              >
-                {timeColumnValue}
-              </label>
-            </div>
-            <div
-              onContextMenu={(e) => onModRightClick(e, mod)}
-              className={"flex place-items-center grid-area-autohide " + (hasSubbedTimeColumn ? "" : "hidden")}
-            >
-              <label className="cursor-pointer" htmlFor={checkboxId}>
-                {subbedTimeValue}
-              </label>
-            </div>
+              )) || (
+                // PackName colours itself by source, and those colours were picked for a small
+                // secondary line. Promoted to the primary line the data-mod orange glares, so the line
+                // is knocked back - dimming here rather than in PackName keeps the wide layout as it is.
+                <span className="block truncate mod-row-title opacity-80" title={mod.name}>
+                  <PackName mod={mod} isEnabledInMergedMod={isEnabledInMergedMod} customFolderPath={customFolderPath} />
+                </span>
+              )}
+              {hasAuthor && (
+                <span className="block truncate mod-row-meta opacity-75" title={decodedAuthor}>
+                  {decodedAuthor}
+                </span>
+              )}
+              {hasHumanName && (
+                <span className="block truncate mod-row-meta opacity-90" title={mod.name}>
+                  <PackName mod={mod} isEnabledInMergedMod={isEnabledInMergedMod} customFolderPath={customFolderPath} />
+                </span>
+              )}
+            </label>
+          </div>
+
+          <div className="flex place-items-center" onContextMenu={(e) => onModRightClick(e, mod)}>
+            <label className="cursor-pointer mod-row-meta" htmlFor={checkboxId}>
+              {timeColumnValue}
+            </label>
+          </div>
+
+          {showConfigColumn && (
             <div className="flex place-items-center justify-center gap-2">
               <ConfigIcons
                 {...{
@@ -552,12 +429,123 @@ const ModRow = forwardRef<HTMLDivElement, ModRowProps>(
                 }}
               />
             </div>
-          </>
-        )}
+          )}
+        </>
+      )) || (
+        <>
+          <div
+            id={`load-order-row-anchor-${rowId}`}
+            className="flex justify-center items-center"
+            onContextMenu={(event) => {
+              event.preventDefault();
+              onRemoveModOrder(mod);
+            }}
+          >
+            {loadOrderNumber}
+          </div>
+          <div className="relative grid">
+            {(!canReorder && (
+              <span className="make-tooltip-inline absolute self-center tooltip-width-20">
+                <Tooltip
+                  placement="right"
+                  style="light"
+                  content={
+                    <span className="text-slate-200">
+                      Mod order can only be changed in the Enabled Mods tab. List of tabs is located in the top-left of
+                      the window. You can also use the Ctrl+2 shortcut.
+                    </span>
+                  }
+                >
+                  <div
+                    className="hidden absolute left-0 self-center cursor-not-allowed first:p-0 z-10"
+                    id={`load-order-icon-${mod.name}`}
+                  >
+                    <BsArrowDownUp opacity={0.5} />
+                  </div>
+                </Tooltip>
+              </span>
+            )) ||
+              reorderButton}
+            <form className={"grid place-items-center h-full " + (areThumbnailsEnabled ? "bigger-checkbox" : "")}>
+              <input
+                style={
+                  (isAlwaysEnabled && {
+                    color: "#6D28D9",
+                  }) ||
+                  {}
+                }
+                type="checkbox"
+                name={checkboxIdentity}
+                id={checkboxId}
+                checked={mod.isEnabled}
+                disabled={isLoadOrderPlacementMode}
+                onChange={() => onModToggled(mod)}
+              ></input>
+            </form>
+          </div>
+          <div
+            onContextMenu={(e) => onModRightClick(e, mod)}
+            className={"flex place-items-center grid-area-autohide " + (areThumbnailsEnabled ? "" : "hidden")}
+          >
+            <label className="cursor-pointer" htmlFor={checkboxId}>
+              {areThumbnailsEnabled && (
+                <img className="max-w-24 aspect-square" src={thumbnailSrc} decoding="async"></img>
+              )}
+            </label>
+          </div>
+          <div className="flex place-items-center w-min-[0px]" onContextMenu={(e) => onModRightClick(e, mod)}>
+            <label className="max-w-full inline-block wrap-break-word cursor-pointer" htmlFor={checkboxId}>
+              <PackName mod={mod} isEnabledInMergedMod={isEnabledInMergedMod} customFolderPath={customFolderPath} />
+            </label>
+          </div>
+          <div className="flex place-items-center" onContextMenu={(e) => onModRightClick(e, mod)}>
+            <label className="cursor-pointer" htmlFor={checkboxId}>
+              {decodedHumanName}
+            </label>
+          </div>
+          <div
+            onContextMenu={(e) => onModRightClick(e, mod)}
+            className={"flex place-items-center grid-area-autohide " + (isAuthorEnabled ? "" : "hidden")}
+          >
+            <label className="cursor-pointer" htmlFor={checkboxId}>
+              <span className="break-all">{decodedAuthor}</span>
+            </label>
+          </div>
+          <div className="flex place-items-center grid-area-autohide" onContextMenu={(e) => onModRightClick(e, mod)}>
+            <label
+              style={{ height: areThumbnailsEnabled ? "28px" : "24px" }}
+              className="cursor-pointer"
+              htmlFor={checkboxId}
+            >
+              {timeColumnValue}
+            </label>
+          </div>
+          <div
+            onContextMenu={(e) => onModRightClick(e, mod)}
+            className={"flex place-items-center grid-area-autohide " + (hasSubbedTimeColumn ? "" : "hidden")}
+          >
+            <label className="cursor-pointer" htmlFor={checkboxId}>
+              {subbedTimeValue}
+            </label>
+          </div>
+          <div className="flex place-items-center justify-center gap-2">
+            <ConfigIcons
+              {...{
+                mod,
+                hasDbCustomization,
+                hasFlowCustomization,
+                hasPackDataOverwrite,
+                onCustomizeModClicked,
+                onCustomizeModRightClick,
+                onFlowOptionsClicked,
+              }}
+            />
+          </div>
+        </>
+      )}
 
-        {isLast && isLoadOrderPlacementMode && placementGhost(rowIndex + 1)}
-      </div>
-    );
-  },
-);
+      {isLast && isLoadOrderPlacementMode && placementGhost(rowIndex + 1)}
+    </div>
+  );
+};
 export default memo(ModRow);

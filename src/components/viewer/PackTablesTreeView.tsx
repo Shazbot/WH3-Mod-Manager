@@ -567,7 +567,8 @@ const ArrowIconForHeadlessTree = ({ isOpen }: { isOpen: boolean }) => {
 };
 
 const PackTablesTreeView = React.memo(
-  React.forwardRef<PackTablesTreeViewHandle, PackTablesTreeViewProps>((props: PackTablesTreeViewProps, ref) => {
+  (props: PackTablesTreeViewProps & { ref?: React.Ref<PackTablesTreeViewHandle> }) => {
+    const { ref } = props;
     const dispatch = useAppDispatch();
     const localized: Record<string, string> = useContext(localizationContext);
     const currentGame = useAppSelector((state) => state.app.currentGame);
@@ -2701,7 +2702,7 @@ const PackTablesTreeView = React.memo(
         )}
       </div>
     );
-  }),
+  },
 );
 
 export default PackTablesTreeView;

@@ -1,5 +1,4 @@
 import React, {
-  forwardRef,
   memo,
   useCallback,
   useContext,
@@ -484,7 +483,7 @@ type SkillsViewProps = {
 };
 
 const SkillsView = memo(
-  forwardRef<SkillsViewHandle, SkillsViewProps>(({ skillsData, initialSnapshot }, ref) => {
+  ({ skillsData, initialSnapshot, ref }: SkillsViewProps & { ref?: React.Ref<SkillsViewHandle> }) => {
     const dispatch = useAppDispatch();
     const localized: Record<string, string> = useContext(localizationContext);
 
@@ -5985,7 +5984,7 @@ const SkillsView = memo(
         )}
       </div>
     );
-  }),
+  },
 );
 
 export default SkillsView;

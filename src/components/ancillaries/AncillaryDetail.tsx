@@ -300,16 +300,18 @@ const { FixedSizeList } = require("react-window") as { FixedSizeList: React.Comp
 
 const menuListOuterProps = React.createContext<React.HTMLAttributes<HTMLDivElement>>({});
 
-const FixedSizeMenuListOuter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-  ({ children, ...listProps }, ref) => {
-    const innerProps = React.useContext(menuListOuterProps);
-    return (
-      <div {...innerProps} {...listProps} ref={ref}>
-        {children}
-      </div>
-    );
-  },
-);
+const FixedSizeMenuListOuter = ({
+  children,
+  ref,
+  ...listProps
+}: React.HTMLAttributes<HTMLDivElement> & { ref?: React.Ref<HTMLDivElement> }) => {
+  const innerProps = React.useContext(menuListOuterProps);
+  return (
+    <div {...innerProps} {...listProps} ref={ref}>
+      {children}
+    </div>
+  );
+};
 
 const FixedMenuOption = ({
   data,
