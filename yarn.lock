@@ -9546,7 +9546,7 @@ react-router@6.30.6:
   dependencies:
     "@remix-run/router" "1.23.4"
 
-react-select@^5.2.2, react-select@^5.6.0:
+react-select@^5.6.0:
   version "5.10.2"
   resolved "https://registry.yarnpkg.com/react-select/-/react-select-5.10.2.tgz#8dffc69dfd7d74684d9613e6eb27204e3b99e127"
   integrity sha512-Z33nHdEFWq9tfnfVXaiM12rbJmk+QjFEztWLtmXqQhz6Al4UZZ9xc0wiatmGtUOCCnHN0WizL3tCMYRENX4rVQ==
@@ -9591,21 +9591,13 @@ react-virtualized@^9.22.6:
     prop-types "^15.7.2"
     react-lifecycles-compat "^3.0.4"
 
-react-window@^1.8.11, react-window@^1.8.6:
+react-window@^1.8.11:
   version "1.8.11"
   resolved "https://registry.yarnpkg.com/react-window/-/react-window-1.8.11.tgz#a857b48fa85bd77042d59cc460964ff2e0648525"
   integrity sha512-+SRbUVT2scadgFSWx+R1P754xHPEqvcfSfVX10QYg6POOz+WNgkN48pS+BtZNIMGiL1HYrSEiCkwsMS15QogEQ==
   dependencies:
     "@babel/runtime" "^7.0.0"
     memoize-one ">=3.1.1 <6"
-
-react-windowed-select@^5.2.0:
-  version "5.2.0"
-  resolved "https://registry.yarnpkg.com/react-windowed-select/-/react-windowed-select-5.2.0.tgz#367916ded1ed492ab8319b614681d914ace54388"
-  integrity sha512-NOdkFj3GKjIdSQicPITjvIMzu2y75JIoCAB1CPiMiRfbLCQRwaf5rH6n4EdP38KpDrv6R2Vt8bVo3PUoB+RspA==
-  dependencies:
-    react-select "^5.2.2"
-    react-window "^1.8.6"
 
 react@^19.3.1:
   version "19.3.1"

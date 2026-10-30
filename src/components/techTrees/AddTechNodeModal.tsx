@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { createFilter } from "react-select";
-import WindowedSelect from "react-windowed-select";
+import VirtualizedSelect from "../VirtualizedSelect";
 import { Modal } from "../../flowbite/components/Modal/index";
 import selectStyle from "../../styles/selectStyle";
 
@@ -282,16 +282,14 @@ const AddTechNodeModal = ({
           {technologyMode === "existing" ? (
             <div className="space-y-2">
               <label className="block text-xs text-gray-400">Technology Key *</label>
-              <WindowedSelect
+              <VirtualizedSelect
                 options={technologyOptions}
                 value={selectedTechnology}
-                // @ts-expect-error react-select type mismatch in current setup
                 onChange={(newValue: TechnologyOption | null) => handleExistingTechnologyChange(newValue)}
                 styles={selectStyle}
                 isClearable
                 filterOption={createFilter({ ignoreAccents: false })}
                 placeholder="Search technologies..."
-                // @ts-expect-error react-select option rendering types are narrower than the runtime shape here.
                 formatOptionLabel={(option: TechnologyOption) => (
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
@@ -338,7 +336,7 @@ const AddTechNodeModal = ({
                 </p>
               )}
               <label className="block text-xs text-gray-400">Effects</label>
-              <WindowedSelect
+              <VirtualizedSelect
                 isMulti
                 options={effectOptions}
                 value={selectedEffects}
@@ -358,7 +356,6 @@ const AddTechNodeModal = ({
                 styles={selectStyle}
                 filterOption={createFilter({ ignoreAccents: false })}
                 placeholder="Search effects..."
-                // @ts-expect-error react-select option rendering types are narrower than the runtime shape here.
                 formatOptionLabel={(option: EffectOption) => (
                   <div className="flex items-center gap-2">
                     {option.effect.iconData && (
@@ -400,16 +397,14 @@ const AddTechNodeModal = ({
                 <label className="block text-xs text-gray-400 mb-1">Icon</label>
                 <div className="flex gap-2">
                   <div className="flex-1">
-                    <WindowedSelect
+                    <VirtualizedSelect
                       options={technologyIconOptions}
                       value={selectedIcon}
-                      // @ts-expect-error react-select type mismatch in current setup
                       onChange={(newValue: TechnologyIconOption | null) => setSelectedIcon(newValue)}
                       styles={selectStyle}
                       placeholder="Select icon..."
                       isClearable
                       filterOption={createFilter({ ignoreAccents: false })}
-                      // @ts-expect-error react-select option rendering types are narrower than the runtime shape here.
                       formatOptionLabel={(option: TechnologyIconOption) => (
                         <div className="flex items-center gap-2">
                           {option.iconData && <img className="h-10 w-10 object-contain" src={option.iconData} alt="" />}

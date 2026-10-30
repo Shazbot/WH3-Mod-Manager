@@ -1,8 +1,8 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { autoUpdate, offset, shift, useFloating } from "@floating-ui/react";
 import { createPortal } from "react-dom";
-import WindowedSelect, { components, type MenuListProps } from "react-windowed-select";
-import { createFilter } from "react-select";
+import VirtualizedSelect from "../VirtualizedSelect";
+import { components, createFilter, type MenuListProps } from "react-select";
 import { IoAdd, IoCopy, IoLockClosed, IoTrash } from "react-icons/io5";
 import selectStyle from "../../styles/selectStyle";
 import {
@@ -408,7 +408,7 @@ const IconSelect = ({
   // A value the options do not cover still has to show, or the cell would look empty and get reset.
   const selected = options.find((option) => option.value === value) ?? { value, label: value || "—" };
   return (
-    <WindowedSelect
+    <VirtualizedSelect
       filterOption={createFilter({ ignoreAccents: false })}
       options={options}
       value={selected}
@@ -856,7 +856,7 @@ const AncillaryDetail = memo(
               <div className="mt-3 flex items-end gap-2">
                 <div className="min-w-0 flex-1">
                   <div className="mb-1 text-xs text-gray-400">{localized.ancillariesAddEffect || "Add effect"}</div>
-                  <WindowedSelect
+                  <VirtualizedSelect
                     filterOption={createFilter({ ignoreAccents: false })}
                     options={effectSelectOptions}
                     // Name and key both, because the description is what the player reads and the
@@ -874,9 +874,7 @@ const AncillaryDetail = memo(
                     }
                     // @ts-expect-error react-select value type does not match the windowed select wrapper.
                     onChange={(option: { value: string } | null) => setPendingEffectKey(option?.value)}
-                    // The wrapper replaces a custom MenuList once its own threshold is reached;
-                    // this picker supplies its own fixed-size virtual list instead.
-                    windowThreshold={effectSelectOptions.length + 1}
+                    // This picker supplies its own fixed-size virtual list for the large effect set.
                     components={{ MenuList: FixedEffectMenuList }}
                     styles={effectSelectStyle}
                     placeholder={localized.ancillariesSearchEffects || "Search effects…"}

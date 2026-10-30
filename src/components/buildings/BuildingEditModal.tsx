@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useMemo, useState } from "react";
-import WindowedSelect from "react-windowed-select";
+import VirtualizedSelect from "../VirtualizedSelect";
 import { createFilter } from "react-select";
 import { Modal } from "../../flowbite";
 import { useLocalizations } from "../../localizationContext";
@@ -137,7 +137,7 @@ const BuildingInfoRow = ({
  * neither reads well folded into one line, which ellipsises away the end of both. A menu row gets
  * two lines and wraps; the closed control still has to fit on one.
  *
- * Typed loosely because react-select hands the option back as `unknown` through WindowedSelect.
+ * The formatter narrows the option shape at the boundary so the two-line rendering stays local.
  */
 const formatKeyedOption = (data: unknown, meta: { context: string }) => {
   const option = data as SelectOption;
@@ -506,7 +506,7 @@ const BuildingEditModal = memo(
                 </p>
                 <label className={labelClass}>
                   {localized.buildingsUnit || "Unit"}
-                  <WindowedSelect
+                  <VirtualizedSelect
                     windowThreshold={WINDOW_THRESHOLD}
                     styles={portalSelectStyle}
                     options={unitOptions}
@@ -560,7 +560,7 @@ const BuildingEditModal = memo(
                 </p>
                 <label className={labelClass}>
                   {localized.buildingsUnit || "Unit"}
-                  <WindowedSelect
+                  <VirtualizedSelect
                     windowThreshold={WINDOW_THRESHOLD}
                     styles={portalSelectStyle}
                     options={unitOptions}
@@ -584,7 +584,7 @@ const BuildingEditModal = memo(
                 </label>
                 <label className={labelClass}>
                   {localized.buildingsUnitGroup || "Unit group"}
-                  <WindowedSelect
+                  <VirtualizedSelect
                     windowThreshold={WINDOW_THRESHOLD}
                     styles={portalSelectStyle}
                     options={garrisonUnitGroupOptions}
@@ -682,7 +682,7 @@ const BuildingEditModal = memo(
                 </label>
                 <label className={labelClass}>
                   {localized.buildingsEffect || "Effect"}
-                  <WindowedSelect
+                  <VirtualizedSelect
                     windowThreshold={WINDOW_THRESHOLD}
                     styles={portalSelectStyle}
                     options={effectOptions}
@@ -711,7 +711,7 @@ const BuildingEditModal = memo(
                 <div className="flex gap-3">
                   <label className={`${labelClass} flex-1`}>
                     {localized.buildingsScope || "Scope"}
-                    <WindowedSelect
+                    <VirtualizedSelect
                       windowThreshold={WINDOW_THRESHOLD}
                       styles={portalSelectStyle}
                       options={scopeOptions}
@@ -754,7 +754,7 @@ const BuildingEditModal = memo(
                 </p>
                 <label className={labelClass}>
                   {localized.buildingsCopyCaiFrom || "Copy CAI rows from chain"}
-                  <WindowedSelect
+                  <VirtualizedSelect
                     windowThreshold={WINDOW_THRESHOLD}
                     styles={portalSelectStyle}
                     options={chainOptions}

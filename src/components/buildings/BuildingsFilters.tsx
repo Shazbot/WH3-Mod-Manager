@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from "react";
-import WindowedSelect from "react-windowed-select";
+import VirtualizedSelect from "../VirtualizedSelect";
 import { FaMapMarkedAlt } from "react-icons/fa";
 import { useLocalizations } from "../../localizationContext";
 import selectStyle from "../../styles/selectStyle";
@@ -129,7 +129,7 @@ const modeSelectWidth = { minWidth: "9rem" };
  * The filter bar sits above a dense board, so its own text was left small enough to be hard to
  * read. These bump the control and its menu to the body size. Menu rows carry the localized name
  * over the key on two lines instead of wrapping one long `Name — key` string, and the height that
- * costs has to be stated here because react-windowed-select measures virtualised rows by it.
+ * costs has to be stated here because the shared virtualized menu uses this row height directly.
  */
 const CONTROL_HEIGHT = 38;
 const OPTION_HEIGHT = 50;
@@ -246,7 +246,7 @@ const FilterSelect = ({
 }) => (
   <label className={`${labelClass}${disabled ? " cursor-not-allowed opacity-60" : ""}`} style={width}>
     {label}
-    <WindowedSelect
+    <VirtualizedSelect
       // The visible label is the wrapping `<label>`'s own text, which a screen reader reads together
       // with everything react-select renders inside it. Naming the control directly keeps it short.
       aria-label={label}

@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 /** The picker is only here for "+ Add effect"; its windowing has nothing to do with these tests. */
-vi.mock("react-windowed-select", () => ({ default: () => <div data-testid="effect-picker" /> }));
+vi.mock("../src/components/VirtualizedSelect", () => ({ default: () => <div data-testid="effect-picker" /> }));
 
 import AncillaryDetail from "../src/components/ancillaries/AncillaryDetail";
 import {

@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useMemo, useState } from "react";
 import { createFilter } from "react-select";
-import WindowedSelect from "react-windowed-select";
+import VirtualizedSelect from "../VirtualizedSelect";
 import { Modal } from "../../flowbite";
 import { useLocalizations } from "../../localizationContext";
 import selectStyle from "../../styles/selectStyle";
@@ -123,12 +123,11 @@ const BuildingIconSelect = ({
     <>
       <div className="flex min-w-0 gap-1">
         <div className="min-w-0 flex-1">
-          <WindowedSelect
+          <VirtualizedSelect
             windowThreshold={WINDOW_THRESHOLD}
             filterOption={createFilter({ ignoreAccents: false })}
             options={options}
             value={selected}
-            // @ts-expect-error react-select value type does not match the windowed select wrapper.
             onChange={(option: IconSelectOption | null) => onChange(option?.value ?? "")}
             styles={portalSelectStyle}
             placeholder={localized.buildingsChooseIcon || "Choose icon..."}
@@ -137,7 +136,6 @@ const BuildingIconSelect = ({
             menuPortalTarget={document.body}
             menuPosition="fixed"
             menuPlacement="auto"
-            // @ts-expect-error react-select option rendering types are narrower than the runtime shape here.
             formatOptionLabel={(option: IconSelectOption) => (
               <div className="flex min-w-0 items-center gap-2">
                 <OptionIcon iconUrl={option.iconUrl} />
@@ -448,7 +446,7 @@ const BuildingCultureVariantsModal = memo(
               <div className="flex flex-wrap items-end gap-3">
                 <label className={`${labelClass} min-w-[15rem]`}>
                   {localized.buildingsCulture || "Culture"}
-                  <WindowedSelect
+                  <VirtualizedSelect
                     windowThreshold={WINDOW_THRESHOLD}
                     styles={portalSelectStyle}
                     options={cultureOptions}
@@ -465,7 +463,7 @@ const BuildingCultureVariantsModal = memo(
                 </label>
                 <label className={`${labelClass} min-w-[15rem]`}>
                   {localized.buildingsSubculture || "Subculture"}
-                  <WindowedSelect
+                  <VirtualizedSelect
                     windowThreshold={WINDOW_THRESHOLD}
                     styles={portalSelectStyle}
                     options={subcultureOptions}
@@ -481,7 +479,7 @@ const BuildingCultureVariantsModal = memo(
                 </label>
                 <label className={`${labelClass} min-w-[15rem]`}>
                   {localized.buildingsFaction || "Faction"}
-                  <WindowedSelect
+                  <VirtualizedSelect
                     windowThreshold={WINDOW_THRESHOLD}
                     styles={portalSelectStyle}
                     options={factionOptions}

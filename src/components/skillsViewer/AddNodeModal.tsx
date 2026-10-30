@@ -2,7 +2,7 @@ import React, { memo, useContext, useEffect, useMemo, useState } from "react";
 import { Modal } from "../../flowbite/components/Modal/index";
 import { useLocalizations } from "@/src/localizationContext";
 import Select, { createFilter } from "react-select";
-import WindowedSelect from "react-windowed-select";
+import VirtualizedSelect from "../VirtualizedSelect";
 import selectStyle from "@/src/styles/selectStyle";
 import { normalizeSkillIconPath, skillIconAssetPath, stripLocImgTags } from "@/src/skills";
 import { SkillsDataContext } from "./skillsDataContext";
@@ -313,11 +313,10 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
                   <label className="block mb-1 text-sm font-medium text-gray-900 dark:text-white">
                     {localized.selectSkill || "Select Skill"}
                   </label>
-                  <WindowedSelect
+                  <VirtualizedSelect
                     filterOption={createFilter({ ignoreAccents: false, matchFrom: "start" })}
                     options={skillOptions}
                     value={selectedSkill}
-                    // @ts-expect-error react-select value type does not match the windowed select wrapper.
                     onChange={(newValue: SkillOption | null) => handleSkillSelect(newValue)}
                     styles={portalSelectStyle}
                     menuPortalTarget={document.body}
@@ -325,7 +324,6 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
                     menuPlacement="auto"
                     placeholder={localized.searchSkills || "Search skills..."}
                     isClearable
-                    // @ts-expect-error react-select option rendering types are narrower than the runtime shape here.
                     formatOptionLabel={(option: SkillOption) => (
                       <>
                         <div className="font-medium">{option.label}</div>
@@ -403,10 +401,9 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
                   </label>
                   <div className="flex gap-2">
                     <div className="flex-1">
-                      <WindowedSelect
+                      <VirtualizedSelect
                         options={iconOptions}
                         value={selectedIcon}
-                        // @ts-expect-error react-select value type does not match the windowed select wrapper.
                         onChange={(newValue: IconOption | null) => setSelectedIcon(newValue)}
                         styles={portalSelectStyle}
                         menuPortalTarget={document.body}
@@ -415,7 +412,6 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
                         placeholder={localized.selectIcon || "Select icon..."}
                         isClearable
                         filterOption={createFilter({ ignoreAccents: false })}
-                        // @ts-expect-error react-select option rendering types are narrower than the runtime shape here.
                         formatOptionLabel={(option: IconOption) => (
                           <div className="flex items-center gap-2">
                             {icons[option.value] && (
@@ -565,7 +561,7 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
                   ))}
                 </div>
                 {/* Effect selector for active level */}
-                <WindowedSelect
+                <VirtualizedSelect
                   isMulti
                   options={effectOptions}
                   value={levelEffects[activeLevel] || []}
@@ -579,8 +575,6 @@ const AddNodeModal = memo((props: AddNodeModalProps) => {
                   menuPosition="fixed"
                   menuPlacement="auto"
                   placeholder={localized.searchEffects || "Search effects..."}
-                  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                  // @ts-ignore
                   formatOptionLabel={(option: EffectOption) => (
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-2">

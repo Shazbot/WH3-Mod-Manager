@@ -9,7 +9,7 @@ import type { BuildingsCatalog, BuildingsTile } from "../src/buildingsData/types
 type TestOption = { value: string; label: string };
 
 // A native select makes the dependent culture/subculture/faction choices straightforward to test.
-vi.mock("react-windowed-select", () => ({
+vi.mock("../src/components/VirtualizedSelect", () => ({
   default: ({
     options,
     value,

@@ -2,7 +2,7 @@
 
 The renderer is built with [React Compiler](https://react.dev/learn/react-compiler), which memoizes components and hooks automatically. This page covers how it is wired in, what stops it from compiling a component, how to fix that, and when to opt out.
 
-As of 2026-10-30 every renderer component compiles (307 functions across 195 `.tsx` files) except the opt-outs listed in `scripts/react-compiler.cjs`.
+As of 2026-10-30 every renderer component compiles (312 functions across 196 `.tsx` files) except the opt-outs listed in `scripts/react-compiler.cjs`.
 
 The renderer uses React 19.3 with the automatic JSX transform (`react-jsx` in TypeScript, `jsx: "automatic"` in the renderer esbuild loader, and `ReactJSX` in Vitest). Compiler target `"19"` imports the built-in `react/compiler-runtime`; the React 18 compatibility package is no longer needed. Onboarding uses React Joyride 3 and its `onEvent`/`options` API.
 

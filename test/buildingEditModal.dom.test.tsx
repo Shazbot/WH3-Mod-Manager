@@ -8,7 +8,7 @@ import type { BuildingsCatalog, BuildingsTile } from "../src/buildingsData/types
 type TestOption = { value: string; label: string };
 
 // A native select keeps this test focused on the dependent options rather than react-select's menu portal.
-vi.mock("react-windowed-select", () => ({
+vi.mock("../src/components/VirtualizedSelect", () => ({
   default: ({
     options,
     value,
