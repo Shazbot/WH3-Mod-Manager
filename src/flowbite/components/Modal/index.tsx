@@ -1,6 +1,6 @@
 import classNames from "classnames";
 import type { ComponentProps, FC, PropsWithChildren } from "react";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { excludeClassName } from "../../helpers/exclude";
 import windowExists from "../../helpers/window-exists";
@@ -61,7 +61,9 @@ const ModalComponent: FC<ModalProps> = ({
 
   // Read by the Escape listener so it does not have to be re-registered on every render.
   const closeOnEscapeRef = useRef<(() => void) | undefined>();
-  closeOnEscapeRef.current = canDismiss ? onClose : undefined;
+  useLayoutEffect(() => {
+    closeOnEscapeRef.current = canDismiss ? onClose : undefined;
+  });
 
   // A drag that starts inside the modal and ends on the backdrop still fires a click on the backdrop.
   const isMouseDownOnBackdropRef = useRef(false);

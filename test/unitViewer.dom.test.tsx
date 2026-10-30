@@ -4,7 +4,7 @@ import { Provider } from "react-redux";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import appReducer, { setMods } from "../src/appSlice";
+import appReducer, { setCurrentGameNaive, setMods } from "../src/appSlice";
 import initialState from "../src/initialAppState";
 import UnitViewerTab from "../src/components/UnitViewerTab";
 import { buildUnitViewerData, type UnitViewerTableRows } from "../src/unitViewer/data";
@@ -184,6 +184,22 @@ describe("Unit Viewer UI", () => {
         resolved: assetPaths,
       })),
     } as NonNullable<Window["api"]>;
+  });
+
+  it("survives switching to another game and back while mounted", async () => {
+    const { store } = renderViewer();
+    await screen.findByText("Culture");
+
+    // The non-WH3 message used to return before two hooks, so switching games threw a hook-order error.
+    act(() => {
+      store.dispatch(setCurrentGameNaive("wh2"));
+    });
+    expect(screen.getByText("Unit Viewer is available only for Warhammer 3.")).toBeTruthy();
+
+    act(() => {
+      store.dispatch(setCurrentGameNaive("wh3"));
+    });
+    expect(screen.queryByText("Unit Viewer is available only for Warhammer 3.")).toBeNull();
   });
 
   it("filters the unit list to vanilla or an enabled mod", async () => {
