@@ -287,6 +287,35 @@ export const filterSkillsByFactionCombo = <T extends FactionFilterable>(skills: 
 };
 const editModeNodeHeight = 160; // Larger spacing for edit/requirements mode
 
+/** How far left of a row's first card its stack bracket sits, and how far its ticks reach. */
+const stackBracket = { gapX: 20, tickWidth: 8 };
+
+/**
+ * Finds the rows whose faction variants stack onto more than one line, so they can be marked as one row.
+ * @param nodes The graph's nodes; a node inside a group is positioned relative to it.
+ * @returns For each such row, the x of its bracket and the y of the middle of each line, top to bottom.
+ */
+export const getStackedRowBrackets = (nodes: Nodes[]) => {
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  const rows = new Map<number, { left: number; lineYs: Set<number> }>();
+  for (const node of nodes) {
+    if (node.type !== "skill" || node.data.isGrouping) continue;
+    const parent = node.parentId ? nodesById.get(node.parentId) : undefined;
+    const x = node.position.x + (parent?.position.x ?? 0);
+    const y = Math.round(node.position.y + (parent?.position.y ?? 0));
+    const row = rows.get(node.data.row) ?? { left: x, lineYs: new Set<number>() };
+    row.left = Math.min(row.left, x);
+    row.lineYs.add(y);
+    rows.set(node.data.row, row);
+  }
+  return [...rows.values()]
+    .filter((row) => row.lineYs.size > 1)
+    .map((row) => ({
+      x: row.left - stackBracket.gapX,
+      lineYs: [...row.lineYs].sort((a, b) => a - b).map((y) => y + skillEntry.height / 2),
+    }));
+};
+
 /**
  * Lays out each row like the game's chains. Entries are 56 px apart and a group is one item as wide as its cards, so the
  * columns after a group move right by however much wider it is.
@@ -1040,6 +1069,9 @@ const SkillsView = memo(
         return { x, y };
       })
       .filter((arrow): arrow is { x: number; y: number } => arrow != undefined);
+
+    // A bracket in front of each row whose faction variants stack, so its lines read as one row.
+    const stackedRowBrackets = isEditMode ? [] : getStackedRowBrackets(nodes);
 
     // Edit mode: connect nodes (translate to group container if applicable)
     // Undo/redo: capture current edit state into history
@@ -4867,6 +4899,28 @@ const SkillsView = memo(
                     }}
                   ></img>
                 ))}
+                {stackedRowBrackets.map((bracket, i) => {
+                  const top = bracket.lineYs[0];
+                  return (
+                    <div
+                      key={`stack-bracket-${i}`}
+                      className="absolute border-l-2 border-slate-400/60"
+                      style={{
+                        transform: `translate(${bracket.x}px, ${top}px)`,
+                        height: bracket.lineYs[bracket.lineYs.length - 1] - top,
+                        width: 0,
+                      }}
+                    >
+                      {bracket.lineYs.map((y) => (
+                        <div
+                          key={y}
+                          className="absolute border-t-2 border-slate-400/60"
+                          style={{ left: 0, top: y - top - 1, width: stackBracket.tickWidth }}
+                        />
+                      ))}
+                    </div>
+                  );
+                })}
               </div>
             </ViewportPortal>
           )}

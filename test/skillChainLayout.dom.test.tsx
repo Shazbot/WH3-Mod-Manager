@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { filterSkillsByFactionCombo, getChainColumnXs } from "../src/components/skillsViewer/SkillsView";
+import {
+  filterSkillsByFactionCombo,
+  getChainColumnXs,
+  getStackedRowBrackets,
+} from "../src/components/skillsViewer/SkillsView";
 import { skillEntry, skillGroupWidth } from "../src/components/skillsViewer/skillPanelLayout";
 
 vi.mock("@xyflow/react", () => ({
@@ -70,5 +74,24 @@ describe("filterSkillsByFactionCombo", () => {
       entry("base_02", "1"),
     ];
     expect(filterSkillsByFactionCombo(skills, nag).map((skill) => skill.id)).toEqual(["nag_01", "base_02"]);
+  });
+});
+
+describe("getStackedRowBrackets", () => {
+  const node = (id: string, row: number, x: number, y: number, parentId?: string) =>
+    ({ id, type: "skill", parentId, position: { x, y }, data: { row, isGrouping: false } }) as never;
+  const group = (id: string, x: number, y: number) =>
+    ({ id, type: "default", position: { x, y }, data: { row: 0, isGrouping: true } }) as never;
+
+  it("marks only rows that stack onto more than one line, counting group members by their absolute position", () => {
+    const middle = skillEntry.height / 2;
+    const brackets = getStackedRowBrackets([
+      node("flat", 0, 0, 0),
+      node("base", 1, 0, 100),
+      node("variant", 1, 0, 175),
+      group("g", 300, 100),
+      node("member", 1, 20, 75, "g"),
+    ]);
+    expect(brackets).toEqual([{ x: -20, lineYs: [100 + middle, 175 + middle] }]);
   });
 });
