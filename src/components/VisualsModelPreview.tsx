@@ -31,7 +31,13 @@ import { filterVisualsModelPreviewWarnings } from "../visuals/modelPreviewWarnin
 import UnitPainterTextureEditor from "./UnitPainterTextureEditor";
 import { selectDefaultAnimation, type AnimationSelectionProfile } from "../visuals/animationSelection";
 import { pickStandingClip } from "../visuals/twAnimBin";
-import { getActiveVariantMeshSlots, type VariantMeshCatalog, type VariantMeshSelection } from "../visuals/variantMesh";
+import { addTechAttachmentNodes, attachModelToSeat, attachRiderToSaddle } from "../visuals/modelAttachments";
+import {
+  getActiveVariantMeshSlots,
+  getVariantMeshTechAnimationPaths,
+  type VariantMeshCatalog,
+  type VariantMeshSelection,
+} from "../visuals/variantMesh";
 import {
   createUnitPainterSession,
   getUnitPainterBrushSpacing,
@@ -83,7 +89,7 @@ export type VisualsCompanionModel = {
   engineRiders?: Array<{ attachmentPoint: string; assetPath: string; animationTable?: string }>;
   /** Animation bin table whose standing idle this part should play. */
   animationTable?: string;
-  /** Engine only: candidate pack paths of the tech animation that defines the `ap_*` attachment bones, tried in order. */
+  /** Engine or mount: candidate pack paths of the tech animation that defines the `ap_*` attachment bones, tried in order. */
   techAnimPaths?: string[];
   /** The part whose attachment points seat the crew (an engine, or a ridden monster mount). */
   seatHost?: boolean;
@@ -163,71 +169,6 @@ const findNodeByName = (root: THREE.Object3D, name: string) => {
   return found;
 };
 
-/**
- * The engine's own skeleton lacks `ap_*` bones; they live in its tech animation. Creates an Object3D per
- * `ap_*` bone under the nearest ancestor bone that exists in the engine GLB, so it follows engine animation.
- * The exporter may mirror X (translation x -> -x, rotation y/z -> -y/-z); that is detected by comparing
- * bones both skeletons share.
- */
-const addTechAttachmentNodes = (engine: THREE.Object3D, bones: readonly TechSkeletonBone[]) => {
-  const nodesByName = new Map<string, THREE.Object3D>();
-  engine.traverse((node) => {
-    const name = node.name.toLowerCase();
-    if (name && !nodesByName.has(name)) nodesByName.set(name, node);
-  });
-  const isAp = (bone: TechSkeletonBone) => bone.name.toLowerCase().startsWith("ap_");
-  const convert = (bone: TechSkeletonBone, mirror: boolean) => {
-    const [x, y, z] = bone.translation;
-    const [qx, qy, qz, qw] = bone.rotation;
-    return {
-      position: new THREE.Vector3(mirror ? -x : x, y, z),
-      quaternion: new THREE.Quaternion(qx, mirror ? -qy : qy, mirror ? -qz : qz, qw),
-    };
-  };
-  const mismatch = (mirror: boolean) => {
-    let total = 0;
-    for (const bone of bones) {
-      const node = isAp(bone) ? undefined : nodesByName.get(bone.name.toLowerCase());
-      if (!node) continue;
-      const local = convert(bone, mirror);
-      total += local.position.distanceTo(node.position) + (1 - Math.abs(local.quaternion.dot(node.quaternion)));
-    }
-    return total;
-  };
-  const mirror = mismatch(true) < mismatch(false);
-  const created: string[] = [];
-  const missing: string[] = [];
-  for (const bone of bones) {
-    if (!isAp(bone) || nodesByName.has(bone.name.toLowerCase())) continue;
-    const local = convert(bone, mirror);
-    const matrix = new THREE.Matrix4().compose(local.position, local.quaternion, new THREE.Vector3(1, 1, 1));
-    let parentIndex = bone.parent;
-    let anchor: THREE.Object3D | undefined;
-    while (parentIndex >= 0 && !anchor) {
-      const parentBone = bones[parentIndex];
-      anchor = nodesByName.get(parentBone.name.toLowerCase());
-      if (!anchor) {
-        const parentLocal = convert(parentBone, mirror);
-        matrix.premultiply(
-          new THREE.Matrix4().compose(parentLocal.position, parentLocal.quaternion, new THREE.Vector3(1, 1, 1)),
-        );
-        parentIndex = parentBone.parent;
-      }
-    }
-    if (!anchor) {
-      missing.push(bone.name);
-      continue;
-    }
-    const node = new THREE.Object3D();
-    node.name = bone.name;
-    matrix.decompose(node.position, node.quaternion, node.scale);
-    anchor.add(node);
-    nodesByName.set(bone.name.toLowerCase(), node);
-    created.push(bone.name);
-  }
-  console.log("[unit viewer] engine tech-anim attachment nodes", { mirrorX: mirror, created, noAnchor: missing });
-};
-
 /** Parents crew/mount models to the engine's attachment nodes; returns true when anything was attached. */
 /** Gap kept between the engine and its crew when there are no attachment points to seat them. */
 const ENGINE_CREW_GAP = 0.3;
@@ -260,23 +201,18 @@ const placeEngineBesideCrew = (
 
 const attachToEngine = (
   engine: THREE.Object3D,
-  engineLabel: Pick<VisualsCompanionModel, "riderAttachmentPoint" | "draughtAttachmentPoint" | "engineRiders">,
+  engineLabel: Pick<VisualsCompanionModel, "role" | "riderAttachmentPoint" | "draughtAttachmentPoint" | "engineRiders">,
   placeables: readonly PreviewPlaceable[],
   addAction: (scene: THREE.Object3D, clip: THREE.AnimationClip) => void,
 ) => {
   engine.updateWorldMatrix(true, true);
   let attached = false;
-  const mountOn = (node: THREE.Object3D, scene: THREE.Object3D) => {
-    node.add(scene);
-    scene.position.set(0, 0, 0);
-    scene.quaternion.identity();
-    node.updateWorldMatrix(true, false);
-    const worldScale = node.getWorldScale(new THREE.Vector3());
-    scene.scale.set(1 / (worldScale.x || 1), 1 / (worldScale.y || 1), 1 / (worldScale.z || 1));
+  const mountOn = (node: THREE.Object3D, scene: THREE.Object3D, clip?: THREE.AnimationClip) => {
+    attachModelToSeat(node, scene, engineLabel.role === "mount" ? engine : undefined, clip);
   };
   /** Draught animals take only the node's position and stand upright like the engine root. */
-  const mountUpright = (node: THREE.Object3D, scene: THREE.Object3D) => {
-    mountOn(node, scene);
+  const mountUpright = (node: THREE.Object3D, scene: THREE.Object3D, clip?: THREE.AnimationClip) => {
+    mountOn(node, scene, clip);
     const nodeRotation = node.getWorldQuaternion(new THREE.Quaternion());
     const engineRotation = engine.getWorldQuaternion(new THREE.Quaternion());
     scene.quaternion.copy(nodeRotation.invert().multiply(engineRotation));
@@ -305,7 +241,7 @@ const attachToEngine = (
         ) ??
         crew.find((placeable) => placeable.assetPath === rider.assetPath) ??
         crew[0];
-      mountOn(node, used.has(source.scene) ? cloneOf(source) : source.scene);
+      mountOn(node, used.has(source.scene) ? cloneOf(source) : source.scene, source.clip);
       used.add(source.scene);
       found.push(rider.attachmentPoint);
     }
@@ -323,7 +259,7 @@ const attachToEngine = (
     const source = models[0];
     const total = Math.max(1, Math.min(source.count, nodes.length));
     for (let index = 0; index < total; index++) {
-      attach(nodes[index], index > 0 ? cloneOf(source) : source.scene);
+      attach(nodes[index], index > 0 ? cloneOf(source) : source.scene, source.clip);
     }
     attached = true;
   };
@@ -2897,10 +2833,25 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
           internObjectResources(gltf.scene, resourcePool);
           preloadObjectTextures(context, gltf.scene, resourcePool);
           const companion = exportItem.companion;
-          if (companion?.seatHost && companion.techAnimPaths?.length && variantMeshSessionId) {
+          if (
+            companion &&
+            (companion.seatHost || (primaryModelRole === "rider" && companion.role === "mount")) &&
+            variantMeshSessionId
+          ) {
             try {
               let techBones: TechSkeletonBone[] | undefined;
-              for (const techAnimPath of companion.techAnimPaths) {
+              const techAnimPaths = [...(companion.techAnimPaths ?? [])];
+              try {
+                const result = await window.api?.getUnitViewerVariantMeshCatalog(
+                  variantMeshSessionId,
+                  companion.assetPath,
+                );
+                if (result?.success && result.catalog)
+                  techAnimPaths.push(...getVariantMeshTechAnimationPaths(result.catalog));
+              } catch {
+                // The DB tech-folder candidates remain usable if the appearance catalog is unavailable.
+              }
+              for (const techAnimPath of new Set(techAnimPaths)) {
                 const tech = await window.api?.getUnitViewerSkeletonAnim(variantMeshSessionId, techAnimPath);
                 if (tech?.success && tech.bones) {
                   techBones = tech.bones;
@@ -2909,7 +2860,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                 }
               }
               if (techBones) addTechAttachmentNodes(gltf.scene, techBones);
-              else console.log("[unit viewer] engine tech anim unavailable", companion.techAnimPaths);
+              else console.log("[unit viewer] engine tech anim unavailable", techAnimPaths);
             } catch (techError) {
               console.log("[unit viewer] engine tech anim failed", techError);
             }
@@ -2980,7 +2931,12 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
             );
           }
         }
-        // Companion parts share the primary's origin (rider animations are authored in mount space), so skip recentering.
+        if (!engineScene && primaryModelRole === "rider") {
+          const rider = placeables.find((part) => part.kind === "crew");
+          const mount = placeables.find((part) => part.kind === "mount");
+          if (rider && mount) attachRiderToSaddle(mount.scene, rider.scene);
+        }
+        // Preserve the shared origin for parts without explicit attachment points.
         if (companionScenes.length === 0) {
           layoutComparisonModels(ownedModels, comparisonColumnCount, comparisonRowCount, comparisonLayerCount);
         }

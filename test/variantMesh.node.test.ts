@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildVariantMeshCatalog,
   getActiveVariantMeshSlots,
+  getVariantMeshTechAnimationPaths,
   type VariantMeshCatalog,
 } from "../src/visuals/variantMesh";
 
@@ -95,5 +96,45 @@ describe("variant mesh appearance catalogs", () => {
 
     expect(catalog.diagnostics.some((diagnostic) => /cycle/i.test(diagnostic))).toBe(true);
     expect(catalog.slots[0]?.name).toBe("child");
+  });
+});
+
+describe("variant mesh tech animation paths", () => {
+  it("uses the lion's referenced meshes instead of guessing the VMD filename", async () => {
+    const folder = "variantmeshes/wh_variantmodels/bc2/cth/cth_celestial_lion";
+    const catalog = await buildVariantMeshCatalog(
+      "lion.variantmeshdefinition",
+      async () => `
+      <VARIANT_MESH>
+        <SLOT name="body">
+          <VARIANT_MESH model="${folder}/cth_celestial_lion_body_01.wsmodel" />
+          <VARIANT_MESH model="${folder}/unused_body_02.wsmodel" />
+        </SLOT>
+        <SLOT name="accessories">
+          <VARIANT_MESH model="${folder}/cth_celestial_lion_accessories_01.wsmodel" />
+        </SLOT>
+      </VARIANT_MESH>`,
+    );
+    expect(getVariantMeshTechAnimationPaths(catalog)).toEqual([
+      `${folder}/tech/cth_celestial_lion_body_01.anim`.replaceAll("/", "\\"),
+      `${folder}/tech/cth_celestial_lion_accessories_01.anim`.replaceAll("/", "\\"),
+    ]);
+  });
+
+  it("includes meshes from active linked definitions and excludes inactive branches", async () => {
+    const catalog = await buildVariantMeshCatalog("root.variantmeshdefinition", async (path) =>
+      path === "root.variantmeshdefinition"
+        ? `
+        <VARIANT_MESH><SLOT name="body">
+          <VARIANT_MESH_REFERENCE definition="child.variantmeshdefinition" />
+          <VARIANT_MESH model="models/inactive.wsmodel"><SLOT name="extra"><VARIANT_MESH model="models/extra.wsmodel" /></SLOT></VARIANT_MESH>
+        </SLOT></VARIANT_MESH>`
+        : `
+        <VARIANT_MESH><SLOT name="body"><VARIANT_MESH model="models/body.rigid_model_v2" /></SLOT></VARIANT_MESH>`,
+    );
+    // Inline meshes precede references in the catalog's effective ordering.
+    const root = catalog.slots[0];
+    root.defaultChoiceIndex = root.choices.find((choice) => choice.kind === "reference")!.index;
+    expect(getVariantMeshTechAnimationPaths(catalog)).toEqual(["models\\tech\\body.anim"]);
   });
 });

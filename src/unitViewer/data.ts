@@ -973,9 +973,9 @@ export const buildUnitViewerData = (
         scale: partScale(mountVariant),
         count: Math.max(1, asNumber(land.num_mounts)),
         animationTable: asString(mount?.animation).trim() || undefined,
-        ...(!engine && engineRiders.length
+        ...(!engine
           ? {
-              engineRiders,
+              engineRiders: engineRiders.length ? engineRiders : undefined,
               techAnimPaths: getTechAnimPaths(mountPath, asString(mountVariant?.tech_folder)),
             }
           : {}),

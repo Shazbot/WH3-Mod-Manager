@@ -172,6 +172,16 @@ export const getActiveVariantMeshSlots = (
   return catalog.slots.filter(isActive);
 };
 
+/** Tech animations named after the meshes in the default appearance, including linked VMDs. */
+export const getVariantMeshTechAnimationPaths = (catalog: VariantMeshCatalog): string[] => {
+  const paths = getActiveVariantMeshSlots(catalog, {}).flatMap((slot) => {
+    const path = slot.choices.find((choice) => choice.index === slot.defaultChoiceIndex)?.targetPath;
+    const match = path && /^(.*)[\\/]([^\\/]+)\.(?:wsmodel|rigid_model_v2)$/i.exec(path);
+    return match ? [`${match[1]}\\tech\\${match[2]}.anim`.replaceAll("/", "\\").toLowerCase()] : [];
+  });
+  return [...new Set(paths)];
+};
+
 /** Builds a selectable catalog while leaving model export and selection application to the host. */
 export const buildVariantMeshCatalog = async (
   assetPath: string,

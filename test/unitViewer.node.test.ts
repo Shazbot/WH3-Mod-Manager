@@ -945,6 +945,34 @@ describe("Unit Viewer catalog", () => {
     expect(unit?.painterVariantContext).toBeUndefined();
   });
 
+  it("includes saddle tech animations for ordinary manticore riders", () => {
+    const parts = buildUnitViewerData(
+      {
+        main_units_tables: [{ unit: "lord", land_unit: "lord", num_men: "1" }],
+        land_units_tables: [{ key: "lord", man_entity: "entity", primary_melee_weapon: "weapon", mount: "m" }],
+        battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "100" }],
+        melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
+        unit_variants_tables: [{ unit: "lord", variant: "v_lord" }],
+        mounts_tables: [{ key: "m", variant: "v_manticore", animation: "bc3_manticore" }],
+        variants_tables: [
+          { variant_name: "v_lord", variant_filename: "chs_chaos_lord" },
+          {
+            variant_name: "v_manticore",
+            variant_filename: "chs_manticore",
+            tech_folder: "VariantMeshes/_VariantModels/bigcat03/chaos_undivided/saddles/tech",
+          },
+        ],
+      },
+      () => undefined,
+    ).units.get("lord")?.visualParts;
+    expect(parts?.[0].role).toBe("rider");
+    const mount = parts?.find((part) => part.role === "mount");
+    expect(mount?.engineRiders).toBeUndefined();
+    expect(mount?.techAnimPaths).toContain(
+      "variantmeshes\\_variantmodels\\bigcat03\\chaos_undivided\\saddles\\tech\\chs_manticore.anim",
+    );
+  });
+
   it("seats personality riders on a ridden monster mount without an engine", () => {
     const vmd = (name: string) => `variantmeshes\\variantmeshdefinitions\\${name}.variantmeshdefinition`;
     const parts = buildUnitViewerData(
