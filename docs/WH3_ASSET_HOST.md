@@ -11,7 +11,7 @@ This document describes the contract between WHMM and the host. It covers both s
 | Host                       | `K:\projects\assedFork`, folder `Tools/WH3AssetHost/`: `Program.cs`, `AssetHostPipeServer.cs`, `AssetHostProtocol.cs`, `NamedPipeFrameProtocol.cs`, `HostMissingSkeletonDecision.cs`, `PaintedVariantExporter.cs`, `Optimize/*.cs` |
 | Bundled build              | `tools/WH3AssetHost/WH3AssetHost.exe` plus `host-build.txt` (commit, version, size, sha256)                                                                                                                                        |
 
-The host source is on the fork's `feature/pack-optimizer-host` branch. To find the exact source of the bundled exe, read the commit in `host-build.txt`: `git -C <assedFork> show <commit>:Tools/WH3AssetHost/<file>`.
+The host source is on the fork's `feature/wh3-asset-host` branch. To find the exact source of the bundled exe, read the commit in `host-build.txt`: `git -C <assedFork> show <commit>:Tools/WH3AssetHost/<file>`.
 
 ## Modes
 
