@@ -1,5 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import * as os from "node:os";
+import { DEFAULT_WORKSHOP_OPTIMIZER_OPTIONS, type WorkshopOptimizerOptions } from "./options";
 
 /**
  * Runs `WH3AssetHost.exe optimize` (or `check`) once and reads its stdout protocol: one JSON object per
@@ -32,20 +33,27 @@ export const WORKSHOP_OPTIMIZER_HOST_OPTIONS = {
   compressRigidModels: true,
 } as const;
 
-/**
- * Options sent with an optimize request but kept out of the cache key because they do not change the
- * output pack. `reportDiagnostics: false` skips the report-only audits (~10 % of a run); hosts that
- * predate it ignore it.
- */
-export const WORKSHOP_OPTIMIZER_REQUEST_ONLY_OPTIONS = {
-  reportDiagnostics: false,
-} as const;
-
 /** The host option set for a launch; `compressRigidModels` follows the user's rigid-model compression setting. */
-export const buildHostOptions = (compressRigidModels: boolean) => ({
+export const buildHostOptions = (
+  compressRigidModels: boolean,
+  options: WorkshopOptimizerOptions = { ...DEFAULT_WORKSHOP_OPTIMIZER_OPTIONS },
+) => ({
   ...WORKSHOP_OPTIMIZER_HOST_OPTIONS,
+  ...options,
   compressRigidModels,
 });
+
+/** Preserve keys for the original defaults; report mode is keyed so a cached report matches the setting. */
+export const buildCacheOptions = (compressRigidModels: boolean, options?: WorkshopOptimizerOptions) => {
+  const effective = options ?? DEFAULT_WORKSHOP_OPTIMIZER_OPTIONS;
+  const result: Record<string, boolean | string> = { ...WORKSHOP_OPTIMIZER_HOST_OPTIONS, compressRigidModels };
+  for (const [key, value] of Object.entries(effective)) {
+    if (key in WORKSHOP_OPTIMIZER_HOST_OPTIONS || value !== DEFAULT_WORKSHOP_OPTIMIZER_OPTIONS[key as keyof WorkshopOptimizerOptions]) {
+      result[key] = value;
+    }
+  }
+  return result;
+};
 
 export interface HostVersions {
   hostVersion: string;

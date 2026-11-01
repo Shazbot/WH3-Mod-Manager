@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 export interface OptimizerKeyBase {
   /** The optimizer option set and its profile id. */
   profile: string;
-  options: Record<string, boolean>;
+  options: Record<string, boolean | string>;
   source: { name: string; size: number; mtimeMs: number };
   /**
    * The optimizer's OUTPUT version (`PackOptimizerVersions.OutputVersion`, from `WH3AssetHost --version`).

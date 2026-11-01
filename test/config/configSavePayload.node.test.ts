@@ -25,6 +25,12 @@ const createMod = (name: string, overrides: Partial<Mod> = {}): Mod => ({
 describe("selectConfigSavePayload", () => {
   beforeEach(resetConfigSavePayloadCache);
 
+  it("saves the global optimizer options", () => {
+    const workshopOptimizerOptions = { ...initialState.workshopOptimizerOptions, buildAtlases: true };
+    const payload = selectConfigSavePayload({ ...initialState, workshopOptimizerOptions } as AppState);
+    expect(payload.config.workshopOptimizerOptions).toEqual(workshopOptimizerOptions);
+  });
+
   it("includes the Visuals culture sort option in the saved config payload", () => {
     const payload = selectConfigSavePayload({
       ...initialState,

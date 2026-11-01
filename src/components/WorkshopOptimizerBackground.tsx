@@ -15,13 +15,15 @@ const WorkshopOptimizerBackground = memo(() => {
   const localized = useContext(localizationContext) as Record<string, string>;
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const optimize = useAppSelector((state) => state.app.optimizeWorkshopModsOnStart);
+  const optimizerOptions = useAppSelector((state) => state.app.workshopOptimizerOptions);
+  const rigidCompression = useAppSelector((state) => state.app.isRigidModelV2CompressionEnabled);
   const workshopModStagingMode = useAppSelector((state) => state.app.workshopModStagingMode);
   const [status, setStatus] = useState<WorkshopOptimizerBackgroundStatus>();
 
   const enabledMods = useMemo(() => mods.filter((mod) => mod.isEnabled), [mods]);
   const signature = useMemo(
     () =>
-      `${optimize}|${workshopModStagingMode}|` +
+      `${optimize}|${workshopModStagingMode}|${rigidCompression}|${JSON.stringify(optimizerOptions)}|` +
       enabledMods
         .map(
           (mod) =>
@@ -29,7 +31,7 @@ const WorkshopOptimizerBackground = memo(() => {
             `${mod.workshopId ?? ""}|${JSON.stringify(mod.reqModIdToName ?? [])}|${(mod.dependencyPacks ?? []).join(",")}`,
         )
         .join("\n"),
-    [enabledMods, optimize, workshopModStagingMode],
+    [enabledMods, optimize, workshopModStagingMode, optimizerOptions, rigidCompression],
   );
 
   // Sends the enabled mods to the main process. The effect below schedules it only when the signature changes,
@@ -52,7 +54,7 @@ const WorkshopOptimizerBackground = memo(() => {
         reqModIdToName: mod.reqModIdToName,
         dependencyPacks: mod.dependencyPacks,
       })),
-      { optimize: !!optimize, workshopModStagingMode },
+      { optimize: !!optimize, workshopModStagingMode, optimizerOptions, compressRigidModels: rigidCompression },
     );
   });
 

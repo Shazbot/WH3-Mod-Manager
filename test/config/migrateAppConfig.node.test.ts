@@ -55,6 +55,12 @@ const createLegacyConfig = () => ({
 });
 
 describe("migrateAppConfig", () => {
+  it("defaults and validates optimizer options in older configs", () => {
+    const defaults = migrateAppConfig(createLegacyConfig());
+    expect(defaults.workshopOptimizerOptions).toMatchObject({ buildAtlases: false, reportDiagnostics: false });
+    const customized = migrateAppConfig({ ...createLegacyConfig(), workshopOptimizerOptions: { buildAtlases: true, armyScope: "invalid" } as never });
+    expect(customized.workshopOptimizerOptions).toMatchObject({ buildAtlases: true, armyScope: "subculture" });
+  });
   it("turns full Mod records into name/enabled/loadOrder entries", () => {
     const config = migrateAppConfig(createLegacyConfig());
 

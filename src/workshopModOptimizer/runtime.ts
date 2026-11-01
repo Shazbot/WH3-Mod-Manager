@@ -11,6 +11,7 @@ import { WorkshopOptimizerCache, removeLegacyUserDataCache } from "./cache";
 import { WORKSHOP_OPTIMIZED_MODS_FOLDER } from "../utility/workshopModStaging";
 import { type OptimizerBackgroundJoin, type WorkshopOptimizerEnabledMod, WorkshopModOptimizer } from "./optimizer";
 import { computeGameIdentity, hashFileSha256, packHasOptimizableVisuals } from "./packInspection";
+import { normalizeWorkshopOptimizerOptions, type WorkshopOptimizerOptions } from "./options";
 
 /**
  * The persistent store lives next to the staging folder (`<game folder>\whmm_optimized_mods`), so
@@ -49,6 +50,8 @@ export interface CreateWorkshopModOptimizerOptions {
   loadOrder: readonly WorkshopOptimizerEnabledMod[];
   dataFolder: string;
   lowPriority?: boolean;
+  optimizerOptions?: WorkshopOptimizerOptions;
+  compressRigidModels?: boolean;
   background?: OptimizerBackgroundJoin;
   onHostStarted?: (pid: number | undefined) => void;
   log?: (message: string) => void;
@@ -79,7 +82,8 @@ export const createWorkshopModOptimizer = (
     dbSchemaPath: fs.existsSync(schemaPath) ? schemaPath : undefined,
     gameIdentity: () => computeGameIdentity(getVanillaPackPathsInLoadOrder()),
     schemaDigest: async () => (fs.existsSync(schemaPath) ? hashFileSha256(schemaPath) : "none"),
-    compressRigidModels: appData.isRigidModelV2CompressionEnabled,
+    compressRigidModels: options.compressRigidModels ?? appData.isRigidModelV2CompressionEnabled,
+    options: normalizeWorkshopOptimizerOptions(options.optimizerOptions),
     lowPriority: options.lowPriority,
     background: options.background,
     onHostStarted: options.onHostStarted,

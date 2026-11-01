@@ -67,6 +67,7 @@ import {
 import { selectConfigSavePayload } from "../config/configSavePayload";
 import { hideableMainWindowTabs } from "../utility/frontend/mainWindowTabs";
 import CompressionAnalysis from "./CompressionAnalysis";
+import WorkshopOptimizerOptions from "./WorkshopOptimizerOptions";
 import { runGuarded } from "../utility/runGuarded";
 
 const cleanData = () => {
@@ -1518,6 +1519,7 @@ const OptionsDrawer = memo(() => {
                       </span>
                     </span>
                   </label>
+                  {optimizeWorkshopModsOnStart && <WorkshopOptimizerOptions />}
                   {optimizeWorkshopModsOnStart && lastOptimizerRun && (
                     <p className="mt-2 px-2 text-xs text-gray-400">
                       {(localized.optimizerLastRun || "Last run: {{summary}}").replace("{{summary}}", lastOptimizerRun)}

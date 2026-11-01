@@ -236,7 +236,7 @@ const api = {
       | "reqModIdToName"
       | "dependencyPacks"
     >[],
-    settings: { optimize: boolean; workshopModStagingMode: string },
+    settings: { optimize: boolean; workshopModStagingMode: string; optimizerOptions: WorkshopOptimizerOptions; compressRigidModels: boolean },
   ) => ipcRenderer.send("updateWorkshopOptimizerBackground", enabledMods, settings),
   getWorkshopOptimizerBackgroundStatus: (): Promise<WorkshopOptimizerBackgroundStatus | undefined> =>
     ipcRenderer.invoke("getWorkshopOptimizerBackgroundStatus"),

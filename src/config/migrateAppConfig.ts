@@ -4,6 +4,7 @@ import { sortByNameAndLoadOrder } from "../modSortingHelpers";
 import { toPresetEntries, toSnapshotEntries } from "./presetEntries";
 import { SortingType } from "../utility/modRowSorting";
 import { sanitizeRecentPackPaths } from "../utility/recentPackPaths";
+import { normalizeWorkshopOptimizerOptions } from "../workshopModOptimizer/options";
 
 /**
  * The config file used to store a full Mod record for every mod in every preset, which made it grow
@@ -179,6 +180,7 @@ const withDefaults = (config: AppConfig): AppConfig => {
     modListWidth: ["default", "wide", "full"].includes(config.modListWidth) ? config.modListWidth : "default",
     compressWorkshopModsOnStart: workshopModStagingMode === "copy" && !!config.compressWorkshopModsOnStart,
     optimizeWorkshopModsOnStart: workshopModStagingMode === "copy" && !!config.optimizeWorkshopModsOnStart,
+    workshopOptimizerOptions: normalizeWorkshopOptimizerOptions(config.workshopOptimizerOptions),
     cleanUpWorkshopModStagingAfterGameExit:
       workshopModStagingMode !== "disabled" && !!config.cleanUpWorkshopModStagingAfterGameExit,
     modRowsSortingType: config.modRowsSortingType ?? SortingType.Ordered,

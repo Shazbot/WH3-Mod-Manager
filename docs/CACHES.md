@@ -78,6 +78,7 @@ tmp/   logs/   host-cache/                host output, failed-run logs, host pro
 Keys (`cacheKey.ts`) cover:
 
 - the optimizer profile and options (`WORKSHOP_OPTIMIZER_PROFILE_ID`);
+- the saved advanced optimization settings, including the report audit flag because the report is cached with the output; unchanged defaults retain their former key;
 - the source pack's name, size and mtime;
 - the host's **output version**, plus its scan version for aliases;
 - a digest of the game's packs and of the DB schema.

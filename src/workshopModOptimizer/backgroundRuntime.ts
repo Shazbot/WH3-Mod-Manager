@@ -7,6 +7,7 @@ import { formatOptimizerLogLine } from "./logFormat";
 import { packHasOptimizableVisuals } from "./packInspection";
 import { createWorkshopModOptimizer, getWorkshopOptimizerCache, removeLegacyOptimizerCacheOnce } from "./runtime";
 import type { WorkshopStagingOptimizerMod } from "../utility/workshopModStaging";
+import { normalizeWorkshopOptimizerOptions, type WorkshopOptimizerOptions } from "./options";
 
 /**
  * Main-process side of the background optimization: it receives the enabled mods from the renderer,
@@ -19,6 +20,8 @@ export interface BackgroundModsPayload {
   mods: SelectionMod[];
   gamePath: string;
   dataFolder: string;
+  optimizerOptions?: WorkshopOptimizerOptions;
+  compressRigidModels?: boolean;
 }
 
 export interface OptimizerBackgroundSettings {
@@ -45,6 +48,8 @@ const planPass = async (payload: BackgroundModsPayload, signal: AbortSignal): Pr
   await removeLegacyOptimizerCacheOnce();
   const cache = getWorkshopOptimizerCache(payload.gamePath);
   const optimizer = createWorkshopModOptimizer({
+    optimizerOptions: payload.optimizerOptions,
+    compressRigidModels: payload.compressRigidModels,
     cache,
     dataFolder: payload.dataFolder,
     loadOrder: payload.mods.map((mod) => ({

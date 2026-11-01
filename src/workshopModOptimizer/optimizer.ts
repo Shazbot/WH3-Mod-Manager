@@ -18,12 +18,13 @@ import {
   type HostRunOutcome,
   type HostVersions,
   WORKSHOP_OPTIMIZER_PROFILE_ID,
-  WORKSHOP_OPTIMIZER_REQUEST_ONLY_OPTIONS,
   HostProgressTracker,
+  buildCacheOptions,
   buildHostOptions,
   parseHostVersionLine,
   runHost,
 } from "./hostRunner";
+import type { WorkshopOptimizerOptions } from "./options";
 
 export interface WorkshopOptimizerEnabledMod {
   name: string;
@@ -60,6 +61,7 @@ export interface WorkshopOptimizerDeps {
   schemaDigest: () => Promise<string>;
   /** Whether the host also LZ4-compresses the output's rigid models (the user's rigid compression setting). */
   compressRigidModels: boolean;
+  options?: WorkshopOptimizerOptions;
   /** Every enabled mod in load order (first loads first), including the one being optimized. */
   loadOrder: readonly WorkshopOptimizerEnabledMod[];
   /** Whether the pack has a `.variantmeshdefinition` or `.wsmodel`; cheap index check, no host run. */
@@ -200,7 +202,7 @@ export class WorkshopModOptimizer implements WorkshopStagingOptimizer {
     this.memo.schemaDigest ??= await this.deps.schemaDigest();
     return {
       profile: WORKSHOP_OPTIMIZER_PROFILE_ID,
-      options: { ...buildHostOptions(this.deps.compressRigidModels) },
+      options: buildCacheOptions(this.deps.compressRigidModels, this.deps.options),
       source: { name: mod.name, size: mod.sourceFingerprint.size, mtimeMs: mod.sourceFingerprint.mtimeMs },
       outputVersion: this.versions?.outputVersion ?? 0,
       scanVersion: this.versions?.scanVersion ?? 0,
@@ -549,7 +551,7 @@ export class WorkshopModOptimizer implements WorkshopStagingOptimizer {
       outputPackPath: outputPath,
       reportPath,
       cacheDirectory: cache.hostCacheDirectory,
-      options: { ...buildHostOptions(this.deps.compressRigidModels), ...WORKSHOP_OPTIMIZER_REQUEST_ONLY_OPTIONS },
+      options: buildHostOptions(this.deps.compressRigidModels, this.deps.options),
     });
 
     const combined = new AbortController();

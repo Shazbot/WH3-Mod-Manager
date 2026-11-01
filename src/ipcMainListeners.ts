@@ -437,6 +437,7 @@ import {
 } from "./utility/workshopModStaging";
 import { makeWorkshopStagingProgressEvent } from "./utility/workshopStagingProgressEvent";
 import { WORKSHOP_OPTIMIZER_PROFILE_ID } from "./workshopModOptimizer/hostRunner";
+import { normalizeWorkshopOptimizerOptions } from "./workshopModOptimizer/options";
 import { registerVisualAssetCheckIpc } from "./workshopModOptimizer/visualCheckIpc";
 import { buildOptimizerLaunchLog } from "./workshopModOptimizer/logFormat";
 import type { WorkshopModOptimizer } from "./workshopModOptimizer/optimizer";
@@ -14104,6 +14105,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
               })),
               // A background job making a mod this launch needs is waited for, not restarted.
               background: getOptimizerBackground(),
+              optimizerOptions: startGameOptions.workshopOptimizerOptions,
+              compressRigidModels: startGameOptions.isRigidModelV2CompressionEnabled,
             })
           : undefined;
         if (optimizeWorkshopMods && !workshopOptimizer) {
@@ -14167,7 +14170,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
               canCreateSymbolicLinks: appData.canCreateSymbolicLinks,
               recreateDestination: cleanUpWorkshopModStagingAfterGameExit,
               compressMods: compressWorkshopMods,
-              includeRigidModelV2: appData.isRigidModelV2CompressionEnabled,
+              includeRigidModelV2: startGameOptions.isRigidModelV2CompressionEnabled ?? appData.isRigidModelV2CompressionEnabled,
               optimizer: workshopOptimizer,
               optimizerProfile: workshopOptimizer ? WORKSHOP_OPTIMIZER_PROFILE_ID : undefined,
               skipOptimizationSignal: workshopStagingRun?.skipOptimizationController.signal,
@@ -15036,13 +15039,15 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   });
   ipcMain.on(
     "updateWorkshopOptimizerBackground",
-    (_event, enabledMods: Mod[], settings: { optimize: boolean; workshopModStagingMode: string }) => {
+    (_event, enabledMods: Mod[], settings: { optimize: boolean; workshopModStagingMode: string; optimizerOptions?: WorkshopOptimizerOptions; compressRigidModels?: boolean }) => {
       const gamePath = getCurrentGamePath();
       const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
       if (!gamePath || !dataFolder) return;
       const payload: BackgroundModsPayload = {
         gamePath,
         dataFolder,
+        optimizerOptions: normalizeWorkshopOptimizerOptions(settings.optimizerOptions),
+        compressRigidModels: typeof settings.compressRigidModels === "boolean" ? settings.compressRigidModels : undefined,
         mods: sortByNameAndLoadOrder(enabledMods.filter((mod) => mod.isEnabled)).map((mod) => ({
           name: mod.name,
           path: mod.path,

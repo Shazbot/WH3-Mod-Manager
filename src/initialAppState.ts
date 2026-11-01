@@ -1,4 +1,5 @@
 import { SortingType } from "./utility/modRowSorting";
+import { DEFAULT_WORKSHOP_OPTIMIZER_OPTIONS } from "./workshopModOptimizer/options";
 
 const initialState = {
   currentPreset: {
@@ -25,6 +26,7 @@ const initialState = {
   workshopModStagingMode: "disabled",
   compressWorkshopModsOnStart: false,
   optimizeWorkshopModsOnStart: false,
+  workshopOptimizerOptions: { ...DEFAULT_WORKSHOP_OPTIMIZER_OPTIONS },
   cleanUpWorkshopModStagingAfterGameExit: false,
   isUsingEnglishLocalizations: false,
   isAuthorEnabled: true,

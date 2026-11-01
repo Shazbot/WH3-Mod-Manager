@@ -264,6 +264,7 @@ declare global {
     workshopModStagingMode: WorkshopModStagingMode;
     compressWorkshopModsOnStart: boolean;
     optimizeWorkshopModsOnStart: boolean;
+    workshopOptimizerOptions: WorkshopOptimizerOptions;
     cleanUpWorkshopModStagingAfterGameExit: boolean;
     /** Read the game's English locs even when the app is set to another language. */
     isUsingEnglishLocalizations: boolean;
@@ -436,6 +437,7 @@ declare global {
   type UnitViewerMode = "visualize" | "compare";
 
   type WorkshopModStagingMode = import("./utility/workshopModStaging").WorkshopModStagingMode;
+  type WorkshopOptimizerOptions = import("./workshopModOptimizer/options").WorkshopOptimizerOptions;
 
   type SkillsViewOptions = Pick<
     AppState,
@@ -478,6 +480,7 @@ declare global {
     | "workshopModStagingMode"
     | "compressWorkshopModsOnStart"
     | "optimizeWorkshopModsOnStart"
+    | "workshopOptimizerOptions"
     | "cleanUpWorkshopModStagingAfterGameExit"
     | "isUsingEnglishLocalizations"
     | "categories"
@@ -565,13 +568,14 @@ declare global {
     | "isAutoStartCustomBattleEnabled"
   >;
 
-  type StartGameOptions = StartGameSpecificOptions &
+  type StartGameOptions = StartGameSpecificOptions & { isRigidModelV2CompressionEnabled?: boolean } &
     Pick<
       AppState,
       | "isClosedOnPlay"
       | "workshopModStagingMode"
       | "compressWorkshopModsOnStart"
       | "optimizeWorkshopModsOnStart"
+      | "workshopOptimizerOptions"
       | "cleanUpWorkshopModStagingAfterGameExit"
       | "packDataOverwrites"
       | "userFlowOptions"

@@ -24,6 +24,7 @@ import {
   withoutDuplicateEntries,
 } from "./config/presetEntries";
 import initialState from "./initialAppState";
+import { normalizeWorkshopOptimizerOptions } from "./workshopModOptimizer/options";
 import equal from "fast-deep-equal";
 import { format } from "date-fns";
 import { SupportedGames, vanillaPackNames } from "./supportedGames";
@@ -1241,6 +1242,7 @@ const appSlice = createSlice({
         state.workshopModStagingMode === "copy" && !!fromConfigAppState.compressWorkshopModsOnStart;
       state.optimizeWorkshopModsOnStart =
         state.workshopModStagingMode === "copy" && !!fromConfigAppState.optimizeWorkshopModsOnStart;
+      state.workshopOptimizerOptions = normalizeWorkshopOptimizerOptions(fromConfigAppState.workshopOptimizerOptions);
       state.cleanUpWorkshopModStagingAfterGameExit = !!fromConfigAppState.cleanUpWorkshopModStagingAfterGameExit;
       state.isUsingEnglishLocalizations = !!fromConfigAppState.isUsingEnglishLocalizations;
       state.isCompatCheckingVanillaPacks =
@@ -1669,6 +1671,15 @@ const appSlice = createSlice({
     toggleOptimizeWorkshopModsOnStart: (state: AppState) => {
       if (state.currentGame !== "wh3" || state.workshopModStagingMode !== "copy") return;
       state.optimizeWorkshopModsOnStart = !state.optimizeWorkshopModsOnStart;
+    },
+    setWorkshopOptimizerOption: (
+      state: AppState,
+      action: PayloadAction<{ key: keyof WorkshopOptimizerOptions; value: boolean | string }>,
+    ) => {
+      state.workshopOptimizerOptions = normalizeWorkshopOptimizerOptions({
+        ...state.workshopOptimizerOptions,
+        [action.payload.key]: action.payload.value,
+      });
     },
     toggleCleanUpWorkshopModStagingAfterGameExit: (state: AppState) => {
       if (state.workshopModStagingMode === "disabled") {
@@ -2177,6 +2188,7 @@ export const {
   setWorkshopModStagingMode,
   toggleCompressWorkshopModsOnStart,
   toggleOptimizeWorkshopModsOnStart,
+  setWorkshopOptimizerOption,
   toggleCleanUpWorkshopModStagingAfterGameExit,
   toggleIsUsingEnglishLocalizations,
   setIsDev,

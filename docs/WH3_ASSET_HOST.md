@@ -339,11 +339,13 @@ The file is camelCase JSON; comments and trailing commas are allowed. Fields:
 
 The host writes `<output>.optimizing` and `<report>.optimizing` first, then moves them into place. On cancel it deletes the temp files. On failure it deletes the temp output but keeps the report next to the target.
 
-The options WHMM sends come from `WORKSHOP_OPTIMIZER_HOST_OPTIONS` in `hostRunner.ts`:
+WHMM's saved advanced settings are normalized in `workshopModOptimizer/options.ts` and sent by both launch and background runs. The defaults reproduce `WORKSHOP_OPTIMIZER_HOST_OPTIONS` in `hostRunner.ts`:
 
 - `buildAtlases: false`. The fork's `ASSET_HOST_EXTRACTION_PLAN.md` keeps atlas building an experimental option in the Asset Editor only, citing its net memory cost.
 - `compressRigidModels` follows the user's rigid compression setting.
 - `pruneDeadFiles` and `switchOpaqueAlphaShaders` (host output 33+) remove source files nothing reaches or names, and move alpha-tested character materials with an opaque base colour to the non-alpha shader. Older hosts ignore them.
+- Every host option except rigid-model compression can be changed in the advanced panel, including the report-only `reportDiagnostics`, `armyScope` and `siblingScope`. Rigid-model compression follows WHMM's existing compression setting. Invalid saved values fall back to the current defaults.
+- The bundled host already accepts these optional fields under optimize request schema 1; exposing them requires no host protocol or executable update.
 
 Texture atlas consolidation and cross-rigid merging are implemented in `Editors.PackOptimizer.Core` in the fork. WHMM only passes these flags and reads the results.
 
