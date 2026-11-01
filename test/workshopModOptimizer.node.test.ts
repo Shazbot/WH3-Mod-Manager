@@ -86,22 +86,35 @@ describe("optimizer cache store", () => {
     });
   };
 
-  it("keeps at most two entries per source and never evicts pinned ones", async () => {
+  it("keeps one entry per source and never evicts an in-use entry", async () => {
     let now = 1;
     const cache = new WorkshopOptimizerCache({ root: makeDirectory(), now: () => now++ });
     await addEntry(cache, 1, "a", 10);
+    cache.unpinAll();
     await addEntry(cache, 2, "a", 10);
     cache.unpinAll();
     await addEntry(cache, 3, "a", 10);
     cache.unpinAll();
     const keys = (await cache.listEntries()).map((entry) => entry.key).sort();
-    expect(keys).toEqual([key(2), key(3)]);
+    expect(keys).toEqual([key(3)]);
 
-    cache.pin(key(2));
+    cache.pin(key(3));
     await addEntry(cache, 4, "a", 10);
     const afterPin = (await cache.listEntries()).map((entry) => entry.key);
-    expect(afterPin).toContain(key(2));
+    expect(afterPin).toContain(key(3));
     expect(afterPin).toContain(key(4));
+    cache.unpinAll();
+    await cache.evict();
+    expect((await cache.listEntries()).map((entry) => entry.key)).toEqual([key(4)]);
+  });
+
+  it("keeps the newer result when two commits have the same clock time", async () => {
+    const cache = new WorkshopOptimizerCache({ root: makeDirectory(), now: () => 1000 });
+    await addEntry(cache, 1, "a", 10);
+    await addEntry(cache, 2, "a", 10);
+    cache.unpinAll();
+    await cache.evict();
+    expect((await cache.listEntries()).map((entry) => entry.key)).toEqual([key(2)]);
   });
 
   it("evicts least recently used entries over the budget but keeps the current launch's", async () => {

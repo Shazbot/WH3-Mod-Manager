@@ -35,7 +35,7 @@ export interface BackgroundPass {
     context: WorkshopStagingOptimizerContext,
   ): Promise<WorkshopStagingOptimizerResult>;
   /** Called when the pass ends (unless a launch has started): lets go of what planning held on to. */
-  release?(): void;
+  release?(): void | Promise<void>;
   /** One main.log line for a finished job. */
   describe(job: BackgroundJob, result: WorkshopStagingOptimizerResult | { status: "stopped" }): string;
 }
@@ -256,13 +256,13 @@ export class BackgroundOptimizer<Snapshot> implements OptimizerBackgroundJoin {
     }
 
     if (controller.signal.aborted) {
-      if (!this.launchActive) pass?.release?.();
+      if (!this.launchActive) await pass?.release?.();
       return;
     }
     if (!pass || pass.jobs.length === 0) {
       this.upToDate = !!pass;
       this.lastPassFoundNothing = !!pass;
-      if (!this.launchActive) pass?.release?.();
+      if (!this.launchActive) await pass?.release?.();
       if (pass && pass.considered > 0) {
         this.deps.log(`Optimizer (background): all ${pass.considered} mod(s) are optimized already.`);
       }
@@ -289,7 +289,7 @@ export class BackgroundOptimizer<Snapshot> implements OptimizerBackgroundJoin {
     // Only a pass that made every job's result counts; a failed job is not cached and can be retried.
     if (allReady && done === pass.jobs.length && !controller.signal.aborted) this.upToDate = true;
 
-    if (!this.launchActive) pass.release?.();
+    if (!this.launchActive) await pass.release?.();
     if (!controller.signal.aborted || this.status.state === "running") {
       this.publish({ state: this.gameWasRunning ? "paused" : "idle", total: 0, done: 0 });
     }

@@ -36,13 +36,13 @@ describe("optimizer cache housekeeping", () => {
   });
 
   /** Adds an entry for a source pack that exists on disk unless `missing`. */
-  const add = async (id: number, name: string, options: { missing?: boolean; bytes?: number } = {}) => {
+  const add = async (id: number, name: string, options: { missing?: boolean; bytes?: number; profile?: string } = {}) => {
     await cache.ensureDirectories();
     const sourcePath = path.join(sources, name);
     if (!options.missing) fs.writeFileSync(sourcePath, "source");
     const temporary = cache.newTempPath(`${id}.pack`);
     fs.writeFileSync(temporary, Buffer.alloc(options.bytes ?? 10, id));
-    await cache.commit(key(id), temporary, { sourceName: name, sourcePath, profile: "p" });
+    await cache.commit(key(id), temporary, { sourceName: name, sourcePath, profile: options.profile ?? "p" });
     fs.writeFileSync(cache.reportPathFor(name), "report");
     cache.unpinAll();
     return sourcePath;
@@ -179,6 +179,19 @@ describe("optimizer cache housekeeping", () => {
 
     expect(await keys()).toEqual([key(3), key(4)]);
     expect((await cache.getInfo()).size).toBeLessThanOrEqual(25);
+  });
+
+  it("prunes older entries for the same source across profiles", async () => {
+    const root = tempDirectory();
+    cache = new WorkshopOptimizerCache({ root, now, maxEntriesPerSource: 2 });
+    await add(1, "a.pack", { profile: "old" });
+    offset += 1000;
+    await add(2, "a.pack", { profile: "new" });
+    expect(await keys()).toEqual([key(1), key(2)]);
+
+    cache = new WorkshopOptimizerCache({ root, now });
+    await cache.housekeep();
+    expect(await keys()).toEqual([key(2)]);
   });
 
   it("formats one log line, and none when nothing was removed", async () => {

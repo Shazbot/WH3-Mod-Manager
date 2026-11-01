@@ -117,7 +117,10 @@ const planPass = async (payload: BackgroundModsPayload, signal: AbortSignal): Pr
   return {
     jobs,
     considered,
-    release: () => cache.unpinAll(),
+    release: async () => {
+      cache.unpinAll();
+      await cache.evict();
+    },
     produce: (mod, plan, context) => optimizer.produce(mod, plan, context),
     describe: (job, result) => {
       const source = byPath.get(job.mod.path);

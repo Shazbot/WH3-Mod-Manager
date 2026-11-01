@@ -88,7 +88,7 @@ There are two keys per result:
 - The **exact key** covers every enabled mod.
 - The **narrow key** covers only the mods the host's probe found relevant. That is why enabling an unrelated mod does not invalidate a result. The alias file maps one key to the other.
 
-Housekeeping runs a little after startup (`housekeepingSchedule.ts`). The budget is 12 GiB, with at most 2 entries per source. Entries unused for 30 days, and failure markers that old, are removed.
+Housekeeping runs a little after startup (`housekeepingSchedule.ts`). The budget is 12 GiB, with at most 1 entry per original source pack, regardless of optimizer profile. Older entries are removed after a new result is committed or during housekeeping; an in-use entry may remain until it can be safely removed. Entries unused for 30 days, and failure markers that old, are removed.
 
 The UI can clear this store with "Clear optimized mods cache" (IPC `clearWorkshopOptimizerCache`). Earlier versions kept this cache under `<userData>`; `runtime.ts` checks for that leftover and removes it, once per app run.
 

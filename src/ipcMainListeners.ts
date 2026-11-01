@@ -14198,6 +14198,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           }
           optimizerCache.unpinAll();
           if (workshopOptimizer) {
+            await optimizerCache.evict().catch((error) => console.warn("Optimizer cache eviction failed:", error));
+          }
+          if (workshopOptimizer) {
             const optimizerLogInput = {
               mods: sortedMods,
               realDataPackNames,

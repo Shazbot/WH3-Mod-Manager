@@ -23,7 +23,7 @@ import { randomUUID } from "node:crypto";
  */
 
 export const DEFAULT_OPTIMIZER_CACHE_BUDGET_BYTES = 12 * 1024 * 1024 * 1024;
-export const DEFAULT_OPTIMIZER_MAX_ENTRIES_PER_SOURCE = 2;
+export const DEFAULT_OPTIMIZER_MAX_ENTRIES_PER_SOURCE = 1;
 /** An entry not used for this long, and a failure marker this old, are removed by housekeeping. */
 export const OPTIMIZER_CACHE_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
 /** Files younger than this are never treated as orphans: a job may be about to write their partner file. */
@@ -240,6 +240,13 @@ export class WorkshopOptimizerCache {
   ): Promise<string> {
     await this.ensureDirectories();
     const stats = await fs.promises.stat(temporaryPackPath);
+    // Files in one batch can finish in the same millisecond. Keep the newest result ahead of
+    // older entries for this source when the one-entry limit is enforced after unpinning.
+    const sourceKey = meta.sourcePath.replace(/\//g, "\\").toLowerCase();
+    const previousTime = (await this.listEntries())
+      .filter((entry) => entry.sourcePath.replace(/\//g, "\\").toLowerCase() === sourceKey)
+      .reduce((latest, entry) => Math.max(latest, entry.createdAt, entry.lastUsed), 0);
+    const committedAt = Math.max(this.now(), previousTime + 1);
     const finalPath = this.packPath(key);
     await fs.promises.rm(finalPath, { force: true });
     await fs.promises.rename(temporaryPackPath, finalPath);
@@ -249,8 +256,8 @@ export class WorkshopOptimizerCache {
       ...meta,
       key,
       size: stats.size,
-      createdAt: this.now(),
-      lastUsed: this.now(),
+      createdAt: committedAt,
+      lastUsed: committedAt,
     };
     await writeJsonAtomically(this.metaPath(key), entry);
     await fs.promises.rm(this.failurePath(key), { force: true }).catch(() => undefined);
@@ -325,7 +332,7 @@ export class WorkshopOptimizerCache {
     return entries;
   }
 
-  /** At most N entries per (source, profile), then least-recently-used first until under budget. */
+  /** At most N entries per original source pack, then least-recently-used first until under budget. */
   async evict(): Promise<string[]> {
     const removed: string[] = [];
     await this.enforceBounds(emptyHousekeepingResult(), removed);
@@ -334,12 +341,14 @@ export class WorkshopOptimizerCache {
   }
 
   private async enforceBounds(result: HousekeepingResult, removedKeys: string[]) {
-    const entries = (await this.listEntries()).sort((first, second) => second.lastUsed - first.lastUsed);
+    const entries = (await this.listEntries()).sort(
+      (first, second) => second.lastUsed - first.lastUsed || second.createdAt - first.createdAt,
+    );
 
     const perSource = new Map<string, number>();
     const survivors: OptimizerCacheEntryMeta[] = [];
     for (const entry of entries) {
-      const sourceKey = `${entry.sourcePath.toLowerCase()}|${entry.profile}`;
+      const sourceKey = entry.sourcePath.replace(/\//g, "\\").toLowerCase();
       const count = perSource.get(sourceKey) ?? 0;
       if (count >= this.maxEntriesPerSource && !this.pinned.has(entry.key)) {
         if (await this.removeEntry(entry, "per-source cap", result)) {
