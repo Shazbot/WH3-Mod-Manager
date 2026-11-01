@@ -345,6 +345,7 @@ WHMM's saved advanced settings are normalized in `workshopModOptimizer/options.t
 - `compressRigidModels` follows the user's rigid compression setting.
 - `pruneDeadFiles` and `switchOpaqueAlphaShaders` (host output 33+) remove source files nothing reaches or names, and move alpha-tested character materials with an opaque base colour to the non-alpha shader. Older hosts ignore them.
 - Every host option except rigid-model compression can be changed in the advanced panel, including the report-only `reportDiagnostics`, `armyScope` and `siblingScope`. Rigid-model compression follows WHMM's existing compression setting. Invalid saved values fall back to the current defaults.
+- The panel disables atlas planning options until `buildAtlases` is enabled, `dropUnreadAlpha` until `compactTextures` is enabled, geometry optimization when no model-rewriting stage is selected, and options suppressed by `crossRigidOnly` while that mode is selected. Disabled controls retain their saved values and show the reason.
 - The bundled host already accepts these optional fields under optimize request schema 1; exposing them requires no host protocol or executable update.
 
 Texture atlas consolidation and cross-rigid merging are implemented in `Editors.PackOptimizer.Core` in the fork. WHMM only passes these flags and reads the results.

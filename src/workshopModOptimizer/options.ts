@@ -26,6 +26,35 @@ export type WorkshopOptimizerOptions = {
     K extends "armyScope" ? "subculture" | "culture" : K extends "siblingScope" ? "model" | "pack" : boolean;
 };
 
+/** Host options that are accepted but have no effect under the selected mode. Keep their saved values. */
+export const getWorkshopOptimizerOptionUnavailableReason = (
+  key: keyof WorkshopOptimizerOptions,
+  options: WorkshopOptimizerOptions,
+): string | undefined => {
+  if (options.crossRigidOnly) {
+    if (key === "crossRigidMerges") return "Cross-rigid merges only already enables this.";
+    if (key !== "crossRigidOnly" && key !== "reportDiagnostics") {
+      return "Unavailable while Cross-rigid merges only is on.";
+    }
+  }
+  if (
+    !options.buildAtlases &&
+    (key === "shareAtlasesAcrossVmds" || key === "atlasAllVmds" || key === "lodAwareAtlasPlanning" ||
+      key === "scoreAllGameUnits" || key === "armyScope" || key === "siblingScope")
+  ) {
+    return "Requires Build new atlases.";
+  }
+  if (
+    key === "optimizeGeometry" &&
+    !options.mergeCompatibleMeshes && !options.crossRigidMerges && !options.buildAtlases &&
+    !options.sharedTextureRepack && !options.remakeEditorLods
+  ) {
+    return "Requires a model rewriting option, such as mesh merging or old editor LOD repair.";
+  }
+  if (key === "dropUnreadAlpha" && !options.compactTextures) return "Requires Compact textures.";
+  return undefined;
+};
+
 /** Ignore unknown keys and invalid values from old or hand-edited config files and IPC payloads. */
 export const normalizeWorkshopOptimizerOptions = (value: unknown): WorkshopOptimizerOptions => {
   const source = value && typeof value === "object" ? value as Record<string, unknown> : {};

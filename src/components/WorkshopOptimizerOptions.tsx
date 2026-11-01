@@ -1,7 +1,10 @@
 import React from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { setWorkshopOptimizerOption } from "../appSlice";
-import { DEFAULT_WORKSHOP_OPTIMIZER_OPTIONS } from "../workshopModOptimizer/options";
+import {
+  DEFAULT_WORKSHOP_OPTIMIZER_OPTIONS,
+  getWorkshopOptimizerOptionUnavailableReason,
+} from "../workshopModOptimizer/options";
 
 type BooleanOption = Exclude<keyof WorkshopOptimizerOptions, "armyScope" | "siblingScope">;
 const groups: { title: string; options: { key: BooleanOption; label: string; help: string }[] }[] = [
@@ -36,29 +39,42 @@ export default function WorkshopOptimizerOptions() {
   const dispatch = useAppDispatch();
   const options = useAppSelector((state) => state.app.workshopOptimizerOptions);
   const rigidCompression = useAppSelector((state) => state.app.isRigidModelV2CompressionEnabled);
+  const armyScopeUnavailable = getWorkshopOptimizerOptionUnavailableReason("armyScope", options);
+  const siblingScopeUnavailable = getWorkshopOptimizerOptionUnavailableReason("siblingScope", options);
   return <details className="mt-3 rounded border border-gray-600 bg-gray-800/40 px-3 py-2 text-sm">
     <summary className="cursor-pointer font-medium text-gray-200">Advanced optimization settings</summary>
     <p className="mt-2 text-xs text-gray-400">These settings apply to background optimization, Optimize now, and game launch. Changing an output setting creates a new cached result.</p>
     {groups.map((group) => <fieldset key={group.title} className="mt-3 border-t border-gray-600 pt-2">
       <legend className="text-xs font-semibold uppercase text-gray-300">{group.title}</legend>
-      {group.options.map(({ key, label, help }) => <label key={key} className="mt-2 flex cursor-pointer items-start gap-2">
-        <input type="checkbox" className="mt-0.5" checked={options[key]}
-          onChange={(event) => dispatch(setWorkshopOptimizerOption({ key, value: event.target.checked }))} />
-        <span><span className="block text-gray-200">{label}</span><span className="block text-xs text-gray-400">{help}</span></span>
-      </label>)}
+      {group.options.map(({ key, label, help }) => {
+        const unavailableReason = getWorkshopOptimizerOptionUnavailableReason(key, options);
+        return <label key={key} className={`mt-2 flex items-start gap-2 ${unavailableReason ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
+          <input type="checkbox" className="mt-0.5" checked={options[key]} disabled={!!unavailableReason}
+            onChange={(event) => dispatch(setWorkshopOptimizerOption({ key, value: event.target.checked }))} />
+          <span>
+            <span className="block text-gray-200">{label}</span>
+            <span className="block text-xs text-gray-400">{help}</span>
+            {unavailableReason && <span className="block text-xs text-amber-300">{unavailableReason}</span>}
+          </span>
+        </label>;
+      })}
     </fieldset>)}
     <div className="mt-3 border-t border-gray-600 pt-2">
-      <label className="block text-xs text-gray-300">Army scoring scope
+      <label className={`block text-xs text-gray-300 ${armyScopeUnavailable ? "opacity-60" : ""}`}>Army scoring scope
         <select className="mt-1 block rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-gray-100"
+          disabled={!!armyScopeUnavailable}
           value={options.armyScope} onChange={(event) => dispatch(setWorkshopOptimizerOption({ key: "armyScope", value: event.target.value }))}>
           <option value="subculture">Subculture (default)</option><option value="culture">Culture</option>
         </select>
+        {armyScopeUnavailable && <span className="mt-1 block text-xs text-amber-300">{armyScopeUnavailable}</span>}
       </label>
-      <label className="mt-3 block text-xs text-gray-300">Shared texture grouping
+      <label className={`mt-3 block text-xs text-gray-300 ${siblingScopeUnavailable ? "opacity-60" : ""}`}>Shared texture grouping
         <select className="mt-1 block rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-gray-100"
+          disabled={!!siblingScopeUnavailable}
           value={options.siblingScope} onChange={(event) => dispatch(setWorkshopOptimizerOption({ key: "siblingScope", value: event.target.value }))}>
           <option value="model">Per model (default)</option><option value="pack">Across pack</option>
         </select>
+        {siblingScopeUnavailable && <span className="mt-1 block text-xs text-amber-300">{siblingScopeUnavailable}</span>}
       </label>
       <p className="mt-3 text-xs text-gray-400">Rigid-model compression follows the existing WHMM setting and is currently {rigidCompression ? "on" : "off"}.</p>
       <button type="button" className="mt-3 rounded border border-gray-600 px-2 py-1 text-xs text-gray-200 hover:bg-gray-700"
