@@ -1,15 +1,15 @@
 import React from "react";
 import { configureStore } from "@reduxjs/toolkit";
 import { Provider } from "react-redux";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import appReducer from "../src/appSlice";
+import appReducer, { setIsDev, setWorkshopOptimizerOption } from "../src/appSlice";
 import initialState from "../src/initialAppState";
 import WorkshopOptimizerOptions from "../src/components/WorkshopOptimizerOptions";
 
-const renderOptions = () => {
-  const store = configureStore({ reducer: { app: appReducer }, preloadedState: { app: initialState } });
+const renderOptions = (stateOverrides: Partial<AppState> = {}) => {
+  const store = configureStore({ reducer: { app: appReducer }, preloadedState: { app: { ...initialState, ...stateOverrides } } });
   render(<Provider store={store}><WorkshopOptimizerOptions /></Provider>);
   fireEvent.click(screen.getByText("Advanced optimization settings"));
   return store;
@@ -37,7 +37,7 @@ describe("advanced optimizer option availability", () => {
   });
 
   it("shows compaction and cross-rigid-only dependencies", () => {
-    renderOptions();
+    renderOptions({ isDev: true });
     const compact = screen.getByRole("checkbox", { name: /^Compact textures/ });
     const alpha = screen.getByRole("checkbox", { name: /Remove unused alpha/ });
     fireEvent.click(compact);
@@ -50,5 +50,26 @@ describe("advanced optimizer option availability", () => {
     expect(compact).toBeDisabled();
     expect(screen.getByRole("checkbox", { name: /Detailed report audits/ })).toBeEnabled();
     expect(screen.getAllByText("Unavailable while Cross-rigid merges only is on.").length).toBeGreaterThan(1);
+  });
+
+  it("shows off-by-default switches only in developer mode, apart from atlas building", () => {
+    const store = renderOptions();
+    expect(screen.getByRole("checkbox", { name: /^Build new atlases/ })).toBeInTheDocument();
+    for (const label of [/^Atlas all variants/, /^Score all game units/, /^Cross-rigid merges only/, /^Detailed report audits/]) {
+      expect(screen.queryByRole("checkbox", { name: label })).not.toBeInTheDocument();
+    }
+
+    act(() => store.dispatch(setIsDev(true)));
+    expect(screen.getByRole("checkbox", { name: /^Atlas all variants/ })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /^Score all game units/ })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /^Cross-rigid merges only/ })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /^Detailed report audits/ })).toBeInTheDocument();
+
+    act(() => {
+      store.dispatch(setWorkshopOptimizerOption({ key: "reportDiagnostics", value: true }));
+      store.dispatch(setIsDev(false));
+    });
+    expect(screen.queryByRole("checkbox", { name: /^Detailed report audits/ })).not.toBeInTheDocument();
+    expect(store.getState().app.workshopOptimizerOptions.reportDiagnostics).toBe(true);
   });
 });

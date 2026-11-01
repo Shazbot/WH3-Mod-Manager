@@ -39,26 +39,33 @@ export default function WorkshopOptimizerOptions() {
   const dispatch = useAppDispatch();
   const options = useAppSelector((state) => state.app.workshopOptimizerOptions);
   const rigidCompression = useAppSelector((state) => state.app.isRigidModelV2CompressionEnabled);
+  const isDev = useAppSelector((state) => state.app.isDev);
   const armyScopeUnavailable = getWorkshopOptimizerOptionUnavailableReason("armyScope", options);
   const siblingScopeUnavailable = getWorkshopOptimizerOptionUnavailableReason("siblingScope", options);
   return <details className="mt-3 rounded border border-gray-600 bg-gray-800/40 px-3 py-2 text-sm">
     <summary className="cursor-pointer font-medium text-gray-200">Advanced optimization settings</summary>
     <p className="mt-2 text-xs text-gray-400">These settings apply to background optimization, Optimize now, and game launch. Changing an output setting creates a new cached result.</p>
-    {groups.map((group) => <fieldset key={group.title} className="mt-3 border-t border-gray-600 pt-2">
-      <legend className="text-xs font-semibold uppercase text-gray-300">{group.title}</legend>
-      {group.options.map(({ key, label, help }) => {
-        const unavailableReason = getWorkshopOptimizerOptionUnavailableReason(key, options);
-        return <label key={key} className={`mt-2 flex items-start gap-2 ${unavailableReason ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
-          <input type="checkbox" className="mt-0.5" checked={options[key]} disabled={!!unavailableReason}
-            onChange={(event) => dispatch(setWorkshopOptimizerOption({ key, value: event.target.checked }))} />
-          <span>
-            <span className="block text-gray-200">{label}</span>
-            <span className="block text-xs text-gray-400">{help}</span>
-            {unavailableReason && <span className="block text-xs text-amber-300">{unavailableReason}</span>}
-          </span>
-        </label>;
-      })}
-    </fieldset>)}
+    {groups.map((group) => {
+      const visibleOptions = group.options.filter(({ key }) =>
+        isDev || key === "buildAtlases" || DEFAULT_WORKSHOP_OPTIMIZER_OPTIONS[key],
+      );
+      if (visibleOptions.length === 0) return null;
+      return <fieldset key={group.title} className="mt-3 border-t border-gray-600 pt-2">
+        <legend className="text-xs font-semibold uppercase text-gray-300">{group.title}</legend>
+        {visibleOptions.map(({ key, label, help }) => {
+          const unavailableReason = getWorkshopOptimizerOptionUnavailableReason(key, options);
+          return <label key={key} className={`mt-2 flex items-start gap-2 ${unavailableReason ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
+            <input type="checkbox" className="mt-0.5" checked={options[key]} disabled={!!unavailableReason}
+              onChange={(event) => dispatch(setWorkshopOptimizerOption({ key, value: event.target.checked }))} />
+            <span>
+              <span className="block text-gray-200">{label}</span>
+              <span className="block text-xs text-gray-400">{help}</span>
+              {unavailableReason && <span className="block text-xs text-amber-300">{unavailableReason}</span>}
+            </span>
+          </label>;
+        })}
+      </fieldset>;
+    })}
     <div className="mt-3 border-t border-gray-600 pt-2">
       <label className={`block text-xs text-gray-300 ${armyScopeUnavailable ? "opacity-60" : ""}`}>Army scoring scope
         <select className="mt-1 block rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-gray-100"
