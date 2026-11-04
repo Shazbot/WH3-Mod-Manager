@@ -163,3 +163,26 @@ export const discoverGameDataPath = async (
     { searchedPaths: [...new Set(searchedPaths)] },
   );
 };
+
+export const parseManifestPackNames = (text: string): string[] =>
+  text
+    .split(/\r?\n/)
+    .map((line) => line.match(/([^\s]+)/)?.[1])
+    .filter((value): value is string => Boolean(value && value.toLowerCase().endsWith(".pack")));
+
+export const validateManifestPackName = (name: string): string => {
+  if (
+    !name ||
+    name.includes("\0") ||
+    path.posix.isAbsolute(name) ||
+    path.win32.isAbsolute(name) ||
+    /^[a-zA-Z]:/.test(name)
+  ) {
+    throw new AutomationError("VALIDATION", `Invalid pack name in manifest: ${JSON.stringify(name)}`);
+  }
+  const segments = name.replace(/\\/g, "/").split("/");
+  if (segments.some((segment) => segment === ".." || segment === "")) {
+    throw new AutomationError("VALIDATION", `Manifest pack name escapes the game data folder: ${JSON.stringify(name)}`);
+  }
+  return name;
+};

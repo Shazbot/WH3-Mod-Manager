@@ -28,6 +28,7 @@ export { createAutomationContext, defaultAutomationContext } from "./operations"
 
 const operationNameSchema = z.object({ operation: z.string().min(1) }).passthrough();
 const bypassAutomationCaches = new Set<OperationName>([
+  "pack_extract",
   "pack_create",
   "pack_write_files",
   "pack_patch_table",

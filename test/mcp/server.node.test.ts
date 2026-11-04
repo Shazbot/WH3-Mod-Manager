@@ -135,11 +135,43 @@ describe("WH3 MCP stdio server", () => {
     execFileSync(process.execPath, [path.join(projectRoot, "scripts/build-tools.mjs")], { cwd: projectRoot });
   });
 
+  it("extracts folders through the shared operation and enforces write roots", async () => {
+    const packPath = path.join(allowedRoot, "extract-source.pack");
+    await writeRawPack(packPath, [{ name: "script/example.lua", buffer: Buffer.from("return 1") },
+      { name: "ui/icon.dds", buffer: Buffer.from([0, 255]) }], metadata());
+    const outputPath = path.join(allowedRoot, "extracted");
+    const session = await connect();
+    try {
+      const result = await session.client.callTool({ name: "pack_extract", arguments: {
+        packPaths: [packPath], folders: ["script"], outputPath,
+      } });
+      expect(result.isError, JSON.stringify(result.structuredContent)).not.toBe(true);
+      expect(responseEnvelope(result)).toMatchObject({ ok: true, data: { extractedFiles: 1, rawFiles: 1 } });
+      expect(readFileSync(path.join(outputPath, "script/example.lua"), "utf8")).toBe("return 1");
+      expect(existsSync(path.join(outputPath, "ui"))).toBe(false);
+      const denied = await session.client.callTool({ name: "pack_extract", arguments: {
+        packPaths: [packPath], outputPath: path.join(outsideRoot, "denied-extraction"),
+      } });
+      expect(responseEnvelope(denied)).toMatchObject({ ok: false, error: { code: "IO_ACCESS" } });
+    } finally { await session.close(); }
+  });
+
   it("registers all shared operations with descriptions and typed input schemas", async () => {
     const session = await connect();
     try {
       const listed = await session.client.listTools();
-      expect(listed.tools).toHaveLength(23);
+      expect(listed.tools).toHaveLength(24);
+      expect(listed.tools.find((tool) => tool.name === "pack_extract")?.inputSchema).toMatchObject({
+        type: "object",
+        required: ["outputPath"],
+        properties: {
+          packPaths: { type: "array" },
+          folders: { type: "array" },
+          tableFormat: { default: "tsv" },
+          language: { default: "en" },
+          keysFirst: { default: false },
+        },
+      });
       const info = listed.tools.find((tool) => tool.name === "pack_info");
       expect(info?.description).toContain("pack header");
       expect(info?.inputSchema).toMatchObject({

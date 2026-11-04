@@ -54,6 +54,33 @@ Use `--input <json-file>` for complex requests. The file contains operation fiel
 
 `pack table patch`, `pack write`, `pack create`, `pack subset`, and the `asset` commands also accept JSON operation fields. Inspect `node dist/cli/main.js --help` for all commands and flags. Outputs use copy-on-write publication, and existing destinations are rejected by default; pass `--overwrite` to replace an output atomically.
 
+## Extract folders
+
+`pack extract` accepts ordered pack paths and repeatable `--folder` options. Folders match recursively on directory boundaries, case-insensitively; omit them to extract every file. Internal paths are retained beneath `--output`. Later packs override earlier packs at the same internal path; table rows from different files are not merged.
+
+```sh
+node dist/cli/main.js pack extract base.pack override.pack \
+  --folder script --folder ui --output /tmp/extracted --format json
+```
+
+Use `--with-vanilla` to discover the game data directory through the existing settings/environment/Steam discovery, or supply `--game-data`. Only manifest-listed packs are included. `--language` selects a localization pack and defaults to `en`; other `local_<language>.pack` files are excluded. Explicit pack paths take priority over vanilla. Use repeatable `--loose-file <internal-path>` options to also include selected manifest-listed loose files. These selections override vanilla pack entries at the same path; explicit packs still take priority. Loose-file selections are included independently of folder filters, and must remain inside the discovered game data directory. Supported language codes are `br`, `cn`, `cz`, `en`, `fr`, `ge`, `it`, `kr`, `pl`, `ru`, `sp`, `tr`, and `zh`.
+
+Supported DB/LOC files default to RPFM TSV exports at `<internal-path>.tsv`. `--keys-first` moves key columns first, retaining relative schema order within keys and other columns. Rows keep source order. Exports use four-decimal floats, exact I64 integers, lowercase booleans, uppercase hexadecimal colours (including schema-annotated RGB groups), padded metadata rows, escaped tabs/newlines, and UTF-8/LF with a final newline. LOC control characters use two backslashes; DB control characters use one. Ordinary quotes and backslashes remain literal. These options do not change existing GUI exports. Unknown table schemas or versions are retained as raw payloads at the original internal path, with `EXTRACT_RAW_TABLE` warnings; malformed supported tables fail. `--table-format raw` extracts all files without table conversion and cannot be combined with `--keys-first`.
+
+For the seven folders versioned in `wh3dump` (including its two loose text files):
+
+```sh
+node dist/cli/main.js pack extract --with-vanilla --language en \
+  --folder db --folder documentation --folder script --folder script_data \
+  --folder text --folder ui --folder variantmeshes \
+  --loose-file text/build_info --loose-file text/default_keys.xml \
+  --keys-first --output /tmp/wh3dump-export --format json
+```
+
+Extraction includes all asset formats, including PNG, DDS, TGA, and rigid models ignored by that repository. It does not read `.gitignore`. Use a fresh output directory to compare with an existing dump from the same game version. `--overwrite` replaces existing destination files but retains unrelated and stale files. It never synchronizes or deletes files. CLI JSON input files must be outside the extraction directory.
+
+Destination collisions and source aliases are checked before writing. Files publish atomically and source snapshots are checked during extraction. Cancellation, corrupt payloads, or other runtime failures return nonzero and may leave completed files; temporary files are cleaned up. JSON results include resolved source packs, extraction/TSV/raw counts, unsupported-table and shadowed-file counts, and bytes written. `--report` writes this summary and diagnostics; progress stays on stderr. The shared MCP operation is `pack_extract`, with `packPaths`, `folders`, `looseFiles`, `outputPath`, `withVanilla`, `gameDataPath`, `language`, `tableFormat`, `keysFirst`, `overwrite`, and `reportPath` fields, under the usual read/write-root policy.
+
 ## Automation caches
 
 The CLI and MCP server keep a 128 MiB retained-memory cache by default, with at most eight open cache readers. Set `--cache-memory-mib` to an integer from 1 through 1024. The reported memory limit bounds the cache's conservative retained-size estimate; it does not measure total Node.js heap use.
@@ -106,7 +133,7 @@ node dist/mcp/server.js \
   --whmm-cache-dir /mnt/c/Users/Example/AppData/Roaming/wh3mm --cache-stats
 ```
 
-Readonly queries, unit/localization lookups, and reference traversal can use typed cached rows. Byte-sensitive operations such as patch, write, create, clone, diff hashing, validate, and subset continue to use original pack payloads. `pack diff --affected-units` may reuse source-identity-checked DB/LOC rows and raw reference metadata for its unit analysis; both target states keep fresh indexes and separate environments. Graph results, merged winners, and rendered localization are not retained in the cache.
+Readonly queries, unit/localization lookups, and reference traversal can use typed cached rows. Byte-sensitive operations such as extract, patch, write, create, clone, diff hashing, validate, and subset continue to use original pack payloads. `pack diff --affected-units` may reuse source-identity-checked DB/LOC rows and raw reference metadata for its unit analysis; both target states keep fresh indexes and separate environments. Graph results, merged winners, and rendered localization are not retained in the cache.
 
 Fresh immutable pack indexes may be shared within a request after reauthorizing and checking the current file identity. This avoids duplicating vanilla indexes between diff states; affected diffs do not use retained indexes from earlier requests. Localization cache hydration opens only packs contributing LOC files.
 

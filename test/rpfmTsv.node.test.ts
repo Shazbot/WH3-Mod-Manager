@@ -9,6 +9,97 @@ import {
 } from "../src/utility/rpfmTsv";
 import { LocVersion, type DBVersion, type SchemaField } from "../src/packFileTypes";
 
+describe("RPFM disk export formatting", () => {
+  it("keeps composite keys stable, escapes control characters, and preserves exact integers", () => {
+    const diskSchema: DBVersion = {
+      version: 0,
+      fields: [
+        { ...LocVersion.fields[0], name: "number", field_type: "I64", is_key: false },
+        { ...LocVersion.fields[0], name: "second", is_key: true },
+        { ...LocVersion.fields[0], name: "amount", field_type: "F64", is_key: false },
+        { ...LocVersion.fields[0], name: "first", is_key: true },
+        { ...LocVersion.fields[0], name: "optional", field_type: "OptionalStringU8", is_key: false },
+      ],
+    };
+    const row = buildRowFromValues(diskSchema, {
+      number: "9223372036854775807",
+      second: "b",
+      first: 'a\\path\t"quoted"\nnext',
+      amount: 1.25,
+      optional: "0",
+    });
+    row[0].fields = [{ type: "I64", val: "9223372036854775807" }];
+    expect(
+      buildRpfmTsvContent({
+        packedFilePath: "db/example_tables/data__",
+        tableName: "example_tables",
+        version: 0,
+        schema: diskSchema,
+        rows: [row],
+        formatting: "rpfm",
+        keysFirst: true,
+      }),
+    ).toBe(
+      'second\tfirst\tnumber\tamount\toptional\n#example_tables;0;db/example_tables/data__\t\t\t\t\nb\ta\\path\\t"quoted"\\nnext\t9223372036854775807\t1.2500\t0\n',
+    );
+  });
+
+  it("matches LOC's double control-character escaping without changing ordinary backslashes", () => {
+    const row = buildRowFromValues(LocVersion, { key: "k", text: 'one\nAppdata\\Roaming\t"quote"', tooltip: false });
+    expect(
+      buildRpfmTsvContent({
+        packedFilePath: "text/db/example.loc",
+        tableName: "Loc",
+        version: 1,
+        schema: LocVersion,
+        rows: [row],
+        formatting: "rpfm",
+      }),
+    ).toBe('key\ttext\ttooltip\n#Loc;1;text/db/example.loc\t\t\nk\tone\\\\nAppdata\\Roaming\\\\t"quote"\tfalse\n');
+  });
+
+  it("processes colour groups at the end and formats packed colours as uppercase hex", () => {
+    const colourSchema: DBVersion = {
+      version: 0,
+      fields: [
+        { ...LocVersion.fields[0], name: "col_b", field_type: "I32", is_key: false, is_part_of_colour: 1, ca_order: 3 },
+        { ...LocVersion.fields[0], name: "key", is_key: true },
+        { ...LocVersion.fields[0], name: "col_r", field_type: "I32", is_key: false, is_part_of_colour: 1, ca_order: 1 },
+        { ...LocVersion.fields[0], name: "col_g", field_type: "I32", is_key: false, is_part_of_colour: 1, ca_order: 2 },
+        { ...LocVersion.fields[0], name: "packed", field_type: "ColourRGB", is_key: false },
+      ],
+    };
+    const row = buildRowFromValues(colourSchema, { col_b: 255, col_r: 0, col_g: 170, key: "a", packed: 43520 });
+    expect(
+      buildRpfmTsvContent({
+        packedFilePath: "db/example_tables/data__",
+        tableName: "example_tables",
+        version: 0,
+        schema: colourSchema,
+        rows: [row],
+        formatting: "rpfm",
+      }),
+    ).toBe("key\tpacked\tcol_hex\n#example_tables;0;db/example_tables/data__\t\t\na\t00AA00\t00AAFF\n");
+    const unnamed: DBVersion = {
+      ...colourSchema,
+      fields: colourSchema.fields.map((field) => ({
+        ...field,
+        name: ({ col_r: "red", col_g: "green", col_b: "blue" } as Record<string, string>)[field.name] ?? field.name,
+      })),
+    };
+    expect(
+      buildRpfmTsvContent({
+        packedFilePath: "db/example_tables/data__",
+        tableName: "example_tables",
+        version: 0,
+        schema: unnamed,
+        rows: [row],
+        formatting: "rpfm",
+      }).split("\n")[0],
+    ).toBe("key\tpacked\tunnamed colour group_1");
+  });
+});
+
 const schema: DBVersion = {
   version: 3,
   fields: [

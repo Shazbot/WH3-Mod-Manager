@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { XMLValidator } from "fast-xml-parser";
 import { z } from "zod";
+import { packExtractSchema, runPackExtract } from "./extract";
 import { vanillaInputs } from "./vanilla";
 import type { Field } from "../packFileTypes";
 import { parseDBTablePath } from "../utility/packFileHelpers";
@@ -132,6 +133,7 @@ const patchSchema = z.discriminatedUnion("op", [
 ]);
 
 export const operationSchemas = {
+  pack_extract: packExtractSchema,
   pack_info: z
     .object({
       operation: z.literal("pack_info"),
@@ -1323,6 +1325,7 @@ const runClone: OperationHandler<"pack_clone"> = async (request, context) => {
 };
 
 export const operationRegistry: OperationRegistry = {
+  pack_extract: { schema: operationSchemas.pack_extract, execute: runPackExtract },
   pack_info: { schema: operationSchemas.pack_info, execute: runPackInfo },
   pack_list_files: { schema: operationSchemas.pack_list_files, execute: runListFiles },
   pack_read_file: { schema: operationSchemas.pack_read_file, execute: runReadFile },

@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import { inspect } from "node:util";
 import { parseArgs } from "node:util";
 import {
@@ -12,6 +13,7 @@ import { AutomationError, automationErrorFromUnknown } from "../automation/error
 import { createCliProgressReporter, defaultCliCacheDirectory, formatAffectedChecklist } from "./feedback";
 
 const rootHelp = `Usage:
+  whmm pack extract [<packPath> ...] [--with-vanilla] [--language en] [--folder <path> ...] [--loose-file <path> ...] --output <directory> [--table-format tsv|raw] [--keys-first]
   whmm pack info <packPath>
   whmm pack list <packPath> [--path-prefix <path>] [--glob <pattern>]
   whmm pack read <packPath> <filePath> [--output <file>]
@@ -40,8 +42,13 @@ const rootHelp = `Usage:
 Flags:
   --format text|json|checklist  Output format; checklist requires diff --affected-units
   --paths-from <file>  Newline-separated asset paths or unit queries (up to 1000)
-  --input <file>       JSON operation fields for create, write, query, patch, subset, validate, and asset tools
-  --output <path>      Output pack or extracted file path
+  --input <file>       JSON operation fields for extract, create, write, query, patch, subset, validate, and asset tools
+  --folder <path>      Recursively extract an internal folder (repeatable; default all files)
+  --loose-file <path>  Include a manifest-listed loose vanilla file (repeatable)
+  --table-format tsv|raw  DB/LOC extraction format (default tsv)
+  --keys-first        Export table key columns first
+  --language <code>   Vanilla extraction localization language (default en)
+  --output <path>      Output pack, extracted file, or extraction directory
   --mip <level>        Zero-based stored DDS mip level for preview (default 0)
   --surface <index>    Zero-based DDS array/cube surface (default 0)
   --texture-slots-only Skip RMV2 geometry, UV, and parameter inspection
@@ -93,6 +100,11 @@ const options = {
   input: { type: "string" as const },
   "paths-from": { type: "string" as const },
   output: { type: "string" as const },
+  folder: { type: "string" as const, multiple: true },
+  "loose-file": { type: "string" as const, multiple: true },
+  "table-format": { type: "string" as const },
+  "keys-first": { type: "boolean" as const },
+  language: { type: "string" as const },
   mip: { type: "string" as const },
   surface: { type: "string" as const },
   "texture-slots-only": { type: "boolean" as const },
@@ -255,18 +267,28 @@ const buildRequest = async (
   }
   if (values["with-vanilla"] !== undefined || values["game-data"] !== undefined) {
     const supportsVanilla =
-      (group === "pack" && ["validate", "subset", "textures", "diff"].includes(action)) ||
+      (group === "pack" && ["extract", "validate", "subset", "textures", "diff"].includes(action)) ||
       (group === "asset" && ["resolve", "references", "materials", "users"].includes(action)) ||
       (group === "loc" && action === "lookup") ||
       (group === "unit" && action === "resolve");
     if (!supportsVanilla)
       throw new AutomationError(
         "INVALID_ARGUMENT",
-        "--with-vanilla and --game-data require validate, subset, textures, diff, asset, loc lookup, or unit resolve",
+        "--with-vanilla and --game-data require extract, validate, subset, textures, diff, asset, loc lookup, or unit resolve",
       );
     if (values["with-vanilla"] !== undefined) common.withVanilla = values["with-vanilla"];
     if (values["game-data"] !== undefined) common.gameDataPath = values["game-data"];
   }
+  if (
+    [values.folder, values["loose-file"], values["table-format"], values["keys-first"], values.language].some(
+      (value) => value !== undefined,
+    ) &&
+    !(group === "pack" && action === "extract")
+  )
+    throw new AutomationError(
+      "INVALID_ARGUMENT",
+      "--folder, --loose-file, --table-format, --keys-first, and --language require pack extract",
+    );
   if (group === "rigid" && action === "inspect") {
     ensurePositionals(command, 4);
     return {
@@ -285,6 +307,22 @@ const buildRequest = async (
     return { ...common, operation: "rigid_patch", packPath: first, filePath: second, outputPath };
   }
   if (group === "pack") {
+    if (action === "extract") {
+      const outputPath = values.output ?? extra.outputPath;
+      if (typeof outputPath !== "string")
+        throw new AutomationError("INVALID_ARGUMENT", "pack extract requires --output <directory>");
+      return {
+        ...common,
+        operation: "pack_extract",
+        outputPath,
+        ...(command.length > 2 ? { packPaths: command.slice(2) } : {}),
+        ...(values.folder === undefined ? {} : { folders: values.folder }),
+        ...(values["loose-file"] === undefined ? {} : { looseFiles: values["loose-file"] }),
+        ...(values["table-format"] === undefined ? {} : { tableFormat: values["table-format"] }),
+        ...(values["keys-first"] === undefined ? {} : { keysFirst: values["keys-first"] }),
+        ...(values.language === undefined ? {} : { language: values.language }),
+      };
+    }
     if (action === "textures") {
       ensurePositionals(command, 3);
       return {
@@ -597,10 +635,21 @@ export const main = async (argv = process.argv.slice(2), io: CliIo = defaultIo):
       if (value.operation !== "pack_diff" || !value.affectedUnits)
         throw new AutomationError("INVALID_ARGUMENT", "--format checklist requires pack diff --affected-units");
     }
-    for (const inputSource of [parsed.values.input, parsed.values["paths-from"]].filter((value): value is string => value !== undefined)) {
+    for (const inputSource of [parsed.values.input, parsed.values["paths-from"]].filter(
+      (value): value is string => value !== undefined,
+    )) {
       const inputPath = await context.policy.assertReadPath(inputSource);
       if (request && typeof request === "object") {
         const candidate = request as Record<string, unknown>;
+        if (candidate.operation === "pack_extract" && typeof candidate.outputPath === "string") {
+          const root = await context.policy.assertWritePath(candidate.outputPath);
+          const relative = path.relative(root, inputPath);
+          if (
+            relative === "" ||
+            (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`))
+          )
+            throw new AutomationError("CONFLICT", "Extraction directory must not contain the CLI input file");
+        }
         const outputs = [
           candidate.outputPath,
           candidate.extractTo,

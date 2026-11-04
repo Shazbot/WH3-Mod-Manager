@@ -45,10 +45,21 @@ const isIntegerField = (fieldType: SCHEMA_FIELD_TYPE) =>
  * from a real "0" - 759 cells across 7 vanilla tables hold that value - so the round trip has to
  * read the presence byte itself.
  */
-const resolveRawCellValue = (fieldType: SCHEMA_FIELD_TYPE, cell: SchemaField | undefined): string => {
+type TsvCell = Pick<SchemaField, "fields">;
+export type RpfmTsvFormatting = "legacy" | "rpfm";
+
+const resolveRawCellValue = (
+  fieldType: SCHEMA_FIELD_TYPE,
+  cell: TsvCell | undefined,
+  formatting: RpfmTsvFormatting,
+): string => {
   const fields = cell?.fields || [];
+  if (formatting === "rpfm" && fieldType === "I64") return String(fields[0]?.val ?? 0);
+  if (formatting === "rpfm" && fieldType === "ColourRGB")
+    return (Number(fields[0]?.val ?? 0) >>> 0).toString(16).toUpperCase().padStart(6, "0");
   if (isIntegerField(fieldType)) return Number(fields[0]?.val ?? 0).toFixed(0);
-  if (fieldType === "F32" || fieldType === "F64") return Number(fields[0]?.val ?? 0).toFixed(3);
+  if (fieldType === "F32" || fieldType === "F64")
+    return Number(fields[0]?.val ?? 0).toFixed(formatting === "rpfm" ? 4 : 3);
 
   if (fieldType === "OptionalStringU8" || fieldType === "StringU8") {
     // fields[0] is the presence byte (optional) or the length (plain), so a falsy one means absent
@@ -61,12 +72,22 @@ const resolveRawCellValue = (fieldType: SCHEMA_FIELD_TYPE, cell: SchemaField | u
 };
 
 /** Converts one parsed cell to the text shape RPFM expects. */
-export const formatRpfmTsvCell = (fieldType: SCHEMA_FIELD_TYPE, cell: SchemaField | undefined): string => {
-  const rawValue = resolveRawCellValue(fieldType, cell);
+export const formatRpfmTsvCell = (
+  fieldType: SCHEMA_FIELD_TYPE,
+  cell: TsvCell | undefined,
+  formatting: RpfmTsvFormatting = "legacy",
+  isLoc = false,
+): string => {
+  const rawValue = resolveRawCellValue(fieldType, cell, formatting);
   // Any non-zero byte is true, matching RPFM; a cell that is missing entirely is false rather than
   // the "true" that comparing an empty string against "0" would give.
   const value = fieldType === "Boolean" ? String(rawValue !== "" && rawValue !== "0") : rawValue;
 
+  if (formatting === "rpfm") {
+    // RPFM's LOC export escapes control characters twice; ordinary backslashes stay literal.
+    const prefix = isLoc ? "\\\\" : "\\";
+    return value.replace(/\n/g, `${prefix}n`).replace(/\r/g, `${prefix}r`).replace(/\t/g, `${prefix}t`);
+  }
   return value.replace(/\t/g, " ").replace(/\r?\n/g, " ");
 };
 
@@ -76,7 +97,10 @@ export interface BuildRpfmTsvContentOptions {
   version: number;
   schema: DBVersion;
   /** Rows of parsed cells, as `chunkSchemaIntoRows` produces them. */
-  rows: SchemaField[][];
+  rows: readonly (readonly TsvCell[])[];
+  keysFirst?: boolean;
+  /** Opt into RPFM's disk export layout; existing GUI callers retain their formatting. */
+  formatting?: RpfmTsvFormatting;
 }
 
 export const buildRpfmTsvContent = ({
@@ -85,21 +109,58 @@ export const buildRpfmTsvContent = ({
   version,
   schema,
   rows,
+  keysFirst = false,
+  formatting = "legacy",
 }: BuildRpfmTsvContentOptions): string => {
   const isLoc = isLocPackedFilePath(normalizePackedFileName(packedFilePath));
   const metadataTableName = isLoc ? "Loc" : tableName;
   const metadataVersion = isLoc ? LocVersion.version : version;
-  const normalizedPackedFilePath = normalizePackedFileName(packedFilePath).replaceAll("\\", "/");
+  const normalizedPackedFilePath = (
+    formatting === "rpfm" ? packedFilePath : normalizePackedFileName(packedFilePath)
+  ).replaceAll("\\", "/");
+  const columns: { name: string; isKey: boolean; format: (row: readonly TsvCell[]) => string }[] = [];
+  const colours = new Map<number, { name: string; index: number; order: number }[]>();
+  schema.fields.forEach((field, index) => {
+    if (formatting === "rpfm" && typeof field.is_part_of_colour === "number") {
+      const group = colours.get(field.is_part_of_colour) ?? [];
+      group.push({ name: field.name, index, order: field.ca_order });
+      colours.set(field.is_part_of_colour, group);
+    } else
+      columns.push({
+        name: field.name,
+        isKey: field.is_key,
+        format: (row) => formatRpfmTsvCell(field.field_type, row[index], formatting, isLoc),
+      });
+  });
+  // RPFM moves processed RGB groups after ordinary fields, in colour-group order.
+  for (const [groupId, channels] of [...colours].sort(([a], [b]) => a - b)) {
+    if (channels.length !== 3) throw new Error(`Invalid RGB colour group ${groupId} in ${tableName}`);
+    const prefixes = channels.map((channel) => channel.name.replace(/(?:red|green|blue|r|g|b)$/i, ""));
+    const prefix = prefixes[0] && prefixes.every((value) => value === prefixes[0]) ? prefixes[0] : "";
+    const ordered = [...channels].sort((a, b) => a.order - b.order);
+    columns.push({
+      name: prefix ? `${prefix}hex` : `unnamed colour group_${groupId}`,
+      isKey: false,
+      format: (row) =>
+        ordered
+          .map(({ index }) =>
+            (Number(row[index]?.fields[0]?.val ?? 0) & 255).toString(16).toUpperCase().padStart(2, "0"),
+          )
+          .join(""),
+    });
+  }
+  if (keysFirst) columns.sort((a, b) => Number(b.isKey) - Number(a.isKey));
+  const metadata = `#${metadataTableName};${metadataVersion};${normalizedPackedFilePath}`;
   const lines = [
-    schema.fields.map((field) => field.name).join("\t"),
-    `#${metadataTableName};${metadataVersion};${normalizedPackedFilePath}`,
+    columns.map(({ name }) => name).join("\t"),
+    metadata + (formatting === "rpfm" ? "\t".repeat(Math.max(0, columns.length - 1)) : ""),
   ];
 
   for (const row of rows) {
-    lines.push(schema.fields.map((field, index) => formatRpfmTsvCell(field.field_type, row[index])).join("\t"));
+    lines.push(columns.map(({ format }) => format(row)).join("\t"));
   }
 
-  return lines.join("\n");
+  return lines.join("\n") + (formatting === "rpfm" ? "\n" : "");
 };
 
 export const getRpfmTsvExportPath = (packedFilePath: string) =>

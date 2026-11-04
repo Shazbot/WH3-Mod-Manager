@@ -22,6 +22,7 @@ const MIN_MAX_RESPONSE_BYTES = 1024;
 const MAX_MAX_RESPONSE_BYTES = 1024 * 1024;
 
 const descriptions: Record<OperationName, string> = {
+  pack_extract: "Extract selected folders from ordered packs or vanilla game data, exporting supported DB/LOC tables as RPFM TSV or raw payloads.",
   pack_info: "Read WH3 pack header, dependencies, index, and trailer metadata.",
   pack_list_files: "List internal paths in a WH3 pack with bounded pagination and optional path filters.",
   pack_read_file: "Read or explicitly extract one raw or decompressed pack payload.",
