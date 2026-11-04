@@ -138,6 +138,7 @@ describe("WH3 MCP stdio server", () => {
   it("extracts folders through the shared operation and enforces write roots", async () => {
     const packPath = path.join(allowedRoot, "extract-source.pack");
     await writeRawPack(packPath, [{ name: "script/example.lua", buffer: Buffer.from("return 1") },
+      { name: "script/bad", is_compressed: true, buffer: Buffer.alloc(12, 255) },
       { name: "ui/icon.dds", buffer: Buffer.from([0, 255]) }], metadata());
     const outputPath = path.join(allowedRoot, "extracted");
     const session = await connect();
@@ -146,7 +147,7 @@ describe("WH3 MCP stdio server", () => {
         packPaths: [packPath], folders: ["script"], outputPath,
       } });
       expect(result.isError, JSON.stringify(result.structuredContent)).not.toBe(true);
-      expect(responseEnvelope(result)).toMatchObject({ ok: true, data: { extractedFiles: 1, rawFiles: 1 } });
+      expect(responseEnvelope(result)).toMatchObject({ ok: true, data: { extractedFiles: 1, rawFiles: 1, skippedFiles: 1, complete: false } });
       expect(readFileSync(path.join(outputPath, "script/example.lua"), "utf8")).toBe("return 1");
       expect(existsSync(path.join(outputPath, "ui"))).toBe(false);
       const denied = await session.client.callTool({ name: "pack_extract", arguments: {

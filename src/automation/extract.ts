@@ -238,6 +238,23 @@ export const runPackExtract = async (request: Request, context: AutomationContex
       throw new AutomationError("CONFLICT", "Extraction output already exists; use overwrite", { path: destination });
     return canonical;
   };
+  const failures: { path: string; packPath?: string; sourcePath?: string; code: string; message: string }[] = [];
+  const skipFile = (file: SourceFile, error: unknown) => {
+    const failure = automationErrorFromUnknown(error);
+    if (["CANCELLED", "CONFLICT", "IO_ACCESS", "INVALID_ARGUMENT"].includes(failure.code)) throw failure;
+    failures.push({
+      path: file.internalPath,
+      ...("pack" in file ? { packPath: file.pack.path } : { sourcePath: file.sourcePath }),
+      code: failure.code === "INTERNAL" ? "VALIDATION" : failure.code,
+      message: failure.message,
+    });
+    diagnostics.push({
+      code: "EXTRACT_FILE_FAILED",
+      severity: "warning",
+      path: file.internalPath,
+      message: `Skipped file: ${failure.message}`,
+    });
+  };
   // Plan final filenames first, including raw fallback, so conflicts are found before publication.
   for (const pack of [...packs, undefined]) {
     const selected = [...winners.values()].filter((file) => sourcePack(file) === pack);
@@ -245,36 +262,7 @@ export const runPackExtract = async (request: Request, context: AutomationContex
     await withSourceSession(pack, async (session) => {
       for (const file of selected) {
         throwIfAborted(context.signal);
-        const key = file.internalPath.toLowerCase();
-        const db = parseDBTablePath(key);
-        let tsv = request.tableFormat === "tsv" && key.endsWith(".loc");
-        if (request.tableFormat === "tsv" && db && !key.endsWith(".loc")) {
-          const schemas = (await schemaProvider("wh3"))[db.dbName];
-          let unsupported = !schemas?.length;
-          if (!unsupported) {
-            let preamble: ReturnType<typeof readDbTablePreamble>;
-            try {
-              preamble = readDbTablePreamble(await readSource(file, session));
-            } catch (error) {
-              if (error instanceof AutomationError) throw error;
-              throw new AutomationError("VALIDATION", `Invalid DB preamble: ${file.internalPath}`, {
-                packPath: pack?.path,
-              });
-            }
-            unsupported = !(preamble.version === undefined
-              ? resolveParsedDBVersion(undefined, schemas)
-              : schemas.find((schema) => schema.version === preamble.version));
-          }
-          tsv = !unsupported;
-          if (unsupported)
-            diagnostics.push({
-              code: "EXTRACT_RAW_TABLE",
-              severity: "warning",
-              path: file.internalPath,
-              message: "No matching table schema; extracted the original payload",
-            });
-        }
-        const relative = file.internalPath.replaceAll("\\", "/") + (tsv ? ".tsv" : "");
+        const relative = file.internalPath.replaceAll("\\", "/");
         // Avoid NTFS alternate streams and Win32 filename aliases, even when running on Linux.
         if (
           relative
@@ -290,7 +278,34 @@ export const runPackExtract = async (request: Request, context: AutomationContex
           throw new AutomationError("VALIDATION", "Packed path cannot be extracted safely", {
             path: file.internalPath,
           });
-        const outputPath = await guardDestination(path.join(root, ...relative.split("/")));
+        const key = file.internalPath.toLowerCase();
+        const db = parseDBTablePath(key);
+        let tsv = request.tableFormat === "tsv" && key.endsWith(".loc");
+        if (request.tableFormat === "tsv" && db && !key.endsWith(".loc")) {
+          const schemas = (await schemaProvider("wh3"))[db.dbName];
+          let unsupported = !schemas?.length;
+          if (!unsupported) {
+            let preamble: ReturnType<typeof readDbTablePreamble>;
+            try {
+              preamble = readDbTablePreamble(await readSource(file, session));
+            } catch (error) {
+              skipFile(file, error);
+              continue;
+            }
+            unsupported = !(preamble.version === undefined
+              ? resolveParsedDBVersion(undefined, schemas)
+              : schemas.find((schema) => schema.version === preamble.version));
+          }
+          tsv = !unsupported;
+          if (unsupported)
+            diagnostics.push({
+              code: "EXTRACT_RAW_TABLE",
+              severity: "warning",
+              path: file.internalPath,
+              message: "No matching table schema; extracted the original payload",
+            });
+        }
+        const outputPath = await guardDestination(path.join(root, ...relative.split("/")) + (tsv ? ".tsv" : ""));
         const destinationKey = pathKey(outputPath);
         if (destinations.has(destinationKey))
           throw new AutomationError("CONFLICT", "Extracted filenames collide", { path: outputPath });
@@ -328,21 +343,34 @@ export const runPackExtract = async (request: Request, context: AutomationContex
     await withSourceSession(pack, async (session) => {
       for (const file of selected) {
         throwIfAborted(context.signal);
-        let payload = await readSource(file, session);
-        if (file.tsv) {
-          const loaded = await loadPackedTable(file.internalPath, payload, schemaProvider);
-          payload = Buffer.from(
-            buildRpfmTsvContent({
-              packedFilePath: file.internalPath,
-              tableName: parseDBTablePath(file.internalPath.toLowerCase())?.dbName ?? "Loc",
-              version: loaded.parsed.schema.version,
-              schema: loaded.parsed.schema,
-              rows: loaded.parsed.rows.map((row) => row.cells),
-              keysFirst: request.keysFirst,
-              formatting: "rpfm",
-            }),
-            "utf8",
-          );
+        let payload: Buffer;
+        try {
+          payload = await readSource(file, session);
+          if (file.tsv) {
+            const loaded = await loadPackedTable(file.internalPath, payload, schemaProvider);
+            payload = Buffer.from(
+              buildRpfmTsvContent({
+                packedFilePath: file.internalPath,
+                tableName: parseDBTablePath(file.internalPath.toLowerCase())?.dbName ?? "Loc",
+                version: loaded.parsed.schema.version,
+                schema: loaded.parsed.schema,
+                rows: loaded.parsed.rows.map((row) => row.cells),
+                keysFirst: request.keysFirst,
+                formatting: "rpfm",
+              }),
+              "utf8",
+            );
+          }
+        } catch (error) {
+          skipFile(file, error);
+          context.progress?.({
+            stage: "extract",
+            completed: extractedFiles + failures.length,
+            total: winners.size,
+            message: file.internalPath,
+          });
+          await yieldToEventLoop(context.signal);
+          continue;
         }
         await guardDestination(file.outputPath);
         await context.policy.withAtomicOutput({
@@ -360,8 +388,8 @@ export const runPackExtract = async (request: Request, context: AutomationContex
         extractedBytes += payload.length;
         context.progress?.({
           stage: "extract",
-          completed: extractedFiles,
-          total: files.length,
+          completed: extractedFiles + failures.length,
+          total: winners.size,
           message: file.internalPath,
         });
         if ((extractedFiles & 31) === 0) await yieldToEventLoop(context.signal);
@@ -380,7 +408,10 @@ export const runPackExtract = async (request: Request, context: AutomationContex
     extractedFiles,
     tsvFiles,
     rawFiles: extractedFiles - tsvFiles,
-    unsupportedTables: diagnostics.length,
+    unsupportedTables: diagnostics.filter((item) => item.code === "EXTRACT_RAW_TABLE").length,
+    skippedFiles: failures.length,
+    complete: failures.length === 0,
+    failures,
     shadowedFiles: selectedEntries - winners.size,
     extractedBytes,
   };

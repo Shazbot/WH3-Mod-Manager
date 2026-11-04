@@ -190,7 +190,7 @@ describe("folder extraction", () => {
     ).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
   });
 
-  it("falls back for unknown versions but fails on malformed supported tables", async () => {
+  it("falls back for unknown versions and skips malformed supported tables", async () => {
     const root = workspace();
     const output = path.join(root, "out");
     const unknown = serializeDbTable(schema, [], { version: 42 });
@@ -202,8 +202,14 @@ describe("folder extraction", () => {
     expect(fs.readFileSync(path.join(output, "db/sample_tables/data__"))).toEqual(unknown);
     await pack(root, "bad.pack", { "db/sample_tables/data__": db().subarray(0, -2) });
     expect(await run([path.join(root, "bad.pack")], path.join(root, "bad"))).toMatchObject({
-      ok: false,
-      error: { code: "VALIDATION" },
+      ok: true,
+      data: {
+        extractedFiles: 0,
+        skippedFiles: 1,
+        complete: false,
+        unsupportedTables: 0,
+        failures: [{ path: "db\\sample_tables\\data__", code: "VALIDATION" }],
+      },
     });
   });
 
@@ -264,7 +270,7 @@ describe("folder extraction", () => {
     expect(await run([source], root, { overwrite: true })).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
   });
 
-  it("decompresses raw assets and reports invalid compressed payloads as validation failures", async () => {
+  it("decompresses valid assets and skips invalid compressed payloads", async () => {
     const root = workspace();
     const source = path.join(root, "source.pack");
     const output = path.join(root, "out");
@@ -280,9 +286,95 @@ describe("folder extraction", () => {
     expect(fs.readFileSync(path.join(output, "script/a"))).toEqual(payload);
     await writeRawPack(source, [{ name: "script/a", is_compressed: true, buffer: Buffer.alloc(12, 255) }], metadata);
     expect(await run([source], path.join(root, "bad"))).toMatchObject({
-      ok: false,
-      error: { code: "VALIDATION", details: { filePath: "script/a" } },
+      ok: true,
+      data: {
+        extractedFiles: 0,
+        skippedFiles: 1,
+        complete: false,
+        failures: [{ path: "script\\a", packPath: source, code: "VALIDATION" }],
+      },
+      diagnostics: [{ code: "EXTRACT_FILE_FAILED", severity: "warning", path: "script\\a" }],
     });
+  });
+
+  it("continues past bad preambles, table rows, LOC files, and compressed assets across packs", async () => {
+    const root = workspace();
+    const output = path.join(root, "out");
+    const first = path.join(root, "first.pack");
+    const second = path.join(root, "second.pack");
+    await writeRawPack(
+      first,
+      [
+        { name: "db/sample_tables/bad_header", buffer: Buffer.from([255]) },
+        { name: "db/sample_tables/bad_rows", buffer: db().subarray(0, -2) },
+        { name: "text/bad.loc", buffer: Buffer.from("invalid") },
+        { name: "script/bad", is_compressed: true, buffer: Buffer.alloc(12, 255) },
+        { name: "script/after", buffer: Buffer.from("after") },
+      ],
+      metadata,
+    );
+    await pack(root, "second.pack", { "script/later": "later" });
+    fs.mkdirSync(path.join(output, "script"), { recursive: true });
+    fs.writeFileSync(path.join(output, "script/bad"), "retain previous export");
+    const updates: number[] = [];
+    const ctx = createAutomationContext({
+      schemaProvider: async () => ({ sample_tables: [schema] }),
+      progress: (progress) => {
+        if (progress.stage === "extract") updates.push(progress.completed!);
+      },
+    });
+    const reportPath = path.join(root, "report.json");
+    const response = await run([first, second], output, { overwrite: true, reportPath }, ctx);
+    expect(response).toMatchObject({
+      ok: true,
+      data: {
+        extractedFiles: 2,
+        rawFiles: 2,
+        tsvFiles: 0,
+        skippedFiles: 4,
+        complete: false,
+        unsupportedTables: 0,
+      },
+    });
+    if (!response.ok) throw new Error("Expected completed extraction");
+    expect(response.diagnostics.filter((item) => item.code === "EXTRACT_FILE_FAILED")).toHaveLength(4);
+    expect(fs.readFileSync(path.join(output, "script/after"), "utf8")).toBe("after");
+    expect(fs.readFileSync(path.join(output, "script/later"), "utf8")).toBe("later");
+    expect(fs.readFileSync(path.join(output, "script/bad"), "utf8")).toBe("retain previous export");
+    expect(fs.existsSync(path.join(output, "db/sample_tables/bad_rows.tsv"))).toBe(false);
+    expect(fs.existsSync(path.join(output, "text/bad.loc.tsv"))).toBe(false);
+    const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+    expect(report.failures).toHaveLength(4);
+    expect(report.diagnostics).toHaveLength(4);
+    expect(updates.at(-1)).toBe(6);
+    expect(updates).toEqual([...updates].sort((a, b) => a - b));
+  });
+
+  it("returns CLI success with skipped-file warnings and counts", async () => {
+    const root = workspace();
+    const source = path.join(root, "source.pack");
+    const output = path.join(root, "out");
+    await writeRawPack(
+      source,
+      [
+        { name: "script/bad", is_compressed: true, buffer: Buffer.alloc(12, 255) },
+        { name: "script/good", buffer: Buffer.from("good") },
+      ],
+      metadata,
+    );
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const exit = await main(["pack", "extract", source, "--output", output, "--format", "json", "--no-cache"], {
+      stdout: (value) => stdout.push(value),
+      stderr: (value) => stderr.push(value),
+    });
+    expect(exit).toBe(0);
+    expect(JSON.parse(stdout.join(""))).toMatchObject({
+      ok: true,
+      data: { complete: false, extractedFiles: 1, skippedFiles: 1 },
+    });
+    expect(stderr.join("")).toContain("EXTRACT_FILE_FAILED");
+    expect(fs.readdirSync(path.join(output, "script"))).toEqual(["good"]);
   });
 
   it("detects source changes during extraction", async () => {
