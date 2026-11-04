@@ -51985,7 +51985,7 @@
             "is_part_of_colour": null
           },
           {
-            "name": "positive_attitude_multiplier",
+            "name": "negative_attitude_multiplier",
             "field_type": "F32",
             "is_key": false,
             "default_value": "1",
@@ -52000,7 +52000,7 @@
             "is_part_of_colour": null
           },
           {
-            "name": "negative_attitude_multiplier",
+            "name": "positive_attitude_multiplier",
             "field_type": "F32",
             "is_key": false,
             "default_value": "1",

@@ -136717,6 +136717,51 @@
         "localised_key_order": []
       }
     ],
+    "chaotic_plan_effect_bundle_to_plan_types_junctions_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "plan_type",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "chaotic_plan_type_enums",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": -1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "effect_bundle_key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "effect_bundles",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": -1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
     "chaotic_plan_payload_application_phase_enums_tables": [
       {
         "version": 0,
@@ -176887,6 +176932,202 @@
       }
     ],
     "initiative_sets_tables": [
+      {
+        "version": 9,
+        "fields": [
+          {
+            "name": "key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "active_initiative_limit",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": "-1",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "Maximum number of initiatives that can be active in this set at the same time. Negative means infinite.",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "activation_cooldown",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": "0",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "category",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "initiative_set_categories",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "points_limit",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": "0",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 4,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "allows_multiple_activation",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": "false",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 5,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "base_cost",
+            "field_type": "OptionalStringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "resource_costs",
+              "id"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 6,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "use_force_pooled_resources",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": "false",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 7,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "sort_order",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": "0",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 10,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "exclusive_group",
+            "field_type": "OptionalStringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "optional; when non-empty, at most one initiative from any set sharing that group may be active on the same bearer (character/region/faction manager).",
+            "ca_order": 11,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [
+          {
+            "name": "localised_name",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": "placeholder",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": -1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "localised_description",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": "placeholder",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": -1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_key_order": [
+          0
+        ]
+      },
       {
         "version": 8,
         "fields": [
@@ -220442,6 +220683,51 @@
         "localised_key_order": []
       }
     ],
+    "ritual_calculation_overrides_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "ritual_key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "rituals",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "calculation_override_key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ritual_calculation_override_types",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
     "ritual_categories_tables": [
       {
         "version": 3,
@@ -221294,6 +221580,324 @@
             "lookup": null,
             "description": "",
             "ca_order": -1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [],
+        "localised_key_order": []
+      }
+    ],
+    "ritual_character_target_criterias_tables": [
+      {
+        "version": 0,
+        "fields": [
+          {
+            "name": "require_war_declaration_ability",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 5,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "require_not_in_shroud",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": "true",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 14,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "ui_info",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ui_info_ritual_target_criterias",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 4,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "require_not_at_war",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 12,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "permitted_faction_set",
+            "field_type": "OptionalStringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "faction_sets",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 13,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "required_level",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": "0",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 10,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "required_subculture",
+            "field_type": "OptionalStringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "cultures_subcultures",
+              "subculture"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "own",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": "Undefined",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "tristates",
+              "id"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 3,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "diplomacy_status",
+            "field_type": "OptionalStringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "diplomatic_faction_sets",
+              "key"
+            ],
+            "lookup": null,
+            "description": "Diplomatic filter between the ritual performer and the owner of the target character",
+            "ca_order": 6,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "key",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "on_sea",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": "Undefined",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "tristates",
+              "id"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 2,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "is_human",
+            "field_type": "OptionalStringU8",
+            "is_key": false,
+            "default_value": "Undefined",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "tristates",
+              "id"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 15,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "region_diplomacy_status",
+            "field_type": "OptionalStringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "diplomatic_faction_sets",
+              "key"
+            ],
+            "lookup": null,
+            "description": "Diplomatic filter between the ritual performer and the owner of the region containing the character",
+            "ca_order": 7,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "required_agent_type",
+            "field_type": "OptionalStringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "agents",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 8,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "required_agent_subtype",
+            "field_type": "OptionalStringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "agent_subtypes",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 9,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "is_embedded",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": "Undefined",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "tristates",
+              "id"
+            ],
+            "lookup": null,
+            "description": "Whether the character is in a military force",
+            "ca_order": 11,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "same_region_as_performing_character",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": "Undefined",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "tristates",
+              "id"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 16,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "context_requirement",
+            "field_type": "OptionalStringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": [
+              "ritual_character_target_criterias_context_expressions",
+              "key"
+            ],
+            "lookup": null,
+            "description": "",
+            "ca_order": 17,
             "is_bitwise": 0,
             "enum_values": {},
             "is_part_of_colour": null
@@ -254550,6 +255154,331 @@
       }
     ],
     "ui_mercenary_recruitment_infos_tables": [
+      {
+        "version": 12,
+        "fields": [
+          {
+            "name": "hire_button_icon_path",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": "ui\\skins\\default\\button_hire_blessed_",
+            "is_filename": true,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 13,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "hud_icon_path",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": true,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "hire_frame_state",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": "default",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 10,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "mercenary_recruitment_category",
+            "field_type": "StringU8",
+            "is_key": true,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 0,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "ornament_icon_path",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": "ui\\skins\\default\\hire_renown_ornament.png",
+            "is_filename": true,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 11,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "should_allow_empty_pool_access",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": "false",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 14,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "should_show_mercenary_cap",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": "false",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 15,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "should_show_casualties_label",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": "false",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 16,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "is_renown_pool",
+            "field_type": "Boolean",
+            "is_key": false,
+            "default_value": "true",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 17,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "button_order_index",
+            "field_type": "I32",
+            "is_key": false,
+            "default_value": "0",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": 18,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_fields": [
+          {
+            "name": "initial_tooltip",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": "{{tr:tooltip_hud_recruit_mercenaries_initial}}",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": -1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "tooltip_default_inactive",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": -1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "tooltip_default_avaliable",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": -1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "tooltip_inactive_on_sea",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": -1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "tooltip_inactive_not_players_turn",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": -1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "tooltip_inactive_unavailable",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": -1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "hire_button_tooltip",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": -1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "hire_state",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": "Mercenary Recruitment",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": -1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "hire_button_title",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": "{{tr:recruitment_confirmation_renown}}",
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": -1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "tooltip_inactive_loaned_army",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": -1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          },
+          {
+            "name": "tooltip_inactive_invalid_location",
+            "field_type": "StringU8",
+            "is_key": false,
+            "default_value": null,
+            "is_filename": false,
+            "filename_relative_path": null,
+            "is_reference": null,
+            "lookup": null,
+            "description": "",
+            "ca_order": -1,
+            "is_bitwise": 0,
+            "enum_values": {},
+            "is_part_of_colour": null
+          }
+        ],
+        "localised_key_order": [
+          3
+        ]
+      },
       {
         "version": 11,
         "fields": [
