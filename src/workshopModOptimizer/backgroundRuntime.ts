@@ -151,6 +151,7 @@ export const initOptimizerBackground = (newHooks: Hooks): BackgroundOptimizer<Ba
   background ??= new BackgroundOptimizer<BackgroundModsPayload>({
     plan: planPass,
     isGameRunning: () => appData.isWH3Running,
+    autoSchedule: false,
     afterJob: async () => hooks?.afterJob(),
     log: (message) => console.log(message),
     onStatus: (status) => hooks?.sendStatus(status),

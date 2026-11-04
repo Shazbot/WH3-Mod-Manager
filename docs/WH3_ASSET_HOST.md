@@ -370,7 +370,7 @@ Texture atlas consolidation and cross-rigid merging are implemented in `Editors.
 
 1. **Probe the host once per run** with `optimize --check-dds` and `--version`. If either fails, or the version line is missing `output=`/`scan=`, the run falls back to plain copies and shows a warning.
 2. **Batch probe** (`probeOnly` + `probeSources`) for every mod with visual assets and no cached answer. This finds which consumers are relevant, so the cache key can ignore unrelated mods.
-3. **One `optimize` per eligible mod, one host process at a time.** Results are cached under `whmm_optimized_mods`. A background job (`background.ts`) can be joined by a launch that needs the same key, or preempted by one that needs a different key.
+3. **One `optimize` per eligible mod, one host process at a time.** Results are cached under `whmm_optimized_mods`. The app does not automatically schedule background passes after settings changes or game exit; launch optimization creates cached results as needed. An explicitly invoked background job (`background.ts`) can still be joined by a launch that needs the same key, or preempted by one that needs a different key.
 
 Request files go in the optimizer cache's temp folder and are deleted after the run.
 

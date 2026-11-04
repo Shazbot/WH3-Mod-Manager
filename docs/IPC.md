@@ -100,7 +100,7 @@ Legend:
 - **S** `startGame`, `terminateGame`, `cancelWorkshopModStaging`, `skipWorkshopModOptimization`, `updateWorkshopOptimizerBackground`, `cancelWorkshopOptimizerBackground`, `runWorkshopOptimizerBackgroundNow`, `cancelVisualAssetCheck`§
 - **E** `setIsWH3Running`, `workshopModStagingProgress`, `workshopOptimizerBackgroundStatus`, `workshopOptimizerLastRun`, `workshopOptimizerRunReport`, `visualAssetCheckState`
 
-`startGame` carries the saved `workshopOptimizerOptions` and current rigid compression setting with the launch settings. `updateWorkshopOptimizerBackground` carries the same values with enabled mods, so a setting change replans background jobs without waiting for config persistence.
+`startGame` carries the saved `workshopOptimizerOptions` and current rigid compression setting with the launch settings. `updateWorkshopOptimizerBackground` refreshes the current enabled-mod snapshot and options. Timed background passes are disabled; the background optimizer runs only when explicitly requested through `runWorkshopOptimizerBackgroundNow`, while launch optimization continues to create cached results as needed.
 
 ### Save games
 

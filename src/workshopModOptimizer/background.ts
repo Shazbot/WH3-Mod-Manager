@@ -59,6 +59,8 @@ export interface BackgroundDeps<Snapshot> {
   /** Plans the mod list as a launch would. Resolves undefined when optimization does not apply. */
   plan(snapshot: Snapshot, signal: AbortSignal): Promise<BackgroundPass | undefined>;
   isGameRunning(): boolean;
+  /** Whether input/game changes automatically schedule a background pass. */
+  autoSchedule?: boolean;
   log(message: string): void;
   onStatus(status: BackgroundStatus): void;
   /** Called between jobs and when a pass ends (never while a launch is preparing): cache housekeeping. */
@@ -127,6 +129,11 @@ export class BackgroundOptimizer<Snapshot> implements OptimizerBackgroundJoin {
       return;
     }
 
+    if (this.deps.autoSchedule === false) {
+      this.publish({ state: "idle", total: 0, done: 0 });
+      return;
+    }
+
     this.publish({ state: "waiting", total: 0, done: 0 });
     this.timer = this.setTimer(() => this.start(), this.deps.debounceMs ?? 60_000);
   }
@@ -147,10 +154,12 @@ export class BackgroundOptimizer<Snapshot> implements OptimizerBackgroundJoin {
       // Only work the game actually interrupted counts as paused.
       const interrupted = this.status.state === "running" || this.status.state === "paused";
       this.publish({ state: interrupted && this.snapshot !== undefined ? "paused" : "idle", total: 0, done: 0 });
-    } else if (this.snapshot !== undefined && !this.launchActive) {
+    } else if (this.snapshot !== undefined && !this.launchActive && this.deps.autoSchedule !== false) {
       if (this.timer !== undefined) this.clearTimer(this.timer);
       this.timer = this.setTimer(() => this.start(), this.deps.afterGameMs ?? 15_000);
       this.publish({ state: "waiting", total: 0, done: 0 });
+    } else if (!isRunning && this.snapshot !== undefined) {
+      this.publish({ state: "idle", total: 0, done: 0 });
     }
   }
 
