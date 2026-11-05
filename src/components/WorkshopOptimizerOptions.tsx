@@ -47,7 +47,7 @@ export default function WorkshopOptimizerOptions() {
     <p className="mt-2 text-xs text-gray-400">These settings apply to background optimization, Optimize now, and game launch. Changing an output setting creates a new cached result.</p>
     {groups.map((group) => {
       const visibleOptions = group.options.filter(({ key }) =>
-        isDev || key === "buildAtlases" || DEFAULT_WORKSHOP_OPTIMIZER_OPTIONS[key],
+        isDev || DEFAULT_WORKSHOP_OPTIMIZER_OPTIONS[key],
       );
       if (visibleOptions.length === 0) return null;
       return <fieldset key={group.title} className="mt-3 border-t border-gray-600 pt-2">

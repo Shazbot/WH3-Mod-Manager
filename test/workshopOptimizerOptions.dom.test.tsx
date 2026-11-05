@@ -17,7 +17,7 @@ const renderOptions = (stateOverrides: Partial<AppState> = {}) => {
 
 describe("advanced optimizer option availability", () => {
   it("shows atlas prerequisites and retains choices when atlas building is switched off", () => {
-    const store = renderOptions();
+    const store = renderOptions({ isDev: true });
     const share = screen.getByRole("checkbox", { name: /Share atlases across variants/ });
     const build = screen.getByRole("checkbox", { name: /^Build new atlases \(experimental\)/ });
     expect(share).toBeDisabled();
@@ -52,14 +52,14 @@ describe("advanced optimizer option availability", () => {
     expect(screen.getAllByText("Unavailable while Cross-rigid merges only is on.").length).toBeGreaterThan(1);
   });
 
-  it("shows off-by-default switches only in developer mode, apart from atlas building", () => {
+  it("shows off-by-default switches, atlas building included, only in developer mode", () => {
     const store = renderOptions();
-    expect(screen.getByRole("checkbox", { name: /^Build new atlases/ })).toBeInTheDocument();
-    for (const label of [/^Process all variants/, /^Score all game units/, /^Cross-rigid merges only/, /^Detailed report audits/]) {
+    for (const label of [/^Build new atlases/, /^Process all variants/, /^Score all game units/, /^Cross-rigid merges only/, /^Detailed report audits/]) {
       expect(screen.queryByRole("checkbox", { name: label })).not.toBeInTheDocument();
     }
 
     act(() => store.dispatch(setIsDev(true)));
+    expect(screen.getByRole("checkbox", { name: /^Build new atlases/ })).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /^Process all variants/ })).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /^Score all game units/ })).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /^Cross-rigid merges only/ })).toBeInTheDocument();
