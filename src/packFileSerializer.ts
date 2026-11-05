@@ -2878,8 +2878,10 @@ export const readPack = async (
     // console.log(`${modPath} file opened`);
     // if (packReadingOptions.tablesToRead)
     //   console.log(`NUM OF TABLES TO READ:`, packReadingOptions.tablesToRead.length);
+    // Append with loops, not push(...array): large packs (audio_base.pack has ~160k files)
+    // exceed the engine's argument limit and throw "Maximum call stack size exceeded".
     if (cachedVanillaPackIndex) {
-      pack_files.push(...cachedVanillaPackIndex.packedFiles);
+      for (const packedFile of cachedVanillaPackIndex.packedFiles) pack_files.push(packedFile);
       packHeader = cachedVanillaPackIndex.packHeader;
       dependencyPacks.push(...cachedVanillaPackIndex.dependencyPacks);
       console.log(`[readPack] vanilla index cache hit: ${nodePath.basename(modPath)}`);
@@ -2895,15 +2897,15 @@ export const readPack = async (
         header_buffer: indexedPack.header.headerBuffer,
       };
       dependencyPacks.push(...indexedPack.dependencies);
-      pack_files.push(
-        ...indexedPack.entries.map((entry) => ({
+      for (const entry of indexedPack.entries) {
+        pack_files.push({
           name: entry.name,
           file_size: entry.file_size,
           start_pos: entry.start_pos,
           is_compressed: entry.is_compressed,
           ...(entry.file_name_hash === undefined ? {} : { file_name_hash: entry.file_name_hash }),
-        })),
-      );
+        });
+      }
       if (!packReadingOptions.skipVanillaIndexCache) {
         rememberVanillaPackIndex(modPath, size, lastChangedLocal, pack_files, packHeader, dependencyPacks);
       }
