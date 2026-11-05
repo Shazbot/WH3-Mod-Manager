@@ -26,7 +26,11 @@ export type WorkshopOptimizerOptions = {
     K extends "armyScope" ? "subculture" | "culture" : K extends "siblingScope" ? "model" | "pack" : boolean;
 };
 
-/** Host options that are accepted but have no effect under the selected mode. Keep their saved values. */
+/**
+ * Host options that are accepted but have no effect under the selected mode. Keep their saved values.
+ * With atlas building off, atlasAllVmds, scoreAllGameUnits and armyScope still change the merge output (measured),
+ * so only the atlas-only settings are locked.
+ */
 export const getWorkshopOptimizerOptionUnavailableReason = (
   key: keyof WorkshopOptimizerOptions,
   options: WorkshopOptimizerOptions,
@@ -39,8 +43,7 @@ export const getWorkshopOptimizerOptionUnavailableReason = (
   }
   if (
     !options.buildAtlases &&
-    (key === "shareAtlasesAcrossVmds" || key === "atlasAllVmds" || key === "lodAwareAtlasPlanning" ||
-      key === "scoreAllGameUnits" || key === "armyScope" || key === "siblingScope")
+    (key === "shareAtlasesAcrossVmds" || key === "lodAwareAtlasPlanning" || key === "siblingScope")
   ) {
     return "Requires Build new atlases.";
   }

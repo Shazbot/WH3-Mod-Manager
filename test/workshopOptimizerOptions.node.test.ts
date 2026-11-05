@@ -25,6 +25,13 @@ describe("workshop optimizer settings", () => {
     const defaults = normalizeWorkshopOptimizerOptions(undefined);
     expect(getWorkshopOptimizerOptionUnavailableReason("shareAtlasesAcrossVmds", defaults)).toBe("Requires Build new atlases.");
     expect(getWorkshopOptimizerOptionUnavailableReason("shareAtlasesAcrossVmds", { ...defaults, buildAtlases: true })).toBeUndefined();
+    for (const key of ["lodAwareAtlasPlanning", "siblingScope"] as const) {
+      expect(getWorkshopOptimizerOptionUnavailableReason(key, defaults)).toBe("Requires Build new atlases.");
+    }
+    // These still change the merge output with atlas building off.
+    for (const key of ["atlasAllVmds", "scoreAllGameUnits", "armyScope"] as const) {
+      expect(getWorkshopOptimizerOptionUnavailableReason(key, defaults)).toBeUndefined();
+    }
     expect(getWorkshopOptimizerOptionUnavailableReason("dropUnreadAlpha", { ...defaults, compactTextures: false })).toBe("Requires Compact textures.");
     expect(getWorkshopOptimizerOptionUnavailableReason("sharedTextureRepack", { ...defaults, crossRigidOnly: true })).toBeTruthy();
     expect(getWorkshopOptimizerOptionUnavailableReason("reportDiagnostics", { ...defaults, crossRigidOnly: true })).toBeUndefined();

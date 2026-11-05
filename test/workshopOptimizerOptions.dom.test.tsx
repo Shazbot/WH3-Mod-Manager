@@ -55,12 +55,12 @@ describe("advanced optimizer option availability", () => {
   it("shows off-by-default switches only in developer mode, apart from atlas building", () => {
     const store = renderOptions();
     expect(screen.getByRole("checkbox", { name: /^Build new atlases/ })).toBeInTheDocument();
-    for (const label of [/^Atlas all variants/, /^Score all game units/, /^Cross-rigid merges only/, /^Detailed report audits/]) {
+    for (const label of [/^Process all variants/, /^Score all game units/, /^Cross-rigid merges only/, /^Detailed report audits/]) {
       expect(screen.queryByRole("checkbox", { name: label })).not.toBeInTheDocument();
     }
 
     act(() => store.dispatch(setIsDev(true)));
-    expect(screen.getByRole("checkbox", { name: /^Atlas all variants/ })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /^Process all variants/ })).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /^Score all game units/ })).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /^Cross-rigid merges only/ })).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /^Detailed report audits/ })).toBeInTheDocument();

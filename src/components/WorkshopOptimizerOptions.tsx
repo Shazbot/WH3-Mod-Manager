@@ -17,8 +17,8 @@ const groups: { title: string; options: { key: BooleanOption; label: string; hel
   ] },
   { title: "Textures and atlases", options: [
     { key: "shareAtlasesAcrossVmds", label: "Share atlases across variants", help: "Reuse compatible atlas layouts across variant mesh definitions." },
-    { key: "buildAtlases", label: "Build new atlases (experimental)", help: "Uses substantially more memory; off by default." },
-    { key: "atlasAllVmds", label: "Atlas all variants", help: "Broaden atlas candidates when atlas building is enabled." },
+    { key: "buildAtlases", label: "Build new atlases (experimental)", help: "Small draw-call reduction that mainly helps CPU-limited systems. Costs part of the shared texture repack's memory saving and makes optimizing more than twice as slow. Experimental." },
+    { key: "atlasAllVmds", label: "Process all variants", help: "Process every variant mesh definition in the pack, not only those units use, for mesh merging and atlases." },
     { key: "lodAwareAtlasPlanning", label: "Plan atlases by LOD", help: "Account for model detail levels in atlas planning." },
     { key: "downscaleTextures", label: "Downscale textures", help: "Reduce oversized texture dimensions." },
     { key: "sharedTextureRepack", label: "Repack shared textures", help: "Consolidate textures used by several assets." },
@@ -26,12 +26,12 @@ const groups: { title: string; options: { key: BooleanOption; label: string; hel
     { key: "dropUnreadAlpha", label: "Remove unused alpha", help: "Discard alpha channels that shaders do not read." },
   ] },
   { title: "Reachability and cleanup", options: [
-    { key: "scoreAllGameUnits", label: "Score all game units", help: "Broaden unit scoring for optimization decisions." },
+    { key: "scoreAllGameUnits", label: "Score all game units", help: "Score all game units, not only those using this pack. Affects merge decisions." },
     { key: "pruneDeadFiles", label: "Remove unused files", help: "Conservatively remove files no retained asset or mod reaches or names." },
     { key: "switchOpaqueAlphaShaders", label: "Use opaque shaders where possible", help: "Switch character materials with fully opaque base textures to non-alpha shaders." },
   ] },
   { title: "Reports", options: [
-    { key: "reportDiagnostics", label: "Detailed report audits", help: "Add report-only checks; increases run time but does not change the output pack." },
+    { key: "reportDiagnostics", label: "Detailed report audits", help: "Add report-only checks. Makes optimizing several times slower (about 4x on a large pack) and does not change the output pack." },
   ] },
 ];
 
@@ -67,7 +67,7 @@ export default function WorkshopOptimizerOptions() {
       </fieldset>;
     })}
     <div className="mt-3 border-t border-gray-600 pt-2">
-      <label className={`block text-xs text-gray-300 ${armyScopeUnavailable ? "opacity-60" : ""}`}>Army scoring scope
+      <label className={`block text-xs text-gray-300 ${armyScopeUnavailable ? "opacity-60" : ""}`}>Army scoring scope (affects merge decisions)
         <select className="mt-1 block rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-gray-100"
           disabled={!!armyScopeUnavailable}
           value={options.armyScope} onChange={(event) => dispatch(setWorkshopOptimizerOption({ key: "armyScope", value: event.target.value }))}>
