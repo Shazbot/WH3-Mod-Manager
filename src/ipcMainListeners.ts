@@ -558,6 +558,10 @@ let dataWatcher: chokidar.FSWatcher | undefined;
 let downloadsWatcher: chokidar.FSWatcher | undefined;
 let mergedWatcher: chokidar.FSWatcher | undefined;
 let customModFoldersWatcher: chokidar.FSWatcher | undefined;
+// Without an error listener chokidar's error event throws, which aborts the pending "add"
+// (e.g. EBUSY while Explorer is still copying a pack), so the pack never shows up.
+const logWatcherError = (watcherName: string) => (error: unknown) =>
+  console.log(`${watcherName} watcher error:`, error);
 /**
  * Opens a pack in the viewer, published by registerIpcMainListeners.
  *
@@ -6288,6 +6292,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             pollInterval: 100,
           },
         })
+        .on("error", logWatcherError("content"))
         .on("add", async (path) => {
           console.log("NEW CONTENT ADD", path);
           if (isLegacyWorkshopBin(path)) {
@@ -6322,6 +6327,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           awaitWriteFinish: true,
           ignored: isIgnoredInModFolder,
         })
+        .on("error", logWatcherError("downloads"))
         .on("add", async (path) => {
           console.log("NEW DOWNLOADS ADD", path);
           fork(nodePath.join(__dirname, "sub.js"), [gameToSteamId[appData.currentGame], "justRun"], {});
@@ -6341,6 +6347,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           followSymlinks: false,
           ignored: isIgnoredInModFolder,
         })
+        .on("error", logWatcherError("data"))
         .on("add", async (path) => {
           console.log("dataWatcher add:", path);
           onNewPackFound(path, true);
@@ -6367,6 +6374,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           followSymlinks: false,
           ignored: isIgnoredInModFolder,
         })
+        .on("error", logWatcherError("custom mod folders"))
         .on("add", async (path) => onNewPackFound(path, true))
         .on("unlink", async (path) => onPackDeleted(path))
         .on("change", async (path) => {
@@ -6388,6 +6396,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           ignored: isIgnoredInModFolder,
           usePolling: true,
         })
+        .on("error", logWatcherError("merged"))
         .on("add", async (path) => {
           onNewPackFound(path);
         })

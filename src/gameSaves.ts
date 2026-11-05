@@ -88,6 +88,7 @@ export const setupSavesWatcher = async (cb: (saves: GameSave[]) => void) => {
       ignoreInitial: true,
       ignored: (path: string, stats?: fs.Stats) => !!stats && !stats.isDirectory() && !path.endsWith(".save"),
     })
+    .on("error", (error: unknown) => console.log("saves watcher error:", error))
     .on("add", async (path: string) => {
       await addNewSave(path);
       console.log("Save added: " + path);
