@@ -79,7 +79,16 @@ module.exports = {
           from: "./node_modules/onnxruntime-node",
           to: "../node_modules/onnxruntime-node",
           globOptions: {
-            ignore: ["**/script/**", "**/lib/**", "**/test/**"],
+            ignore: [
+              "**/script/**",
+              "**/lib/**",
+              "**/test/**",
+              // Only ship the native binaries for the platform/arch being packaged (~85MB saved).
+              ...["win32", "linux", "darwin"]
+                .flatMap((platform) => ["x64", "arm64"].map((arch) => `${platform}/${arch}`))
+                .filter((target) => target !== `${process.platform}/${process.arch}`)
+                .map((target) => `**/bin/napi-v6/${target}/**`),
+            ],
           },
         },
         { from: "./node_modules/onnxruntime-common", to: "../node_modules/onnxruntime-common" },
