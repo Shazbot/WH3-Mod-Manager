@@ -35,6 +35,8 @@ const groups: { title: string; options: { key: BooleanOption; label: string; hel
   ] },
 ];
 
+const ATLAS_DEPENDENT_KEYS: string[] = ["shareAtlasesAcrossVmds", "lodAwareAtlasPlanning"];
+
 export default function WorkshopOptimizerOptions() {
   const dispatch = useAppDispatch();
   const options = useAppSelector((state) => state.app.workshopOptimizerOptions);
@@ -47,7 +49,7 @@ export default function WorkshopOptimizerOptions() {
     <p className="mt-2 text-xs text-gray-400">These settings apply to background optimization, Optimize now, and game launch. Changing an output setting creates a new cached result.</p>
     {groups.map((group) => {
       const visibleOptions = group.options.filter(({ key }) =>
-        isDev || DEFAULT_WORKSHOP_OPTIMIZER_OPTIONS[key],
+        isDev || (DEFAULT_WORKSHOP_OPTIMIZER_OPTIONS[key] && !ATLAS_DEPENDENT_KEYS.includes(key)),
       );
       if (visibleOptions.length === 0) return null;
       return <fieldset key={group.title} className="mt-3 border-t border-gray-600 pt-2">
@@ -75,14 +77,14 @@ export default function WorkshopOptimizerOptions() {
         </select>
         {armyScopeUnavailable && <span className="mt-1 block text-xs text-amber-300">{armyScopeUnavailable}</span>}
       </label>
-      <label className={`mt-3 block text-xs text-gray-300 ${siblingScopeUnavailable ? "opacity-60" : ""}`}>Shared texture grouping
+      {isDev && <label className={`mt-3 block text-xs text-gray-300 ${siblingScopeUnavailable ? "opacity-60" : ""}`}>Shared texture grouping
         <select className="mt-1 block rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-gray-100"
           disabled={!!siblingScopeUnavailable}
           value={options.siblingScope} onChange={(event) => dispatch(setWorkshopOptimizerOption({ key: "siblingScope", value: event.target.value }))}>
           <option value="model">Per model (default)</option><option value="pack">Across pack</option>
         </select>
         {siblingScopeUnavailable && <span className="mt-1 block text-xs text-amber-300">{siblingScopeUnavailable}</span>}
-      </label>
+      </label>}
       <p className="mt-3 text-xs text-gray-400">Rigid-model compression follows the existing WHMM setting and is currently {rigidCompression ? "on" : "off"}.</p>
       <button type="button" className="mt-3 rounded border border-gray-600 px-2 py-1 text-xs text-gray-200 hover:bg-gray-700"
         onClick={() => {

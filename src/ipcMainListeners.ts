@@ -451,6 +451,7 @@ import {
   type BackgroundModsPayload,
   getOptimizerBackground,
   initOptimizerBackground,
+  setOptimizerForegroundRun,
   optimizerGameChanged,
   optimizerPackChanged,
   updateOptimizerBackground,
@@ -887,6 +888,8 @@ interface ActiveWorkshopStagingRun {
   canceled: boolean;
   lastProgress: WorkshopStagingProgress;
 }
+/** Set while a user-started "Optimize now" run reports through the launch progress card. */
+let foregroundOptimizerStatus: ((status: import("./workshopModOptimizer/background").BackgroundStatus) => void) | undefined;
 let activeWorkshopStagingRun: ActiveWorkshopStagingRun | undefined;
 const globalSearchCancelStateByWebContentsId = new Map<
   number,
@@ -13950,7 +13953,17 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   initOptimizerBackground({
     afterJob: () => runOptimizerHousekeeping(true),
     getDataPackNames: getRealDataPackNames,
-    sendStatus: (status) => mainWindow?.webContents.send("workshopOptimizerBackgroundStatus", status),
+    sendStatus: (status) => {
+      mainWindow?.webContents.send("workshopOptimizerBackgroundStatus", status);
+      foregroundOptimizerStatus?.(status);
+    },
+    onRunReport: (report) => {
+      lastOptimizerRunReport = report;
+      mainWindow?.webContents.send("workshopOptimizerRunReport", report);
+      saveOptimizerRunReport(app.getPath("userData"), report).catch((error) =>
+        console.warn("Could not save the optimizer results report:", error),
+      );
+    },
   });
   // A game patch changes the packs every cached result was made against: replan when the identity of the
   // game's packs changes.
@@ -15075,8 +15088,48 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     },
   );
   ipcMain.on("cancelWorkshopOptimizerBackground", () => getOptimizerBackground()?.cancel());
-  ipcMain.on("runWorkshopOptimizerBackgroundNow", async () => {
-    const outcome = await getOptimizerBackground()?.runNow();
+  ipcMain.on("runWorkshopOptimizerBackgroundNow", async (event) => {
+    // Runs like the optimization of a game launch: the launch progress card shows it and can cancel it.
+    if (activeWorkshopStagingRun) return;
+    const background = getOptimizerBackground();
+    if (!background) return;
+    const run: ActiveWorkshopStagingRun = {
+      runId: randomUUID(),
+      senderId: event.sender.id,
+      controller: new AbortController(),
+      skipOptimizationController: new AbortController(),
+      canceled: false,
+      lastProgress: { phase: "planning", current: 0, total: 0 },
+    };
+    activeWorkshopStagingRun = run;
+    run.controller.signal.addEventListener("abort", () => background.cancel(), { once: true });
+    const send = (status: "running" | "complete" | "cancelled" | "failed", overrides: Partial<WorkshopModStagingProgressEvent> = {}) =>
+      sendWorkshopStagingProgress(event.sender, {
+        runId: run.runId,
+        status,
+        stage: "optimizing",
+        ...overrides,
+      } as WorkshopModStagingProgressEvent);
+    send("running", { stage: "preparing", completedMods: 0, totalMods: 0, detail: "Preparing…" });
+    foregroundOptimizerStatus = (status) => {
+      if (run.canceled || status.state !== "running") return;
+      send("running", {
+        percent: status.total > 0 ? Math.round(((status.done + (status.fraction ?? 0)) / status.total) * 100) : 0,
+        completedMods: status.done,
+        totalMods: status.total,
+        currentMod: status.currentMod,
+      });
+    };
+    setOptimizerForegroundRun(true);
+    let outcome: Awaited<ReturnType<typeof background.runNow>> | undefined;
+    try {
+      outcome = await background.runNow();
+    } finally {
+      setOptimizerForegroundRun(false);
+      foregroundOptimizerStatus = undefined;
+      if (activeWorkshopStagingRun === run) activeWorkshopStagingRun = undefined;
+      send(run.canceled ? "cancelled" : "complete", { stage: run.canceled ? "cleaning" : "complete", percent: 100 });
+    }
     if (outcome !== "nothingToDo") return;
     mainWindow?.webContents.send("addToast", {
       type: "info",

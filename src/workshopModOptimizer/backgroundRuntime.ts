@@ -2,11 +2,12 @@ import * as fs from "node:fs";
 
 import appData from "../appData";
 import { type SelectionMod, comparableDirectory, selectCustomFolderStaging } from "./stagingSelection";
-import { type BackgroundPass, type BackgroundStatus, BackgroundOptimizer } from "./background";
+import { buildOptimizerRunReport, type OptimizerRunReport } from "./runReport";
+import { type BackgroundJob, type BackgroundPass, type BackgroundStatus, BackgroundOptimizer } from "./background";
 import { formatOptimizerLogLine } from "./logFormat";
 import { packHasOptimizableVisuals } from "./packInspection";
 import { createWorkshopModOptimizer, getWorkshopOptimizerCache, removeLegacyOptimizerCacheOnce } from "./runtime";
-import type { WorkshopStagingOptimizerMod } from "../utility/workshopModStaging";
+import type { WorkshopStagingOptimizerMod, WorkshopStagingOptimizerOutcome } from "../utility/workshopModStaging";
 import { normalizeWorkshopOptimizerOptions, type WorkshopOptimizerOptions } from "./options";
 
 /**
@@ -35,10 +36,17 @@ interface Hooks {
   afterJob: () => Promise<void>;
   getDataPackNames: (dataFolder: string) => Promise<Set<string>>;
   sendStatus: (status: BackgroundStatus) => void;
+  /** Receives the per-mod report of a background pass that ran to completion. */
+  onRunReport?: (report: OptimizerRunReport) => void;
 }
 
 let hooks: Hooks | undefined;
 let background: BackgroundOptimizer<BackgroundModsPayload> | undefined;
+/** Set while a user-started "Optimize now" pass runs: it uses normal process priority. */
+let foregroundRun = false;
+export const setOptimizerForegroundRun = (value: boolean) => {
+  foregroundRun = value;
+};
 let lastPayload: BackgroundModsPayload | undefined;
 
 const sourceLabel = (mod: SelectionMod) => (mod.sourceKind === "custom" ? "custom folder" : mod.sourceKind);
@@ -59,7 +67,7 @@ const planPass = async (payload: BackgroundModsPayload, signal: AbortSignal): Pr
       reqModIdToName: mod.reqModIdToName,
       dependencyPacks: mod.dependencyPacks,
     })),
-    lowPriority: true,
+    lowPriority: !foregroundRun,
     log: (message) => console.log(`Optimizer (background): ${message}`),
   });
   if (!optimizer) return undefined;
@@ -105,23 +113,54 @@ const planPass = async (payload: BackgroundModsPayload, signal: AbortSignal): Pr
   await optimizer.prepare(candidates, signal);
   const jobs: BackgroundPass["jobs"] = [];
   let considered = 0;
+  const cachedPlans: BackgroundJob[] = [];
   for (const mod of candidates) {
     if (signal.aborted) break;
     const plan = await optimizer.plan(mod, signal);
     if (!plan) continue;
     considered++;
-    if (!plan.cached) jobs.push({ mod, plan });
+    if (plan.cached) cachedPlans.push({ mod, plan });
+    else jobs.push({ mod, plan });
   }
 
   const byPath = new Map(payload.mods.map((mod) => [mod.path, mod] as const));
+  const outcomes: WorkshopStagingOptimizerOutcome[] = [];
+  const cachedMods = cachedPlans;
+  let finished = !signal.aborted;
   return {
     jobs,
     considered,
     release: async () => {
       cache.unpinAll();
       await cache.evict();
+      if (!finished || !hooks?.onRunReport || outcomes.length + cachedMods.length === 0) return;
+      for (const { mod, plan } of cachedMods) {
+        const result = await optimizer.produce(mod, plan, { signal, compress: async () => ({ name: mod.name, status: "noEligibleFiles", success: true, compressedFileCount: 0, warnings: [] }), onProgress: () => undefined }).catch(() => undefined);
+        if (result?.status === "ready") outcomes.push({ name: mod.name, status: "restored", summary: result.summary });
+      }
+      hooks.onRunReport(
+        buildOptimizerRunReport({
+          game: appData.currentGame,
+          mods: payload.mods,
+          dataPackNames,
+          stagedDirectories: new Set(folders.mods.map((mod) => comparableDirectory(mod.modDirectory))),
+          comparableDirectory,
+          recordFor: (path) => optimizer.getRecord(path),
+          outcomes,
+          userSkipped: false,
+        }),
+      );
     },
-    produce: (mod, plan, context) => optimizer.produce(mod, plan, context),
+    produce: async (mod, plan, context) => {
+      const result = await optimizer.produce(mod, plan, context);
+      if (result.status === "ready") {
+        outcomes.push({ name: mod.name, status: result.fromCache ? "restored" : "optimized", summary: result.summary });
+      } else if (result.status === "failed") {
+        outcomes.push({ name: mod.name, status: "failed", message: result.message });
+      } else finished = false;
+      if (context.signal?.aborted) finished = false;
+      return result;
+    },
     describe: (job, result) => {
       const source = byPath.get(job.mod.path);
       return (
