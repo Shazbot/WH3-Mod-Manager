@@ -818,6 +818,7 @@ const AgGridWrapper = memo(
     const gridRef = useRef<AgGridReact<RowData>>(null);
     const gridRootRef = useRef<HTMLDivElement | null>(null);
     const [selectionRanges, setSelectionRanges] = useState<SelectionRange[]>([]);
+    const [gridReadyVersion, setGridReadyVersion] = useState(0);
     const selectionRangesRef = useRef<SelectionRange[]>([]);
     const dragSelectionRef = useRef<DragSelectionState | null>(null);
     const dragPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
@@ -835,6 +836,10 @@ const AgGridWrapper = memo(
       clientX: number;
       clientY: number;
     } | null>(null);
+
+    const handleGridReady = useCallback(() => {
+      setGridReadyVersion((version) => version + 1);
+    }, []);
 
     const [headerChromePx, setHeaderChromePx] = useState(measuredHeaderChromePx ?? HEADER_CHROME_FALLBACK_PX);
 
@@ -1358,6 +1363,9 @@ const AgGridWrapper = memo(
       if (!referenceSelection) return;
       if (referenceSelection.displayedRowIndex < 0 || referenceSelection.displayedRowIndex >= rowData.length) return;
 
+      const api = gridRef.current?.api;
+      if (!api) return;
+
       setSelectionRanges([
         normalizeSelectionRange(
           referenceSelection.displayedRowIndex,
@@ -1366,14 +1374,23 @@ const AgGridWrapper = memo(
           Math.max(0, currentSchema.fields.length - 1),
         ),
       ]);
-      gridRef.current?.api.ensureIndexVisible(referenceSelection.displayedRowIndex, "middle");
+      api.ensureIndexVisible(referenceSelection.displayedRowIndex, "middle");
       onReferenceSelectionHandled?.(referenceSelection.requestId);
-    }, [currentSchema.fields.length, onReferenceSelectionHandled, referenceSelection, rowData.length]);
+    }, [
+      currentSchema.fields.length,
+      gridReadyVersion,
+      onReferenceSelectionHandled,
+      referenceSelection,
+      rowData.length,
+    ]);
 
     useEffect(() => {
       if (!searchSelection) return;
       if (searchSelection.displayedRowIndex < 0 || searchSelection.displayedRowIndex >= rowData.length) return;
 
+      const api = gridRef.current?.api;
+      if (!api) return;
+
       setSelectionRanges([
         normalizeSelectionRange(
           searchSelection.displayedRowIndex,
@@ -1382,9 +1399,9 @@ const AgGridWrapper = memo(
           Math.max(0, currentSchema.fields.length - 1),
         ),
       ]);
-      gridRef.current?.api.ensureIndexVisible(searchSelection.displayedRowIndex, "middle");
+      api.ensureIndexVisible(searchSelection.displayedRowIndex, "middle");
       onSearchSelectionHandled?.(searchSelection.requestId);
-    }, [currentSchema.fields.length, onSearchSelectionHandled, rowData.length, searchSelection]);
+    }, [currentSchema.fields.length, gridReadyVersion, onSearchSelectionHandled, rowData.length, searchSelection]);
 
     useEffect(() => {
       const onWindowMouseUp = () => {
@@ -1876,6 +1893,7 @@ const AgGridWrapper = memo(
       >
         <AgGridReact<RowData>
           ref={gridRef}
+          onGridReady={handleGridReady}
           theme="legacy"
           rowData={rowData}
           getRowId={(params) => params.data.__rowId}
