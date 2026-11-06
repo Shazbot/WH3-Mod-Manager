@@ -2246,7 +2246,7 @@
   "workshopGameStartSkippingOptimization": "最適化せずに起動しています…",
   "workshopGameStartCancelLaunch": "起動をキャンセルする",
   "optimizeWorkshopModsOnStart": "MOD の最適化 (実験的)",
-  "optimizeWorkshopModsHelp": "Workshop およびカスタム フォルダー MOD のユニット モデルとテクスチャをマージして縮小します。Data フォルダー内の MOD はマージしません。結果は whmm_optimized_mods に保持され、MOD リストを変更している間バックグラウンドで作成されます。",
+  "optimizeWorkshopModsHelp": "Workshop およびカスタム フォルダー MOD 内のモデルとテクスチャを最適化します。Data フォルダー内の MOD は決して最適化されません。結果は whmm_optimized_mods に保存されます。",
   "compressWorkshopModsOptimizeHelp": "圧縮は MOD 最適化の一部であり、有効になっている間は継続します。",
   "clearWorkshopOptimizerCache": "最適化されたMODキャッシュをクリアする",
   "workshopOptimizerCacheSize": "キャッシュ サイズ: {{size}}",

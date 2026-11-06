@@ -2246,7 +2246,7 @@
   "workshopGameStartSkippingOptimization": "Uruchamianie bez optymalizacji…",
   "workshopGameStartCancelLaunch": "Anuluj uruchomienie",
   "optimizeWorkshopModsOnStart": "Optymalizuj mody (eksperymentalnie)",
-  "optimizeWorkshopModsHelp": "Łączy i zmniejsza modele jednostek i tekstury modów z warsztatu i folderów niestandardowych, nigdy modów z folderu Dane. Wyniki są przechowywane w whmm_optimized_mods i tworzone w tle podczas zmiany listy modów.",
+  "optimizeWorkshopModsHelp": "Optymalizuje modele i tekstury w warsztacie i modach w folderach niestandardowych, nigdy w folderze Dane. Wyniki są przechowywane w pliku whmm_optimized_mods.",
   "compressWorkshopModsOptimizeHelp": "Kompresja jest częścią optymalizacji modów i pozostaje włączona, gdy jest włączona.",
   "clearWorkshopOptimizerCache": "Wyczyść zoptymalizowaną pamięć podręczną modów",
   "workshopOptimizerCacheSize": "Rozmiar pamięci podręcznej: {{size}}",

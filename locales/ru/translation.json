@@ -2246,7 +2246,7 @@
   "workshopGameStartSkippingOptimization": "Запуск без оптимизации…",
   "workshopGameStartCancelLaunch": "Отменить запуск",
   "optimizeWorkshopModsOnStart": "Оптимизация модов (экспериментальная)",
-  "optimizeWorkshopModsHelp": "Объединяет и сжимает модели юнитов и текстуры Мастерской и модов пользовательских папок, но не модов в папке Data. Результаты сохраняются в whmm_optimized_mods и создаются в фоновом режиме, пока вы меняете список модов.",
+  "optimizeWorkshopModsHelp": "Оптимизирует модели и текстуры внутри модов Workshop и пользовательских папок, но не модов в папке Data. Результаты хранятся в whmm_optimized_mods.",
   "compressWorkshopModsOptimizeHelp": "Сжатие является частью оптимизации мода и остается включенным, пока оно включено.",
   "clearWorkshopOptimizerCache": "Очистить кэш оптимизированных модов",
   "workshopOptimizerCacheSize": "Размер кэша: {{size}}",

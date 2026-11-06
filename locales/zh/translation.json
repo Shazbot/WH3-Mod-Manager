@@ -2248,7 +2248,7 @@
   "workshopGameStartSkippingOptimization": "启动时未优化...",
   "workshopGameStartCancelLaunch": "取消启动",
   "optimizeWorkshopModsOnStart": "优化模组（实验性）",
-  "optimizeWorkshopModsHelp": "合并并缩小 Workshop 和自定义文件夹 mod 的单位模型和纹理，而不是 Data 文件夹中的 mod。结果保存在 whmm_optimized_mods 中，并在您更改 mod 列表时在后台生成。",
+  "optimizeWorkshopModsHelp": "优化 Workshop 和自定义文件夹 mod 中的模型和纹理，而不是 Data 文件夹中的 mod。结果保存在 whmm_optimized_mods 中。",
   "compressWorkshopModsOptimizeHelp": "压缩是 mod 优化的一部分，并且在启用时保持不变。",
   "clearWorkshopOptimizerCache": "清除优化的模组缓存",
   "workshopOptimizerCacheSize": "缓存大小：{{size}}",

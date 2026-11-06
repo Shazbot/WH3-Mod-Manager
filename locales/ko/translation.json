@@ -2246,7 +2246,7 @@
   "workshopGameStartSkippingOptimization": "최적화하지 않고 실행 중…",
   "workshopGameStartCancelLaunch": "출시 취소",
   "optimizeWorkshopModsOnStart": "모드 최적화(실험적)",
-  "optimizeWorkshopModsHelp": "워크샵 및 사용자 정의 폴더 모드의 유닛 모델과 텍스처를 병합하고 축소합니다. 데이터 폴더의 모드는 절대 병합하지 않습니다. 결과는 whmm_optimized_mods에 보관되며 모드 목록을 변경하는 동안 백그라운드에서 생성됩니다.",
+  "optimizeWorkshopModsHelp": "Workshop 및 사용자 정의 폴더 모드 내의 모델과 텍스처를 최적화하며 데이터 폴더의 모드는 최적화하지 않습니다. 결과는 whmm_optimized_mods에 보관됩니다.",
   "compressWorkshopModsOptimizeHelp": "압축은 모드 최적화의 일부이며 활성화된 동안 계속 유지됩니다.",
   "clearWorkshopOptimizerCache": "최적화된 모드 캐시 지우기",
   "workshopOptimizerCacheSize": "캐시 크기: {{size}}",

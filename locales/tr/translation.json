@@ -2246,7 +2246,7 @@
   "workshopGameStartSkippingOptimization": "Optimize edilmeden başlatılıyor…",
   "workshopGameStartCancelLaunch": "Lansmanı iptal et",
   "optimizeWorkshopModsOnStart": "Modları optimize edin (deneysel)",
-  "optimizeWorkshopModsHelp": "Atölye ve özel klasör modlarının birim modellerini ve dokularını birleştirir ve küçültür; hiçbir zaman Veri klasöründeki modları birleştirmez. Sonuçlar whmm_optimized_mods dosyasında tutulur ve siz mod listesini değiştirirken arka planda yapılır.",
+  "optimizeWorkshopModsHelp": "Atölye ve özel klasör modlarındaki modelleri ve dokuları optimize eder, hiçbir zaman Veri klasöründeki modları optimize etmez. Sonuçlar whmm_optimized_mods dosyasında tutulur.",
   "compressWorkshopModsOptimizeHelp": "Sıkıştırma, mod optimizasyonunun bir parçasıdır ve etkin olduğu sürece açık kalır.",
   "clearWorkshopOptimizerCache": "Optimize edilmiş mod önbelleğini temizle",
   "workshopOptimizerCacheSize": "Önbellek boyutu: {{size}}",

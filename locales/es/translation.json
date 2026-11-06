@@ -2246,7 +2246,7 @@
   "workshopGameStartSkippingOptimization": "Lanzando sin optimizar…",
   "workshopGameStartCancelLaunch": "Cancelar lanzamiento",
   "optimizeWorkshopModsOnStart": "Optimizar modificaciones (experimental)",
-  "optimizeWorkshopModsHelp": "Fusiona y reduce los modelos de unidad y las texturas de Workshop y modificaciones de carpetas personalizadas, nunca modificaciones en la carpeta Datos. Los resultados se guardan en whmm_optimized_mods y se crean en segundo plano mientras cambias la lista de mods.",
+  "optimizeWorkshopModsHelp": "Optimiza modelos y texturas dentro de Workshop y modificaciones de carpetas personalizadas, nunca modificaciones en la carpeta Datos. Los resultados se guardan en whmm_optimized_mods.",
   "compressWorkshopModsOptimizeHelp": "La compresión es parte de la optimización del mod y permanece activada mientras está habilitada.",
   "clearWorkshopOptimizerCache": "Borrar caché de modificaciones optimizadas",
   "workshopOptimizerCacheSize": "Tamaño de caché: {{size}}",
