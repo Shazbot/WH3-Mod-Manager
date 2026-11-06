@@ -93,6 +93,18 @@ function Exit-IfUpdateCancelled {
 }
 
 Write-UpdateLog "Updater started; waiting for process ${processId}."
+
+# Signal readiness before building the progress window. Loading Windows Forms on a cold or
+# antivirus-scanned PowerShell can take several seconds, and the application gives up on a helper
+# that is not ready in time, so the window must not delay the hand-off.
+try {
+  Set-Content -LiteralPath $readyPath -Value ([DateTime]::UtcNow.ToString('o')) -ErrorAction Stop
+  Write-UpdateLog 'Updater ready; waiting for the application to close.'
+} catch {
+  Write-UpdateLog "Could not create updater readiness marker: $($_.Exception.Message)"
+  exit 1
+}
+
 try {
   Add-Type -AssemblyName System.Windows.Forms
   $updateForm = New-Object System.Windows.Forms.Form
@@ -123,15 +135,6 @@ try {
   [System.Windows.Forms.Application]::DoEvents()
 } catch {
   Write-UpdateLog "Could not show updater progress window: $($_.Exception.Message)"
-}
-
-try {
-  Set-Content -LiteralPath $readyPath -Value ([DateTime]::UtcNow.ToString('o')) -ErrorAction Stop
-  Write-UpdateLog 'Updater ready; waiting for the application to close.'
-} catch {
-  Write-UpdateLog "Could not create updater readiness marker: $($_.Exception.Message)"
-  if ($null -ne $updateForm) { $updateForm.Close() }
-  exit 1
 }
 
 while ($null -ne (Get-Process -Id ${processId} -ErrorAction SilentlyContinue)) {

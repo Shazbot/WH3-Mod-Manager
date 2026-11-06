@@ -577,6 +577,9 @@ exec ${quoteForShell(process.execPath)}
           }
 
           if (process.platform === "win32") {
+            // Generous because a cold Windows PowerShell start under antivirus scanning can take well
+            // over ten seconds on slower machines.
+            const helperReadyTimeoutSeconds = 30;
             await new Promise<void>((resolve, reject) => {
               let isSettled = false;
               const finish = (error?: Error) => {
@@ -613,8 +616,18 @@ exec ${quoteForShell(process.execPath)}
                   if (kill.error) console.error("Could not terminate the update helper:", kill.error);
                 }
                 subprocess.kill();
+                // The helper was killed mid-start, so it cannot record why it stopped. Say so in its
+                // log, otherwise the log ends at "Updater started" with no error to explain the failure.
+                try {
+                  fs.appendFileSync(
+                    updateLogPath,
+                    `[${new Date().toISOString()}] The application gave up after ${helperReadyTimeoutSeconds} seconds waiting for the updater to become ready and stopped it.\r\n`,
+                  );
+                } catch (error) {
+                  console.error("Could not write the update timeout to the update log:", error);
+                }
                 finish(new Error(`Update helper did not become ready. See ${updateLogPath} for details.`));
-              }, 10_000);
+              }, helperReadyTimeoutSeconds * 1000);
               subprocess.once("error", onError);
               subprocess.once("exit", onExit);
               checkReady();

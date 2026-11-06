@@ -93,6 +93,23 @@ describe("buildWindowsUpdateScript", () => {
     expect(cancelChecks[1]).toBeLessThan(copyIndex);
   });
 
+  it("signals readiness before loading the progress window, which can be slow to start", () => {
+    const script = buildWindowsUpdateScript({
+      processId: 43816,
+      updateSourceDir: "C:\\Temp\\staging",
+      appDir: "C:\\Apps\\WH3MM",
+      updateLogPath: "C:\\Users\\Tester\\update.log",
+      appExecutablePath: "C:\\Apps\\WH3MM\\WH3 Mod Manager.exe",
+      readyPath: "C:\\Temp\\update-ready",
+      cancelPath: "C:\\Temp\\update-cancelled",
+      tempDirPath: "C:\\\\Temp\\\\wh3mm-update-43816",
+    });
+
+    const readyIndex = script.indexOf("Set-Content -LiteralPath $readyPath");
+    expect(readyIndex).toBeGreaterThan(-1);
+    expect(readyIndex).toBeLessThan(script.indexOf("Add-Type -AssemblyName System.Windows.Forms"));
+  });
+
   it("keeps the progress window pumping through every wait", () => {
     const script = buildWindowsUpdateScript({
       processId: 43816,
