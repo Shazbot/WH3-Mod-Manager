@@ -2351,5 +2351,7 @@
   "showSkillDbKeys": "ツールチップに DB キーを表示する",
   "skillAutoUnlockRank": "ランク UNLOCK_RANK で自動的に付与されます。",
   "nodeEditorSaveAsMoviePack": "ムービーパックとして保存",
-  "nodeEditorSaveAsMoviePackTooltip": "ゲームのデータ フォルダーに保存されている場合、ムービー パックは自動的に読み込まれるため、MOD リストで有効にする必要はありません。"
+  "nodeEditorSaveAsMoviePackTooltip": "ゲームのデータ フォルダーに保存されている場合、ムービー パックは自動的に読み込まれるため、MOD リストで有効にする必要はありません。",
+  "nodeEditorNodeOnnxLabel": "ONNX 予測",
+  "nodeEditorNodeOnnxDescription": "選択したテーブル行でパックされた ONNX モデルを実行し、有効な予測を書き込みます"
 }

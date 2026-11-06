@@ -2351,5 +2351,7 @@
   "showSkillDbKeys": "Pokaż klucze DB w podpowiedziach",
   "skillAutoUnlockRank": "Automatycznie przyznawany na poziomie UNLOCK_RANK.",
   "nodeEditorSaveAsMoviePack": "Zapisz jako pakiet filmów",
-  "nodeEditorSaveAsMoviePackTooltip": "Pakiety filmów zapisane w folderze danych gry ładują się automatycznie i nie trzeba ich włączać na liście modów."
+  "nodeEditorSaveAsMoviePackTooltip": "Pakiety filmów zapisane w folderze danych gry ładują się automatycznie i nie trzeba ich włączać na liście modów.",
+  "nodeEditorNodeOnnxLabel": "Prognoza ONNX",
+  "nodeEditorNodeOnnxDescription": "Uruchamia spakowane modele ONNX w wybranych wierszach tabeli i zapisuje włączone przewidywania"
 }

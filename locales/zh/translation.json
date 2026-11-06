@@ -2353,5 +2353,7 @@
   "showSkillDbKeys": "在工具提示中显示数据库键",
   "skillAutoUnlockRank": "自动授予级别为 UNLOCK_RANK。",
   "nodeEditorSaveAsMoviePack": "另存为电影包",
-  "nodeEditorSaveAsMoviePackTooltip": "当存储在游戏的数据文件夹中时，电影包会自动加载，不需要在模组列表中启用。"
+  "nodeEditorSaveAsMoviePackTooltip": "当存储在游戏的数据文件夹中时，电影包会自动加载，不需要在模组列表中启用。",
+  "nodeEditorNodeOnnxLabel": "ONNX 预测",
+  "nodeEditorNodeOnnxDescription": "在选定的表行上运行打包的 ONNX 模型并写入启用的预测"
 }

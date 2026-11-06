@@ -2351,5 +2351,7 @@
   "showSkillDbKeys": "툴팁에 DB 키 표시",
   "skillAutoUnlockRank": "UNLOCK_RANK 등급으로 자동 부여됩니다.",
   "nodeEditorSaveAsMoviePack": "영화 팩으로 저장",
-  "nodeEditorSaveAsMoviePackTooltip": "게임의 데이터 폴더에 저장되면 영화 팩이 자동으로 로드되므로 모드 목록에서 활성화할 필요가 없습니다."
+  "nodeEditorSaveAsMoviePackTooltip": "게임의 데이터 폴더에 저장되면 영화 팩이 자동으로 로드되므로 모드 목록에서 활성화할 필요가 없습니다.",
+  "nodeEditorNodeOnnxLabel": "ONNX 예측",
+  "nodeEditorNodeOnnxDescription": "선택한 테이블 행에 대해 압축된 ONNX 모델을 실행하고 활성화된 예측을 작성합니다."
 }

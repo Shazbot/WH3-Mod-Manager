@@ -2351,5 +2351,7 @@
   "showSkillDbKeys": "Araç ipuçlarında DB anahtarlarını göster",
   "skillAutoUnlockRank": "UNLOCK_RANK rütbesinde otomatik olarak verilir.",
   "nodeEditorSaveAsMoviePack": "Film paketi olarak kaydet",
-  "nodeEditorSaveAsMoviePackTooltip": "Film paketleri oyunun veri klasöründe saklandığında otomatik olarak yüklenir ve mod listesinde etkinleştirilmelerine gerek yoktur."
+  "nodeEditorSaveAsMoviePackTooltip": "Film paketleri oyunun veri klasöründe saklandığında otomatik olarak yüklenir ve mod listesinde etkinleştirilmelerine gerek yoktur.",
+  "nodeEditorNodeOnnxLabel": "ONNX Tahmini",
+  "nodeEditorNodeOnnxDescription": "Paketlenmiş ONNX modellerini seçilen tablo satırlarında çalıştırır ve etkin tahminleri yazar"
 }

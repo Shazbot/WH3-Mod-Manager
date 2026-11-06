@@ -283,7 +283,7 @@
   "workshopGameStartFailed": "Workshop mod staging failed",
   "automaticWorkshopStagingWarning": "Workshop mod staging warning: {{warning}}",
   "optimizeWorkshopModsOnStart": "Optimize mods (experimental)",
-  "optimizeWorkshopModsHelp": "Merges and shrinks the unit models and textures of Workshop and custom-folder mods, never mods in the Data folder. Results are kept in whmm_optimized_mods and made in the background while you change the mod list.",
+  "optimizeWorkshopModsHelp": "Optimizes models and textures inside Workshop and custom-folder mods, never mods in the Data folder. Results are kept in whmm_optimized_mods.",
   "compressWorkshopModsOptimizeHelp": "Compression is part of mod optimization and stays on while it is enabled.",
   "clearWorkshopOptimizerCache": "Clear optimized mods cache",
   "workshopOptimizerCacheSize": "Cache size: {{size}}",

@@ -2351,5 +2351,7 @@
   "showSkillDbKeys": "Afficher les clés de base de données dans les info-bulles",
   "skillAutoUnlockRank": "Automatiquement accordé au rang UNLOCK_RANK.",
   "nodeEditorSaveAsMoviePack": "Enregistrer en tant que pack de films",
-  "nodeEditorSaveAsMoviePackTooltip": "Lorsqu'ils sont stockés dans le dossier de données du jeu, les packs de films se chargent automatiquement et n'ont pas besoin d'être activés dans la liste des modules."
+  "nodeEditorSaveAsMoviePackTooltip": "Lorsqu'ils sont stockés dans le dossier de données du jeu, les packs de films se chargent automatiquement et n'ont pas besoin d'être activés dans la liste des modules.",
+  "nodeEditorNodeOnnxLabel": "Prédiction ONNX",
+  "nodeEditorNodeOnnxDescription": "Exécute des modèles ONNX compressés sur les lignes de table sélectionnées et écrit les prédictions activées"
 }
