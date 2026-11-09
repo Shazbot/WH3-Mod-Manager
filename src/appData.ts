@@ -229,6 +229,8 @@ interface AppData {
   };
   lastSkillsDataSignature?: string;
   isChangingGameProcessPriority: boolean;
+  /** Whether the CLI/MCP control pipe accepts mod and launch requests (src/appControl/server.ts). */
+  isAppControlEnabled: boolean;
   currentLanguage?: SupportedLanguage;
   lastGetCustomizableMods?: string[];
   customizableMods: Record<string, string[]>;
@@ -312,6 +314,7 @@ const appData = {
   lastSkillsSelection: undefined,
   lastSkillsDataSignature: undefined,
   isChangingGameProcessPriority: false,
+  isAppControlEnabled: true,
   customizableMods: {},
   packMetaData: {},
 } as Omit<AppData, "gameToConfig">;

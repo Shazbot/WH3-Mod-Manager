@@ -52,7 +52,20 @@ const descriptions: Record<OperationName, string> = {
     "Trace each selected direct or WSModel loader context to RMV2 parts and report declared material textures with load-order resolution.",
   rigid_patch:
     "Edit registered RMV2 texture slots, same-layout material types, and supported alpha parameters into a single-model MOD pack.",
+  app_status:
+    "Report whether the WHMM app is running, its current game, whether the game is running, and whether a launch is in progress.",
+  mods_list:
+    "List the mods in the running WHMM app with enabled state, load order, Workshop ID, and saved preset names. Starts WHMM unless startApp is false.",
+  mods_set:
+    "Change which mods are enabled in the running WHMM app: apply a preset, enable exactly a set (only), enable/disable mods by pack name, Workshop ID, or display name, or set the load order (order: listed mods are enabled and load first in that sequence; other manual positions are cleared). Returns enabledMods in load order. Saves like a UI change; use dryRun to preview.",
+  game_launch:
+    "Launch the game through the running WHMM app, optionally applying a mod selection first (temporary keeps the saved mod list unchanged) and loading a save. Waits until the game process starts or the launch fails. With restart, a running game is force-stopped first (after the request is validated) instead of refusing.",
+  game_stop:
+    "Force-stop the running game through WHMM (like its terminate button; unsaved progress is lost) and wait until it has exited and WHMM's post-exit cleanup has finished.",
 };
+
+/** Tools that change the user's mod list or start the game; registered only with --allow-game-control. */
+const gameControlTools = new Set<OperationName>(["mods_set", "game_launch", "game_stop"]);
 
 export interface McpServerOptions {
   readRoots: readonly string[];
@@ -65,6 +78,7 @@ export interface McpServerOptions {
   noCache?: boolean;
   cacheStats?: boolean;
   cacheService?: AutomationCacheService;
+  allowGameControl?: boolean;
 }
 
 export interface McpCliOptions extends McpServerOptions {
@@ -83,6 +97,7 @@ const parseMcpArgs = (args: readonly string[]): McpCliOptions => {
       "cache-memory-mib": { type: "string" },
       "no-cache": { type: "boolean" },
       "cache-stats": { type: "boolean" },
+      "allow-game-control": { type: "boolean" },
       help: { type: "boolean" },
     },
     allowPositionals: true,
@@ -128,6 +143,7 @@ const parseMcpArgs = (args: readonly string[]): McpCliOptions => {
     cacheMemoryMiB,
     noCache,
     cacheStats: Boolean(parsed.values["cache-stats"]),
+    allowGameControl: Boolean(parsed.values["allow-game-control"]),
   };
 };
 
@@ -331,6 +347,7 @@ export const createMcpServer = (options: McpServerOptions): McpServer => {
   };
 
   for (const name of Object.keys(operationRegistry) as OperationName[]) {
+    if (gameControlTools.has(name) && !options.allowGameControl) continue;
     const schema = makeInputSchema(operationRegistry[name]);
     server.registerTool(name, { description: descriptions[name], inputSchema: schema }, async (input, extra) => {
       const signal = extra.mcpReq.signal;
@@ -426,9 +443,10 @@ Usage:
   node dist/mcp/server.js --read-root <directory> [--read-root <directory> ...]
     [--write-root <directory> ...] [--max-response-bytes <1024..1048576>]
     [--cache-dir <directory>] [--whmm-cache-dir <directory>]
-    [--cache-memory-mib <1..1024>] [--no-cache] [--cache-stats]
+    [--cache-memory-mib <1..1024>] [--no-cache] [--cache-stats] [--allow-game-control]
 
 At least one existing read root is required. Writes are denied unless a write root is supplied.
+--allow-game-control adds mods_set, game_launch and game_stop, which change WHMM's mod list and start or stop the game.
 The server uses JSON-RPC over stdio; keep stdout reserved for protocol messages.
 `;
 

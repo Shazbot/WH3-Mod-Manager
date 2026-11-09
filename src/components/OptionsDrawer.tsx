@@ -21,6 +21,7 @@ import {
   toggleIsSkipIntroMoviesEnabled,
   toggleMakeUnitsGenerals,
   toggleIsChangingGameProcessPriority,
+  toggleIsAppControlEnabled,
   toggleIsFeaturesForModdersEnabled,
   setCanDisableAlwaysEnabledMods,
   setIsRigidModelV2CompressionEnabled,
@@ -178,6 +179,7 @@ const OptionsDrawer = memo(() => {
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
   const isChangingGameProcessPriority = useAppSelector((state) => state.app.isChangingGameProcessPriority);
+  const isAppControlEnabled = useAppSelector((state) => state.app.isAppControlEnabled);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
   const canDisableAlwaysEnabledMods = useAppSelector((state) => state.app.canDisableAlwaysEnabledMods);
   const isRigidModelV2CompressionEnabled = useAppSelector((state) => state.app.isRigidModelV2CompressionEnabled);
@@ -1758,6 +1760,31 @@ const OptionsDrawer = memo(() => {
                 </div>
               </>
             )}
+
+            <h6 className="mt-10">{localized.appControl}</h6>
+            <div className="flex items-center ml-1 mt-2">
+              <input
+                className=""
+                type="checkbox"
+                id="toggleIsAppControlEnabled"
+                checked={!!isAppControlEnabled}
+                onChange={() => dispatch(toggleIsAppControlEnabled())}
+              ></input>
+              <label className="ml-2" htmlFor="toggleIsAppControlEnabled">
+                <Tooltip
+                  placement="bottom"
+                  style="light"
+                  content={
+                    <>
+                      <div>{localized.appControlEnabled1}</div>
+                      <div>{localized.appControlEnabled2}</div>
+                    </>
+                  }
+                >
+                  {localized.appControlEnabled}
+                </Tooltip>
+              </label>
+            </div>
 
             <h6 className="mt-10">{localized.forModders}</h6>
             <div className="flex items-center ml-1 mt-2">

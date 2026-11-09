@@ -1269,6 +1269,7 @@ const appSlice = createSlice({
       state.isScriptLoggingEnabled = fromConfigAppState.isScriptLoggingEnabled;
       state.isAutoStartCustomBattleEnabled = fromConfigAppState.isAutoStartCustomBattleEnabled;
       state.isChangingGameProcessPriority = fromConfigAppState.isChangingGameProcessPriority;
+      state.isAppControlEnabled = fromConfigAppState.isAppControlEnabled ?? true;
       state.isFeaturesForModdersEnabled = fromConfigAppState.isFeaturesForModdersEnabled;
       state.canDisableAlwaysEnabledMods = fromConfigAppState.canDisableAlwaysEnabledMods ?? false;
       state.moddersPrefix = fromConfigAppState.moddersPrefix || "";
@@ -1510,6 +1511,17 @@ const appSlice = createSlice({
     setModLoadOrderRules: (state: AppState, action: PayloadAction<Record<string, LoadOrderRule[]>>) => {
       state.modLoadOrderRules = action.payload;
       refreshLoadOrderRules(state);
+    },
+    /**
+     * Pins the named mods to the first load order positions, in the given order, and clears every
+     * other manual position, so the remaining enabled mods follow in the automatic order.
+     */
+    setLeadingModLoadOrder: (state: AppState, action: PayloadAction<string[]>) => {
+      const positions = new Map(action.payload.map((name, index) => [name, index]));
+      state.currentPreset.mods.forEach((mod) => {
+        mod.loadOrder = positions.get(mod.name);
+      });
+      sanitizeEnabledModLoadOrders(state.currentPreset.mods);
     },
     resetModLoadOrderAll: (state: AppState) => {
       state.currentPreset.mods.forEach((mod) => {
@@ -1763,6 +1775,9 @@ const appSlice = createSlice({
     },
     toggleIsChangingGameProcessPriority: (state: AppState) => {
       state.isChangingGameProcessPriority = !state.isChangingGameProcessPriority;
+    },
+    toggleIsAppControlEnabled: (state: AppState) => {
+      state.isAppControlEnabled = !state.isAppControlEnabled;
     },
     toggleIsFeaturesForModdersEnabled: (state: AppState) => {
       state.isFeaturesForModdersEnabled = !state.isFeaturesForModdersEnabled;
@@ -2160,6 +2175,7 @@ export const {
   setLoadOrderRulePackDisabled,
   setModLoadOrderRules,
   resetModLoadOrderAll,
+  setLeadingModLoadOrder,
   toggleAlwaysEnabledMods,
   toggleAlwaysHiddenMods,
   toggleIgnoredMissingReqMods,
@@ -2202,6 +2218,7 @@ export const {
   toggleIsSkipIntroMoviesEnabled,
   toggleIsAutoStartCustomBattleEnabled,
   toggleIsChangingGameProcessPriority,
+  toggleIsAppControlEnabled,
   toggleIsFeaturesForModdersEnabled,
   setIsFeaturesForModdersEnabled,
   setCanDisableAlwaysEnabledMods,

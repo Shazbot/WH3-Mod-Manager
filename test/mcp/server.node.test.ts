@@ -68,7 +68,13 @@ interface TestClient {
 }
 
 const connect = async (
-  options: { readRoots?: string[]; writeRoots?: string[]; maxResponseBytes?: number; cacheStats?: boolean } = {},
+  options: {
+    readRoots?: string[];
+    writeRoots?: string[];
+    maxResponseBytes?: number;
+    cacheStats?: boolean;
+    allowGameControl?: boolean;
+  } = {},
 ): Promise<TestClient> => {
   const readRoots = options.readRoots ?? [allowedRoot];
   const writeRoots = options.writeRoots ?? [allowedRoot];
@@ -77,6 +83,7 @@ const connect = async (
   for (const root of writeRoots) args.push("--write-root", root);
   if (options.maxResponseBytes !== undefined) args.push("--max-response-bytes", String(options.maxResponseBytes));
   if (options.cacheStats) args.push("--cache-stats");
+  if (options.allowGameControl) args.push("--allow-game-control");
   const transport = new StdioClientTransport({ command: process.execPath, args, cwd: projectRoot, stderr: "pipe" });
   let childStderr = "";
   transport.stderr?.on("data", (chunk: Buffer) => {
@@ -157,11 +164,25 @@ describe("WH3 MCP stdio server", () => {
     } finally { await session.close(); }
   });
 
+  it("adds the mod and launch tools only with --allow-game-control", async () => {
+    const session = await connect({ allowGameControl: true });
+    try {
+      const listed = await session.client.listTools();
+      expect(listed.tools).toHaveLength(29);
+      expect(listed.tools.some((tool) => tool.name === "game_stop")).toBe(true);
+      expect(listed.tools.find((tool) => tool.name === "game_launch")?.inputSchema).toMatchObject({
+        properties: { temporary: { type: "boolean" }, only: { type: "array" } },
+      });
+    } finally { await session.close(); }
+  });
+
   it("registers all shared operations with descriptions and typed input schemas", async () => {
     const session = await connect();
     try {
       const listed = await session.client.listTools();
-      expect(listed.tools).toHaveLength(24);
+      expect(listed.tools).toHaveLength(26);
+      expect(listed.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(["app_status", "mods_list"]));
+      expect(listed.tools.some((tool) => ["mods_set", "game_launch", "game_stop"].includes(tool.name))).toBe(false);
       expect(listed.tools.find((tool) => tool.name === "pack_extract")?.inputSchema).toMatchObject({
         type: "object",
         required: ["outputPath"],

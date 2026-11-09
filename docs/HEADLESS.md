@@ -237,6 +237,39 @@ Example MCP launch configuration under WSL (use the Linux Node installation and 
 
 Point `cwd` at the project containing the built `dist` output. Build native codec dependencies for the same Node platform used to run the server.
 
+## Control the running app
+
+The `app`, `mods` and `game` commands talk to the running WHMM app instead of reading packs. They change the same mod list you see in the app and launch the game the same way as the Play button, including Workshop staging, native patches, flows and launch options.
+
+```sh
+node dist/cli/main.js app status --format json
+node dist/cli/main.js mods list --enabled-only --format json
+node dist/cli/main.js mods set --preset "Campaign" --enable my_mod.pack --dry-run --format json
+node dist/cli/main.js mods set --only my_mod.pack --only 2789857593 --format json
+node dist/cli/main.js mods set --order framework.pack --order my_mod.pack --order my_submod.pack --format json
+node dist/cli/main.js game launch --format json
+node dist/cli/main.js game launch --temporary --only my_test_mod.pack --skip-intros --script-logging --format json
+node dist/cli/main.js game launch --continue --format json
+node dist/cli/main.js game stop --format json
+node dist/cli/main.js game relaunch --continue --format json
+```
+
+- Mods are named by pack name (with or without `.pack`), Workshop ID, or display name. A name that matches nothing, or more than one mod, fails the whole request and lists every problem.
+- `--preset` applies a saved preset first (replacing the selection, like choosing it in the app), then `--only` enables exactly the listed mods and disables the rest, then `--enable` and `--disable` adjust individual mods. Always-enabled mods stay on and produce an `APP_CONTROL_WARNING` diagnostic.
+- `--order` sets the load order. The listed mods are enabled and load first, in the order given. Every other manual load order position is cleared, so the remaining enabled mods follow in WHMM's automatic order (by name, adjusted by load order rules), just as if their positions had been reset in the app. A mod listed twice, or listed in both `--order` and `--disable`, fails the request. For long lists, put `"order": [...]` in a `--input` JSON file. `--order` also works with `game launch`, including `--temporary`.
+- Results list `enabledMods` in load order. `mods set` also reports `changed.loadOrder`, which is true when mods that were enabled before and after now load in a different relative order. `mods list` sorts enabled mods first, in load order, with each one's zero-based `loadOrder` position and `hasManualLoadOrder` (a position set by hand rather than the automatic one).
+- `mods set` saves the change like a UI edit. `--dry-run` reports `changed.enabled`, `changed.disabled` and the resulting `enabledMods` without applying them.
+- `game launch` applies and saves any selection first, records the "On Last Game Launch" preset like the Play button (not for `--continue` or `--temporary`), and waits until the game process starts or the launch fails (`--launch-timeout`, default 900 seconds, since Workshop staging and optimization can take a while). `--temporary` launches with the selection without changing the saved mod list. `--continue` loads the most recent save and `--save <name>` a specific one. `--skip-intros`, `--script-logging` and `--auto-start-battle` turn the option on for this launch only; JSON input can also set `options.makeUnitsGenerals` and `options.closeAppOnPlay`, or turn options off. `--game wh3` refuses to launch when the app is set to another game; the command never switches games.
+- `game stop` force-kills the game the same way as the app's terminate button, so unsaved progress is lost. It waits until the process has exited, WHMM has noticed, and WHMM's post-exit Workshop staging cleanup has finished (`--stop-timeout`, default 30 seconds for the process to exit). It reports `wasRunning: false` when there was nothing to stop, and fails with `details.appCode: "STOP_FAILED"` (exit 1) when the game is still running after the timeout.
+- `game relaunch`, or `game launch --restart`, stops a running game and launches again. The app first checks the whole request (mod names, preset, save, game) without launching, so a mistake fails before the game is touched. It then stops the game as above, waits 1.5 seconds like the Play button's relaunch, and launches; the result has `restarted: true` when a game was stopped. When nothing is running it is an ordinary launch.
+- Launching without `--restart` fails with exit code 5 (`CONFLICT`) when the game is already running. Any launch or stop fails with `CONFLICT` while another launch or stop is in progress. A launch that the app starts but cannot complete exits 1 with `details.appCode: "LAUNCH_FAILED"` and the app's message.
+
+**Starting the app.** `app status` never starts WHMM; it reports `running: false`. The other commands start WHMM when it is not running, wait for it to load its mod list (`--start-timeout`, default 60 seconds), then send the request. `--no-start-app` fails with exit code 3 instead. The executable is, in order: `--app-path`, `WHMM_APP_PATH`, the `wh3mm.exe` beside a packaged `whmm-cli.exe`, then the path a packaged WHMM records in `app-control.json` in its user data folder (`%APPDATA%\wh3mm`) each time it starts. Development builds do not record a path, so pass `--app-path` to start one.
+
+**Transport.** The app listens on a per-user pipe: `\\.\pipe\wh3mm-control-<username>` on Windows, or a `0600` Unix socket named `wh3mm-control-<username>.sock` in `$XDG_RUNTIME_DIR` (or the temp directory) elsewhere. Only programs running as the same user can connect. Requests and replies are single JSON lines with a protocol version (`src/appControl/protocol.ts`); a CLI built for another protocol version gets a clear error. Under WSL, Linux sockets cannot reach the Windows pipe, so each request is relayed through `powershell.exe`, which adds about a second per request; paths given to `--app-path` may be Windows or WSL paths. The app answers only while **Allow the CLI and MCP to control WHMM** is on in its options (on by default); `app status` still works when it is off and reports `controlEnabled: false`.
+
+**MCP.** `app_status` and `mods_list` are always available. `mods_set`, `game_launch` and `game_stop` change the user's mod list and start or kill the game, so the server registers them only when started with `--allow-game-control`. Their fields match the CLI: `preset`, `only`, `enable`, `disable`, `order`, `dryRun`, `temporary`, `continueLastSave`, `save`, `game`, `options`, `launchTimeoutSeconds`, `restart`, `stopTimeoutSeconds` (also on `game_stop`), `startApp`, `startTimeoutSeconds` and `appPath`. The MCP server handles one request at a time, so other tools wait while a launch is in progress. These tools do not use the read/write roots; reading `app-control.json` to find the executable is the only file access.
+
 ## Results and safety
 
 Paged operations return a preview with `offset`, `limit`, `total`, `nextOffset`, and `hasMore`. Pages default to 100 records and allow at most 1000. Use `reportPath` (CLI `--report`) to write the complete JSON result when available; reports are explicit outputs and are never created automatically. MCP responses are capped by the configured byte limit. If a report was written, an oversized result returns a bounded summary and its path. Without a report, the tool returns an actionable error; a completed write includes completion information to avoid retrying it by mistake.

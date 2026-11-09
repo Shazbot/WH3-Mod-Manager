@@ -48,6 +48,7 @@ const initialState = {
   isSkipIntroMoviesEnabled: false,
   isAutoStartCustomBattleEnabled: false,
   isChangingGameProcessPriority: false,
+  isAppControlEnabled: true,
   isFeaturesForModdersEnabled: false,
   canDisableAlwaysEnabledMods: false,
   moddersPrefix: "",

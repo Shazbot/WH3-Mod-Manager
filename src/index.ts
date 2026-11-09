@@ -26,6 +26,7 @@ import { forkSteamWorker as fork } from "./steamWorker";
 import { buildWindowsUpdateBootstrapScript, buildWindowsUpdateScript } from "./utility/updateScripts";
 import { buildUpdateTempDirPath, removeStaleUpdateTempDirs } from "./utility/updateTempDirs";
 import { isWindowsDeveloperModeEnabled } from "./utility/windowsDeveloperMode";
+import { startAppControlServer } from "./appControl/server";
 
 //-------------- HOT RELOAD DOESN'T RELOAD INDEX.TS
 
@@ -781,6 +782,7 @@ exec ${quoteForShell(process.execPath)}
     }
 
     createWindow();
+    startAppControlServer(() => windows.mainWindow, cleanupWorkshopStagingAfterGameExit);
 
     // Applied updates clean up after themselves, so this is for the ones that did not get that far:
     // cancelled updates, failed copies, and folders left by versions that shipped before the helper

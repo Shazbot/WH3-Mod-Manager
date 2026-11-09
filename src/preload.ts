@@ -10,6 +10,7 @@ import type {
   UnitViewerDetailsResponse,
 } from "./unitViewer/types";
 import type { VariantMeshCatalogResponse } from "./visuals/variantMesh";
+import type { AppControlRequest, AppControlResponse } from "./appControl/protocol";
 import type {
   BuildingsCaiRowsResponse,
   BuildingsCatalogResponse,
@@ -324,6 +325,11 @@ const api = {
     ipcRenderer.on("importModsFromUsedMods", callback),
   modsPopulated: (callback: (event: Electron.IpcRendererEvent, mods: Mod[]) => void) =>
     ipcRenderer.on("modsPopulated", callback),
+  // CLI/MCP control pipe (src/appControl): main forwards requests, the main window answers them.
+  onAppControlRequest: (callback: (event: Electron.IpcRendererEvent, request: AppControlRequest) => void) =>
+    ipcRenderer.on("appControlRequest", callback),
+  sendAppControlResponse: (response: AppControlResponse) => ipcRenderer.send("appControlResponse", response),
+  sendAppControlReady: () => ipcRenderer.send("appControlReady"),
   addMod: (callback: (event: Electron.IpcRendererEvent, mod: Mod) => void) => ipcRenderer.on("addMod", callback),
   removeMod: (callback: (event: Electron.IpcRendererEvent, modPath: string) => void) =>
     ipcRenderer.on("removeMod", callback),

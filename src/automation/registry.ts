@@ -37,6 +37,11 @@ const bypassAutomationCaches = new Set<OperationName>([
   "pack_diff",
   "pack_validate",
   "rigid_patch",
+  "app_status",
+  "mods_list",
+  "mods_set",
+  "game_launch",
+  "game_stop",
 ]);
 
 /** Shared validated operation entry point used by the CLI now and MCP in the next stage. */

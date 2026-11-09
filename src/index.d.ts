@@ -306,6 +306,8 @@ declare global {
     isSkipIntroMoviesEnabled: boolean;
     isAutoStartCustomBattleEnabled: boolean;
     isChangingGameProcessPriority: boolean;
+    /** Lets the CLI and MCP change mods and launch the game through the control pipe. */
+    isAppControlEnabled: boolean;
     isFeaturesForModdersEnabled: boolean;
     /** Allow mods marked always-enabled to be turned off in the mod manager. */
     canDisableAlwaysEnabledMods: boolean;
@@ -471,6 +473,7 @@ declare global {
     | "isSkipIntroMoviesEnabled"
     | "isAutoStartCustomBattleEnabled"
     | "isChangingGameProcessPriority"
+    | "isAppControlEnabled"
     | "isFeaturesForModdersEnabled"
     | "canDisableAlwaysEnabledMods"
     | "moddersPrefix"

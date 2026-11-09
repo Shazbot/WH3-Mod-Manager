@@ -74,7 +74,7 @@ Secondary windows send `viewerIsReady`, `skillsAreReady` or `techTreesAreReady` 
 Legend:
 
 - **I** = `invoke`/`handle`, **S** = `send`/`on` (renderer → main), **E** = event (main → window)
-- Unmarked handlers are in `src/ipcMainListeners.ts`; others are marked †`index.ts`, ‡`wh3AssetHostIpc.ts`, §`visualCheckIpc.ts`
+- Unmarked handlers are in `src/ipcMainListeners.ts`; others are marked †`index.ts`, ‡`wh3AssetHostIpc.ts`, §`visualCheckIpc.ts`, ¶`appControl/server.ts`
 
 ### App shell, settings, folders, updates
 
@@ -99,6 +99,13 @@ Legend:
 - **I** `getWorkshopModStagingInfo`, `clearWorkshopModStaging`, `getWorkshopOptimizerCacheInfo`, `getWorkshopOptimizerBackgroundStatus`, `clearWorkshopOptimizerCache`, `getWorkshopOptimizerRunReport`, `openWorkshopOptimizerReport`, `startVisualAssetCheck`§, `getVisualAssetCheckState`§, `openVisualAssetCheckReport`§, `showVisualAssetCheckReportInFolder`§, `saveVisualAssetCheckReport`§
 - **S** `startGame`, `terminateGame`, `cancelWorkshopModStaging`, `skipWorkshopModOptimization`, `updateWorkshopOptimizerBackground`, `cancelWorkshopOptimizerBackground`, `runWorkshopOptimizerBackgroundNow`, `cancelVisualAssetCheck`§
 - **E** `setIsWH3Running`, `workshopModStagingProgress`, `workshopOptimizerBackgroundStatus`, `workshopOptimizerLastRun`, `workshopOptimizerRunReport`, `visualAssetCheckState`
+
+### CLI/MCP control pipe
+
+- **S** `appControlReady`¶, `appControlResponse`¶
+- **E** `appControlRequest`
+
+`src/appControl/server.ts` listens on a per-user local pipe for the headless CLI and MCP (`docs/HEADLESS.md`, "Control the running app"). Main answers `status` and `stopGame` itself and forwards `listMods`, `setMods` and `launch` to the main window as `appControlRequest`. `stopGame` kills the game with `terminateGameProcess` (`src/utility/gameProcess.ts`, shared with the `terminateGame` channel), then waits for the process to go, for the running-game poll to report the exit, and for `cleanupWorkshopStagingAfterGameExit`. A launch with `restart` over a running game first forwards the launch with `validateOnly: true`, then stops the game and waits 1.5 s before the real launch. `src/appControl/rendererHandler.ts` applies them through the normal reducers (`selectPreset`, `disableAllMods`, `setAreModsEnabled`, and `setLeadingModLoadOrder` for an explicit order) and launches by sending `startGame` with the same arguments as the Play button, then replies with `appControlResponse`. The window sends `appControlReady` once the mod list is populated and the config is read; main treats the window as not ready again after a reload or crash. The `startGame` handler reports how each run ended through `src/appControl/launchOutcome.ts`, which the pipe waits on before answering a launch.
 
 `startGame` carries the saved `workshopOptimizerOptions` and current rigid compression setting with the launch settings. `updateWorkshopOptimizerBackground` refreshes the current enabled-mod snapshot and options. Timed background passes are disabled; the background optimizer runs only when explicitly requested through `runWorkshopOptimizerBackgroundNow`, while launch optimization continues to create cached results as needed.
 

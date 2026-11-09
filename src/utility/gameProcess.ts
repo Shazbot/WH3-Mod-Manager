@@ -37,6 +37,12 @@ const parseLinuxProcesses = (output: string, processName: string): number[] => {
   return pids;
 };
 
+/** Force-kills the game and its child processes, like the sidebar's terminate button. */
+export const terminateGameProcess = async (processName: string, platform = process.platform): Promise<void> => {
+  if (platform === "win32") await execFileAsync("taskkill", ["/f", "/t", "/im", processName]);
+  else if (platform === "linux") await execFileAsync("pkill", ["-f", processName]);
+};
+
 export const findGameProcessIds = async (processName: string, platform = process.platform): Promise<number[]> => {
   if (platform === "win32") {
     const { stdout } = await execFileAsync("tasklist", [

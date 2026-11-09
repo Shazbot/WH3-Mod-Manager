@@ -219,7 +219,6 @@ import { setVanillaDbCacheBuildProgressReporter } from "./vanillaDbCache/progres
 import bs from "binary-search";
 import { compress as zstdCompress, decompress as zstdDecompress } from "@mongodb-js/zstd";
 import * as cheerio from "cheerio";
-import { execFile } from "child_process";
 import chokidar from "chokidar";
 import { format } from "date-fns";
 import electronLog from "electron-log/main";
@@ -416,6 +415,7 @@ import {
 } from "./utility/loadOrderRulesFile";
 import { collator } from "./utility/packFileSorting";
 import { buildGameLaunchArguments, launchGame, resolveGameLaunchPlan } from "./utility/gameLaunch";
+import { beginGameLaunch } from "./appControl/launchOutcome";
 import { buildNativePatchLaunchPlan, readNativePatchPackEntry, type NativePatchPack } from "./nativePatches/planner";
 import type { NativePatchFlowRuntimeContribution } from "./nativePatches/flowTemplate";
 import { parseNativePatchFlowTemplate } from "./nativePatches/flowTemplate";
@@ -467,7 +467,7 @@ import { type OptimizerRunReport, buildOptimizerRunReport } from "./workshopModO
 import { loadOptimizerRunReport, saveOptimizerRunReport } from "./workshopModOptimizer/runReportStore";
 import { formatHousekeepingLine } from "./workshopModOptimizer/cache";
 import { scheduleStartupHousekeeping } from "./workshopModOptimizer/housekeepingSchedule";
-import { findGameProcessIds } from "./utility/gameProcess";
+import { findGameProcessIds, terminateGameProcess } from "./utility/gameProcess";
 import { packFileContains } from "./utility/packSearch";
 import steamCollectionScript from "./utility/steamCollectionScript";
 import Trie, { type KeyedLookup } from "./utility/trie";
@@ -6457,6 +6457,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         ...appData.allVanillaPackNames,
       ]);
       appData.isChangingGameProcessPriority = appState.isChangingGameProcessPriority;
+      appData.isAppControlEnabled = appState.isAppControlEnabled ?? true;
       appData.isFeaturesForModdersEnabled = appState.isFeaturesForModdersEnabled || false;
       appData.moddersPrefix = appState.moddersPrefix || "";
       appData.isRigidModelV2CompressionEnabled =
@@ -12413,25 +12414,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     );
   });
   const terminateCurrentGame = () => {
-    const name = gameToProcessName[appData.currentGame];
-    try {
-      switch (process.platform) {
-        case "win32": {
-          execFile("taskkill", ["/f", "/t", "/im", name], (error) => {
-            if (error) console.error("taskkill error:", error);
-          });
-          break;
-        }
-        case "linux": {
-          execFile("pkill", ["-f", name], (error) => {
-            if (error) console.error("pkill error:", error);
-          });
-          break;
-        }
-      }
-    } catch (e) {
-      console.error("killWrapper error:", e);
-    }
+    terminateGameProcess(gameToProcessName[appData.currentGame]).catch((error) =>
+      console.error("terminate game error:", error),
+    );
   };
   ipcMain.on("terminateGame", () => {
     terminateCurrentGame();
@@ -13992,6 +13977,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       saveName?: string,
       requestedRunId?: string,
     ) => {
+      const reportLaunchOutcome = beginGameLaunch();
+      let lastLaunchErrorMessage: string | undefined;
       const requestedWorkshopStaging =
         startGameOptions?.workshopModStagingMode === "copy" || startGameOptions?.workshopModStagingMode === "symlink";
       const runId = requestedWorkshopStaging
@@ -14010,6 +13997,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           detail: "Another Workshop mod staging launch is already in progress.",
           error: "alreadyRunning",
         });
+        reportLaunchOutcome({ started: false, message: "Another Workshop mod staging launch is already in progress." });
         return;
       }
 
@@ -14038,6 +14026,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       let stagingCompleted = false;
       let stagingFailureMessage: string | undefined;
       const reportGameLaunchError = (message: string, error?: unknown, userMessage = message) => {
+        lastLaunchErrorMessage = userMessage;
         console.error(message, error);
         mainWindow?.webContents.send("handleLog", message);
         mainWindow?.webContents.send("addToast", {
@@ -14906,6 +14895,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           await cleanStagingAfterFailedLaunch();
           return;
         }
+        reportLaunchOutcome({ started: true });
         isPreparingNativePatches = false;
         if (cleanUpWorkshopModStagingAfterGameExit && workshopStagingResult) {
           appData.workshopStagingCleanupPending = true;
@@ -14967,6 +14957,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           } else console.log(e);
         }
       } finally {
+        // No-op after a successful launch; otherwise covers every early return and failure.
+        reportLaunchOutcome({
+          started: false,
+          message: lastLaunchErrorMessage || stagingFailureMessage || "The launch stopped before the game started.",
+        });
         if (workshopStagingRun && !stagingCompleted) {
           const canceled =
             workshopStagingRun.canceled || workshopStagingRun.controller.signal.aborted || event.sender.isDestroyed();

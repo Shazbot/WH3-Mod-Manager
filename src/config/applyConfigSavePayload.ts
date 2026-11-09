@@ -25,6 +25,7 @@ export function applyConfigSavePayloadToAppData(payload: ConfigSavePayload) {
   appData.isCompatCheckingVanillaPacks = config.isCompatCheckingVanillaPacks;
   appData.isUsingEnglishLocalizations = !!config.isUsingEnglishLocalizations;
   appData.isChangingGameProcessPriority = config.isChangingGameProcessPriority;
+  appData.isAppControlEnabled = config.isAppControlEnabled ?? true;
   appData.isRigidModelV2CompressionEnabled =
     config.isRigidModelV2CompressionEnabled ?? appData.isRigidModelV2CompressionEnabled;
   appData.compressModsOnUpload = config.compressModsOnUpload ?? appData.compressModsOnUpload;

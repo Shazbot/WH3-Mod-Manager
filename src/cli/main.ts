@@ -38,6 +38,13 @@ const rootHelp = `Usage:
   whmm loc lookup --input <jsonFile>
   whmm unit resolve <packPath> [<query>] [--paths-from <file>] [--search-by key|text|variant|mesh] [--match exact|contains]
   whmm unit resolve --input <jsonFile>
+  whmm app status
+  whmm mods list [--enabled-only]
+  whmm mods set [--preset <name>] [--only <mod> ...] [--enable <mod> ...] [--disable <mod> ...] [--order <mod> ...] [--dry-run]
+  whmm game launch [--preset <name>] [--only <mod> ...] [--enable <mod> ...] [--disable <mod> ...] [--order <mod> ...] [--temporary]
+    [--continue | --save <name>] [--skip-intros] [--script-logging] [--auto-start-battle] [--game <game>] [--restart]
+  whmm game relaunch [same flags as game launch]
+  whmm game stop [--stop-timeout <s>]
 
 Flags:
   --format text|json|checklist  Output format; checklist requires diff --affected-units
@@ -93,6 +100,24 @@ Flags:
   --cache-memory-mib <1..1024> Cache memory budget (default 128)
   --no-cache           Disable all automation caches
   --cache-stats        Write cache statistics to stderr
+  --preset <name>      Apply a saved WHMM preset before other mod changes
+  --only <mod>         Enable exactly these mods, disabling the rest (repeatable)
+  --enable <mod>       Enable a mod (repeatable). Mods match pack name, Workshop ID, or display name
+  --disable <mod>      Disable a mod (repeatable)
+  --order <mod>        Enable and load these mods first, in the order given (repeatable); clears other manual positions
+  --dry-run            Report what mods set would change without changing it
+  --enabled-only       List only enabled mods
+  --temporary          Launch with the given mods without saving them to WHMM's mod list
+  --continue           Load the most recent save
+  --save <name>        Load this save
+  --skip-intros, --script-logging, --auto-start-battle  Turn on a launch option for this launch
+  --game <game>        Refuse to launch unless WHMM is set to this game (for example wh3)
+  --launch-timeout <s> Seconds to wait for the game to start (default 900)
+  --restart            Stop a running game first instead of refusing (game relaunch implies it)
+  --stop-timeout <s>   Seconds to wait for a stopped game to exit (default 30)
+  --no-start-app       Fail instead of starting WHMM when it is not running
+  --start-timeout <s>  Seconds to wait for WHMM to start and load (default 60)
+  --app-path <path>    WHMM executable to start (otherwise WHMM_APP_PATH or the path WHMM records)
   --help               Show help at any command level`;
 
 const options = {
@@ -158,6 +183,26 @@ const options = {
   "cache-stats": { type: "boolean" as const },
   progress: { type: "boolean" as const },
   "no-progress": { type: "boolean" as const },
+  preset: { type: "string" as const },
+  only: { type: "string" as const, multiple: true },
+  enable: { type: "string" as const, multiple: true },
+  disable: { type: "string" as const, multiple: true },
+  order: { type: "string" as const, multiple: true },
+  "dry-run": { type: "boolean" as const },
+  "enabled-only": { type: "boolean" as const },
+  temporary: { type: "boolean" as const },
+  continue: { type: "boolean" as const },
+  save: { type: "string" as const },
+  "skip-intros": { type: "boolean" as const },
+  "script-logging": { type: "boolean" as const },
+  "auto-start-battle": { type: "boolean" as const },
+  game: { type: "string" as const },
+  "launch-timeout": { type: "string" as const },
+  restart: { type: "boolean" as const },
+  "stop-timeout": { type: "string" as const },
+  "no-start-app": { type: "boolean" as const },
+  "start-timeout": { type: "string" as const },
+  "app-path": { type: "string" as const },
   help: { type: "boolean" as const },
 };
 
@@ -208,6 +253,73 @@ const ensurePositionals = (command: readonly string[], min: number, max = min): 
   }
 };
 
+/** `app status`, `mods list|set`, `game launch`: requests to the running WHMM app. */
+const buildAppControlRequest = (
+  command: readonly string[],
+  values: CliValues,
+  common: Record<string, unknown>,
+): Record<string, unknown> => {
+  ensurePositionals(command, 2);
+  const [group, action] = command;
+  const request: Record<string, unknown> = { ...common };
+  const operation =
+    group === "app" && action === "status"
+      ? "app_status"
+      : group === "mods" && action === "list"
+        ? "mods_list"
+        : group === "mods" && action === "set"
+          ? "mods_set"
+          : group === "game" && (action === "launch" || action === "relaunch")
+            ? "game_launch"
+            : group === "game" && action === "stop"
+              ? "game_stop"
+              : undefined;
+  if (!operation) throw new AutomationError("INVALID_ARGUMENT", `Unknown command: ${command.join(" ")}`);
+  const allowed: Record<string, readonly string[]> = {
+    app_status: [],
+    mods_list: ["enabled-only"],
+    mods_set: ["preset", "only", "enable", "disable", "order", "dry-run"],
+    game_launch: [
+      "preset", "only", "enable", "disable", "order", "temporary", "continue", "save", "skip-intros", "script-logging",
+      "auto-start-battle", "game", "launch-timeout", "restart", "stop-timeout",
+    ],
+    game_stop: ["stop-timeout"],
+  };
+  const startFlags = ["no-start-app", "start-timeout", "app-path"];
+  for (const flag of [...allowed.game_launch, ...allowed.mods_set, ...allowed.mods_list, ...startFlags]) {
+    const isAllowed = allowed[operation].includes(flag) || (operation !== "app_status" && startFlags.includes(flag));
+    if (values[flag as keyof CliValues] !== undefined && !isAllowed)
+      throw new AutomationError("INVALID_ARGUMENT", `--${flag} is not used by ${group} ${action}`);
+  }
+  if (values.preset !== undefined) request.preset = values.preset;
+  if (values.only !== undefined) request.only = values.only;
+  if (values.enable !== undefined) request.enable = values.enable;
+  if (values.disable !== undefined) request.disable = values.disable;
+  if (values.order !== undefined) request.order = values.order;
+  if (values["dry-run"] !== undefined) request.dryRun = values["dry-run"];
+  if (values["enabled-only"] !== undefined) request.enabledOnly = values["enabled-only"];
+  if (values.temporary !== undefined) request.temporary = values.temporary;
+  if (values.continue !== undefined) request.continueLastSave = values.continue;
+  if (values.save !== undefined) request.save = values.save;
+  if (values.game !== undefined) request.game = values.game;
+  const launchOptions: Record<string, boolean> = { ...((common.options as Record<string, boolean>) ?? {}) };
+  if (values["skip-intros"]) launchOptions.skipIntroMovies = true;
+  if (values["script-logging"]) launchOptions.scriptLogging = true;
+  if (values["auto-start-battle"]) launchOptions.autoStartCustomBattle = true;
+  if (Object.keys(launchOptions).length) request.options = launchOptions;
+  const launchTimeout = numericOption(values["launch-timeout"], "launch-timeout");
+  if (launchTimeout !== undefined) request.launchTimeoutSeconds = launchTimeout;
+  if (values.restart !== undefined) request.restart = values.restart;
+  if (action === "relaunch") request.restart = true;
+  const stopTimeout = numericOption(values["stop-timeout"], "stop-timeout");
+  if (stopTimeout !== undefined) request.stopTimeoutSeconds = stopTimeout;
+  if (values["no-start-app"]) request.startApp = false;
+  const startTimeout = numericOption(values["start-timeout"], "start-timeout");
+  if (startTimeout !== undefined) request.startTimeoutSeconds = startTimeout;
+  if (values["app-path"] !== undefined) request.appPath = values["app-path"];
+  return { ...request, operation };
+};
+
 const buildRequest = async (
   command: readonly string[],
   values: CliValues,
@@ -216,6 +328,15 @@ const buildRequest = async (
   const extra = await readInput(values.input, context);
   const common: Record<string, unknown> = { ...extra };
   const [group, action, first, second, third] = command;
+  if (group === "app" || group === "mods" || group === "game") return buildAppControlRequest(command, values, common);
+  const appControlFlags = [
+    "preset", "only", "enable", "disable", "order", "dry-run", "enabled-only", "temporary", "continue", "save", "skip-intros",
+    "script-logging", "auto-start-battle", "game", "launch-timeout", "restart", "stop-timeout", "no-start-app",
+    "start-timeout", "app-path",
+  ] as const;
+  const misplaced = appControlFlags.filter((flag) => values[flag] !== undefined);
+  if (misplaced.length)
+    throw new AutomationError("INVALID_ARGUMENT", `--${misplaced[0]} requires an app, mods, or game command`);
   const assetUsers = group === "asset" && action === "users";
   const affectedDiff = group === "pack" && action === "diff" && Boolean(values["affected-units"] || extra.affectedUnits);
   const assetUserFlags = [

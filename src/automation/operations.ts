@@ -56,6 +56,18 @@ import { assetUsersSchema, runAssetUsers } from "./assetUsers";
 import { rigidInspectSchema, runRigidInspect } from "./rigid";
 import { assetMaterialsSchema, inspectWsModelBindings, runAssetMaterials } from "./materials";
 import { rigidPatchSchema, runRigidPatch } from "./rigidPatch";
+import {
+  appStatusSchema,
+  gameLaunchSchema,
+  gameStopSchema,
+  modsListSchema,
+  modsSetSchema,
+  runAppStatus,
+  runGameLaunch,
+  runGameStop,
+  runModsList,
+  runModsSet,
+} from "./appControl";
 import { prepareReferenceEnvironment, resolveReferenceAsset } from "./references";
 import { FilesystemPolicy, normalizeInternalPackPath } from "./filesystem";
 import {
@@ -263,6 +275,11 @@ export const operationSchemas = {
   rigid_inspect: rigidInspectSchema,
   asset_materials: assetMaterialsSchema,
   rigid_patch: rigidPatchSchema,
+  app_status: appStatusSchema,
+  mods_list: modsListSchema,
+  mods_set: modsSetSchema,
+  game_launch: gameLaunchSchema,
+  game_stop: gameStopSchema,
 } as const;
 
 export type OperationName = keyof typeof operationSchemas;
@@ -1349,6 +1366,11 @@ export const operationRegistry: OperationRegistry = {
   rigid_inspect: { schema: operationSchemas.rigid_inspect, execute: runRigidInspect },
   asset_materials: { schema: operationSchemas.asset_materials, execute: runAssetMaterials },
   rigid_patch: { schema: operationSchemas.rigid_patch, execute: runRigidPatch },
+  app_status: { schema: operationSchemas.app_status, execute: runAppStatus },
+  mods_list: { schema: operationSchemas.mods_list, execute: runModsList },
+  mods_set: { schema: operationSchemas.mods_set, execute: runModsSet },
+  game_launch: { schema: operationSchemas.game_launch, execute: runGameLaunch },
+  game_stop: { schema: operationSchemas.game_stop, execute: runGameStop },
 };
 
 export const createAutomationContext = (

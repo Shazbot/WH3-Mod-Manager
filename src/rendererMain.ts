@@ -9,6 +9,7 @@ import { selectConfigSavePayload } from "./config/configSavePayload";
 import hash from "object-hash";
 
 import store from "./store";
+import { registerAppControlHandler } from "./appControl/rendererHandler";
 import { renderMainWindow } from "./appMain";
 import { setupRendererLogging } from "./rendererCommon";
 import {
@@ -252,6 +253,7 @@ window.api?.modsPopulated((event, mods: Mod[]) => {
   mods = mods.filter((mod) => mod !== undefined);
   store.dispatch(setMods(mods));
   window.api?.getAllModData(mods.filter(isWorkshopMod).map((mod) => mod.workshopId));
+  registerAppControlHandler();
 });
 
 window.api?.addMod((event, mod: Mod) => {
