@@ -30,11 +30,29 @@ export interface GameDiscoveryOptions {
   runCommand?: (command: string, args: string[]) => Promise<string>;
 }
 
+export interface DiscoveredGameFolders {
+  dataPath: string;
+  /** Workshop content folder saved in WHMM settings, when known. */
+  contentFolder?: string;
+}
+
+/** Steam layout: <library>/steamapps/common/<game>/data -> <library>/steamapps/workshop/content/<appid>. */
+export const deriveWorkshopContentFolder = (dataPath: string): string | undefined => {
+  const steamApps = path.dirname(path.dirname(path.dirname(dataPath)));
+  if (path.basename(path.dirname(path.dirname(dataPath))).toLowerCase() !== "common") return undefined;
+  return path.join(steamApps, "workshop", "content", "1142710");
+};
+
 /** All file reads remain policy-gated; interop retrieves only Windows path metadata. */
 export const discoverGameDataPath = async (
   context: AutomationContext,
   options: GameDiscoveryOptions = {},
-): Promise<string> => {
+): Promise<string> => (await discoverGameFolders(context, options)).dataPath;
+
+export const discoverGameFolders = async (
+  context: AutomationContext,
+  options: GameDiscoveryOptions = {},
+): Promise<DiscoveredGameFolders> => {
   throwIfAborted(context.signal);
   const env = options.environment ?? process.env;
   const platform = options.platform ?? process.platform;
@@ -56,7 +74,7 @@ export const discoverGameDataPath = async (
     return value;
   };
   // Explicit environment overrides are authoritative, including when unavailable.
-  if (env.WHMM_GAME_DATA_PATH) return localPath(env.WHMM_GAME_DATA_PATH);
+  if (env.WHMM_GAME_DATA_PATH) return { dataPath: await localPath(env.WHMM_GAME_DATA_PATH) };
   const searchedPaths: string[] = [];
   const availableData = async (value: string): Promise<string | undefined> => {
     try {
@@ -70,14 +88,25 @@ export const discoverGameDataPath = async (
       return undefined;
     }
   };
-  const readConfig = async (root: string | undefined): Promise<string | undefined> => {
+  const readConfig = async (root: string | undefined): Promise<DiscoveredGameFolders | undefined> => {
     if (!root) return undefined;
     try {
       const configPath = path.join(await localPath(root), "wh3mm", "config.json");
       searchedPaths.push(configPath);
       const config = JSON.parse((await context.policy.readFile(configPath)).bytes.toString("utf8"));
       const value = config?.gameFolderPaths?.wh3?.dataFolder ?? config?.appFolderPaths?.dataFolder;
-      return typeof value === "string" && value.length ? await availableData(value) : undefined;
+      const dataPath = typeof value === "string" && value.length ? await availableData(value) : undefined;
+      if (!dataPath) return undefined;
+      const content = config?.gameFolderPaths?.wh3?.contentFolder;
+      let contentFolder: string | undefined;
+      if (typeof content === "string" && content.length) {
+        try {
+          contentFolder = await localPath(content);
+        } catch {
+          throwIfAborted(context.signal);
+        }
+      }
+      return { dataPath, ...(contentFolder ? { contentFolder } : {}) };
     } catch {
       throwIfAborted(context.signal);
       return undefined;
@@ -151,7 +180,7 @@ export const discoverGameDataPath = async (
         if (String(parsed.AppState?.appid) !== "1142710" || typeof installDirectory !== "string" ||
             !installDirectory || installDirectory === "." || installDirectory === ".." || /[\\/\0]/.test(installDirectory)) continue;
         const data = await availableData(path.join(localLibrary, "steamapps", "common", installDirectory, "data"));
-        if (data) return data;
+        if (data) return { dataPath: data };
       } catch {
         throwIfAborted(context.signal);
       }

@@ -27,6 +27,16 @@ Windows packaging builds the launcher for the requested Windows architecture wit
 
 Globs match complete internal paths. `*.dds` matches only root-level files; use `**/*.dds` to find DDS files in nested folders too. Quote glob patterns so your shell passes them to the CLI unchanged. Use forward slashes in patterns even when the returned pack paths contain backslashes.
 
+### Pack names and file globs
+
+Any input pack (`packPath`, `packPaths`, `vanillaPackPaths`, `sourcePackPaths`, `baselinePackPath`/`--baseline`, `beforePath`, `afterPath`) can be a bare file name ending in `.pack`. If no such file exists relative to the working directory, it is looked up in the game data folder and then in the workshop content folder (`<id>/<name>.pack` under each workshop item). The data folder comes from `gameDataPath`/`--game-data` when supplied, otherwise from the usual game data discovery below. The workshop folder comes from WHMM settings (`gameFolderPaths.wh3.contentFolder`), otherwise it is derived from a Steam data path (`steamapps/common/<game>/data` → `steamapps/workshop/content/1142710`). A data folder hit wins over workshop copies. A name found in several workshop items fails with `CONFLICT` and lists the candidates, and a name found nowhere fails with `INVALID_ARGUMENT`. Each resolution adds a `PACK_NAME_RESOLVED` info diagnostic on stderr. Under MCP, the data and workshop folders must be inside the read roots. Output paths are never resolved this way.
+
+`pack read` (`pack_read_file`) also accepts a glob as the file path when there is no exact match. The glob follows the `pack list --glob` rules and must match exactly one file. Several matches fail with `CONFLICT` and list up to 20 of them.
+
+```sh
+node dist/cli/main.js pack read pj_console.pack '**/pj_console.lua'
+```
+
 Use `--with-vanilla` on commands that resolve supporting assets: `pack validate`, `pack subset`, `pack textures`, `pack diff --affected-units`, `asset users`, `asset resolve`, `asset references`, `asset materials`, `loc lookup`, and `unit resolve`. For example, validate a mod whose textures are supplied by the base game without writing an input JSON file:
 
 ```sh

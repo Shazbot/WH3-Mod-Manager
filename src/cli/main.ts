@@ -46,6 +46,10 @@ const rootHelp = `Usage:
   whmm game relaunch [same flags as game launch]
   whmm game stop [--stop-timeout <s>]
 
+A <packPath> may be a bare name such as my_mod.pack: it is looked up in the working directory,
+then the game data folder, then the workshop folder. pack read accepts a glob such as '**/my_script.lua'
+for <filePath> when it matches exactly one file.
+
 Flags:
   --format text|json|checklist  Output format; checklist requires diff --affected-units
   --paths-from <file>  Newline-separated asset paths or unit queries (up to 1000)

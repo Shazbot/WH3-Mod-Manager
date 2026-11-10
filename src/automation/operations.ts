@@ -423,9 +423,26 @@ const runListFiles: OperationHandler<"pack_list_files"> = async (request, contex
   return { data: { ...result, ...(reportPath ? { reportPath } : {}) }, diagnostics: [] };
 };
 
+// Exact path first; otherwise a glob such as "**/name.lua" that must match exactly one file.
+const findEntryOrGlob = (pack: Awaited<ReturnType<typeof readIndex>>, filePath: string) => {
+  try {
+    return findEntry(pack, filePath);
+  } catch (error) {
+    if (!(error instanceof AutomationError) || error.code !== "VALIDATION" || !/[*?[{]/.test(filePath)) throw error;
+  }
+  const matches = pack.entries.filter((entry) => isPackedPathMatch(entry.name, undefined, filePath));
+  if (matches.length === 1) return matches[0];
+  if (!matches.length) throw new AutomationError("VALIDATION", `No packed file matches ${filePath}`);
+  throw new AutomationError(
+    "CONFLICT",
+    `${filePath} matches ${matches.length} files; narrow the pattern (see pack list --glob)`,
+    { matches: matches.slice(0, 20).map((entry) => entry.name), truncated: matches.length > 20 },
+  );
+};
+
 const runReadFile: OperationHandler<"pack_read_file"> = async (request, context) => {
   const pack = await readIndex(request.packPath, context);
-  const entry = findEntry(pack, request.filePath);
+  const entry = findEntryOrGlob(pack, request.filePath);
   const buffer = await readLogical(pack, entry, context);
   const isText = isTextPackedFilePath(entry.name.replace(/\//g, "\\").toLowerCase());
   const data: Record<string, unknown> = {

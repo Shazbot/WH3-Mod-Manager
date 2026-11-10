@@ -6,6 +6,7 @@ import {
   type AutomationDiagnostic,
   type AutomationResponse,
 } from "./errors";
+import { resolvePackInputs } from "./packNames";
 import { defaultAutomationContext, operationRegistry, type AutomationContext, type OperationName } from "./operations";
 
 export { operationRegistry, operationSchemas } from "./operations";
@@ -70,6 +71,7 @@ export const executeAutomationRequest = async (
   let cacheRequest: AutomationContext["cacheRequest"];
   try {
     throwIfAborted(context.signal);
+    const resolvedDiagnostics = await resolvePackInputs(parsed.data as Record<string, unknown>, context);
     const bypassCache = bypassAutomationCaches.has(operationName);
     const affectedDiff = operationName === "pack_diff" && Boolean((parsed.data as { affectedUnits?: boolean }).affectedUnits);
     if (context.cache && (!bypassCache || affectedDiff)) {
@@ -98,7 +100,7 @@ export const executeAutomationRequest = async (
     const result = await execute(parsed.data, requestContext);
     await cacheRequest?.flushVisuals();
     if (context.cache) for (const outputPath of outputs) context.cache.invalidatePath(outputPath);
-    return { ok: true, data: result.data, diagnostics: result.diagnostics };
+    return { ok: true, data: result.data, diagnostics: [...resolvedDiagnostics, ...result.diagnostics] };
   } catch (error) {
     return failedResponse(error);
   } finally {
