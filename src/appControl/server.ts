@@ -72,7 +72,11 @@ export const startAppControlServer = (
     const reset = () => {
       if (readyWebContentsId === event.sender.id) readyWebContentsId = undefined;
     };
-    event.sender.on("did-start-loading", reset);
+    // Not did-start-loading: that also fires for in-page hash changes, such as clicking an
+    // href="#" link, which keep the handler alive and never report ready again.
+    event.sender.on("did-start-navigation", (details) => {
+      if (details.isMainFrame && !details.isSameDocument) reset();
+    });
     event.sender.on("render-process-gone", reset);
     event.sender.once("destroyed", reset);
   });

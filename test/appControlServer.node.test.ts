@@ -41,6 +41,8 @@ const savedRuntimeDirectory = process.env["XDG_RUNTIME_DIR"];
 const rendererRequests: AppControlRequest[] = [];
 let rendererReply: (request: AppControlRequest) => Omit<AppControlResponse, "v" | "id">;
 const afterGameExit = vi.fn(async () => undefined);
+/** Listeners the server attached to the main window's webContents, by event name. */
+const senderListeners = new Map<string, (details?: unknown) => void>();
 
 /** Stands in for the main window: records forwarded requests and answers them. */
 const fakeWindow = {
@@ -90,7 +92,9 @@ beforeEach(async () => {
     return { ok: true, result: { game: "wh3", enabledMods: [] } };
   };
   startAppControlServer(() => fakeWindow as never, afterGameExit);
-  electron.handlers.get("appControlReady")!({ sender: { id: 1, on: () => undefined, once: () => undefined } });
+  senderListeners.clear();
+  const listen = (event: string, listener: (details?: unknown) => void) => senderListeners.set(event, listener);
+  electron.handlers.get("appControlReady")!({ sender: { id: 1, on: listen, once: listen } });
   await new Promise((resolve) => setTimeout(resolve, 50));
 });
 
@@ -102,6 +106,13 @@ afterEach(() => {
 });
 
 describeUnix("app control server", () => {
+  it("stays ready through in-page hash changes but not a page reload", async () => {
+    senderListeners.get("did-start-navigation")!({ isMainFrame: true, isSameDocument: true });
+    expect(await send("status", {})).toMatchObject({ ok: true, result: { ready: true } });
+    senderListeners.get("did-start-navigation")!({ isMainFrame: true, isSameDocument: false });
+    expect(await send("status", {})).toMatchObject({ ok: true, result: { ready: false } });
+  });
+
   it("refuses to launch over a running game unless asked to restart", async () => {
     appData.isWH3Running = true;
     const response = await send("launch", {});

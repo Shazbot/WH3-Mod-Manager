@@ -362,7 +362,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 <li>
                   <a
                     href="#"
-                    onClick={() => {
+                    onClick={(event) => {
+                      event.preventDefault();
                       runForSelectedMods(onGoToWorkshopPageClick);
                     }}
                     className={"block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"}
@@ -376,7 +377,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 <li>
                   <a
                     href="#"
-                    onClick={() => {
+                    onClick={(event) => {
+                      event.preventDefault();
                       runForSelectedMods(onOpenInSteam);
                     }}
                     className={"block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"}
@@ -391,7 +393,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             )}
             <li>
               <a
-                onClick={() => {
+                onClick={(event) => {
+                  event.preventDefault();
                   if (selectedMods.length > 0) {
                     dispatch(toggleAlwaysEnabledMods(selectedMods.map((mod) => mod.name)));
                     onAction?.();
@@ -414,7 +417,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             </li>
             <li>
               <a
-                onClick={() => {
+                onClick={(event) => {
+                  event.preventDefault();
                   if (selectedMods.length > 0) {
                     dispatch(toggleAlwaysHiddenMods(selectedMods.map((mod) => mod.name)));
                     onAction?.();
@@ -437,7 +441,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             </li>
             <li>
               <a
-                onClick={() => {
+                onClick={(event) => {
+                  event.preventDefault();
                   runForSelectedMods(openInExplorer);
                 }}
                 href="#"
@@ -451,7 +456,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             </li>
             <li>
               <a
-                onClick={() => {
+                onClick={(event) => {
+                  event.preventDefault();
                   runForSelectedMods(openInRPFM);
                 }}
                 href="#"
@@ -466,7 +472,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             {optimizeWorkshopModsOnStart && selectedMods.length === 1 && hasWorkshopMod(selectedMods[0]) && (
               <li>
                 <a
-                  onClick={() => {
+                  onClick={(event) => {
+                    event.preventDefault();
                     runForSelectedMods(openOptimizerReport);
                   }}
                   href="#"
@@ -482,7 +489,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             {selectedMods.length === 1 && /\.pack$/i.test(selectedMods[0].path) && (
               <li>
                 <a
-                  onClick={() => {
+                  onClick={(event) => {
+                    event.preventDefault();
                     runForSelectedMods(checkVisualAssets);
                   }}
                   href="#"
@@ -497,7 +505,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             )}
             <li>
               <a
-                onClick={() => {
+                onClick={(event) => {
+                  event.preventDefault();
                   runForSelectedMods(openInViewer);
                 }}
                 href="#"
@@ -512,7 +521,10 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             {canRenameEverySelection && (
               <li>
                 <a
-                  onClick={() => setIsRenameModalOpen(true)}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    setIsRenameModalOpen(true);
+                  }}
                   href="#"
                   className="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                 >
@@ -525,7 +537,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             )}
             <li>
               <a
-                onClick={() => {
+                onClick={(event) => {
+                  event.preventDefault();
                   runForSelectedMods(putPathInClipboard);
                 }}
                 href="#"
@@ -540,7 +553,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             {canCopyEverySelectionToData && (
               <li>
                 <a
-                  onClick={() => {
+                  onClick={(event) => {
+                    event.preventDefault();
                     runForSelectedMods(copyModToData);
                   }}
                   href="#"
@@ -577,7 +591,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
               !allMods.some((iterMod) => iterMod.name == props.mod?.name && !iterMod.isInData) && (
                 <li>
                   <a
-                    onClick={() => {
+                    onClick={(event) => {
+                      event.preventDefault();
                       if (props.mod) uploadMod(props.mod);
                     }}
                     href="#"
@@ -597,7 +612,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
               <>
                 <li>
                   <a
-                    onClick={() => {
+                    onClick={(event) => {
+                      event.preventDefault();
                       runForSelectedMods(updateMod);
                     }}
                     href="#"
@@ -617,7 +633,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                 </li>
                 <li>
                   <a
-                    onClick={() => {
+                    onClick={(event) => {
+                      event.preventDefault();
                       runForSelectedMods(fakeUpdatePack);
                     }}
                     href="#"
@@ -639,7 +656,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             )}
             <li>
               <a
-                onClick={() => {
+                onClick={(event) => {
+                  event.preventDefault();
                   runForSelectedMods(makePackBackup);
                 }}
                 href="#"
@@ -660,7 +678,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             {hasWorkshopModForEverySelection && (
               <li>
                 <a
-                  onClick={() => {
+                  onClick={(event) => {
+                    event.preventDefault();
                     runForSelectedMods(forceModDownload);
                   }}
                   href="#"
@@ -682,7 +701,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             {hasWorkshopModForEverySelection && (
               <li>
                 <a
-                  onClick={() => {
+                  onClick={(event) => {
+                    event.preventDefault();
                     forceResubscribe(selectedMods);
                     onAction?.();
                   }}
@@ -710,7 +730,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             {hasWorkshopModForEverySelection && (
               <li>
                 <a
-                  onClick={() => {
+                  onClick={(event) => {
+                    event.preventDefault();
                     runForSelectedMods((mod) => unsubscribe(mod, allMods));
                   }}
                   href="#"
@@ -732,7 +753,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             {canReMergeEverySelection && (
               <li>
                 <a
-                  onClick={() => {
+                  onClick={(event) => {
+                    event.preventDefault();
                     runForSelectedMods(reMerge);
                   }}
                   href="#"
@@ -751,7 +773,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             {canDeleteDataEverySelection && (
               <li>
                 <a
-                  onClick={() => {
+                  onClick={(event) => {
+                    event.preventDefault();
                     setIsDeleteConfirmOpen(true);
                   }}
                   href="#"
@@ -777,7 +800,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             {canDeleteMergedEverySelection && (
               <li>
                 <a
-                  onClick={() => {
+                  onClick={(event) => {
+                    event.preventDefault();
                     setIsDeleteConfirmOpen(true);
                   }}
                   href="#"
@@ -799,7 +823,8 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
             {canDeleteMixedSelection && (
               <li>
                 <a
-                  onClick={() => {
+                  onClick={(event) => {
+                    event.preventDefault();
                     setIsDeleteConfirmOpen(true);
                   }}
                   href="#"

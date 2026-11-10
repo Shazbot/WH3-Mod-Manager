@@ -1098,7 +1098,8 @@ const Categories = memo(() => {
                 <ul className="py-1 text-sm text-gray-700 dark:text-gray-200" aria-labelledby="dropdownDefault">
                   <li>
                     <a
-                      onClick={() => {
+                      onClick={(event) => {
+                        event.preventDefault();
                         dispatch(setAreModsEnabled(contextMenuSelection.mods.map((mod) => ({ mod, isEnabled: true }))));
                         setIsContextMenuOpen(false);
                       }}
@@ -1110,7 +1111,8 @@ const Categories = memo(() => {
                   </li>
                   <li>
                     <a
-                      onClick={() => {
+                      onClick={(event) => {
+                        event.preventDefault();
                         dispatch(
                           setAreModsEnabled(contextMenuSelection.mods.map((mod) => ({ mod, isEnabled: false }))),
                         );
