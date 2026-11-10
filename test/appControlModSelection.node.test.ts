@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ControlError, planSelection, resolveMods } from "../src/appControl/modSelection";
+import { ControlError, planSelection, resolveMods, startGameOptions } from "../src/appControl/modSelection";
 import initialState from "../src/initialAppState";
 
 const createMod = (name: string, overrides: Partial<Mod> = {}): Mod => ({
@@ -136,5 +136,22 @@ describe("app control mod selection", () => {
     expect(() => planSelection(state, { enable: ["beta"], disable: ["beta.pack"] })).toThrow(
       "both enabled and disabled",
     );
+  });
+
+  it("turns off the saved auto-start option when a launch turns on the other one", () => {
+    const battleState = createState(mods, { isAutoStartCustomBattleEnabled: true });
+    expect(startGameOptions(battleState, { autoStartNewCampaign: true })).toMatchObject({
+      isAutoStartCustomBattleEnabled: false,
+      isAutoStartNewCampaignEnabled: true,
+    });
+    expect(startGameOptions(battleState)).toMatchObject({
+      isAutoStartCustomBattleEnabled: true,
+      isAutoStartNewCampaignEnabled: false,
+    });
+    const campaignState = createState(mods, { isAutoStartNewCampaignEnabled: true });
+    expect(startGameOptions(campaignState, { autoStartCustomBattle: true })).toMatchObject({
+      isAutoStartCustomBattleEnabled: true,
+      isAutoStartNewCampaignEnabled: false,
+    });
   });
 });

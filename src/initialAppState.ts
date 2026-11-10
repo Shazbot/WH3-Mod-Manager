@@ -47,6 +47,7 @@ const initialState = {
   isScriptLoggingEnabled: false,
   isSkipIntroMoviesEnabled: false,
   isAutoStartCustomBattleEnabled: false,
+  isAutoStartNewCampaignEnabled: false,
   isChangingGameProcessPriority: false,
   isAppControlEnabled: true,
   isFeaturesForModdersEnabled: false,

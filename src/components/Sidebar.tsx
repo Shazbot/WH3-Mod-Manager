@@ -11,6 +11,7 @@ import {
   createOnGameStartPreset,
   setIsHelpOpen,
   toggleIsAutoStartCustomBattleEnabled,
+  toggleIsAutoStartNewCampaignEnabled,
   toggleIsChangingGameProcessPriority,
   toggleIsScriptLoggingEnabled,
   toggleIsSkipIntroMoviesEnabled,
@@ -89,6 +90,7 @@ const Sidebar = memo(() => {
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
+  const isAutoStartNewCampaignEnabled = useAppSelector((state) => state.app.isAutoStartNewCampaignEnabled);
   const isChangingGameProcessPriority = useAppSelector((state) => state.app.isChangingGameProcessPriority);
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
   const workshopModStagingMode = useAppSelector((state) => state.app.workshopModStagingMode);
@@ -258,6 +260,7 @@ const Sidebar = memo(() => {
               isSkipIntroMoviesEnabled,
               isScriptLoggingEnabled,
               isAutoStartCustomBattleEnabled,
+              isAutoStartNewCampaignEnabled,
               isClosedOnPlay,
               workshopModStagingMode,
               compressWorkshopModsOnStart,
@@ -278,6 +281,7 @@ const Sidebar = memo(() => {
         isSkipIntroMoviesEnabled,
         isScriptLoggingEnabled,
         isAutoStartCustomBattleEnabled,
+        isAutoStartNewCampaignEnabled,
         isClosedOnPlay,
         workshopModStagingMode,
         compressWorkshopModsOnStart,
@@ -293,6 +297,7 @@ const Sidebar = memo(() => {
       areModsInOrder,
       dispatch,
       isAutoStartCustomBattleEnabled,
+      isAutoStartNewCampaignEnabled,
       isClosedOnPlay,
       workshopModStagingMode,
       compressWorkshopModsOnStart,
@@ -344,6 +349,7 @@ const Sidebar = memo(() => {
                 isSkipIntroMoviesEnabled,
                 isScriptLoggingEnabled,
                 isAutoStartCustomBattleEnabled,
+                isAutoStartNewCampaignEnabled,
                 isClosedOnPlay,
                 workshopModStagingMode,
                 compressWorkshopModsOnStart,
@@ -369,6 +375,7 @@ const Sidebar = memo(() => {
           isSkipIntroMoviesEnabled,
           isScriptLoggingEnabled,
           isAutoStartCustomBattleEnabled,
+          isAutoStartNewCampaignEnabled,
           isClosedOnPlay,
           workshopModStagingMode,
           compressWorkshopModsOnStart,
@@ -385,6 +392,7 @@ const Sidebar = memo(() => {
     [
       areModsInOrder,
       isAutoStartCustomBattleEnabled,
+      isAutoStartNewCampaignEnabled,
       isClosedOnPlay,
       workshopModStagingMode,
       compressWorkshopModsOnStart,
@@ -1164,6 +1172,13 @@ const Sidebar = memo(() => {
                     localized.autoStartCustomBattles || "Auto-start custom battles",
                     !!isAutoStartCustomBattleEnabled,
                     () => dispatch(toggleIsAutoStartCustomBattleEnabled()),
+                  )}
+                {gameStartOptions.includes("AutoStartNewCampaign") &&
+                  renderGameStartMenuOption(
+                    "auto-start-new-campaign",
+                    localized.autoStartNewCampaign || "Auto-start new campaign",
+                    !!isAutoStartNewCampaignEnabled,
+                    () => dispatch(toggleIsAutoStartNewCampaignEnabled()),
                   )}
                 {renderGameStartMenuOption(
                   "game-process-priority",

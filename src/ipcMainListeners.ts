@@ -14332,7 +14332,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           startGameOptions.isMakeUnitsGeneralsEnabled ||
           startGameOptions.isScriptLoggingEnabled ||
           startGameOptions.isSkipIntroMoviesEnabled ||
-          startGameOptions.isAutoStartCustomBattleEnabled
+          startGameOptions.isAutoStartCustomBattleEnabled ||
+          startGameOptions.isAutoStartNewCampaignEnabled
         ) {
           log("making temp dir");
           await fs.mkdirSync(nodePath.join(appDataPath, "tempPacks"), { recursive: true });

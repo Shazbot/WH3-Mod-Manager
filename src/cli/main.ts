@@ -42,7 +42,7 @@ const rootHelp = `Usage:
   whmm mods list [--enabled-only]
   whmm mods set [--preset <name>] [--only <mod> ...] [--enable <mod> ...] [--disable <mod> ...] [--order <mod> ...] [--dry-run]
   whmm game launch [--preset <name>] [--only <mod> ...] [--enable <mod> ...] [--disable <mod> ...] [--order <mod> ...] [--temporary]
-    [--continue | --save <name>] [--skip-intros] [--script-logging] [--auto-start-battle] [--game <game>] [--restart]
+    [--continue | --save <name>] [--skip-intros] [--script-logging] [--auto-start-battle | --auto-start-campaign] [--game <game>] [--restart]
   whmm game relaunch [same flags as game launch]
   whmm game stop [--stop-timeout <s>]
 
@@ -114,7 +114,7 @@ Flags:
   --temporary          Launch with the given mods without saving them to WHMM's mod list
   --continue           Load the most recent save
   --save <name>        Load this save
-  --skip-intros, --script-logging, --auto-start-battle  Turn on a launch option for this launch
+  --skip-intros, --script-logging, --auto-start-battle, --auto-start-campaign  Turn on a launch option for this launch
   --game <game>        Refuse to launch unless WHMM is set to this game (for example wh3)
   --launch-timeout <s> Seconds to wait for the game to start (default 900)
   --restart            Stop a running game first instead of refusing (game relaunch implies it)
@@ -200,6 +200,7 @@ const options = {
   "skip-intros": { type: "boolean" as const },
   "script-logging": { type: "boolean" as const },
   "auto-start-battle": { type: "boolean" as const },
+  "auto-start-campaign": { type: "boolean" as const },
   game: { type: "string" as const },
   "launch-timeout": { type: "string" as const },
   restart: { type: "boolean" as const },
@@ -285,7 +286,7 @@ const buildAppControlRequest = (
     mods_set: ["preset", "only", "enable", "disable", "order", "dry-run"],
     game_launch: [
       "preset", "only", "enable", "disable", "order", "temporary", "continue", "save", "skip-intros", "script-logging",
-      "auto-start-battle", "game", "launch-timeout", "restart", "stop-timeout",
+      "auto-start-battle", "auto-start-campaign", "game", "launch-timeout", "restart", "stop-timeout",
     ],
     game_stop: ["stop-timeout"],
   };
@@ -310,6 +311,7 @@ const buildAppControlRequest = (
   if (values["skip-intros"]) launchOptions.skipIntroMovies = true;
   if (values["script-logging"]) launchOptions.scriptLogging = true;
   if (values["auto-start-battle"]) launchOptions.autoStartCustomBattle = true;
+  if (values["auto-start-campaign"]) launchOptions.autoStartNewCampaign = true;
   if (Object.keys(launchOptions).length) request.options = launchOptions;
   const launchTimeout = numericOption(values["launch-timeout"], "launch-timeout");
   if (launchTimeout !== undefined) request.launchTimeoutSeconds = launchTimeout;
@@ -335,7 +337,7 @@ const buildRequest = async (
   if (group === "app" || group === "mods" || group === "game") return buildAppControlRequest(command, values, common);
   const appControlFlags = [
     "preset", "only", "enable", "disable", "order", "dry-run", "enabled-only", "temporary", "continue", "save", "skip-intros",
-    "script-logging", "auto-start-battle", "game", "launch-timeout", "restart", "stop-timeout", "no-start-app",
+    "script-logging", "auto-start-battle", "auto-start-campaign", "game", "launch-timeout", "restart", "stop-timeout", "no-start-app",
     "start-timeout", "app-path",
   ] as const;
   const misplaced = appControlFlags.filter((flag) => values[flag] !== undefined);

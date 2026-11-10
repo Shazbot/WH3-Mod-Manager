@@ -64,6 +64,7 @@ export const gameLaunchSchema = z
         skipIntroMovies: z.boolean().optional(),
         scriptLogging: z.boolean().optional(),
         autoStartCustomBattle: z.boolean().optional(),
+        autoStartNewCampaign: z.boolean().optional(),
         makeUnitsGenerals: z.boolean().optional(),
         closeAppOnPlay: z.boolean().optional(),
       })
@@ -368,6 +369,8 @@ export const runModsSet = async (request: z.output<typeof modsSetSchema>, contex
 export const runGameLaunch = async (request: z.output<typeof gameLaunchSchema>, context: AutomationContext) => {
   const { preset, only, enable, disable, order, temporary, continueLastSave, save, game, options } = request;
   if (save && continueLastSave) throw new AutomationError("INVALID_ARGUMENT", "Use save or continueLastSave, not both");
+  if (options?.autoStartCustomBattle && options.autoStartNewCampaign)
+    throw new AutomationError("INVALID_ARGUMENT", "Use autoStartCustomBattle or autoStartNewCampaign, not both");
   if (temporary && !hasSelection(request))
     throw new AutomationError("INVALID_ARGUMENT", "A temporary launch needs a preset, only, enable, disable, or order");
   context.progress?.({

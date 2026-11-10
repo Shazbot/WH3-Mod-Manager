@@ -73,3 +73,97 @@ core:add_ui_created_callback(
 	end
 )
 `;
+
+export const autoStartNewCampaignScript = `local function press_start_campaign_button()
+    core:remove_listener("pj_auto_new_campaign_4")
+    core:add_listener(
+        "pj_auto_new_campaign_4",
+        "RealTimeTrigger",
+        function(context)
+            return context.string == "pj_auto_new_campaign_4"
+        end,
+        function(context)
+            local campaign_ie = find_uicomponent(core:get_ui_root(), "campaign_select_new", "button_start_parent", "button_start_campaign")
+            if campaign_ie then
+                campaign_ie:SimulateLClick()
+            end
+        end,
+        false
+    )
+    real_timer.register_singleshot("pj_auto_new_campaign_4", 1000)
+end
+
+local function press_karl_button()
+    core:remove_listener("pj_auto_new_campaign_3")
+    core:add_listener(
+        "pj_auto_new_campaign_3",
+        "RealTimeTrigger",
+        function(context)
+            return context.string == "pj_auto_new_campaign_3"
+        end,
+        function(context)
+            local campaign_karl = find_uicomponent(core:get_ui_root(), "campaign_select_new", "right_holder", "tab_lord", "lord_details_panel", "lord_select_list", "list", "list_clip", "list_box", "CcoFrontendFactionLeaderwh_main_emp_empire341461509", "lord_button")
+            if campaign_karl then
+                campaign_karl:SimulateLClick()
+
+                press_start_campaign_button()
+            end
+        end,
+        false
+    )
+    real_timer.register_singleshot("pj_auto_new_campaign_3", 1000)
+end
+
+local function press_emp_race_button()
+    core:remove_listener("pj_auto_new_campaign_2")
+    core:add_listener(
+        "pj_auto_new_campaign_2",
+        "RealTimeTrigger",
+        function(context)
+            return context.string == "pj_auto_new_campaign_2"
+        end,
+        function(context)
+            local campaign_empire = find_uicomponent(core:get_ui_root(), "campaign_select_new", "right_holder", "tab_lord", "lord_details_panel", "faction_holder", "button_select_race", "popup_menu", "content", "listview", "list_clip", "culture_list", "CcoCultureRecordwh_main_emp_empire", "race_button")
+            if campaign_empire then
+                campaign_empire:SimulateLClick()
+
+                press_karl_button()
+            end
+        end,
+        false
+    )
+    real_timer.register_singleshot("pj_auto_new_campaign_2", 1000)
+end
+
+local function run_it()
+    local new_campaign_button = find_uicomponent(core:get_ui_root(), "main", "left_holder", "buttons_holder", "buttons_list", "campaign_frame", "campaign_buttons", "start_campaign_new", "button_start_campaign_new")
+    if new_campaign_button then
+        new_campaign_button:SimulateLClick()
+
+        core:remove_listener("pj_auto_new_campaign_1")
+        core:add_listener(
+            "pj_auto_new_campaign_1",
+            "RealTimeTrigger",
+            function(context)
+                return context.string == "pj_auto_new_campaign_1"
+            end,
+            function(context)
+                local campaign_ie = find_uicomponent(core:get_ui_root(), "campaign_select_new", "right_holder", "tab_campaign", "campaign_holder", "campaign_button_holder", "list_parent", "CcoCampaignMapPlayableAreaRecord1589270586", "button_campaign_entry")
+                if campaign_ie then
+                    campaign_ie:SimulateLClick()
+
+                    press_emp_race_button()
+                end
+            end,
+            false
+        )
+        real_timer.register_singleshot("pj_auto_new_campaign_1", 1000)
+    end
+end
+
+core:add_ui_created_callback(
+	function()
+		run_it()
+	end
+)
+`;

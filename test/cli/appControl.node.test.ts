@@ -140,6 +140,17 @@ describeUnix("CLI app control", () => {
     });
   });
 
+  it("passes auto-start-campaign and rejects it combined with auto-start-battle", async () => {
+    const requests = await serveReplies([() => ({ ok: true, result: { game: "wh3" } })]);
+    await run(["game", "launch", "--auto-start-campaign"]);
+    expect(requests[0]).toMatchObject({ method: "launch", params: { options: { autoStartNewCampaign: true } } });
+
+    const { exitCode, envelope } = await run(["game", "launch", "--auto-start-campaign", "--auto-start-battle"]);
+    expect(exitCode).not.toBe(0);
+    expect(envelope.error).toMatchObject({ code: "INVALID_ARGUMENT" });
+    expect(requests).toHaveLength(1);
+  });
+
   it("sends stop and relaunch requests", async () => {
     const requests = await serveReplies([
       () => ({ ok: true, result: { game: "wh3", wasRunning: true } }),

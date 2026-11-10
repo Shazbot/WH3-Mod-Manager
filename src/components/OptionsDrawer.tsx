@@ -17,6 +17,7 @@ import {
   setModListDensity,
   setModListWidth,
   toggleIsAutoStartCustomBattleEnabled,
+  toggleIsAutoStartNewCampaignEnabled,
   toggleIsScriptLoggingEnabled,
   toggleIsSkipIntroMoviesEnabled,
   toggleMakeUnitsGenerals,
@@ -178,6 +179,7 @@ const OptionsDrawer = memo(() => {
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
+  const isAutoStartNewCampaignEnabled = useAppSelector((state) => state.app.isAutoStartNewCampaignEnabled);
   const isChangingGameProcessPriority = useAppSelector((state) => state.app.isChangingGameProcessPriority);
   const isAppControlEnabled = useAppSelector((state) => state.app.isAppControlEnabled);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
@@ -1731,6 +1733,31 @@ const OptionsDrawer = memo(() => {
                         }
                       >
                         {localized.autoStartCustomBattles}
+                      </Tooltip>
+                    </label>
+                  </div>
+                )}
+                {gameToSupportedGameOptions[currentGame].includes("AutoStartNewCampaign") && (
+                  <div className="flex items-center ml-1 mt-2">
+                    <input
+                      className=""
+                      type="checkbox"
+                      id="toggleIsAutoStartNewCampaignEnabled"
+                      checked={!!isAutoStartNewCampaignEnabled}
+                      onChange={() => dispatch(toggleIsAutoStartNewCampaignEnabled())}
+                    ></input>
+                    <label className="ml-2" htmlFor="toggleIsAutoStartNewCampaignEnabled">
+                      <Tooltip
+                        placement="bottom"
+                        style="light"
+                        content={
+                          <>
+                            <div>{localized.autoStartNewCampaign1}</div>
+                            <div>{localized.autoStartNewCampaign2}</div>
+                          </>
+                        }
+                      >
+                        {localized.autoStartNewCampaign}
                       </Tooltip>
                     </label>
                   </div>

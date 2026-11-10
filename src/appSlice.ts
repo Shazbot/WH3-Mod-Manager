@@ -1268,6 +1268,7 @@ const appSlice = createSlice({
       state.isSkipIntroMoviesEnabled = fromConfigAppState.isSkipIntroMoviesEnabled;
       state.isScriptLoggingEnabled = fromConfigAppState.isScriptLoggingEnabled;
       state.isAutoStartCustomBattleEnabled = fromConfigAppState.isAutoStartCustomBattleEnabled;
+      state.isAutoStartNewCampaignEnabled = fromConfigAppState.isAutoStartNewCampaignEnabled ?? false;
       state.isChangingGameProcessPriority = fromConfigAppState.isChangingGameProcessPriority;
       state.isAppControlEnabled = fromConfigAppState.isAppControlEnabled ?? true;
       state.isFeaturesForModdersEnabled = fromConfigAppState.isFeaturesForModdersEnabled;
@@ -1772,6 +1773,12 @@ const appSlice = createSlice({
     },
     toggleIsAutoStartCustomBattleEnabled: (state: AppState) => {
       state.isAutoStartCustomBattleEnabled = !state.isAutoStartCustomBattleEnabled;
+      // Both auto-start scripts drive the main menu, so only one can be on.
+      if (state.isAutoStartCustomBattleEnabled) state.isAutoStartNewCampaignEnabled = false;
+    },
+    toggleIsAutoStartNewCampaignEnabled: (state: AppState) => {
+      state.isAutoStartNewCampaignEnabled = !state.isAutoStartNewCampaignEnabled;
+      if (state.isAutoStartNewCampaignEnabled) state.isAutoStartCustomBattleEnabled = false;
     },
     toggleIsChangingGameProcessPriority: (state: AppState) => {
       state.isChangingGameProcessPriority = !state.isChangingGameProcessPriority;
@@ -2217,6 +2224,7 @@ export const {
   toggleIsScriptLoggingEnabled,
   toggleIsSkipIntroMoviesEnabled,
   toggleIsAutoStartCustomBattleEnabled,
+  toggleIsAutoStartNewCampaignEnabled,
   toggleIsChangingGameProcessPriority,
   toggleIsAppControlEnabled,
   toggleIsFeaturesForModdersEnabled,

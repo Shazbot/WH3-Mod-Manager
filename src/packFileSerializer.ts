@@ -18,7 +18,7 @@ import {
   LocFields,
 } from "./packFileTypes";
 import clone from "just-clone";
-import { emptyMovie, autoStartCustomBattleScript } from "./helperPackData";
+import { emptyMovie, autoStartCustomBattleScript, autoStartNewCampaignScript } from "./helperPackData";
 import { DBNameToDBVersions } from "./schema";
 import * as nodePath from "path";
 import appData from "./appData";
@@ -775,10 +775,10 @@ const createScriptLoggingData = (pack_files: PackedFile[]) => {
     schemaFields: [{ type: "Buffer", fields: [{ type: "Buffer", val: Buffer.from([0x00]) }] }],
   } as PackedFile);
 };
-const createAutoStartCustomBattleData = (pack_files: PackedFile[]) => {
-  const scriptBuffer = Buffer.from(autoStartCustomBattleScript, "utf-8");
+const createFrontendScriptData = (pack_files: PackedFile[], name: string, script: string) => {
+  const scriptBuffer = Buffer.from(script, "utf-8");
   pack_files.push({
-    name: "script\\frontend\\mod\\pj_auto_custom_battles.lua",
+    name: `script\\frontend\\mod\\${name}.lua`,
     file_size: scriptBuffer.byteLength,
     start_pos: 0,
     is_compressed: false,
@@ -2047,7 +2047,11 @@ export const writeStartGamePack = async (
     if (startGameOptions.isMakeUnitsGeneralsEnabled) createBattlePermissionsData(packsData, packFiles, enabledMods);
     if (startGameOptions.isSkipIntroMoviesEnabled) createIntroMoviesData(packFiles);
     if (startGameOptions.isScriptLoggingEnabled) createScriptLoggingData(packFiles);
-    if (startGameOptions.isAutoStartCustomBattleEnabled) createAutoStartCustomBattleData(packFiles);
+    // Both scripts drive the main menu; custom battle wins if an old config has both on.
+    if (startGameOptions.isAutoStartCustomBattleEnabled)
+      createFrontendScriptData(packFiles, "pj_auto_custom_battles", autoStartCustomBattleScript);
+    else if (startGameOptions.isAutoStartNewCampaignEnabled)
+      createFrontendScriptData(packFiles, "pj_auto_new_campaign", autoStartNewCampaignScript);
     if (packFiles.length < 1) return;
     outFile = new BinaryFile(path, "w", true);
     await outFile.open();

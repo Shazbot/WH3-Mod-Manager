@@ -29,6 +29,7 @@ export interface AppControlLaunchOptions {
   skipIntroMovies?: boolean;
   scriptLogging?: boolean;
   autoStartCustomBattle?: boolean;
+  autoStartNewCampaign?: boolean;
   makeUnitsGenerals?: boolean;
   closeAppOnPlay?: boolean;
 }

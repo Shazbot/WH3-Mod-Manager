@@ -123,11 +123,23 @@ export const planSelection = (appState: AppState, params: AppControlModSelection
   };
 };
 
+const autoStartOptions = (appState: AppState, overrides: AppControlLaunchOptions) => {
+  // Both auto-start scripts drive the main menu, so turning one on for a launch turns the other off.
+  if (overrides.autoStartNewCampaign)
+    return { isAutoStartCustomBattleEnabled: false, isAutoStartNewCampaignEnabled: true };
+  if (overrides.autoStartCustomBattle)
+    return { isAutoStartCustomBattleEnabled: true, isAutoStartNewCampaignEnabled: false };
+  return {
+    isAutoStartCustomBattleEnabled: overrides.autoStartCustomBattle ?? appState.isAutoStartCustomBattleEnabled,
+    isAutoStartNewCampaignEnabled: overrides.autoStartNewCampaign ?? appState.isAutoStartNewCampaignEnabled,
+  };
+};
+
 export const startGameOptions = (appState: AppState, overrides: AppControlLaunchOptions = {}): StartGameOptions => ({
   isMakeUnitsGeneralsEnabled: overrides.makeUnitsGenerals ?? appState.isMakeUnitsGeneralsEnabled,
   isSkipIntroMoviesEnabled: overrides.skipIntroMovies ?? appState.isSkipIntroMoviesEnabled,
   isScriptLoggingEnabled: overrides.scriptLogging ?? appState.isScriptLoggingEnabled,
-  isAutoStartCustomBattleEnabled: overrides.autoStartCustomBattle ?? appState.isAutoStartCustomBattleEnabled,
+  ...autoStartOptions(appState, overrides),
   isClosedOnPlay: overrides.closeAppOnPlay ?? appState.isClosedOnPlay,
   workshopModStagingMode: appState.workshopModStagingMode,
   compressWorkshopModsOnStart: appState.compressWorkshopModsOnStart,
