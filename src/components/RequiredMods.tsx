@@ -1,7 +1,7 @@
 import { Modal } from "../flowbite/components/Modal/index";
 import React, { memo, useContext, useEffect, useMemo } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
-import { toggleIgnoredMissingReqMods, toggleMod } from "../appSlice";
+import { setIsModEnabled, toggleIgnoredMissingReqMods } from "../appSlice";
 import localizationContext from "../localizationContext";
 import { MissingModDependency, splitIgnoredMissingModDependencies } from "../utility/frontend/missingModDependencies";
 
@@ -15,7 +15,7 @@ export interface RequiredModsProps {
 
 interface MissingModGroupsProps {
   modDependencies: MissingModDependency[];
-  onModClick: (name: string, id: string) => void;
+  onModClick: (id: string) => void;
 }
 
 /**
@@ -59,7 +59,7 @@ const MissingModGroups = ({ modDependencies, onModClick }: MissingModGroupsProps
             <button
               className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
               type="button"
-              onClick={() => onModClick(reqHumanName, reqId)}
+              onClick={() => onModClick(reqId)}
             >
               {installedWorkshopIds.has(reqId) ? `Enable` : `Subscribe And Enable`}
             </button>
@@ -96,7 +96,7 @@ const RequiredMods = memo((props: RequiredModsProps) => {
   const onClose = () => {
     props.setIsOpen(!props.isOpen);
   };
-  const onModClick = (name: string, id: string) => {
+  const onModClick = (id: string) => {
     let foundMod = mods.find((mod) => mod.workshopId == id);
     if (!foundMod) {
       const modInAll = allMods.find((mod) => mod.workshopId == id);
@@ -104,13 +104,13 @@ const RequiredMods = memo((props: RequiredModsProps) => {
         subbedModIdsToWaitFor.push(id);
         window.api?.subscribeToMods([id]);
       } else {
-        foundMod = mods.find((mod) => mod.name == name);
+        foundMod = mods.find((mod) => mod.name == modInAll.name);
         if (!foundMod) return;
       }
     }
 
     if (foundMod) {
-      dispatch(toggleMod(foundMod));
+      dispatch(setIsModEnabled({ mod: foundMod, isEnabled: true }));
     }
   };
 
@@ -130,7 +130,7 @@ const RequiredMods = memo((props: RequiredModsProps) => {
       newMods.forEach((id) => {
         const foundMod = mods.find((mod) => mod.workshopId == id);
         if (foundMod) {
-          dispatch(toggleMod(foundMod));
+          dispatch(setIsModEnabled({ mod: foundMod, isEnabled: true }));
         }
       });
     }, 100);
