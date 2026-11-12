@@ -69,12 +69,20 @@ function readCauleb128(buffer: Buffer, offset: number): { value: number; nextOff
   throw new Error(`Invalid CAULEB128 integer at offset ${offset}.`);
 }
 
+interface ChildEntry {
+  node: CaabRecordNode;
+  start: number;
+  end: number;
+}
+
 interface OpenRecord {
   node: CaabRecordNode;
   /** Byte ranges of each group's contents, excluding the group-size prefixes. */
   groupRanges: { start: number; end: number }[];
-  /** Child records collected per group, in file order. */
-  groupChildren: CaabRecordNode[][];
+  /** Child records collected per group, in file order, with the byte range each spans. */
+  groupChildren: ChildEntry[][];
+  /** Index of the group the next child can belong to; children arrive in file order. */
+  groupCursor: number;
   blockStartOffset: number;
   blockEndOffset: number;
 }
@@ -118,22 +126,17 @@ function readGroupRanges(
 /** Turns a group's child records plus the gaps between them into an item list. */
 function buildGroupItems(
   range: { start: number; end: number },
-  children: CaabRecordNode[],
-  childRanges: Map<CaabRecordNode, { start: number; end: number }>
+  children: ChildEntry[]
 ): CaabItem[] {
   const items: CaabItem[] = [];
   let cursor = range.start;
 
   for (const child of children) {
-    const childRange = childRanges.get(child);
-    if (!childRange) {
-      throw new Error(`Missing byte range for child record ${child.name}.`);
+    if (child.start > cursor) {
+      items.push({ kind: "raw", start: cursor, end: child.start });
     }
-    if (childRange.start > cursor) {
-      items.push({ kind: "raw", start: cursor, end: childRange.start });
-    }
-    items.push(child);
-    cursor = childRange.end;
+    items.push(child.node);
+    cursor = child.end;
   }
 
   if (cursor < range.end) {
@@ -153,7 +156,10 @@ export function buildCaabTree(
   tables: Pick<CaabStringTables, "recordNames" | "utf8ById" | "utf16ById">
 ): CaabRecordNode {
   const stack: OpenRecord[] = [];
-  const childRanges = new Map<CaabRecordNode, { start: number; end: number }>();
+  const recordNameIndex = new Map<string, number>();
+  tables.recordNames.forEach((name, index) => {
+    if (!recordNameIndex.has(name)) recordNameIndex.set(name, index);
+  });
   let root: CaabRecordNode | null = null;
 
   walkCaabNodes(buffer, header, tables, {
@@ -186,13 +192,11 @@ export function buildCaabTree(
         groupSizeWidths: [],
       };
 
-      const nameIndex = tables.recordNames.indexOf(record.name);
+      const nameIndex = recordNameIndex.get(record.name) ?? -1;
       if (nameIndex < 0) {
         throw new Error(`Record name ${record.name} is not in the record-name table.`);
       }
       node.nameIndex = nameIndex;
-
-      childRanges.set(node, { start: record.startOffset, end: record.blockEndOffset });
 
       const { ranges: groupRanges, widths: groupSizeWidths } = readGroupRanges(
         buffer,
@@ -207,6 +211,7 @@ export function buildCaabTree(
         node,
         groupRanges,
         groupChildren: groupRanges.map(() => []),
+        groupCursor: 0,
         blockStartOffset: record.blockStartOffset,
         blockEndOffset: record.blockEndOffset,
       });
@@ -217,13 +222,19 @@ export function buildCaabTree(
       }
 
       const parent = stack[stack.length - 2];
-      const groupIndex = parent.groupRanges.findIndex(
-        (range) => record.startOffset >= range.start && record.blockEndOffset <= range.end
-      );
-      if (groupIndex < 0) {
+      const ranges = parent.groupRanges;
+      while (parent.groupCursor < ranges.length && record.startOffset >= ranges[parent.groupCursor].end) {
+        parent.groupCursor += 1;
+      }
+      const groupIndex = parent.groupCursor;
+      if (
+        groupIndex >= ranges.length ||
+        record.startOffset < ranges[groupIndex].start ||
+        record.blockEndOffset > ranges[groupIndex].end
+      ) {
         throw new Error(`Record ${record.name} at ${record.startOffset} fell outside every parent group.`);
       }
-      parent.groupChildren[groupIndex].push(node);
+      parent.groupChildren[groupIndex].push({ node, start: record.startOffset, end: record.blockEndOffset });
     },
 
     onRecordEnd() {
@@ -232,7 +243,7 @@ export function buildCaabTree(
         throw new Error("CAAB record end without a matching start.");
       }
       open.node.groups = open.groupRanges.map((range, index) =>
-        buildGroupItems(range, open.groupChildren[index], childRanges)
+        buildGroupItems(range, open.groupChildren[index])
       );
     },
   });

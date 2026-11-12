@@ -306,6 +306,7 @@ declare global {
     isSkipIntroMoviesEnabled: boolean;
     isAutoStartCustomBattleEnabled: boolean;
     isAutoStartNewCampaignEnabled: boolean;
+    isRemoveUnusedMixerFactionsEnabled: boolean;
     isChangingGameProcessPriority: boolean;
     /** Lets the CLI and MCP change mods and launch the game through the control pipe. */
     isAppControlEnabled: boolean;
@@ -474,6 +475,7 @@ declare global {
     | "isSkipIntroMoviesEnabled"
     | "isAutoStartCustomBattleEnabled"
     | "isAutoStartNewCampaignEnabled"
+    | "isRemoveUnusedMixerFactionsEnabled"
     | "isChangingGameProcessPriority"
     | "isAppControlEnabled"
     | "isFeaturesForModdersEnabled"
@@ -572,6 +574,7 @@ declare global {
     | "isScriptLoggingEnabled"
     | "isAutoStartCustomBattleEnabled"
     | "isAutoStartNewCampaignEnabled"
+    | "isRemoveUnusedMixerFactionsEnabled"
   >;
 
   type StartGameOptions = StartGameSpecificOptions & { isRigidModelV2CompressionEnabled?: boolean } &

@@ -1,4 +1,5 @@
 import Select, { ActionMeta, OptionProps, SingleValue, SingleValueProps, components } from "react-select";
+import { hasEnabledMixer } from "../mixerStartpos/mixerPack";
 import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   toggleAlwaysHiddenMods,
@@ -18,6 +19,7 @@ import {
   setModListWidth,
   toggleIsAutoStartCustomBattleEnabled,
   toggleIsAutoStartNewCampaignEnabled,
+  toggleIsRemoveUnusedMixerFactionsEnabled,
   toggleIsScriptLoggingEnabled,
   toggleIsSkipIntroMoviesEnabled,
   toggleMakeUnitsGenerals,
@@ -180,6 +182,7 @@ const OptionsDrawer = memo(() => {
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
   const isAutoStartNewCampaignEnabled = useAppSelector((state) => state.app.isAutoStartNewCampaignEnabled);
+  const isRemoveUnusedMixerFactionsEnabled = useAppSelector((state) => state.app.isRemoveUnusedMixerFactionsEnabled);
   const isChangingGameProcessPriority = useAppSelector((state) => state.app.isChangingGameProcessPriority);
   const isAppControlEnabled = useAppSelector((state) => state.app.isAppControlEnabled);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
@@ -207,6 +210,7 @@ const OptionsDrawer = memo(() => {
     (mods: Mod[]) => mods.filter((iterMod) => iterMod.isEnabled),
   );
   const enabledMods = useSelector(enabledModsSelector);
+  const isMixerEnabled = hasEnabledMixer(enabledMods);
   const workshopMods = useMemo(() => allMods.filter(isWorkshopMod), [allMods]);
   const customModFolders = useMemo(() => appFolderPaths.customModFolders || [], [appFolderPaths.customModFolders]);
   const modSourceOrder = useMemo(
@@ -1758,6 +1762,36 @@ const OptionsDrawer = memo(() => {
                         }
                       >
                         {localized.autoStartNewCampaign}
+                      </Tooltip>
+                    </label>
+                  </div>
+                )}
+                {gameToSupportedGameOptions[currentGame].includes("RemoveUnusedMixerFactions") && (
+                  <div className="flex items-center ml-1 mt-2">
+                    <input
+                      className=""
+                      type="checkbox"
+                      id="toggleIsRemoveUnusedMixerFactionsEnabled"
+                      checked={!!isRemoveUnusedMixerFactionsEnabled}
+                      disabled={!isMixerEnabled}
+                      onChange={() => dispatch(toggleIsRemoveUnusedMixerFactionsEnabled())}
+                    ></input>
+                    <label
+                      className={isMixerEnabled ? "ml-2" : "ml-2 text-gray-400"}
+                      htmlFor="toggleIsRemoveUnusedMixerFactionsEnabled"
+                    >
+                      <Tooltip
+                        placement="bottom"
+                        style="light"
+                        content={
+                          <>
+                            <div>{localized.removeUnusedMixerFactions1}</div>
+                            <div>{localized.removeUnusedMixerFactions2}</div>
+                            {!isMixerEnabled && <div>{localized.removeUnusedMixerFactionsRequiresMixer}</div>}
+                          </>
+                        }
+                      >
+                        {localized.removeUnusedMixerFactions}
                       </Tooltip>
                     </label>
                   </div>

@@ -48,6 +48,7 @@ const initialState = {
   isSkipIntroMoviesEnabled: false,
   isAutoStartCustomBattleEnabled: false,
   isAutoStartNewCampaignEnabled: false,
+  isRemoveUnusedMixerFactionsEnabled: false,
   isChangingGameProcessPriority: false,
   isAppControlEnabled: true,
   isFeaturesForModdersEnabled: false,

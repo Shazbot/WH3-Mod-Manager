@@ -1,4 +1,5 @@
 import { gameToProcessName, gameToSteamId } from "./supportedGames";
+import { terminateMixerStartposWorker } from "./mixerStartpos";
 import { exec, spawn, spawnSync } from "child_process";
 import { app, autoUpdater, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 import installExtension, { REACT_DEVELOPER_TOOLS, REDUX_DEVTOOLS } from "electron-devtools-installer";
@@ -816,6 +817,7 @@ exec ${quoteForShell(process.execPath)}
 
   app.on("before-quit", (event) => {
     isAppQuitting = true;
+    terminateMixerStartposWorker();
     if (isQuittingAfterConfigFlush) return;
 
     event.preventDefault();

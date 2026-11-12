@@ -1,5 +1,5 @@
 import { CaabRecordNode } from "../esf/codecs/caabTree";
-import { decodeU32, encodeU32, findRecords } from "./addFaction";
+import { decodeU32, encodeU32, findRecordsByName } from "./addFaction";
 
 /** Explicit sparse tables whose leading u32 is a campaign faction ID.
  * Native reader evidence and input identity audits live in startpos_all_mixer_factions.
@@ -20,7 +20,8 @@ export const FACTION_KEYED_ROW_VERSIONS: Readonly<Record<string, number>> = {
 };
 export function remapFactionKeyedRows(root: CaabRecordNode, source: Buffer, mapping: ReadonlyMap<number, number>, removedIds: ReadonlySet<number>) {
   let removed = 0, remapped = 0;
-  for (const [name, version] of Object.entries(FACTION_KEYED_ROW_VERSIONS)) for (const node of findRecords(root, name)) {
+  const nodesByName = findRecordsByName(root, new Set(Object.keys(FACTION_KEYED_ROW_VERSIONS)));
+  for (const [name, version] of Object.entries(FACTION_KEYED_ROW_VERSIONS)) for (const node of nodesByName.get(name)!) {
     if (node.version !== version) throw new Error(`Unsupported ${name} version ${node.version}.`);
     const groups = [], widths = [], seen = new Set<number>();
     for (let i = 0; i < node.groups.length; i++) {
@@ -41,7 +42,8 @@ export function remapFactionKeyedRows(root: CaabRecordNode, source: Buffer, mapp
 }
 
 export function validateFactionKeyedRows(root: CaabRecordNode, source: Buffer, maximumFactionId: number): void {
-  for (const [name, version] of Object.entries(FACTION_KEYED_ROW_VERSIONS)) for (const node of findRecords(root, name)) {
+  const nodesByName = findRecordsByName(root, new Set(Object.keys(FACTION_KEYED_ROW_VERSIONS)));
+  for (const [name, version] of Object.entries(FACTION_KEYED_ROW_VERSIONS)) for (const node of nodesByName.get(name)!) {
     if (node.version !== version) throw new Error(`Unsupported ${name} version ${node.version}.`);
     const seen = new Set<number>();
     for (const group of node.groups) {

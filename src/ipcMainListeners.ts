@@ -232,6 +232,7 @@ import * as net from "node:net";
 import debounce from "just-debounce-it";
 import fetch from "node-fetch";
 import * as nodePath from "path";
+import { getTrimmedMixerStartpos } from "./mixerStartpos";
 import { version } from "react";
 import { readAppConfig, setStartingConfig, writeAppConfig } from "./appConfigFunctions";
 import { applyConfigSavePayloadToAppData } from "./config/applyConfigSavePayload";
@@ -13600,6 +13601,9 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     if (startGameOptions.isMakeUnitsGeneralsEnabled) {
       tablesToRead.push("db\\units_custom_battle_permissions_tables\\");
     }
+    if (startGameOptions.isRemoveUnusedMixerFactionsEnabled) {
+      tablesToRead.push("db\\factions_tables\\");
+    }
     if (tablesToRead.length == 0) return;
     mainWindow?.webContents.send("addToast", {
       type: "info",
@@ -14333,7 +14337,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           startGameOptions.isScriptLoggingEnabled ||
           startGameOptions.isSkipIntroMoviesEnabled ||
           startGameOptions.isAutoStartCustomBattleEnabled ||
-          startGameOptions.isAutoStartNewCampaignEnabled
+          startGameOptions.isAutoStartNewCampaignEnabled ||
+          startGameOptions.isRemoveUnusedMixerFactionsEnabled
         ) {
           log("making temp dir");
           await fs.mkdirSync(nodePath.join(appDataPath, "tempPacks"), { recursive: true });
@@ -14347,6 +14352,20 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           );
           const tempPackName = "!!!!out.pack";
           const tempPackPath = nodePath.join(appDataPath, "tempPacks", tempPackName);
+          const mixerStartpos = startGameOptions.isRemoveUnusedMixerFactionsEnabled
+            ? await getTrimmedMixerStartpos({
+                sortedMods,
+                vanillaMods: vanillaPacks,
+                packsData: appData.packsData,
+                userDataPath: appDataPath,
+                notify: (message, type = "info") =>
+                  mainWindow?.webContents.send("addToast", {
+                    type,
+                    messages: [message],
+                    startTime: Date.now(),
+                  } as Toast),
+              })
+            : undefined;
           log("writing start game pack");
           let failedWriting = true;
           for (let i = 0; i < 10; i++) {
@@ -14357,6 +14376,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                 tempPackPath,
                 sortedMods.concat(vanillaPacks),
                 startGameOptions,
+                mixerStartpos,
               );
               failedWriting = false;
               break;

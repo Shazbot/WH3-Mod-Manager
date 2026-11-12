@@ -9,6 +9,7 @@ import {
   encodeU32,
   findFirstRecord,
   findRecords,
+  findRecordsByName,
   relationshipGroupId,
   validateFactionIdPermutation,
 } from "./addFaction";
@@ -564,7 +565,8 @@ export function validateCaiFactionBeliefReferences(root: CaabRecordNode, source:
   if (!world) throw new Error("CAI_WORLD_FACTIONS missing.");
   const live = new Set(world.groups.map(group => firstU32InRecord(group, "OWNED_DIRECT", source)));
   let checked = 0;
-  for (const [name, slots] of Object.entries(CAI_FACTION_BELIEF_ID_SLOTS)) for (const row of findRecords(root, name)) {
+  const rowsByName = findRecordsByName(root, new Set(Object.keys(CAI_FACTION_BELIEF_ID_SLOTS)));
+  for (const [name, slots] of Object.entries(CAI_FACTION_BELIEF_ID_SLOTS)) for (const row of rowsByName.get(name)!) {
     const values = readFactionBeliefValues(row, source, Math.max(...slots) + 1);
     for (const slot of slots) {
       const id = values[slot];

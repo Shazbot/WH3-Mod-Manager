@@ -107,6 +107,7 @@ export function selectConfigSavePayload(appState: AppState): ConfigSavePayload {
       isSkipIntroMoviesEnabled: appState.isSkipIntroMoviesEnabled,
       isAutoStartCustomBattleEnabled: appState.isAutoStartCustomBattleEnabled,
       isAutoStartNewCampaignEnabled: appState.isAutoStartNewCampaignEnabled,
+      isRemoveUnusedMixerFactionsEnabled: appState.isRemoveUnusedMixerFactionsEnabled,
       isChangingGameProcessPriority: appState.isChangingGameProcessPriority,
       isAppControlEnabled: appState.isAppControlEnabled,
       isFeaturesForModdersEnabled: appState.isFeaturesForModdersEnabled,

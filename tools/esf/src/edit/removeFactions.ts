@@ -13,6 +13,14 @@ import { remapRegionFactionOwners } from "./regionFactionIds";
 import { removeCaiMobileDependents } from "./caiMobileDependents";
 import { removeCaiMobileReferences, removeCaiDependentReferenceArrays } from "./caiMobileReferences";
 
+/** Faction key held by a region-ownership value (region owner or preview ownership), if `v` is one. Shared with the collector so removal and detection cannot drift. */
+export function regionReferencedFactionKey(v: { kind: string; type?: string; value?: unknown }, stack: readonly string[]): string | undefined {
+  const regionReference = ["REGION", "BUILDING_BASE"].includes(stack[stack.length - 1]) && stack.includes("REGIONS_ARRAY");
+  const previewOwnership = stack[stack.length - 1] === "REGION_OWNERSHIPS" && stack.includes("REGION_OWNERSHIPS_BY_THEATRE");
+  if (v.kind !== "value" || v.type !== "ascii" || !(regionReference || previewOwnership)) return undefined;
+  return (v.value as { text?: string }).text || undefined;
+}
+
 export function filterFactionGroups(node: CaabRecordNode, remove: (group: CaabItem[], index: number) => boolean): number {
   const groups: CaabItem[][] = [], widths: number[] = []; let removed = 0;
   node.groups.forEach((group, index) => {
@@ -93,10 +101,7 @@ export function removeFactions(source: Buffer, header: { recordNamesOffset: numb
       if (mobile && s[s.length - 1] === "CAI_RESOURCE_MOBILE" && v.kind === "value") {
         if (v.type === "u32" && typeof v.value === "number") { if (mobile.scalar === 0) mobile.key = v.value; if (mobile.scalar === 9) mobile.force = v.value; } mobile.scalar++;
       }
-      const regionReference = ["REGION", "BUILDING_BASE"].includes(s[s.length - 1]) && s.includes("REGIONS_ARRAY");
-      const previewOwnership = s[s.length - 1] === "REGION_OWNERSHIPS" && s.includes("REGION_OWNERSHIPS_BY_THEATRE");
-      if (v.kind !== "value" || v.type !== "ascii" || !(regionReference || previewOwnership)) return;
-      const key = (v.value as { text?: string }).text;
+      const key = regionReferencedFactionKey(v, s);
       if (!key || !wanted.has(key)) return;
       const transfer = transfers[key];
       if (!transfer || !keys.includes(transfer) || wanted.has(transfer)) throw new Error(`Region of ${key} requires a surviving transfer recipient.`);

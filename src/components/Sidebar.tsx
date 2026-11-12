@@ -12,6 +12,7 @@ import {
   setIsHelpOpen,
   toggleIsAutoStartCustomBattleEnabled,
   toggleIsAutoStartNewCampaignEnabled,
+  toggleIsRemoveUnusedMixerFactionsEnabled,
   toggleIsChangingGameProcessPriority,
   toggleIsScriptLoggingEnabled,
   toggleIsSkipIntroMoviesEnabled,
@@ -34,6 +35,7 @@ import { toPresetEntries } from "../config/presetEntries";
 import { Modal } from "../flowbite";
 import { getConflictingStartposMods } from "../utility/startposConflicts";
 import { getEnabledMods } from "../modsHelpers";
+import { hasEnabledMixer } from "../mixerStartpos/mixerPack";
 import { splitIgnoredMissingModDependencies } from "../utility/frontend/missingModDependencies";
 import { runGuarded } from "../utility/runGuarded";
 
@@ -91,6 +93,7 @@ const Sidebar = memo(() => {
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
   const isAutoStartNewCampaignEnabled = useAppSelector((state) => state.app.isAutoStartNewCampaignEnabled);
+  const isRemoveUnusedMixerFactionsEnabled = useAppSelector((state) => state.app.isRemoveUnusedMixerFactionsEnabled);
   const isChangingGameProcessPriority = useAppSelector((state) => state.app.isChangingGameProcessPriority);
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
   const workshopModStagingMode = useAppSelector((state) => state.app.workshopModStagingMode);
@@ -217,17 +220,37 @@ const Sidebar = memo(() => {
     });
   };
 
-  const renderGameStartMenuOption = (key: string, label: string, checked: boolean, onToggle: () => void) => (
+  const renderGameStartMenuOption = (
+    key: string,
+    label: string,
+    checked: boolean,
+    onToggle: () => void,
+    disabledReason?: string,
+  ) => (
     <button
       key={key}
       type="button"
       role="menuitemcheckbox"
       aria-checked={checked}
-      className="flex w-full items-start gap-2 rounded px-3 py-2 text-left text-sm text-white hover:bg-gray-700 focus:bg-gray-700 focus:outline-hidden"
-      onClick={onToggle}
+      aria-disabled={disabledReason ? true : undefined}
+      className={
+        disabledReason
+          ? "flex w-full cursor-not-allowed items-start gap-2 rounded px-3 py-2 text-left text-sm text-gray-400 focus:bg-gray-700 focus:outline-hidden"
+          : "flex w-full items-start gap-2 rounded px-3 py-2 text-left text-sm text-white hover:bg-gray-700 focus:bg-gray-700 focus:outline-hidden"
+      }
+      onClick={disabledReason ? undefined : onToggle}
     >
-      <input type="checkbox" readOnly checked={checked} className="pointer-events-none mt-0.5 accent-blue-500" />
-      <span>{label}</span>
+      <input
+        type="checkbox"
+        readOnly
+        disabled={!!disabledReason}
+        checked={checked}
+        className="pointer-events-none mt-0.5 accent-blue-500"
+      />
+      <span>
+        {label}
+        {disabledReason && <span className="block text-xs text-gray-400">{disabledReason}</span>}
+      </span>
     </button>
   );
 
@@ -261,6 +284,7 @@ const Sidebar = memo(() => {
               isScriptLoggingEnabled,
               isAutoStartCustomBattleEnabled,
               isAutoStartNewCampaignEnabled,
+              isRemoveUnusedMixerFactionsEnabled,
               isClosedOnPlay,
               workshopModStagingMode,
               compressWorkshopModsOnStart,
@@ -282,6 +306,7 @@ const Sidebar = memo(() => {
         isScriptLoggingEnabled,
         isAutoStartCustomBattleEnabled,
         isAutoStartNewCampaignEnabled,
+        isRemoveUnusedMixerFactionsEnabled,
         isClosedOnPlay,
         workshopModStagingMode,
         compressWorkshopModsOnStart,
@@ -298,6 +323,7 @@ const Sidebar = memo(() => {
       dispatch,
       isAutoStartCustomBattleEnabled,
       isAutoStartNewCampaignEnabled,
+      isRemoveUnusedMixerFactionsEnabled,
       isClosedOnPlay,
       workshopModStagingMode,
       compressWorkshopModsOnStart,
@@ -350,6 +376,7 @@ const Sidebar = memo(() => {
                 isScriptLoggingEnabled,
                 isAutoStartCustomBattleEnabled,
                 isAutoStartNewCampaignEnabled,
+                isRemoveUnusedMixerFactionsEnabled,
                 isClosedOnPlay,
                 workshopModStagingMode,
                 compressWorkshopModsOnStart,
@@ -376,6 +403,7 @@ const Sidebar = memo(() => {
           isScriptLoggingEnabled,
           isAutoStartCustomBattleEnabled,
           isAutoStartNewCampaignEnabled,
+          isRemoveUnusedMixerFactionsEnabled,
           isClosedOnPlay,
           workshopModStagingMode,
           compressWorkshopModsOnStart,
@@ -393,6 +421,7 @@ const Sidebar = memo(() => {
       areModsInOrder,
       isAutoStartCustomBattleEnabled,
       isAutoStartNewCampaignEnabled,
+      isRemoveUnusedMixerFactionsEnabled,
       isClosedOnPlay,
       workshopModStagingMode,
       compressWorkshopModsOnStart,
@@ -568,6 +597,7 @@ const Sidebar = memo(() => {
     Object.entries(outdatedPackFiles).filter(([packName]) => enabledMods.some((mod) => mod.name === packName)),
   );
   const conflictingStartposMods = getConflictingStartposMods(enabledMods);
+  const isMixerEnabled = hasEnabledMixer(enabledMods);
 
   const possiblyOutdatedWorkshopMods = enabledMods
     .filter((mod) => isWorkshopMod(mod) && mod.lastChanged != null)
@@ -1179,6 +1209,17 @@ const Sidebar = memo(() => {
                     localized.autoStartNewCampaign || "Auto-start new campaign",
                     !!isAutoStartNewCampaignEnabled,
                     () => dispatch(toggleIsAutoStartNewCampaignEnabled()),
+                  )}
+                {gameStartOptions.includes("RemoveUnusedMixerFactions") &&
+                  renderGameStartMenuOption(
+                    "remove-unused-mixer-factions",
+                    localized.removeUnusedMixerFactions || "Remove unused factions",
+                    !!isRemoveUnusedMixerFactionsEnabled,
+                    () => dispatch(toggleIsRemoveUnusedMixerFactionsEnabled()),
+                    isMixerEnabled
+                      ? undefined
+                      : localized.removeUnusedMixerFactionsRequiresMixer ||
+                          "Requires Mixer (!b_mixer.pack) to be enabled",
                   )}
                 {renderGameStartMenuOption(
                   "game-process-priority",

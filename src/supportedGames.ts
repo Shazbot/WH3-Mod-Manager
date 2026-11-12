@@ -9,6 +9,7 @@ export const supportedGameOptions = [
   "ScriptLogging",
   "AutoStartCustomBattle",
   "AutoStartNewCampaign",
+  "RemoveUnusedMixerFactions",
 ] as const;
 export type SupportedGameOptions = (typeof supportedGameOptions)[number];
 
@@ -17,7 +18,8 @@ type StartGameSpecificOptionKey =
   | "isSkipIntroMoviesEnabled"
   | "isScriptLoggingEnabled"
   | "isAutoStartCustomBattleEnabled"
-  | "isAutoStartNewCampaignEnabled";
+  | "isAutoStartNewCampaignEnabled"
+  | "isRemoveUnusedMixerFactionsEnabled";
 
 export const supportedGameOptionToStartGameOption: Record<SupportedGameOptions, StartGameSpecificOptionKey> = {
   MakeUnitsGenerals: "isMakeUnitsGeneralsEnabled",
@@ -25,6 +27,7 @@ export const supportedGameOptionToStartGameOption: Record<SupportedGameOptions, 
   ScriptLogging: "isScriptLoggingEnabled",
   AutoStartCustomBattle: "isAutoStartCustomBattleEnabled",
   AutoStartNewCampaign: "isAutoStartNewCampaignEnabled",
+  RemoveUnusedMixerFactions: "isRemoveUnusedMixerFactionsEnabled",
 };
 
 export const gameToGameFolder: Record<SupportedGames, string> = {
@@ -184,7 +187,14 @@ export const gameToIntroMovies: Record<SupportedGames, string[]> = {
 
 export const gameToSupportedGameOptions: Record<SupportedGames, SupportedGameOptions[]> = {
   wh2: ["ScriptLogging"],
-  wh3: ["MakeUnitsGenerals", "SkipIntroMovies", "ScriptLogging", "AutoStartCustomBattle", "AutoStartNewCampaign"],
+  wh3: [
+    "MakeUnitsGenerals",
+    "SkipIntroMovies",
+    "ScriptLogging",
+    "AutoStartCustomBattle",
+    "AutoStartNewCampaign",
+    "RemoveUnusedMixerFactions",
+  ],
   threeKingdoms: ["SkipIntroMovies", "ScriptLogging"],
   attila: ["ScriptLogging"],
   troy: ["ScriptLogging"],

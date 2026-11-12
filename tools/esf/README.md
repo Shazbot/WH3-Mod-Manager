@@ -262,6 +262,14 @@ Ravenqueen/Truthsayers output was compared byte-for-byte (decompressed) with the
 user-confirmed sequential two-faction output. Reference-array edits are collected
 and applied together; source records already deleted from the tree are skipped.
 
+`removeFactionsFromStartpos(outer, keys, { keepRegionOwners })` in
+`src/edit/removeFactionsFromStartpos.ts` is the whole pipeline (open, edit, write,
+verify, repack) as a library call; the batch CLI uses it. With `keepRegionOwners`
+(CLI: `--keep-region-owners`), keys that own a region or appear in preview region
+ownerships (`collectRegionReferencedFactionKeys`) are skipped and listed in
+`keptRegionOwners`, so no transfers are needed. WHMM's "Remove unused factions"
+launch option uses this in a worker process.
+
 After `yarn esf:build`, run `node tools/esf/dist/edit/removeFactions.test.js` for
 batch ID compaction and row-metadata cases. The existing reference-array tests
 also check skipped edits in a deleted parent. These tests and structural checks

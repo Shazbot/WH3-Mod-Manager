@@ -147,6 +147,23 @@ export function findRecords(node: CaabRecordNode, name: string, found: CaabRecor
   return found;
 }
 
+/** One traversal collecting records for several names; each list keeps the order `findRecords` would give. */
+export function findRecordsByName(node: CaabRecordNode, names: ReadonlySet<string>): Map<string, CaabRecordNode[]> {
+  const found = new Map<string, CaabRecordNode[]>();
+  for (const name of names) found.set(name, []);
+  const visit = (parent: CaabRecordNode) => {
+    for (const group of parent.groups) {
+      for (const item of group) {
+        if (item.kind !== "record") continue;
+        found.get(item.name)?.push(item);
+        visit(item);
+      }
+    }
+  };
+  visit(node);
+  return found;
+}
+
 export function findFirstRecord(node: CaabRecordNode, name: string): CaabRecordNode | null {
   for (const group of node.groups) {
     for (const item of group) {

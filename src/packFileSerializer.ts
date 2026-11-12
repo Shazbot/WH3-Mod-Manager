@@ -775,6 +775,15 @@ const createScriptLoggingData = (pack_files: PackedFile[]) => {
     schemaFields: [{ type: "Buffer", fields: [{ type: "Buffer", val: Buffer.from([0x00]) }] }],
   } as PackedFile);
 };
+const createMixerStartposData = (pack_files: PackedFile[], startpos: Buffer) => {
+  pack_files.push({
+    name: "campaigns\\wh3_main_combi\\startpos.esf",
+    file_size: startpos.byteLength,
+    start_pos: 0,
+    is_compressed: false,
+    schemaFields: [{ type: "Buffer", fields: [{ type: "Buffer", val: startpos }] }],
+  } as PackedFile);
+};
 const createFrontendScriptData = (pack_files: PackedFile[], name: string, script: string) => {
   const scriptBuffer = Buffer.from(script, "utf-8");
   pack_files.push({
@@ -1360,7 +1369,9 @@ export const prepareFlow = (
       };
       const strengthOptionId = String((node.data as any).strengthOptionId || "");
       if (strengthOptionId) (node.data as any).strength = resolveNumericOption(strengthOptionId);
-      const outputBindings = { ...(((node.data as any).outputBindings || {}) as Record<string, Record<string, unknown>>) };
+      const outputBindings = {
+        ...(((node.data as any).outputBindings || {}) as Record<string, Record<string, unknown>>),
+      };
       for (const [modelKey, binding] of Object.entries(outputBindings)) {
         const optionId = typeof binding?.strengthOptionId === "string" ? binding.strengthOptionId : "";
         if (!optionId) continue;
@@ -2036,6 +2047,7 @@ export const writeStartGamePack = async (
   path: string,
   enabledMods: Mod[],
   startGameOptions: StartGameOptions,
+  mixerStartpos?: Buffer,
 ) => {
   let outFile: BinaryFile | undefined;
   try {
@@ -2052,6 +2064,7 @@ export const writeStartGamePack = async (
       createFrontendScriptData(packFiles, "pj_auto_custom_battles", autoStartCustomBattleScript);
     else if (startGameOptions.isAutoStartNewCampaignEnabled)
       createFrontendScriptData(packFiles, "pj_auto_new_campaign", autoStartNewCampaignScript);
+    if (mixerStartpos) createMixerStartposData(packFiles, mixerStartpos);
     if (packFiles.length < 1) return;
     outFile = new BinaryFile(path, "w", true);
     await outFile.open();

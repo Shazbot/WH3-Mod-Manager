@@ -1269,6 +1269,7 @@ const appSlice = createSlice({
       state.isScriptLoggingEnabled = fromConfigAppState.isScriptLoggingEnabled;
       state.isAutoStartCustomBattleEnabled = fromConfigAppState.isAutoStartCustomBattleEnabled;
       state.isAutoStartNewCampaignEnabled = fromConfigAppState.isAutoStartNewCampaignEnabled ?? false;
+      state.isRemoveUnusedMixerFactionsEnabled = fromConfigAppState.isRemoveUnusedMixerFactionsEnabled ?? false;
       state.isChangingGameProcessPriority = fromConfigAppState.isChangingGameProcessPriority;
       state.isAppControlEnabled = fromConfigAppState.isAppControlEnabled ?? true;
       state.isFeaturesForModdersEnabled = fromConfigAppState.isFeaturesForModdersEnabled;
@@ -1780,6 +1781,9 @@ const appSlice = createSlice({
       state.isAutoStartNewCampaignEnabled = !state.isAutoStartNewCampaignEnabled;
       if (state.isAutoStartNewCampaignEnabled) state.isAutoStartCustomBattleEnabled = false;
     },
+    toggleIsRemoveUnusedMixerFactionsEnabled: (state: AppState) => {
+      state.isRemoveUnusedMixerFactionsEnabled = !state.isRemoveUnusedMixerFactionsEnabled;
+    },
     toggleIsChangingGameProcessPriority: (state: AppState) => {
       state.isChangingGameProcessPriority = !state.isChangingGameProcessPriority;
     },
@@ -2225,6 +2229,7 @@ export const {
   toggleIsSkipIntroMoviesEnabled,
   toggleIsAutoStartCustomBattleEnabled,
   toggleIsAutoStartNewCampaignEnabled,
+  toggleIsRemoveUnusedMixerFactionsEnabled,
   toggleIsChangingGameProcessPriority,
   toggleIsAppControlEnabled,
   toggleIsFeaturesForModdersEnabled,

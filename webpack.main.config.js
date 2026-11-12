@@ -18,7 +18,11 @@ module.exports = {
    * side-effect entry that registers its narrowly scoped handlers before the window can request a
    * preview; index.ts remains the normal application bootstrap.
    */
-  entry: ["./src/wh3AssetHostIpc.ts", "./src/index.ts"],
+  entry: {
+    index: ["./src/wh3AssetHostIpc.ts", "./src/index.ts"],
+    // Forked by src/mixerStartpos/index.ts; bundled so the native @napi-rs/lzma goes through the asset relocator.
+    mixerStartposWorker: "./src/mixerStartpos/worker.ts",
+  },
   // Put your normal webpack config below here
   module: {
     rules: require("./webpack.rules"),
@@ -106,7 +110,7 @@ module.exports = {
     pathinfo: false,
     // Use unique chunk naming to avoid conflicts
     chunkFilename: isProduction ? "main.[name].[contenthash].js" : "main.[name].js",
-    filename: "index.js", // Explicit main filename
+    filename: "[name].js", // index.js for the app, mixerStartposWorker.js for the worker
     // Clean output directory
     clean: isProduction,
   },

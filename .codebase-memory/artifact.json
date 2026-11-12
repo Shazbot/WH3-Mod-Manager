@@ -1,11 +1,11 @@
 {
     "schema_version": 2,
-    "commit": "cd4a846de3329a77d2e249f161c33bb5bd0be49f",
-    "indexed_at": "2026-11-10T18:55:57Z",
+    "commit": "c68bab65351329c9e919967f91276fac32975d3f",
+    "indexed_at": "2026-11-12T20:09:45Z",
     "project": "mnt-k-projects-whmm",
-    "nodes": 59124,
-    "edges": 106289,
-    "original_size": 634716160,
-    "compressed_size": 16068768,
+    "nodes": 59353,
+    "edges": 108001,
+    "original_size": 635568128,
+    "compressed_size": 16229807,
     "compression_level": 3
 }

@@ -136,6 +136,7 @@ const SaveGame = memo((props: SaveGameProps) => {
   const isSkipIntroMoviesEnabled = useAppSelector((state) => state.app.isSkipIntroMoviesEnabled);
   const isAutoStartCustomBattleEnabled = useAppSelector((state) => state.app.isAutoStartCustomBattleEnabled);
   const isAutoStartNewCampaignEnabled = useAppSelector((state) => state.app.isAutoStartNewCampaignEnabled);
+  const isRemoveUnusedMixerFactionsEnabled = useAppSelector((state) => state.app.isRemoveUnusedMixerFactionsEnabled);
   const isClosedOnPlay = useAppSelector((state) => state.app.isClosedOnPlay);
   const workshopModStagingMode = useAppSelector((state) => state.app.workshopModStagingMode);
   const compressWorkshopModsOnStart = useAppSelector((state) => state.app.compressWorkshopModsOnStart);
@@ -175,6 +176,7 @@ const SaveGame = memo((props: SaveGameProps) => {
           isScriptLoggingEnabled,
           isAutoStartCustomBattleEnabled,
           isAutoStartNewCampaignEnabled,
+          isRemoveUnusedMixerFactionsEnabled,
           isClosedOnPlay,
           workshopModStagingMode,
           compressWorkshopModsOnStart,
@@ -196,6 +198,7 @@ const SaveGame = memo((props: SaveGameProps) => {
       isScriptLoggingEnabled,
       isAutoStartCustomBattleEnabled,
       isAutoStartNewCampaignEnabled,
+      isRemoveUnusedMixerFactionsEnabled,
       isClosedOnPlay,
       workshopModStagingMode,
       compressWorkshopModsOnStart,

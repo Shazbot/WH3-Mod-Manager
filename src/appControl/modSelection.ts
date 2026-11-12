@@ -140,6 +140,7 @@ export const startGameOptions = (appState: AppState, overrides: AppControlLaunch
   isSkipIntroMoviesEnabled: overrides.skipIntroMovies ?? appState.isSkipIntroMoviesEnabled,
   isScriptLoggingEnabled: overrides.scriptLogging ?? appState.isScriptLoggingEnabled,
   ...autoStartOptions(appState, overrides),
+  isRemoveUnusedMixerFactionsEnabled: appState.isRemoveUnusedMixerFactionsEnabled,
   isClosedOnPlay: overrides.closeAppOnPlay ?? appState.isClosedOnPlay,
   workshopModStagingMode: appState.workshopModStagingMode,
   compressWorkshopModsOnStart: appState.compressWorkshopModsOnStart,
