@@ -39,7 +39,9 @@
     "test": "node node_modules/vitest/vitest.mjs run --config vitest.config.mjs --configLoader native",
     "test:watch": "node node_modules/vitest/vitest.mjs --config vitest.config.mjs --configLoader native",
     "test:coverage": "node node_modules/vitest/vitest.mjs run --config vitest.config.mjs --configLoader native --coverage",
-    "postinstall": "node scripts/apply-patches.cjs"
+    "postinstall": "node scripts/apply-patches.cjs",
+    "esf:remove-faction": "yarn esf:build && node --max-old-space-size=8192 tools/esf/dist/cli/removeFaction.js",
+    "esf:remove-faction-pack": "yarn build:tools && yarn esf:build && node tools/esf/dist/cli/removeFactionPack.js"
   },
   "keywords": [],
   "author": {

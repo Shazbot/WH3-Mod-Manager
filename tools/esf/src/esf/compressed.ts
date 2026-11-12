@@ -65,14 +65,41 @@ export function findCompressedEsfBlock(buffer: Buffer): CompressedEsfBlock | nul
           props = value.value.payload;
         }
       },
-    },
+    }
   );
 
   if (!stream || uncompressedSize === null || !props) {
-    throw new Error("ESF declares COMPRESSED_DATA but the stream, its size or its LZMA properties could not be read.");
+    throw new Error(
+      "ESF declares COMPRESSED_DATA but the stream, its size or its LZMA properties could not be read."
+    );
   }
 
   return { stream, uncompressedSize, props };
+}
+
+/**
+ * Total War stores compressed blocks behind a 9-byte header of its own: a u32
+ * uncompressed size, then 5 bytes that are the LZMA properties byte plus a u32
+ * dictionary size. The four bytes after the size double as a format tag, which
+ * is how newer games signal LZ4 or Zstd instead of LZMA1.
+ */
+const MAGIC_LZ4 = 0x184d2204;
+const MAGIC_ZSTD = 0xfd2fb528;
+
+function detectFormat(props: Buffer): "lzma1" | "lz4" | "zstd" | "unknown" {
+  if (props.length < 4) {
+    return "unknown";
+  }
+  const magic = props.readUInt32LE(0);
+  if (magic === MAGIC_LZ4) {
+    return "lz4";
+  }
+  if (magic === MAGIC_ZSTD) {
+    return "zstd";
+  }
+  // Every shipped LZMA1 block uses properties byte 0x5d; only the dictionary
+  // size varies, so the low byte is the reliable discriminator.
+  return props[0] === 0x5d ? "lzma1" : "unknown";
 }
 
 /**
@@ -85,14 +112,43 @@ export function decompressEsfBlock(block: CompressedEsfBlock): Buffer {
     throw new Error(`Unexpected LZMA properties length ${block.props.length}; expected 5.`);
   }
 
-  const header = Buffer.alloc(13);
-  block.props.copy(header, 0);
-  header.writeBigUInt64LE(BigInt(block.uncompressedSize), 5);
+  const format = detectFormat(block.props);
+  if (format !== "lzma1") {
+    throw new Error(
+      format === "unknown"
+        ? `Unrecognised compression format (properties ${block.props.toString("hex")}).`
+        : `Compressed block uses ${format}, which is not supported yet; only LZMA1 is implemented.`
+    );
+  }
 
-  const decompressed = lzma.decompressSync(Buffer.concat([header, block.stream]));
+  const withDeclaredSize = Buffer.alloc(13);
+  block.props.copy(withDeclaredSize, 0);
+  withDeclaredSize.writeBigUInt64LE(BigInt(block.uncompressedSize), 5);
+
+  let decompressed: Buffer;
+  try {
+    decompressed = lzma.decompressSync(Buffer.concat([withDeclaredSize, block.stream]));
+  } catch (declaredSizeError) {
+    // Some blocks declare a size the stream does not actually reach. Retrying
+    // with the "unknown size" marker lets the decoder stop at the stream's own
+    // end marker instead of demanding more input.
+    const withUnknownSize = Buffer.alloc(13);
+    block.props.copy(withUnknownSize, 0);
+    withUnknownSize.writeBigUInt64LE(0xffffffffffffffffn, 5);
+    try {
+      decompressed = lzma.decompressSync(Buffer.concat([withUnknownSize, block.stream]));
+    } catch {
+      throw new Error(
+        `LZMA decompression failed with both the declared size (${block.uncompressedSize}) and an ` +
+          `unknown size: ${(declaredSizeError as Error).message}`
+      );
+    }
+  }
 
   if (decompressed.length !== block.uncompressedSize) {
-    throw new Error(`LZMA output size mismatch: got ${decompressed.length} bytes, expected ${block.uncompressedSize}.`);
+    throw new Error(
+      `LZMA output size mismatch: got ${decompressed.length} bytes, expected ${block.uncompressedSize}.`
+    );
   }
 
   return decompressed;

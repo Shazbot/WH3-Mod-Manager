@@ -135,7 +135,7 @@ local function press_emp_race_button()
     real_timer.register_singleshot("pj_auto_new_campaign_2", 1000)
 end
 
-local function run_it()
+local function press_new_campaign_button()
     local new_campaign_button = find_uicomponent(core:get_ui_root(), "main", "left_holder", "buttons_holder", "buttons_list", "campaign_frame", "campaign_buttons", "start_campaign_new", "button_start_campaign_new")
     if new_campaign_button then
         new_campaign_button:SimulateLClick()
@@ -161,9 +161,42 @@ local function run_it()
     end
 end
 
+local function run_it()
+    local campaign_button = find_uicomponent(core:get_ui_root(), "main", "left_holder", "buttons_holder", "buttons_list", "campaign", "button_campaign")
+    if campaign_button then
+        campaign_button:SimulateLClick()
+
+        core:remove_listener("pj_auto_new_campaign_01")
+        core:add_listener(
+            "pj_auto_new_campaign_01",
+            "RealTimeTrigger",
+            function(context)
+                return context.string == "pj_auto_new_campaign_01"
+            end,
+            function(context)
+                press_new_campaign_button()
+            end,
+            false
+        )
+        real_timer.register_singleshot("pj_auto_new_campaign_01", 1000)
+    end
+end
+
 core:add_ui_created_callback(
 	function()
-		run_it()
+        core:remove_listener("pj_auto_new_campaign_0")
+        core:add_listener(
+            "pj_auto_new_campaign_0",
+            "RealTimeTrigger",
+            function(context)
+                return context.string == "pj_auto_new_campaign_0"
+            end,
+            function(context)
+                run_it()
+            end,
+            false
+        )
+        real_timer.register_singleshot("pj_auto_new_campaign_0", 1000)
 	end
 )
 `;

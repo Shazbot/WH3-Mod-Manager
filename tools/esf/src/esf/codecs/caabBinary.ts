@@ -184,7 +184,8 @@ function parseStringTables(buffer: Buffer, recordNamesOffset: number, format: St
 
   for (let index = 0; index < utf16Count; index += 1) {
     const stringOffset = format === "caab" ? offset + 2 : offset + 4;
-    const stringData = format === "caab" ? readSizedUtf16(buffer, offset) : readSizedUtf16U32(buffer, offset);
+    const stringData =
+      format === "caab" ? readSizedUtf16(buffer, offset) : readSizedUtf16U32(buffer, offset);
     offset = stringData.offset;
     if (offset + 4 > buffer.length) {
       throw new Error(`Invalid CAAB UTF-16 string-table index at entry ${index}.`);
@@ -247,20 +248,19 @@ export interface CaabArrayValue {
   payload: Buffer;
 }
 
+/**
+ * Byte range a value occupies in the node section, from its marker byte up to
+ * (but not including) the next node. Present on every value the walker emits;
+ * optional only so the value literals below stay readable.
+ */
+export interface CaabValueSpan {
+  startOffset?: number;
+  endOffset?: number;
+}
+
 export type CaabValue =
-  | {
-      kind: "value";
-      marker: number;
-      type: string;
-      value:
-        | boolean
-        | number
-        | string
-        | { x: number; y: number }
-        | { x: number; y: number; z: number }
-        | { id: number; text: string | null };
-    }
-  | { kind: "array"; marker: number; value: CaabArrayValue };
+  | ({ kind: "value"; marker: number; type: string; value: boolean | number | string | { x: number; y: number } | { x: number; y: number; z: number } | { id: number; text: string | null } } & CaabValueSpan)
+  | ({ kind: "array"; marker: number; value: CaabArrayValue } & CaabValueSpan);
 
 export interface CaabRecordInfo {
   name: string;
@@ -323,7 +323,7 @@ function parseNode(
   stack: string[],
   tables: Pick<CaabStringTables, "recordNames" | "utf8ById" | "utf16ById">,
   visitor: CaabWalkVisitor,
-  nodesEndOffset: number,
+  nodesEndOffset: number
 ): number {
   if (offset >= nodesEndOffset) {
     throw new Error(`Invalid CAAB node offset ${offset} (nodes end ${nodesEndOffset}).`);
@@ -556,7 +556,7 @@ function parseNode(
       offset += 2;
       break;
     case MARKER_U32_24BIT:
-      parsed = { kind: "value", marker, type: "u32", value: readUInt24LE(buffer, offset) };
+      parsed = { kind: "value", marker, type: "u32", value: buffer.readUIntBE(offset, 3) };
       offset += 3;
       break;
     case MARKER_I32_ZERO:
@@ -622,6 +622,8 @@ function parseNode(
   }
 
   if (parsed) {
+    parsed.startOffset = markerOffset;
+    parsed.endOffset = offset;
     visitor.onValue?.(parsed, stack);
   }
 
@@ -632,7 +634,7 @@ export function walkCaabNodes(
   buffer: Buffer,
   header: Pick<CaabHeaderFields, "recordNamesOffset">,
   tables: Pick<CaabStringTables, "recordNames" | "utf8ById" | "utf16ById">,
-  visitor: CaabWalkVisitor,
+  visitor: CaabWalkVisitor
 ): void {
   const nodesStartOffset = 16;
   const nodesEndOffset = header.recordNamesOffset;

@@ -22,3 +22,12 @@ export { parsePathfindingCharacterGrid } from "./extract/pathfindingRegions";
 export type { PathfindingCharacterGrid, PathfindingRegionList } from "./extract/pathfindingRegions";
 export { extractCampaignTableIdentity, extractCampaignTableRow } from "./extract/campaignTable";
 export type { StartposCampaignTableIdentity, StartposCampaignTableRow } from "./extract/campaignTable";
+
+// ESF write/repack support and the first conservative startpos-edit prototype.
+export { buildCaabTree, replaceByteRange } from "./esf/codecs/caabTree";
+export type { CaabItem, CaabRecordNode, CaabRawSpan } from "./esf/codecs/caabTree";
+export { writeCaabBuffer } from "./esf/codecs/caabWriter";
+export { compressEsfBlock, repackCompressedEsf, repackAndVerify } from "./esf/recompress";
+export type { CompressedEsfPieces, RepackResult } from "./esf/recompress";
+export { collectFactionKeys, findFactionKeyReferences, removeFaction, removeLastFaction } from "./edit/removeFaction";
+export type { RemoveFactionOptions, RemoveFactionReport } from "./edit/removeFaction";

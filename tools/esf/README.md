@@ -184,3 +184,119 @@ Optional:
 
 - `--class-limit <n>` controls how many top classes are shown when not writing `--out`.
 - omit `--with-grid` to write metadata only (smaller JSON).
+
+
+## Startpos edit prototype: remove a faction
+
+The mutation prototype removes a faction by key and compacts explicit faction IDs in the
+faction records, diplomacy, AI rows, and the validated faction-indexed threat, favour,
+target, and plague records. CAI character-post groups are removed by their `OWNED_DIRECT` faction owner. Numeric
+post keys, campaign unit IDs, and CAI component IDs belong to different domains and
+must not be matched interchangeably. Historical influence-map deletion also updates
+the explicit serialized map count, preserving the count when it shares a raw span
+with the first map key. Removed mobiles are also removed from the known theatre and
+region reference arrays, their military-strength beliefs, and their paired basic/extended
+resource influence maps (including the explicit resource count). Dependent analyser
+and faction-manager arrays are trimmed as complete pairs; diplomatic analysis uses
+individual faction-reference lists. It updates the known
+faction-indexed arrays and refuses to write if ASCII references to the removed key remain.
+This is an initial format model; unknown numeric faction-ID fields may still require
+additional handling.
+It writes to a separate output path and never edits the input. If the faction key appears
+inside `REGIONS_ARRAY`, pass an existing faction with `--transfer-to`; otherwise the tool
+refuses to leave region references to a deleted faction.
+
+```bash
+yarn esf:remove-faction --file /path/to/startpos.esf --faction faction_key --out /path/to/startpos.edited.esf
+# If it owns regions:
+yarn esf:remove-faction --file /path/to/startpos.esf --faction faction_key --transfer-to other_faction --out /path/to/startpos.edited.esf
+```
+
+For a Mixer-style pack, the pack wrapper uses WHMM's CLI to extract the selected campaign
+startpos, build a one-file subset from the source pack, replace that startpos, and validate
+the resulting override pack. The source pack is left untouched:
+
+```bash
+yarn esf:remove-faction-pack \
+  --pack '/path/to/!b_mixer.pack' \
+  --campaign wh3_main_combi \
+  --faction ovn_alb_host_ravenqueen \
+  --out-pack '/path/to/!!b_mixer_ravenqueen_removed.pack'
+```
+
+The campaign value is the directory beneath `campaigns/`. Pass `--transfer-to <faction>`
+when removing a faction that owns regions, or `--overwrite` to replace an existing output.
+The pack wrapper requires both `yarn build:tools` and `yarn esf:build`; its package script
+runs both builds before creating the pack.
+
+The command reparses the result, checks faction keys, contiguous faction IDs, diplomacy
+rows, known indexed-ID records, and that no ASCII faction-key references remain. It also
+round-trips the compressed stream. The no-edit writer roundtrip loaded successfully in the current campaign test.
+On 2026-11-10 the user confirmed that the corrected Mixer Ravenqueen-removal
+output (v48) loaded into the campaign. Native debugging identified the stale map
+counters and dangling CAI references fixed above. This validates that specific
+campaign-load case; save/reload, end-turn behavior, and other faction removals have
+not been established. After `yarn esf:build`, regression tests are available as
+`node tools/esf/dist/edit/removeFactionOwnership.test.js`,
+`node tools/esf/dist/edit/removeFactionInfluenceMap.test.js`,
+`node tools/esf/dist/edit/caiMobileReferences.test.js`, and
+`node tools/esf/dist/edit/caiMobileDependents.test.js`. The editor UI is not part of this
+prototype.
+
+
+### Batch removal
+
+To remove many keys in one parse/edit/write cycle, put the requested keys in a JSON
+string array. Keys absent from FACTION_ARRAY are reported separately. Region
+references require a JSON mapping from each removed key to a surviving recipient:
+
+```bash
+node tools/esf/dist/cli/removeFactions.js \
+  --file original-startpos.esf --out bulk-removed-startpos.esf \
+  --keys faction-keys.json --transfers transfers.json --report removal-report.json
+```
+
+The batch editor compacts surviving IDs once, trims the known indexed lists and
+CAI dependencies, and uses the same output verification as single removal. Its
+Ravenqueen/Truthsayers output was compared byte-for-byte (decompressed) with the
+user-confirmed sequential two-faction output. Reference-array edits are collected
+and applied together; source records already deleted from the tree are skipped.
+
+After `yarn esf:build`, run `node tools/esf/dist/edit/removeFactions.test.js` for
+batch ID compaction and row-metadata cases. The existing reference-array tests
+also check skipped edits in a deleted parent. These tests and structural checks
+do not establish game behavior for arbitrary larger removal sets.
+
+
+Numeric ownership: REGION v3 direct scalar4 is a faction ID and must be compacted
+for all surviving owners, with removed owners transferred to the recipient's
+compacted ID. The single and batch commands share this remapping and reject
+unsupported region layouts. Output validation checks the owner-ID range.
+`node tools/esf/dist/edit/regionFactionIds.test.js` covers this contract.
+The two-faction byte-parity result above predates this correction; earlier map
+loads alone did not validate territory ownership.
+
+
+Province and sea references also carry campaign faction IDs: the second scalar
+of FACTION_PROVINCE_MANAGER v1 and FACTION_SEA_REGION_MANAGER v0, plus owner keys
+in the supported province-level recruitment/persistent-resource rows. Their
+manager UIDs are preserved. `provinceFactionIds.ts` shares this remapping between
+single and batch removal and rejects duplicate transferred manager owners.
+Run `node tools/esf/dist/edit/provinceFactionIds.test.js` for those regressions.
+
+
+Sparse faction tables use an explicit name/version allowlist in
+`factionKeyedRows.ts`. Removed owner rows are deleted; surviving first direct
+faction IDs compact while other payload bytes and nested records are preserved.
+The shared verifier checks these IDs as well as territory owner IDs. Cooking v3
+has child records before its first direct scalar; row position is not its owner.
+
+Unsigned 24-bit ESF IDs use big-endian bytes; 16-/32-bit IDs use little endian.
+The binary walker, mutation helpers and supported AI reference arrays share the
+native numeric representation. This prevents cross-width aliases and ensures
+that a removed 16-bit component ID matches its wider 24-bit reference encoding.
+Both removal CLIs reject unresolved mobile references in CAI_THEATRE array0 and
+CAI_REGION array4. `unsigned24Ids.test.ts` and `caiMobileReferences.test.ts` cover
+native byte fixtures, width boundaries and missing components. Full-batch native
+captures and independent owner/payload audits are under the game directory's
+`startpos_all_mixer_factions/`; runtime validation remains separate.

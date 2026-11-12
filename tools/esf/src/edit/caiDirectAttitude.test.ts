@@ -1,0 +1,22 @@
+import { strict as assert } from "node:assert";
+import { test } from "node:test";
+import { CaabItem,CaabRecordNode } from "../esf/codecs/caabTree";
+import { encodeU32 } from "./addFaction";
+import { beliefGroupReferencesFactionKey,validateCaiFactionBeliefReferences } from "./removeFaction";
+function fixture(owner=28269,signed=false){const chunks:Buffer[]=[];let offset=0;
+ function raw(data:Buffer):CaabItem{const start=offset;offset+=data.length;chunks.push(data);return{kind:"raw",start,end:offset};}
+ function record(name:string,groups:CaabItem[][]):CaabRecordNode{return{kind:"record",name,nameIndex:0,version:1,flags:0xe0,isRoot:false,hasNestedBlocks:true,groups,groupSizeWidths:groups.map(()=>1),blockSizeWidth:1,groupCountWidth:1};}
+ const first=signed?Buffer.from([0x1b,owner&255,owner>>8]):encodeU32(owner),body=record("CAI_DIRECT_ATTITUDE_ANALYSIS",[[raw(Buffer.concat([first,encodeU32(7639),encodeU32(217937)]))]]),group=[record("CAI_BDI_COMPONENT",[[raw(encodeU32(999))]]),body];
+ const world=record("CAI_WORLD_FACTIONS",[[record("OWNED_DIRECT",[[raw(encodeU32(7639))]])]]),pool=record("CAI_BDI_POOL_BELIEFS",[group]),root=record("ROOT",[[world,pool]]);return{root,pool,body,group,source:Buffer.concat(chunks)};
+}
+test("direct attitude cleanup matches either faction but not its third object reference",()=>{const f=fixture();assert(beliefGroupReferencesFactionKey(f.group,f.source,28269));assert(beliefGroupReferencesFactionKey(f.group,f.source,7639));assert(!beliefGroupReferencesFactionKey(f.group,f.source,217937));assert(!beliefGroupReferencesFactionKey(f.group,f.source,999));});
+test("signed values cannot silently match unsigned faction keys",()=>{const f=fixture(28269,true);assert(!beliefGroupReferencesFactionKey(f.group,f.source,28269));});
+test("surviving direct attitudes reject missing factions before writing",()=>{const f=fixture();assert.throws(()=>validateCaiFactionBeliefReferences(f.root,f.source),/missing AI faction 28269/);f.pool.groups=[];f.pool.groupSizeWidths=[];assert.equal(validateCaiFactionBeliefReferences(f.root,f.source),0);const live=fixture(7639);assert.equal(validateCaiFactionBeliefReferences(live.root,live.source),2);});
+test("an unrelated belief record is not interpreted as faction attitude data",()=>{const f=fixture();f.body.name="OTHER_ANALYSIS";assert(!beliefGroupReferencesFactionKey(f.group,f.source,28269));});
+
+test("interaction logs remove either faction while preserving unrelated log fields",()=>{const f=fixture();f.body.name="CAI_INTERACTION_LOG";f.body.version=0;assert(beliefGroupReferencesFactionKey(f.group,f.source,28269));assert(beliefGroupReferencesFactionKey(f.group,f.source,7639));assert(!beliefGroupReferencesFactionKey(f.group,f.source,217937));assert.throws(()=>validateCaiFactionBeliefReferences(f.root,f.source),/missing AI faction 28269/);});
+test("faction strength uses only its first owner field",()=>{const f=fixture();f.body.name="CAI_FACTION_STRENGTH_ANALYSIS";f.body.version=0;assert(beliefGroupReferencesFactionKey(f.group,f.source,28269));assert(!beliefGroupReferencesFactionKey(f.group,f.source,7639));assert(!beliefGroupReferencesFactionKey(f.group,f.source,217937));assert.throws(()=>validateCaiFactionBeliefReferences(f.root,f.source),/missing AI faction 28269/);});
+
+function regionFixture(prefix=Buffer.from([0x57,2,0x6d,0x6e,0x58,3,0x01,0x03,0x7a,0x48,0])){const f=fixture();f.body.name="CAI_BASIC_REGION_GROUP_ANALYSIS";f.body.version=0;const raw=f.body.groups[0][0];assert(raw.kind==="raw");const source=Buffer.concat([f.source,prefix,encodeU32(28269),encodeU32(225)]);f.body.groups=[[{kind:"raw",start:f.source.length,end:source.length}]];return{...f,source};}
+test("basic region-group owner follows three arrays with distinct object ID domains",()=>{const f=regionFixture();assert(beliefGroupReferencesFactionKey(f.group,f.source,28269));assert(!beliefGroupReferencesFactionKey(f.group,f.source,66426));assert(!beliefGroupReferencesFactionKey(f.group,f.source,225));assert.throws(()=>validateCaiFactionBeliefReferences(f.root,f.source),/missing AI faction 28269/);});
+test("basic region-group prefix rejects truncated arrays and unknown versions",()=>{const f=regionFixture(Buffer.from([0x58,100,0]));assert.throws(()=>beliefGroupReferencesFactionKey(f.group,f.source,28269),/Truncated/);const valid=regionFixture();valid.body.version=1;assert.throws(()=>beliefGroupReferencesFactionKey(valid.group,valid.source,28269),/Unsupported/);});
