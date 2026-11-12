@@ -2,7 +2,7 @@ import { ChildProcess, fork } from "child_process";
 import * as crypto from "crypto";
 import * as fs from "fs";
 import * as nodePath from "path";
-import { chunkSchemaIntoRows, getDBVersion } from "../packFileSerializer";
+import { chunkSchemaIntoRows, getDBVersion, resolveKeyValue } from "../packFileSerializer";
 import { readPackIndex, readPayload } from "../packCore/packFile";
 import type { Pack } from "../packFileTypes";
 import { isMixerPackName } from "./mixerPack";
@@ -38,9 +38,12 @@ export const readFactionKeys = (pack: Pack | undefined): Set<string> => {
     const dbVersion = getDBVersion(packedFile);
     const keyIndex = dbVersion?.fields.findIndex((field) => field.name === "key") ?? -1;
     if (!dbVersion || keyIndex < 0) continue;
+    const keyType = dbVersion.fields[keyIndex].field_type;
     for (const row of chunkSchemaIntoRows(packedFile.schemaFields, dbVersion)) {
-      const value = row[keyIndex]?.fields[0]?.val;
-      if (typeof value === "string" && value) keys.add(value);
+      // A string cell is [length, text], so go through the shared resolver rather than fields[0].
+      const fields = row[keyIndex]?.fields;
+      const value = fields && resolveKeyValue(keyType, fields);
+      if (value) keys.add(value);
     }
   }
   return keys;
@@ -161,8 +164,12 @@ export const getTrimmedMixerStartpos = async (options: TrimOptions): Promise<Buf
       .filter((mod) => mod.path !== mixerMod.path)
       .flatMap((mod) => [...readFactionKeys(packByPath.get(mod.path))]);
     const vanillaKeys = options.vanillaMods.flatMap((mod) => [...readFactionKeys(packByPath.get(mod.path))]);
-    if (mixerKeys.size === 0) return undefined;
+    if (mixerKeys.size === 0) {
+      console.log(`Mixer startpos: no factions_tables keys read from ${mixerMod.name}; skipping`);
+      return undefined;
+    }
     const keys = buildRemovalSet(mixerKeys, otherKeys, vanillaKeys);
+    console.log(`Mixer startpos: ${mixerKeys.size} Mixer factions, ${keys.length} unused`);
     if (keys.length === 0) return undefined;
 
     const mixerStat = await fs.promises.stat(mixerMod.path);
