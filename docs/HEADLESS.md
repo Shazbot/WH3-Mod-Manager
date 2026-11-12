@@ -2,7 +2,7 @@
 
 The headless tools read and write WH3 pack files without starting Electron. The shared core owns the existing pack index, payload and DB/LOC codecs, supported visual-reference extraction, and a Node-only RMV2 codec for versions 6–8 and registered layouts. Automation operations add explicit filesystem policy, schema context, and atomic publication; CLI and MCP are thin adapters over the same validated operation registry. The GUI serializer and index APIs remain compatibility wrappers around the extracted logic. The headless path does not import Electron, React, IPC, or GUI application data, and native codecs load only when needed. Unknown RMV2 versions or layouts remain explicitly unsupported rather than guessed.
 
-Development builds and direct `dist/cli/main.js` runs require Node.js `>=24.14.0 <25`. Windows packaged releases use their bundled Electron runtime through `whmm-cli.exe` and do not require a separate Node.js installation.
+Development builds and direct `dist/cli/main.js` runs require Node.js `>=24.14.0 <25`. Windows packaged releases use their bundled Electron runtime through `whmm-cli.cmd` and do not require a separate Node.js installation.
 
 ## Build and run the CLI
 
@@ -16,14 +16,24 @@ node dist/cli/main.js pack list /absolute/path/to/example.pack --glob '**/*.dds'
 node dist/cli/main.js pack read /absolute/path/to/example.pack scripts/example.lua --output /absolute/path/to/example.lua
 ```
 
-Windows `yarn make` packages a small native console launcher, `whmm-cli.exe`, beside `wh3mm.exe`. It runs the bundled Electron runtime in Node mode, so users do not need to install Node.js separately. The CLI bundle and WH3 schema are under `resources/headless/`; the only staged runtime dependencies are the zstd loader/binding and the target-architecture LZ4 loader/binding. The launcher forwards Unicode arguments and standard input/output/error, keeps the caller's working directory, waits for completion, and returns the CLI exit code. To invoke it from a packaged app directory:
+Windows `yarn make` packages a small launcher script, `whmm-cli.cmd`, beside `wh3mm.exe`. It runs the bundled Electron runtime in Node mode, so users do not need to install Node.js separately. The CLI bundle and WH3 schema are under `resources/headless/`; the only staged runtime dependencies are the zstd loader/binding and the target-architecture LZ4 loader/binding. The launcher forwards arguments and standard input/output/error, keeps the caller's working directory, waits for completion, and returns the CLI exit code. To invoke it from a packaged app directory:
 
 ```powershell
-.\whmm-cli.exe --help
-.\whmm-cli.exe pack info 'D:\mods\example.pack' --format json
+.\whmm-cli.cmd --help
+.\whmm-cli.cmd pack info 'D:\mods\example.pack' --format json
 ```
 
-Windows packaging builds the launcher for the requested Windows architecture with CMake and Visual Studio 2022 C++ build tools. Install dependencies with Windows Node.js for that architecture before packaging so its optional LZ4 package and rebuilt zstd binding match the target. Linux and macOS packaging do not stage the Windows launcher; `yarn build:tools`, `yarn cli`, and direct `node dist/cli/main.js` development use remain unchanged.
+Programs that start the CLI should skip the launcher and run `wh3mm.exe` directly with `ELECTRON_RUN_AS_NODE=1` in its environment. This avoids cmd.exe argument parsing, and Node's `child_process.spawn` refuses to start `.cmd` files without `shell: true`:
+
+```js
+spawn(path.join(appDirectory, "wh3mm.exe"), [path.join(appDirectory, "resources", "headless", "cli", "main.js"), "pack", "info", packPath], {
+  env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+});
+```
+
+Use a direct call like this from programs only. In an interactive PowerShell or cmd.exe session, `wh3mm.exe` is a GUI-subsystem executable, so the shell does not wait for it or show its output; use `whmm-cli.cmd` there.
+
+Install dependencies with Windows Node.js for that architecture before packaging so its optional LZ4 package and rebuilt zstd binding match the target. Linux and macOS packaging do not stage the Windows launcher; `yarn build:tools`, `yarn cli`, and direct `node dist/cli/main.js` development use remain unchanged.
 
 Globs match complete internal paths. `*.dds` matches only root-level files; use `**/*.dds` to find DDS files in nested folders too. Quote glob patterns so your shell passes them to the CLI unchanged. Use forward slashes in patterns even when the returned pack paths contain backslashes.
 

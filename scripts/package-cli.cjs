@@ -4,11 +4,10 @@ const fs = require("node:fs/promises");
 const fsSync = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { spawnSync } = require("node:child_process");
 const { build } = require("esbuild");
 
 const projectRoot = path.resolve(__dirname, "..");
-const launcherSource = path.join(projectRoot, "tools", "cliLauncher");
+const launcherScript = path.join(projectRoot, "tools", "cliLauncher", "whmm-cli.cmd");
 const nativePackageRoot = path.join(projectRoot, "node_modules");
 
 function fail(message) {
@@ -17,70 +16,12 @@ function fail(message) {
 
 function windowsArch(arch) {
   const normalized = String(arch).toLowerCase();
-  if (normalized === "x64" || normalized === "x86_64") return { cmake: "x64", package: "x64", pe: 0x8664 };
-  if (normalized === "arm64" || normalized === "aarch64") return { cmake: "ARM64", package: "arm64", pe: 0xaa64 };
+  if (normalized === "x64" || normalized === "x86_64") return { package: "x64", pe: 0x8664 };
+  if (normalized === "arm64" || normalized === "aarch64") return { package: "arm64", pe: 0xaa64 };
   if (normalized === "ia32" || normalized === "x86" || normalized === "win32") {
-    return { cmake: "Win32", package: "ia32", pe: 0x014c };
+    return { package: "ia32", pe: 0x014c };
   }
   fail(`unsupported Windows architecture "${arch}". Supported architectures are x64, arm64, and ia32.`);
-}
-
-function locateCmake() {
-  const configured = process.env.CMAKE_EXECUTABLE;
-  const candidates = configured ? [configured] : [];
-  if (!configured) {
-    const standardPath = path.join(process.env.ProgramFiles || "C:\\Program Files", "CMake", "bin", "cmake.exe");
-    candidates.push(standardPath);
-
-    const addVisualStudioCmake = (installationPath) => {
-      if (installationPath) {
-        candidates.push(
-          path.join(installationPath, "Common7", "IDE", "CommonExtensions", "Microsoft", "CMake", "CMake", "bin", "cmake.exe"),
-        );
-      }
-    };
-    addVisualStudioCmake(process.env.VSINSTALLDIR);
-
-    const vswherePath = path.join(
-      process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)",
-      "Microsoft Visual Studio",
-      "Installer",
-      "vswhere.exe",
-    );
-    if (fsSync.existsSync(vswherePath)) {
-      const vswhere = spawnSync(vswherePath, ["-latest", "-products", "*", "-version", "[17.0,18.0)", "-property", "installationPath"], {
-        encoding: "utf8",
-        windowsHide: true,
-      });
-      if (vswhere.status === 0) addVisualStudioCmake(vswhere.stdout.trim());
-    }
-
-    candidates.push("cmake");
-  }
-
-  const checked = [];
-  for (const candidate of candidates) {
-    if (candidate !== "cmake" && !fsSync.existsSync(candidate)) continue;
-    const probe = spawnSync(candidate, ["--version"], { encoding: "utf8", windowsHide: true });
-    const versionMatch = probe.status === 0 && probe.stdout.match(/cmake version (\d+)\.(\d+)\.(\d+)/i);
-    if (!versionMatch) continue;
-    const version = versionMatch.slice(1).map(Number);
-    checked.push(`${candidate} (${version.join(".")})`);
-    if (version[0] > 3 || (version[0] === 3 && version[1] >= 21)) return candidate;
-  }
-
-  const checkedSummary = checked.length > 0 ? ` Found: ${checked.join(", ")}.` : " No usable CMake executable was found.";
-  fail(`CMake 3.21 or newer is required for the Visual Studio 2022 generator.${checkedSummary} Install a newer CMake or set CMAKE_EXECUTABLE to its path.`);
-}
-
-function run(command, args, label) {
-  const result = spawnSync(command, args, { cwd: projectRoot, stdio: "inherit", windowsHide: true });
-  if (result.error) {
-    fail(`${label} could not run (${result.error.message}). Install CMake and Visual Studio 2022 C++ build tools, then retry yarn make.`);
-  }
-  if (result.status !== 0) {
-    fail(`${label} failed with exit code ${result.status ?? "unknown"}. Check that Visual Studio 2022 C++ and the Windows SDK are installed.`);
-  }
 }
 
 function assertPeArchitecture(filePath, expectedMachine, label) {
@@ -216,38 +157,6 @@ async function stageNativeCodecs(headlessStage, archInfo) {
   assertPeArchitecture(zstdBinaryDestination, archInfo.pe, "@mongodb-js/zstd native binding");
 }
 
-async function buildLauncher(buildDirectory, archInfo) {
-  if (process.platform !== "win32") {
-    fail("Windows CLI packaging requires a native Windows build host so CMake can use MSVC. Run yarn make from Windows with Visual Studio 2022 C++ build tools installed.");
-  }
-
-  const cmake = locateCmake();
-  run(
-    cmake,
-    [
-      "-S",
-      launcherSource,
-      "-B",
-      buildDirectory,
-      "-G",
-      "Visual Studio 17 2022",
-      "-A",
-      archInfo.cmake,
-    ],
-    "CMake configuration for whmm-cli",
-  );
-  run(cmake, ["--build", buildDirectory, "--config", "Release", "--target", "whmm-cli"], "MSVC build for whmm-cli");
-
-  const launcherPath = path.join(buildDirectory, "Release", "whmm-cli.exe");
-  await requireFile(
-    launcherPath,
-    "MSVC-built whmm-cli.exe",
-    "Install Visual Studio 2022 C++ build tools and the Windows SDK, then retry yarn make.",
-  );
-  assertPeArchitecture(launcherPath, archInfo.pe, "whmm-cli.exe");
-  return launcherPath;
-}
-
 async function packageWindowsCli({ platform, arch, outputPaths }) {
   if (platform !== "win32") return;
   if (!Array.isArray(outputPaths) || outputPaths.length === 0) {
@@ -260,7 +169,7 @@ async function packageWindowsCli({ platform, arch, outputPaths }) {
     const headlessStage = path.join(workDirectory, "headless");
     await buildHeadlessBundle(headlessStage);
     await stageNativeCodecs(headlessStage, archInfo);
-    const launcherPath = await buildLauncher(path.join(workDirectory, "launcher-build"), archInfo);
+    await requireFile(launcherScript, "CLI launcher script", "Restore tools/cliLauncher/whmm-cli.cmd before packaging.");
 
     for (const outputPath of outputPaths) {
       const appDirectory = path.resolve(outputPath);
@@ -281,12 +190,12 @@ async function packageWindowsCli({ platform, arch, outputPaths }) {
       try {
         await fs.rm(destinationHeadless, { recursive: true, force: true });
         await fs.rename(stagedHeadless, destinationHeadless);
-        await fs.copyFile(launcherPath, path.join(appDirectory, "whmm-cli.exe"));
+        await fs.copyFile(launcherScript, path.join(appDirectory, "whmm-cli.cmd"));
       } catch (error) {
         await fs.rm(stagedHeadless, { recursive: true, force: true });
         throw error;
       }
-      console.log(`[packaged CLI] staged whmm-cli.exe and headless assets in ${appDirectory}`);
+      console.log(`[packaged CLI] staged whmm-cli.cmd and headless assets in ${appDirectory}`);
     }
   } finally {
     await fs.rm(workDirectory, { recursive: true, force: true });
