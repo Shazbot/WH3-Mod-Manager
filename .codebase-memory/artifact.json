@@ -1,11 +1,12 @@
 {
     "schema_version": 2,
-    "commit": "c68bab65351329c9e919967f91276fac32975d3f",
-    "indexed_at": "2026-11-12T20:09:45Z",
+    "commit": "ef391666eafbee4cb72006628afadf6a4293e53f",
+    "indexed_at": "2026-11-13T14:39:21Z",
     "project": "mnt-k-projects-whmm",
-    "nodes": 59353,
-    "edges": 108001,
+    "nodes": 59359,
+    "edges": 108025,
     "original_size": 635568128,
-    "compressed_size": 16229807,
-    "compression_level": 3
+    "compressed_size": 16235410,
+    "compression_level": 3,
+    "reconcile_basis": "git-clean-head"
 }
