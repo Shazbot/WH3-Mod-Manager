@@ -112,3 +112,5 @@ script
 temp/*.js
 
 native-patches
+
+/.codebase-memory/
