@@ -2353,5 +2353,16 @@
   "nodeEditorSaveAsMoviePack": "ムービーパックとして保存",
   "nodeEditorSaveAsMoviePackTooltip": "ゲームのデータ フォルダーに保存されている場合、ムービー パックは自動的に読み込まれるため、MOD リストで有効にする必要はありません。",
   "nodeEditorNodeOnnxLabel": "ONNX 予測",
-  "nodeEditorNodeOnnxDescription": "選択したテーブル行でパックされた ONNX モデルを実行し、有効な予測を書き込みます"
+  "nodeEditorNodeOnnxDescription": "選択したテーブル行でパックされた ONNX モデルを実行し、有効な予測を書き込みます",
+  "autoStartNewCampaign": "新しいキャンペーンを自動開始",
+  "autoStartNewCampaign1": "ゲームの再起動を伴う反復テスト用。",
+  "autoStartNewCampaign2": "メインメニューから Karl Franz として新しい Immortal Empires キャンペーンを開始します。カスタムバトルの自動開始をオフにします。",
+  "removeUnusedMixerFactions": "使用されていない派閥を削除する",
+  "removeUnusedMixerFactions1": "他の有効な MOD やベース ゲームで定義されていない Mixer 派閥を削除するため、キャンペーンの読み込みが速くなります。",
+  "removeUnusedMixerFactions2": "不滅の帝国のみ。新しい MOD リストを使用した最初の起動には、編集された開始位置が構築されるまでに約 2 分かかります。その後キャッシュされます。",
+  "removeUnusedMixerFactionsRequiresMixer": "ミキサー (!b_mixer.pack) を有効にする必要があります",
+  "appControl": "コマンドライン制御",
+  "appControlEnabled": "CLI と MCP による WHMM の制御を許可する",
+  "appControlEnabled1": "whmm-cli と WHMM MCP サーバーが有効な MOD を変更し、ゲームを起動できるようにします。",
+  "appControlEnabled2": "Windows アカウントで実行されているプログラムのみが接続できます。"
 }

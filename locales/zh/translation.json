@@ -2355,5 +2355,16 @@
   "nodeEditorSaveAsMoviePack": "另存为电影包",
   "nodeEditorSaveAsMoviePackTooltip": "当存储在游戏的数据文件夹中时，电影包会自动加载，不需要在模组列表中启用。",
   "nodeEditorNodeOnnxLabel": "ONNX 预测",
-  "nodeEditorNodeOnnxDescription": "在选定的表行上运行打包的 ONNX 模型并写入启用的预测"
+  "nodeEditorNodeOnnxDescription": "在选定的表行上运行打包的 ONNX 模型并写入启用的预测",
+  "autoStartNewCampaign": "自动启动新活动",
+  "autoStartNewCampaign1": "用于涉及重新启动游戏的重复测试。",
+  "autoStartNewCampaign2": "从主菜单中以卡尔·弗兰茨的身份开始新的不朽帝国战役。关闭自动开始自定义战斗。",
+  "removeUnusedMixerFactions": "删除未使用的派系",
+  "removeUnusedMixerFactions1": "删除没有其他启用的模组或基础游戏定义的混合器派系，因此战役加载速度更快。",
+  "removeUnusedMixerFactions2": "仅限不朽帝国。第一次启动新的模组列表大约需要 2 分钟，同时构建编辑的起始位​​置；之后它会被缓存。",
+  "removeUnusedMixerFactionsRequiresMixer": "需要启用 Mixer (!b_mixer.pack)",
+  "appControl": "命令行控制",
+  "appControlEnabled": "允许 CLI 和 MCP 控制 WHMM",
+  "appControlEnabled1": "让 whmm-cli 和 WHMM MCP 服务器更改您启用的 mod 并启动游戏。",
+  "appControlEnabled2": "只有在您的 Windows 帐户下运行的程序才能连接。"
 }

@@ -2353,5 +2353,16 @@
   "nodeEditorSaveAsMoviePack": "Zapisz jako pakiet filmów",
   "nodeEditorSaveAsMoviePackTooltip": "Pakiety filmów zapisane w folderze danych gry ładują się automatycznie i nie trzeba ich włączać na liście modów.",
   "nodeEditorNodeOnnxLabel": "Prognoza ONNX",
-  "nodeEditorNodeOnnxDescription": "Uruchamia spakowane modele ONNX w wybranych wierszach tabeli i zapisuje włączone przewidywania"
+  "nodeEditorNodeOnnxDescription": "Uruchamia spakowane modele ONNX w wybranych wierszach tabeli i zapisuje włączone przewidywania",
+  "autoStartNewCampaign": "Automatycznie rozpocznij nową kampanię",
+  "autoStartNewCampaign1": "Do powtarzalnych testów wymagających ponownego uruchomienia gry.",
+  "autoStartNewCampaign2": "Rozpoczyna nową kampanię Immortal Empires jako Karl Franz z głównego menu. Wyłącza automatyczne rozpoczynanie bitwy niestandardowej.",
+  "removeUnusedMixerFactions": "Usuń nieużywane frakcje",
+  "removeUnusedMixerFactions1": "Usuwa frakcje Mixera, których nie definiuje żaden inny włączony mod ani gra podstawowa, dzięki czemu kampania ładuje się szybciej.",
+  "removeUnusedMixerFactions2": "Tylko Nieśmiertelne Imperia. Pierwsze uruchomienie z nową listą modów trwa około 2 minut, podczas gdy edytowana pozycja startowa jest zbudowana; jest on później buforowany.",
+  "removeUnusedMixerFactionsRequiresMixer": "Wymaga włączonego miksera (!b_mixer.pack).",
+  "appControl": "Sterowanie z wiersza poleceń",
+  "appControlEnabled": "Zezwól CLI i MCP na kontrolowanie WHMM",
+  "appControlEnabled1": "Pozwala whmm-cli i serwerowi WHMM MCP zmienić włączone mody i uruchomić grę.",
+  "appControlEnabled2": "Mogą się łączyć tylko programy działające na Twoim koncie Windows."
 }

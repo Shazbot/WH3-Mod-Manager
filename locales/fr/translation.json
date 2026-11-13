@@ -2353,5 +2353,16 @@
   "nodeEditorSaveAsMoviePack": "Enregistrer en tant que pack de films",
   "nodeEditorSaveAsMoviePackTooltip": "Lorsqu'ils sont stockés dans le dossier de données du jeu, les packs de films se chargent automatiquement et n'ont pas besoin d'être activés dans la liste des modules.",
   "nodeEditorNodeOnnxLabel": "Prédiction ONNX",
-  "nodeEditorNodeOnnxDescription": "Exécute des modèles ONNX compressés sur les lignes de table sélectionnées et écrit les prédictions activées"
+  "nodeEditorNodeOnnxDescription": "Exécute des modèles ONNX compressés sur les lignes de table sélectionnées et écrit les prédictions activées",
+  "autoStartNewCampaign": "Démarrer automatiquement une nouvelle campagne",
+  "autoStartNewCampaign1": "Pour les tests répétitifs impliquant le redémarrage du jeu.",
+  "autoStartNewCampaign2": "Démarre une nouvelle campagne Immortal Empires en tant que Karl Franz à partir du menu principal. Désactive le démarrage automatique des combats personnalisés.",
+  "removeUnusedMixerFactions": "Supprimer les factions inutilisées",
+  "removeUnusedMixerFactions1": "Supprime les factions Mixer qu'aucun autre mod activé ou le jeu de base ne définit, afin que la campagne se charge plus rapidement.",
+  "removeUnusedMixerFactions2": "Empires immortels uniquement. Le premier lancement avec une nouvelle liste de mods prend environ 2 minutes pendant que la position de départ modifiée est construite ; il est ensuite mis en cache.",
+  "removeUnusedMixerFactionsRequiresMixer": "Nécessite que Mixer (!b_mixer.pack) soit activé",
+  "appControl": "Contrôle en ligne de commande",
+  "appControlEnabled": "Autoriser la CLI et le MCP à contrôler WHMM",
+  "appControlEnabled1": "Permet à whmm-cli et au serveur WHMM MCP de modifier vos mods activés et de lancer le jeu.",
+  "appControlEnabled2": "Seuls les programmes exécutés sous votre compte Windows peuvent se connecter."
 }

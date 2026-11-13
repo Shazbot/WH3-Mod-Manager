@@ -2353,5 +2353,16 @@
   "nodeEditorSaveAsMoviePack": "Film paketi olarak kaydet",
   "nodeEditorSaveAsMoviePackTooltip": "Film paketleri oyunun veri klasöründe saklandığında otomatik olarak yüklenir ve mod listesinde etkinleştirilmelerine gerek yoktur.",
   "nodeEditorNodeOnnxLabel": "ONNX Tahmini",
-  "nodeEditorNodeOnnxDescription": "Paketlenmiş ONNX modellerini seçilen tablo satırlarında çalıştırır ve etkin tahminleri yazar"
+  "nodeEditorNodeOnnxDescription": "Paketlenmiş ONNX modellerini seçilen tablo satırlarında çalıştırır ve etkin tahminleri yazar",
+  "autoStartNewCampaign": "Yeni kampanyayı otomatik başlat",
+  "autoStartNewCampaign1": "Oyunun yeniden başlatılmasını gerektiren tekrarlayan testler için.",
+  "autoStartNewCampaign2": "Ana menüden Karl Franz olarak yeni bir Ölümsüz İmparatorluklar harekâtı başlatır. Otomatik başlatılan özel savaşı kapatır.",
+  "removeUnusedMixerFactions": "Kullanılmayan grupları kaldır",
+  "removeUnusedMixerFactions1": "Başka hiçbir etkin modun veya temel oyunun tanımlamadığı Mixer gruplarını kaldırır, böylece kampanya daha hızlı yüklenir.",
+  "removeUnusedMixerFactions2": "Yalnızca Ölümsüz İmparatorluklar. Yeni mod listesiyle ilk başlatma, düzenlenen başlangıç ​​konumu oluşturulurken yaklaşık 2 dakika sürer; daha sonra önbelleğe alınır.",
+  "removeUnusedMixerFactionsRequiresMixer": "Mikserin (!b_mixer.pack) etkinleştirilmesini gerektirir",
+  "appControl": "Komut satırı kontrolü",
+  "appControlEnabled": "CLI ve MCP'nin WHMM'yi kontrol etmesine izin ver",
+  "appControlEnabled1": "Whmm-cli ve WHMM MCP sunucusunun etkin modlarınızı değiştirmesine ve oyunu başlatmasına izin verir.",
+  "appControlEnabled2": "Yalnızca Windows hesabınız altında çalışan programlar bağlanabilir."
 }

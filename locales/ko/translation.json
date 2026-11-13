@@ -2353,5 +2353,16 @@
   "nodeEditorSaveAsMoviePack": "영화 팩으로 저장",
   "nodeEditorSaveAsMoviePackTooltip": "게임의 데이터 폴더에 저장되면 영화 팩이 자동으로 로드되므로 모드 목록에서 활성화할 필요가 없습니다.",
   "nodeEditorNodeOnnxLabel": "ONNX 예측",
-  "nodeEditorNodeOnnxDescription": "선택한 테이블 행에 대해 압축된 ONNX 모델을 실행하고 활성화된 예측을 작성합니다."
+  "nodeEditorNodeOnnxDescription": "선택한 테이블 행에 대해 압축된 ONNX 모델을 실행하고 활성화된 예측을 작성합니다.",
+  "autoStartNewCampaign": "새 캠페인 자동 시작",
+  "autoStartNewCampaign1": "게임을 다시 시작하는 등의 반복 테스트용입니다.",
+  "autoStartNewCampaign2": "메인 메뉴에서 Karl Franz로 새로운 Immortal Empires 캠페인을 시작합니다. 자동 시작 사용자 지정 전투를 끕니다.",
+  "removeUnusedMixerFactions": "사용하지 않는 세력 제거",
+  "removeUnusedMixerFactions1": "다른 활성화된 모드나 기본 게임에서 정의하지 않은 믹서 세력을 제거하여 캠페인이 더 빠르게 로드됩니다.",
+  "removeUnusedMixerFactions2": "불멸의 제국에만 해당됩니다. 새 모드 목록을 사용한 첫 번째 실행은 편집된 시작 위치가 구축되는 동안 약 2분이 소요됩니다. 나중에 캐시됩니다.",
+  "removeUnusedMixerFactionsRequiresMixer": "믹서(!b_mixer.pack)를 활성화해야 합니다.",
+  "appControl": "명령줄 제어",
+  "appControlEnabled": "CLI 및 MCP가 WHMM을 제어하도록 허용",
+  "appControlEnabled1": "whmm-cli 및 WHMM MCP 서버가 활성화된 모드를 변경하고 게임을 시작할 수 있습니다.",
+  "appControlEnabled2": "Windows 계정으로 실행되는 프로그램만 연결할 수 있습니다."
 }
