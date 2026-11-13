@@ -222,9 +222,11 @@ async function buildLauncher(buildDirectory, archInfo) {
   }
 
   const cmake = locateCmake();
+  const { version } = JSON.parse(await fs.readFile(path.join(projectRoot, "package.json"), "utf8"));
   run(
     cmake,
     [
+      `-DWHMM_VERSION=${version}`,
       "-S",
       launcherSource,
       "-B",

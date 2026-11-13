@@ -16,7 +16,7 @@ node dist/cli/main.js pack list /absolute/path/to/example.pack --glob '**/*.dds'
 node dist/cli/main.js pack read /absolute/path/to/example.pack scripts/example.lua --output /absolute/path/to/example.lua
 ```
 
-Windows `yarn make` packages a small native console launcher, `whmm-cli.exe`, beside `wh3mm.exe`. It runs the bundled Electron runtime in Node mode, so users do not need to install Node.js separately. The CLI bundle and WH3 schema are under `resources/headless/`; the only staged runtime dependencies are the zstd loader/binding and the target-architecture LZ4 loader/binding. The launcher forwards Unicode arguments and standard input/output/error, keeps the caller's working directory, waits for completion, and returns the CLI exit code. To invoke it from a packaged app directory:
+Windows `yarn make` packages a small native console launcher, `whmm-cli.exe`, beside `wh3mm.exe`, carrying Windows version metadata and an application manifest. It runs the bundled Electron runtime in Node mode, so users do not need to install Node.js separately. The CLI bundle and WH3 schema are under `resources/headless/`; the only staged runtime dependencies are the zstd loader/binding and the target-architecture LZ4 loader/binding. The launcher forwards Unicode arguments and standard input/output/error, keeps the caller's working directory, waits for completion, and returns the CLI exit code. To invoke it from a packaged app directory:
 
 ```powershell
 .\whmm-cli.exe --help
