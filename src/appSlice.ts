@@ -1269,7 +1269,8 @@ const appSlice = createSlice({
       state.isScriptLoggingEnabled = fromConfigAppState.isScriptLoggingEnabled;
       state.isAutoStartCustomBattleEnabled = fromConfigAppState.isAutoStartCustomBattleEnabled;
       state.isAutoStartNewCampaignEnabled = fromConfigAppState.isAutoStartNewCampaignEnabled ?? false;
-      state.isRemoveUnusedMixerFactionsEnabled = fromConfigAppState.isRemoveUnusedMixerFactionsEnabled ?? false;
+      state.isRemoveUnusedMixerFactionsEnabled =
+        !!fromConfigAppState.isFeaturesForModdersEnabled && !!fromConfigAppState.isRemoveUnusedMixerFactionsEnabled;
       state.isChangingGameProcessPriority = fromConfigAppState.isChangingGameProcessPriority;
       state.isAppControlEnabled = fromConfigAppState.isAppControlEnabled ?? true;
       state.isFeaturesForModdersEnabled = fromConfigAppState.isFeaturesForModdersEnabled;
@@ -1792,12 +1793,18 @@ const appSlice = createSlice({
     },
     toggleIsFeaturesForModdersEnabled: (state: AppState) => {
       state.isFeaturesForModdersEnabled = !state.isFeaturesForModdersEnabled;
-      if (!state.isFeaturesForModdersEnabled) state.isCompatCheckingVanillaPacks = false;
+      if (!state.isFeaturesForModdersEnabled) {
+        state.isCompatCheckingVanillaPacks = false;
+        state.isRemoveUnusedMixerFactionsEnabled = false;
+      }
       reconcileCurrentPresetModSources(state);
     },
     setIsFeaturesForModdersEnabled: (state: AppState, action: PayloadAction<boolean>) => {
       state.isFeaturesForModdersEnabled = action.payload;
-      if (!state.isFeaturesForModdersEnabled) state.isCompatCheckingVanillaPacks = false;
+      if (!state.isFeaturesForModdersEnabled) {
+        state.isCompatCheckingVanillaPacks = false;
+        state.isRemoveUnusedMixerFactionsEnabled = false;
+      }
       reconcileCurrentPresetModSources(state);
     },
     setCanDisableAlwaysEnabledMods: (state: AppState, action: PayloadAction<boolean>) => {

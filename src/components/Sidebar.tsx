@@ -1210,7 +1210,8 @@ const Sidebar = memo(() => {
                     !!isAutoStartNewCampaignEnabled,
                     () => dispatch(toggleIsAutoStartNewCampaignEnabled()),
                   )}
-                {gameStartOptions.includes("RemoveUnusedMixerFactions") &&
+                {isFeaturesForModdersEnabled &&
+                  gameStartOptions.includes("RemoveUnusedMixerFactions") &&
                   renderGameStartMenuOption(
                     "remove-unused-mixer-factions",
                     localized.removeUnusedMixerFactions || "Remove unused factions",
