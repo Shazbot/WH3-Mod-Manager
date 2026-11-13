@@ -58,15 +58,20 @@ export const getSaveFiles = async () => {
   return saves;
 };
 
-const addNewSave = async function (savePath: string) {
+const upsertSave = function (savePath: string) {
   const basename = path.win32.basename(savePath);
-  if (!saves.find((iterSave) => iterSave.name === basename)) {
-    let lastChanged: number | undefined;
-    try {
-      lastChanged = await fs.statSync(savePath).mtimeMs;
-    } catch (e) {
-      console.log(e);
+  let lastChanged: number | undefined;
+  try {
+    lastChanged = fs.statSync(savePath).mtimeMs;
+  } catch (e) {
+    console.log(e);
+  }
+  const existing = saves.find((iterSave) => iterSave.name === basename);
+  if (existing) {
+    if (lastChanged !== undefined) {
+      existing.lastChanged = lastChanged;
     }
+  } else {
     saves.push({ name: basename, lastChanged: lastChanged ?? -1 });
   }
 };
@@ -89,9 +94,14 @@ export const setupSavesWatcher = async (cb: (saves: GameSave[]) => void) => {
       ignored: (path: string, stats?: fs.Stats) => !!stats && !stats.isDirectory() && !path.endsWith(".save"),
     })
     .on("error", (error: unknown) => console.log("saves watcher error:", error))
-    .on("add", async (path: string) => {
-      await addNewSave(path);
+    .on("add", (path: string) => {
+      upsertSave(path);
       console.log("Save added: " + path);
+      cb(saves);
+    })
+    .on("change", (path: string) => {
+      upsertSave(path);
+      console.log("Save changed: " + path);
       cb(saves);
     })
     .on("unlink", (path: string) => {
