@@ -1452,6 +1452,8 @@
   "buildingsMaxPerRegion": "Bölge başına maksimum {{count}}",
   "buildingsOnlyProvincialCapital": "Sadece eyalet başkentinde",
   "buildingsFactionUnique": "Fraksiyon benzersiz",
+  "buildingsDlcBadge": "DLC",
+  "buildingsRequiresDlc": "DLC gerektirir: {{packs}}",
   "buildingsVariantInfo": "değişken: {{values}}",
   "buildingsCultureVariantsCount": "{{count}} kültür çeşitleri",
   "buildingsAddBuildingAboveTitle": "{{title}} üstüne bir bina ekleyin",

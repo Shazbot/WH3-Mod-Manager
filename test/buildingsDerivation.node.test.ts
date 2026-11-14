@@ -480,6 +480,27 @@ describe("resolveRegionBuildings: recruitment unlocks", () => {
   });
 });
 
+describe("resolveRegionBuildings: DLC ownership", () => {
+  it("marks a tile with its chain's and its own level's content packs, and leaves the rest unmarked", () => {
+    const data = build({
+      building_chain_ownership_content_pack_junctions_tables: [
+        { building_chain: "chain_a", ownership_content_pack: "dlc_chain" },
+      ],
+      building_level_ownership_content_pack_junctions_tables: [
+        { building_level: "a_2", ownership_content_pack: "dlc_level" },
+        { building_level: "a_2", ownership_content_pack: "dlc_chain" },
+      ],
+    });
+    const tiles = resolveRegionBuildings(data, query()).bands.flatMap((band) =>
+      band.columns.flatMap((column) => column.tiles),
+    );
+    const packsOf = (levelKey: string) => tiles.find((tile) => tile.levelKey === levelKey)?.ownershipContentPacks;
+    expect(packsOf("a_1")).toEqual(["dlc_chain"]);
+    expect(packsOf("a_2")).toEqual(["dlc_chain", "dlc_level"]);
+    expect(tiles.filter((tile) => tile.chainKey !== "chain_a").every((tile) => !tile.ownershipContentPacks)).toBe(true);
+  });
+});
+
 describe("resolveRegionBuildings: settlement types", () => {
   const withBindings = () =>
     build({

@@ -1452,6 +1452,8 @@
   "buildingsMaxPerRegion": "Maks. {{count}} na region",
   "buildingsOnlyProvincialCapital": "Tylko w stolicy województwa",
   "buildingsFactionUnique": "Frakcja wyjątkowa",
+  "buildingsDlcBadge": "DLC",
+  "buildingsRequiresDlc": "Wymaga DLC: {{packs}}",
   "buildingsVariantInfo": "wariant: {{values}}",
   "buildingsCultureVariantsCount": "{{count}} warianty kulturowe",
   "buildingsAddBuildingAboveTitle": "Dodaj budynek powyżej {{title}}",

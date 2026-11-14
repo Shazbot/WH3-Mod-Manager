@@ -1452,6 +1452,8 @@
   "buildingsMaxPerRegion": "Макс. {{count}} на регион",
   "buildingsOnlyProvincialCapital": "Только в областной столице",
   "buildingsFactionUnique": "Фракция уникальная",
+  "buildingsDlcBadge": "DLC",
+  "buildingsRequiresDlc": "Требуется DLC: {{packs}}",
   "buildingsVariantInfo": "вариант: {{values}}",
   "buildingsCultureVariantsCount": "{{count}} вариантов культуры",
   "buildingsAddBuildingAboveTitle": "Добавить здание выше {{title}}",

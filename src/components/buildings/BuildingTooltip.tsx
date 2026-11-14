@@ -115,6 +115,14 @@ const BuildingTooltip = memo(({ tile }: BuildingTooltipProps) => {
           <div>{localized.buildingsOnlyProvincialCapital || "Only in the provincial capital"}</div>
         )}
         {tile.factionUnique && <div>{localized.buildingsFactionUnique || "Faction unique"}</div>}
+        {tile.ownershipContentPacks && (
+          <div className="text-violet-300">
+            {(localized.buildingsRequiresDlc || "Requires DLC: {{packs}}").replace(
+              "{{packs}}",
+              tile.ownershipContentPacks.join(", "),
+            )}
+          </div>
+        )}
         {tile.variant && (tile.variant.culture || tile.variant.subculture || tile.variant.faction) && (
           <div>
             {(localized.buildingsVariantInfo || "variant: {{values}}").replace(

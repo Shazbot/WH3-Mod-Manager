@@ -1452,6 +1452,8 @@
   "buildingsMaxPerRegion": "地域ごとの最大 {{count}}",
   "buildingsOnlyProvincialCapital": "州都のみ",
   "buildingsFactionUnique": "派閥のユニークな",
+  "buildingsDlcBadge": "DLC",
+  "buildingsRequiresDlc": "DLC が必要: {{packs}}",
   "buildingsVariantInfo": "バリアント: {{values}}",
   "buildingsCultureVariantsCount": "{{count}} 文化のバリエーション",
   "buildingsAddBuildingAboveTitle": "{{title}} の上に建物を追加します",

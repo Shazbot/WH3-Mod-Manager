@@ -272,6 +272,10 @@ export interface BuiltBuildingsData {
   availabilitySetsByChain: Record<string, string[]>;
   availabilitiesBySetId: Record<string, AvailabilityRow[]>;
   settlementTypeBindings: Record<string, SettlementTypeBinding[]>;
+  /** DLC (`ownership_content_packs`) each chain needs. Optional: older in-memory builds lack it. */
+  ownershipContentPacksByChain?: Record<string, string[]>;
+  /** DLC each level needs on top of its chain's. */
+  ownershipContentPacksByLevel?: Record<string, string[]>;
   /** Effective slot count rows, keyed by primary building chain. */
   campaignBuildingChainSlotUnlocksByChain: Record<string, CampaignBuildingChainSlotUnlock[]>;
   upgrades: Array<{ from: string; to: string }>;
@@ -453,6 +457,11 @@ export interface BuildingsTile {
   iconPath?: string;
   variant?: BuildingVariantRow;
   variantCount: number;
+  /**
+   * DLC the game needs owned before it shows this level, from the chain's and the level's own
+   * ownership content pack rows. The board marks these; it cannot know what a player owns.
+   */
+  ownershipContentPacks?: string[];
   effects: BuildingEffectRow[];
   garrison: BuildingUnitRow[];
   recruitable: BuildingUnitRow[];

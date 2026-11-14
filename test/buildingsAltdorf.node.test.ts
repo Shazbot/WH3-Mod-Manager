@@ -84,9 +84,9 @@ const EXPECTED_ALTDORF_SLOTS = [
  *
  * - **Another Empire province's cult.** `wh_main_HUMAN_TALABEC_worship` is narrowed by faction in
  *   game; this query pins culture and subculture but not faction, so it stays in.
- * - **`wh3_dlc29_EMPIRE_worship_ulric`**, added in 9.0 after the UI dump was taken. Its availability
- *   admits Karl Franz, so it is probably real, but nothing here can confirm it until the dump is
- *   retaken.
+ * - **`wh3_dlc29_EMPIRE_worship_ulric`** needs the `wh3_dlc29_loet_boris` DLC, which the account
+ *   that took the dump does not own. A 9.0.5 retake drew the same 17 chains and 48 levels as the
+ *   original, without it. Ownership is not in the data, so the board marks the chain as DLC.
  * - **`wh3_main_foreign_slot_endgame`**. `wh_start.lua` registers it with
  *   `cm:add_event_restricted_building_record` until the Vermintide endgame fires, which the DB
  *   cannot express. It used to be hidden by accident, by reading settlement type bindings as "only
@@ -264,6 +264,15 @@ describe.skipIf(!haveDumps)("buildings derivation against the in-game Altdorf pa
   it("shows exactly the documented extras and nothing else", () => {
     const extras = [...ours.chains].filter((chain) => !truth.chains.has(chain)).sort();
     expect(extras).toEqual(EXPECTED_EXTRAS);
+  });
+
+  it("marks the DLC chain the game hides from a player without the pack, and nothing it draws", () => {
+    const tiles = view.bands.flatMap((band) => band.columns.flatMap((column) => column.tiles));
+    const marked = [...new Set(tiles.filter((tile) => tile.ownershipContentPacks).map((tile) => tile.chainKey))];
+    expect(marked).toEqual(["wh3_dlc29_EMPIRE_worship_ulric"]);
+    expect(tiles.find((tile) => tile.chainKey === "wh3_dlc29_EMPIRE_worship_ulric")?.ownershipContentPacks).toEqual([
+      "wh3_dlc29_loet_boris",
+    ]);
   });
 
   /**

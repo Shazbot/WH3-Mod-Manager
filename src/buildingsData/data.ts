@@ -113,6 +113,8 @@ export const BUILDINGS_TABLES = [
   "cultures_subcultures_tables",
   "factions_tables",
   "campaigns_tables",
+  "building_chain_ownership_content_pack_junctions_tables",
+  "building_level_ownership_content_pack_junctions_tables",
 ] as const;
 
 /**
@@ -201,6 +203,8 @@ export const BUILDINGS_TABLE_KEY_COLUMNS: Record<string, string[]> = {
   cultures_subcultures_tables: ["subculture"],
   factions_tables: ["key"],
   campaigns_tables: ["campaign_name"],
+  building_chain_ownership_content_pack_junctions_tables: ["building_chain", "ownership_content_pack"],
+  building_level_ownership_content_pack_junctions_tables: ["building_level", "ownership_content_pack"],
 };
 
 /** The numeric-id tables this feature writes new rows into. See `gameToTablesWithNumericIds`. */
@@ -579,6 +583,28 @@ export const buildBuildingsData = (tables: BuildingsTableRows, getLoc: Buildings
       settlementType: optional(str(row, "settlement_type")),
       buildings: settlementBuildingColumns.map((column) => str(row, column)).filter((value) => value !== ""),
     });
+  }
+
+  // --- DLC ownership ---------------------------------------------------------
+  // A chain or level tied to an ownership content pack is hidden by the game from a player who does
+  // not own that DLC: `wh3_dlc29_EMPIRE_worship_ulric` (`wh3_dlc29_loet_boris`) is missing from the
+  // in-game Altdorf panel without it. Which DLC a player owns is not in the data, so the board marks
+  // these rather than hiding them.
+  const ownershipContentPacksByChain: Record<string, string[]> = {};
+  for (const row of rowsOf("building_chain_ownership_content_pack_junctions_tables")) {
+    const chain = str(row, "building_chain");
+    const pack = str(row, "ownership_content_pack");
+    if (chain && pack && !(ownershipContentPacksByChain[chain] ||= []).includes(pack)) {
+      ownershipContentPacksByChain[chain].push(pack);
+    }
+  }
+  const ownershipContentPacksByLevel: Record<string, string[]> = {};
+  for (const row of rowsOf("building_level_ownership_content_pack_junctions_tables")) {
+    const level = str(row, "building_level");
+    const pack = str(row, "ownership_content_pack");
+    if (level && pack && !(ownershipContentPacksByLevel[level] ||= []).includes(pack)) {
+      ownershipContentPacksByLevel[level].push(pack);
+    }
   }
 
   // --- availability ----------------------------------------------------------
@@ -978,6 +1004,8 @@ export const buildBuildingsData = (tables: BuildingsTableRows, getLoc: Buildings
     availabilitySetsByChain,
     availabilitiesBySetId,
     settlementTypeBindings,
+    ownershipContentPacksByChain,
+    ownershipContentPacksByLevel,
     campaignBuildingChainSlotUnlocksByChain,
     upgrades,
     effectsByLevel,

@@ -735,6 +735,12 @@ export const resolveRegionBuildings = (data: BuiltBuildingsData, query: Building
       const loc = variant
         ? data.variantLoc[variantLocKey(levelKey, variant.culture, variant.subculture, variant.faction)]
         : undefined;
+      const ownershipContentPacks = [
+        ...new Set([
+          ...(data.ownershipContentPacksByChain?.[chainKey] ?? []),
+          ...(data.ownershipContentPacksByLevel?.[levelKey] ?? []),
+        ]),
+      ];
       const recruitableRows = (data.recruitableByLevel[levelKey] ?? []).filter(
         (unit) => !unit.faction || !query.faction || unit.faction === query.faction,
       );
@@ -763,6 +769,7 @@ export const resolveRegionBuildings = (data: BuiltBuildingsData, query: Building
           visibleInUi: level.visibleInUi,
           instanceKey: level.instanceKey,
           instanceLimit: level.instanceKey ? data.instances[level.instanceKey] : undefined,
+          ownershipContentPacks: ownershipContentPacks.length > 0 ? ownershipContentPacks : undefined,
           title: loc?.name || levelKey,
           shortDescription: loc?.short,
           longDescription: loc?.long,

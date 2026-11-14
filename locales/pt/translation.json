@@ -1452,6 +1452,8 @@
   "buildingsMaxPerRegion": "Máximo de {{count}} por região",
   "buildingsOnlyProvincialCapital": "Somente na capital provincial",
   "buildingsFactionUnique": "Facção única",
+  "buildingsDlcBadge": "DLC",
+  "buildingsRequiresDlc": "Requer o DLC: {{packs}}",
   "buildingsVariantInfo": "variante: {{values}}",
   "buildingsCultureVariantsCount": "{{count}} variantes de cultura",
   "buildingsAddBuildingAboveTitle": "Adicione um edifício acima de {{title}}",

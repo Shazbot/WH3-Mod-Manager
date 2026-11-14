@@ -166,6 +166,15 @@ const BuildingTile = memo(
           </span>
         )}
 
+        {tile.ownershipContentPacks && (
+          <span
+            title={tile.ownershipContentPacks.join(", ")}
+            className="absolute bottom-0.5 right-0.5 rounded bg-black/70 px-[3px] text-[0.5rem] leading-tight text-violet-300 group-hover:hidden"
+          >
+            {localized.buildingsDlcBadge || "DLC"}
+          </span>
+        )}
+
         {/* Revealed on hover, matching the in-game tile: turns top-left, cost bottom-right. */}
         <span className="pointer-events-none absolute left-0.5 top-0.5 z-4 hidden rounded-sm border border-black/90 bg-black/95 px-1 py-0.5 text-xs font-bold leading-tight text-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.95)] group-hover:block">
           {tile.createTime}t

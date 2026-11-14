@@ -1454,6 +1454,8 @@
   "buildingsMaxPerRegion": "每个区域最多 {{count}}",
   "buildingsOnlyProvincialCapital": "仅限省会城市",
   "buildingsFactionUnique": "派系独特",
+  "buildingsDlcBadge": "DLC",
+  "buildingsRequiresDlc": "需要 DLC：{{packs}}",
   "buildingsVariantInfo": "变体：{{values}}",
   "buildingsCultureVariantsCount": "{{count}} 文化变体",
   "buildingsAddBuildingAboveTitle": "在 {{title}} 上方添加建筑物",
