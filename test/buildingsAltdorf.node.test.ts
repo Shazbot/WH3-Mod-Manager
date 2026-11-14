@@ -673,7 +673,7 @@ describe.skipIf(!haveDbDump)("horde boards against the shipped tables", () => {
   });
 
   it("narrows to one culture's own horde", () => {
-    expect(chainsIn(hordeView("wh3_main_ogr_ogre_kingdoms"))).toEqual([
+    expect([...new Set(chainsIn(hordeView("wh3_main_ogr_ogre_kingdoms")))]).toEqual([
       "wh3_dlc26_ogr_camp_gnoblars",
       "wh3_main_ogr_camp_barracks",
       "wh3_main_ogr_camp_cav",
@@ -687,6 +687,51 @@ describe.skipIf(!haveDbDump)("horde boards against the shipped tables", () => {
       "wh3_main_ogr_camp_town_centre",
       "wh3_main_ogr_camp_upkeep",
     ]);
+  });
+
+  /**
+   * Checked against the in-game camp browser (Goldtooth, turn 1, 9.0.5): the game builds every chain
+   * twice, once under `wh3_main_set_ogre_camp_all` and once under its own category, and the 43
+   * levels match exactly. The one difference is `wh3_main_set_ogre_camp`, which the game never
+   * builds although `show_in_ui` is true and nothing excludes it; its only chain is the town centre,
+   * so it is drawn here as one extra band.
+   */
+  it("bands an Ogre camp's chains as the game does", () => {
+    const view = hordeView("wh3_main_ogr_ogre_kingdoms");
+    const chainsBySet = Object.fromEntries(
+      view.bands.map((band) => [band.setKey, band.columns.map((column) => column.chainKey).sort()]),
+    );
+    expect(chainsBySet).toEqual({
+      wh3_main_set_ogre_camp_all: [
+        "wh3_dlc26_ogr_camp_gnoblars",
+        "wh3_main_ogr_camp_barracks",
+        "wh3_main_ogr_camp_cav",
+        "wh3_main_ogr_camp_defence_replenishment",
+        "wh3_main_ogr_camp_defence_upkeep",
+        "wh3_main_ogr_camp_growth",
+        "wh3_main_ogr_camp_heavy_cav",
+        "wh3_main_ogr_camp_hunting",
+        "wh3_main_ogr_camp_monster",
+        "wh3_main_ogr_camp_recruitment",
+        "wh3_main_ogr_camp_town_centre",
+        "wh3_main_ogr_camp_upkeep",
+      ],
+      wh3_main_set_ogre_camp_recruitment: [
+        "wh3_dlc26_ogr_camp_gnoblars",
+        "wh3_main_ogr_camp_barracks",
+        "wh3_main_ogr_camp_cav",
+      ],
+      wh3_main_set_ogre_camp_recruitment_advanced: ["wh3_main_ogr_camp_heavy_cav", "wh3_main_ogr_camp_monster"],
+      wh3_main_set_ogre_camp_support: [
+        "wh3_main_ogr_camp_growth",
+        "wh3_main_ogr_camp_hunting",
+        "wh3_main_ogr_camp_recruitment",
+        "wh3_main_ogr_camp_upkeep",
+      ],
+      wh3_main_set_ogre_defence: ["wh3_main_ogr_camp_defence_replenishment", "wh3_main_ogr_camp_defence_upkeep"],
+      // The documented extra: not built by the game.
+      wh3_main_set_ogre_camp: ["wh3_main_ogr_camp_town_centre"],
+    });
   });
 
   it("scopes the legacy Chaos horde chains to Chaos", () => {
