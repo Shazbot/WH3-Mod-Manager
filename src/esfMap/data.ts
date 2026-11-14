@@ -343,14 +343,24 @@ export const buildNeighbourAwareColours = (
   componentCount: number,
 ): EsfMapColour[] => {
   if (componentCount <= 0) return [];
+  return assignNeighbourAwareColours(buildComponentAdjacency(componentIds, width, height, componentCount));
+};
 
-  const adjacency = buildComponentAdjacency(componentIds, width, height, componentCount);
-  const colours = new Array<EsfMapColour | undefined>(componentCount);
+/**
+ * Greedily colours an adjacency graph from the shared palette so touching nodes stay visibly
+ * distinct. `preferredColour` breaks ties between acceptable candidates; it defaults to a hash of
+ * the node index.
+ */
+export const assignNeighbourAwareColours = (
+  adjacency: Set<number>[],
+  preferredColourOf: (node: number) => EsfMapColour = colourFromComponent,
+): EsfMapColour[] => {
+  const colours = new Array<EsfMapColour | undefined>(adjacency.length);
   const order = smallestLastComponentOrder(adjacency);
 
   for (let orderIndex = order.length - 1; orderIndex >= 0; orderIndex -= 1) {
     const component = order[orderIndex];
-    const preferredColour = colourFromComponent(component);
+    const preferredColour = preferredColourOf(component);
     let bestCandidateIndex = 0;
     let bestCandidateDistance = Number.NEGATIVE_INFINITY;
     let bestPreferredDistance = Number.POSITIVE_INFINITY;

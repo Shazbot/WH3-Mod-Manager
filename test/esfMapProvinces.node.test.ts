@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildBuildingsData } from "../src/buildingsData/data";
+import { buildNeighbourAwareColours, MIN_MAP_NEIGHBOUR_COLOUR_DISTANCE } from "../src/esfMap/data";
 import { addProvinceDataToEsfMap } from "../src/esfMap/provinces";
 import type { BuiltBuildingsData } from "../src/buildingsData/types";
 import type { EsfMapPayload } from "../src/esfMap/types";
@@ -19,20 +20,29 @@ const buildings = {
   ],
 } as unknown as BuiltBuildingsData;
 
-const map = {
-  campaignKey: "camp",
-  markers: [
-    { key: "region_a", areaId: 1 },
-    { key: "region_b", areaId: 2 },
-    { key: "region_c", areaId: 3 },
-    { key: "region_d", areaId: 4 },
-  ],
-  areas: [
-    { areaId: 1, regionKey: "region_a", colour: [1, 1, 1] },
-    { areaId: 2, regionKey: "region_b", colour: [2, 2, 2] },
-    { areaId: 3, regionKey: "region_c", colour: [3, 3, 3] },
-  ],
-} as unknown as EsfMapPayload;
+// Three distinct palette colours: a 1x3 strip of components that all touch in a row.
+const [paletteA, paletteB] = buildNeighbourAwareColours(Uint32Array.of(0, 1, 2), 3, 1, 3);
+
+const square = (x: number) => [[x, 0, x + 1, 0, x + 1, 1, x, 1]];
+
+const mapWith = (regionCLeft: number, capitalColourC: number[]) =>
+  ({
+    campaignKey: "camp",
+    markers: [
+      { key: "region_a", areaId: 1 },
+      { key: "region_b", areaId: 2 },
+      { key: "region_c", areaId: 3 },
+      { key: "region_d", areaId: 4 },
+    ],
+    areas: [
+      { areaId: 1, regionKey: "region_a", colour: paletteB, loops: square(0) },
+      { areaId: 2, regionKey: "region_b", colour: paletteA, loops: square(1) },
+      { areaId: 3, regionKey: "region_c", colour: capitalColourC, loops: square(regionCLeft) },
+    ],
+  }) as unknown as EsfMapPayload;
+
+const colourDistance = (first: number[], second: number[]) =>
+  Math.hypot(first[0] - second[0], first[1] - second[1], first[2] - second[2]);
 
 describe("ESF map provinces", () => {
   it("reads the effective region-to-province rows", () => {
@@ -55,7 +65,8 @@ describe("ESF map provinces", () => {
   });
 
   it("joins regions case-insensitively, keeps only on-map provinces, uses capital colour and sorts by label", () => {
-    const enriched = addProvinceDataToEsfMap(map, buildings);
+    // region_c sits apart from the other province, so both keep their capital colours.
+    const enriched = addProvinceDataToEsfMap(mapWith(5, paletteB), buildings);
     expect(enriched.provincesByRegion).toEqual({
       region_a: "prov_b",
       region_b: "prov_b",
@@ -66,11 +77,19 @@ describe("ESF map provinces", () => {
       {
         key: "prov_b",
         label: "Alpha",
-        colour: [2, 2, 2],
+        colour: paletteA,
         regionKeys: ["region_a", "region_b"],
         capitalRegion: "region_b",
       },
-      { key: "prov_a", label: "Zeta", colour: [3, 3, 3], regionKeys: ["region_c"], capitalRegion: "region_c" },
+      { key: "prov_a", label: "Zeta", colour: paletteB, regionKeys: ["region_c"], capitalRegion: "region_c" },
     ]);
+  });
+
+  it("recolours bordering provinces whose capitals share a colour", () => {
+    // region_c touches region_b (prov_b's capital) and both capitals start with the same colour.
+    const enriched = addProvinceDataToEsfMap(mapWith(2, paletteA), buildings);
+    const [alpha, zeta] = enriched.provinces;
+    expect(colourDistance(alpha.colour, zeta.colour)).toBeGreaterThanOrEqual(MIN_MAP_NEIGHBOUR_COLOUR_DISTANCE);
+    expect([alpha.colour, zeta.colour]).toContainEqual(paletteA);
   });
 });
