@@ -3,7 +3,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import React, { CSSProperties, memo, useContext, useMemo } from "react";
 import { Tooltip } from "flowbite-react";
 import classNames from "classnames";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistance } from "date-fns";
 import { isSubbedTimeSort, SortingType } from "../utility/modRowSorting";
 import localizationContext from "../localizationContext";
 import { Icons } from "./icons";
@@ -11,6 +11,7 @@ import CustomModFolderIcon from "./CustomModFolderIcon";
 import { BsArrowDownUp } from "react-icons/bs";
 import { ModListLayout } from "../utility/frontend/modListLayout";
 import { getModLastChanged } from "../modSortingHelpers";
+import { useMinuteClock } from "./useMinuteClock";
 
 const FontAwesomeIconMemo = memo(FontAwesomeIcon);
 
@@ -62,9 +63,9 @@ type ModRowProps = {
   gridClass: string;
 };
 
-const formatLastChanged = (lastChanged: number) => {
+const formatLastChanged = (lastChanged: number, now: number) => {
   try {
-    return formatDistanceToNow(lastChanged).replace("about ", "~") + " ago";
+    return formatDistance(lastChanged, now).replace("about ", "~") + " ago";
   } catch (e) {
     console.error(e);
   }
@@ -243,20 +244,24 @@ const ModRow = ({
 }: ModRowProps & { ref?: React.Ref<HTMLDivElement> }) => {
   const localization: Record<string, string> = useContext(localizationContext);
 
+  const now = useMinuteClock();
   const isShowingSubbedTime = hasSubbedTimeColumn || isSubbedTimeSort(sortingType);
   const subbedTimeValue = useMemo(
     () =>
-      (isShowingSubbedTime && mod.subbedTime != null && mod.subbedTime != -1 && formatLastChanged(mod.subbedTime)) ||
+      (isShowingSubbedTime &&
+        mod.subbedTime != null &&
+        mod.subbedTime != -1 &&
+        formatLastChanged(mod.subbedTime, now)) ||
       "",
-    [isShowingSubbedTime, mod.subbedTime],
+    [isShowingSubbedTime, mod.subbedTime, now],
   );
   const modLastChanged = getModLastChanged(mod);
   const timeColumnValue = useMemo(
     () =>
       (!hasSubbedTimeColumn && isSubbedTimeSort(sortingType) && subbedTimeValue) ||
-      (modLastChanged && formatLastChanged(modLastChanged)) ||
+      (modLastChanged && formatLastChanged(modLastChanged, now)) ||
       "",
-    [hasSubbedTimeColumn, sortingType, subbedTimeValue, modLastChanged],
+    [hasSubbedTimeColumn, sortingType, subbedTimeValue, modLastChanged, now],
   );
 
   const isCompact = layout === "compact";
