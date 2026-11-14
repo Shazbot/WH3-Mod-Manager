@@ -63,7 +63,7 @@ const OWNERSHIP_HISTORY_LIMIT = 200;
 /** How many factions the brush list renders at once. The faction table runs to thousands of rows. */
 const LISTED_FACTION_LIMIT = 200;
 
-type MapView = "regions" | "factions" | "climate";
+type MapView = "regions" | "provinces" | "factions" | "climate";
 
 type CharacterMapEntry = {
   faction: string;
@@ -820,6 +820,24 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     [map],
   );
 
+  const provinceByKey = useMemo(
+    () => new Map((map?.provinces ?? []).map((province) => [province.key.toLowerCase(), province] as const)),
+    [map],
+  );
+  const selectedProvinceKey = selectedMarker
+    ? (map?.provincesByRegion[selectedMarker.key]?.toLowerCase() ?? undefined)
+    : undefined;
+  const selectedProvince = selectedProvinceKey ? provinceByKey.get(selectedProvinceKey) : undefined;
+
+  const filteredProvinces = useMemo(() => {
+    if (!map) return [];
+    const query = filter.trim().toLowerCase();
+    if (!query) return map.provinces;
+    return map.provinces.filter((province) =>
+      [province.key, province.label, ...province.regionKeys].some((value) => value.toLowerCase().includes(query)),
+    );
+  }, [filter, map]);
+
   const filteredClimates = useMemo(() => {
     if (!map) return [];
     const query = filter.trim().toLowerCase();
@@ -1456,14 +1474,25 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         ? selectedMarkerId === undefined
           ? undefined
           : `region:${selectedMarkerId}`
-        : mapView === "factions" && listedFactionKey
-          ? `faction:${listedFactionKey}`
-          : undefined;
+        : mapView === "provinces" && selectedProvinceKey
+          ? `province:${selectedProvinceKey}`
+          : mapView === "factions" && listedFactionKey
+            ? `faction:${listedFactionKey}`
+            : undefined;
     if (!itemKey) return;
 
     const listItem = mapListItemRefs.current.get(itemKey);
     if (listItem?.scrollIntoView) listItem.scrollIntoView({ behavior: "instant", block: "nearest" });
-  }, [brushFactionKey, filter, isEditingFactions, map, mapView, selectedMarkerFactionKey, selectedMarkerId]);
+  }, [
+    brushFactionKey,
+    filter,
+    isEditingFactions,
+    map,
+    mapView,
+    selectedMarkerFactionKey,
+    selectedMarkerId,
+    selectedProvinceKey,
+  ]);
 
   const staticClimateFilterKey =
     mapView === "climate"
@@ -1498,6 +1527,19 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           const areaPath = areaPaths.get(areaGeometryKey(area));
           if (!areaPath) continue;
           context.fillStyle = `rgba(${area.colour[0]}, ${area.colour[1]}, ${area.colour[2]}, ${MAP_AREA_OPACITY})`;
+          context.fill(areaPath, "evenodd");
+        }
+      }
+
+      if (mapView === "provinces") {
+        for (const area of map.areas) {
+          if (!regionMatchesSettlementType(area.regionKey)) continue;
+          const provinceKey = area.regionKey ? map.provincesByRegion[area.regionKey]?.toLowerCase() : undefined;
+          const province = provinceKey ? provinceByKey.get(provinceKey) : undefined;
+          if (!province) continue;
+          const areaPath = areaPaths.get(areaGeometryKey(area));
+          if (!areaPath) continue;
+          context.fillStyle = `rgba(${province.colour[0]}, ${province.colour[1]}, ${province.colour[2]}, ${MAP_AREA_OPACITY})`;
           context.fill(areaPath, "evenodd");
         }
       }
@@ -1558,6 +1600,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     isEditingOwnership,
     map,
     mapView,
+    provinceByKey,
     selectedSettlementType,
     staticClimateFilterKey,
   ]);
@@ -1598,6 +1641,25 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         context.fillStyle = factionColour(selectedFactionForMap);
         context.strokeStyle = "rgba(255, 255, 255, 0.9)";
         context.lineWidth = 1.2;
+        context.fill(areaPath, "evenodd");
+        context.stroke(areaPath);
+      }
+    } else if (mapView === "provinces" && selectedMarker) {
+      const selectedProvinceRegions = new Set(
+        (map.provincesByRegion[selectedMarker.key]
+          ? (provinceByKey.get(map.provincesByRegion[selectedMarker.key]!.toLowerCase())?.regionKeys ?? [])
+          : [selectedMarker.key]
+        ).map((key) => key.toLowerCase()),
+      );
+      for (const area of map.areas) {
+        if (!area.regionKey || !selectedProvinceRegions.has(area.regionKey.toLowerCase())) continue;
+        if (!regionMatchesSettlementType(area.regionKey)) continue;
+        const areaPath = areaPaths.get(areaGeometryKey(area));
+        if (!areaPath) continue;
+        const isSelectedRegion = area.regionKey === selectedMarker.key;
+        context.fillStyle = "rgba(255, 255, 255, 0.18)";
+        context.strokeStyle = isSelectedRegion ? "rgba(255, 255, 255, 1)" : "rgba(255, 255, 255, 0.6)";
+        context.lineWidth = isSelectedRegion ? 2 : 1;
         context.fill(areaPath, "evenodd");
         context.stroke(areaPath);
       }
@@ -1652,6 +1714,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     isEditingOwnership,
     map,
     mapView,
+    provinceByKey,
     selectedFactionKey,
     selectedMarker,
     selectedSettlementType,
@@ -2273,7 +2336,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           role="tablist"
           aria-label={mapText("mapView", "Map view")}
         >
-          {(["regions", "factions", "climate"] as const).map((view) => (
+          {(["regions", "provinces", "factions", "climate"] as const).map((view) => (
             <button
               key={view}
               type="button"
@@ -2286,9 +2349,11 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             >
               {view === "regions"
                 ? mapText("mapRegions", "Regions")
-                : view === "factions"
-                  ? mapText("mapFactions", "Factions")
-                  : mapText("mapClimate", "Climate")}
+                : view === "provinces"
+                  ? mapText("mapProvinces", "Provinces")
+                  : view === "factions"
+                    ? mapText("mapFactions", "Factions")
+                    : mapText("mapClimate", "Climate")}
             </button>
           ))}
         </div>
@@ -2698,13 +2763,15 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                   : mapMessage("mapFactionSummary", "{{count}} factions · flags at settlements", {
                       count: landholdingFactionCount,
                     })
-                : mapView === "climate"
-                  ? mapMessage("mapClimateSummary", "{{count}} climates · colours at settlements", {
-                      count: map.climates.length,
-                    })
-                  : map.startposWasCompressed
-                    ? mapText("mapCompressedStartpos", "Compressed startpos decoded")
-                    : mapText("mapStartposLoaded", "Startpos loaded")}
+                : mapView === "provinces"
+                  ? mapMessage("mapProvinceSummary", "{{count}} provinces", { count: map.provinces.length })
+                  : mapView === "climate"
+                    ? mapMessage("mapClimateSummary", "{{count}} climates · colours at settlements", {
+                        count: map.climates.length,
+                      })
+                    : map.startposWasCompressed
+                      ? mapText("mapCompressedStartpos", "Compressed startpos decoded")
+                      : mapText("mapStartposLoaded", "Startpos loaded")}
               <div className="mt-1 truncate text-[0.75rem] text-gray-400" title={map.startposPath}>
                 {map.startposPath}
               </div>
@@ -2718,6 +2785,11 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                 </div>
                 {selectedMarker.settlementKey && (
                   <div className="text-[0.8125rem] text-gray-400">{selectedMarker.settlementKey}</div>
+                )}
+                {selectedProvince && (
+                  <div className="text-[0.8125rem] text-gray-400">
+                    {mapText("mapProvince", "Province")}: {selectedProvince.label}
+                  </div>
                 )}
                 {map.climatesByRegion[selectedMarker.key] && (
                   <div className="text-[0.8125rem] text-gray-400">
@@ -3218,9 +3290,11 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                 placeholder={
                   mapView === "factions"
                     ? mapText("mapFilterFactions", "Filter factions…")
-                    : mapView === "climate"
-                      ? mapText("mapFilterClimates", "Filter climates…")
-                      : mapText("mapFilterRegions", "Filter regions…")
+                    : mapView === "provinces"
+                      ? mapText("mapFilterProvinces", "Filter provinces…")
+                      : mapView === "climate"
+                        ? mapText("mapFilterClimates", "Filter climates…")
+                        : mapText("mapFilterRegions", "Filter regions…")
                 }
                 className="w-full rounded border border-gray-700 bg-gray-950 px-2 py-1.5 text-sm text-gray-200 outline-hidden focus:border-blue-500"
               />
@@ -3293,6 +3367,74 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                     </span>
                   </button>
                 ))
+              ) : mapView === "provinces" ? (
+                filteredProvinces.map((province) => {
+                  const isSelected = selectedProvince?.key === province.key;
+                  const regionMarkers = province.regionKeys
+                    .map((regionKey) => map.markers.find((marker) => marker.key === regionKey))
+                    .filter((marker): marker is EsfMapMarker => !!marker);
+                  const count = province.regionKeys.length;
+                  return (
+                    <div key={province.key} className="mb-1">
+                      <button
+                        type="button"
+                        aria-pressed={isSelected}
+                        aria-expanded={isSelected}
+                        ref={(element) => {
+                          const key = `province:${province.key.toLowerCase()}`;
+                          if (element) mapListItemRefs.current.set(key, element);
+                          else mapListItemRefs.current.delete(key);
+                        }}
+                        onClick={() => {
+                          const target =
+                            regionMarkers.find((marker) => marker.key === province.capitalRegion) ?? regionMarkers[0];
+                          selectMapMarker(target, true);
+                        }}
+                        className={`flex w-full items-center gap-2 rounded border px-2 py-1.5 text-left text-sm ${
+                          isSelected
+                            ? "border-blue-500 bg-blue-950/60 text-gray-100"
+                            : "border-transparent bg-gray-950/60 text-gray-300 hover:border-gray-600"
+                        }`}
+                      >
+                        <span
+                          className="h-3 w-3 shrink-0 rounded-sm border border-white/40"
+                          style={{
+                            backgroundColor: `rgb(${province.colour[0]}, ${province.colour[1]}, ${province.colour[2]})`,
+                          }}
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate">{province.label}</span>
+                          <span className="block truncate text-[0.8125rem] text-gray-400">
+                            {mapMessage(
+                              count === 1 ? "mapProvinceRegionOne" : "mapProvinceRegionOther",
+                              count === 1 ? "{{count}} region · {{key}}" : "{{count}} regions · {{key}}",
+                              { count, key: province.key },
+                            )}
+                          </span>
+                        </span>
+                      </button>
+                      {isSelected &&
+                        regionMarkers.map((marker) => (
+                          <button
+                            key={marker.id}
+                            type="button"
+                            aria-pressed={selectedMarkerId === marker.id}
+                            onClick={() => selectMapMarker(marker, true)}
+                            className={`mt-1 ml-5 flex w-[calc(100%-1.25rem)] items-center justify-between gap-2 rounded border px-2 py-1 text-left text-[0.8125rem] ${
+                              selectedMarkerId === marker.id
+                                ? "border-blue-500 bg-blue-950/60 text-gray-100"
+                                : "border-transparent bg-gray-950/60 text-gray-300 hover:border-gray-600"
+                            }`}
+                          >
+                            <span className="truncate">{marker.key}</span>
+                            {marker.key === province.capitalRegion && (
+                              <span className="shrink-0 text-gray-400">{mapText("mapProvinceCapital", "Capital")}</span>
+                            )}
+                          </button>
+                        ))}
+                    </div>
+                  );
+                })
               ) : mapView === "climate" ? (
                 <>
                   <button
@@ -3478,15 +3620,19 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
               )}
               {(mapView === "regions"
                 ? filteredMarkers.length
-                : mapView === "climate"
-                  ? filteredClimates.length
-                  : filteredFactions.length) === 0 && (
+                : mapView === "provinces"
+                  ? filteredProvinces.length
+                  : mapView === "climate"
+                    ? filteredClimates.length
+                    : filteredFactions.length) === 0 && (
                 <div className="px-2 py-3 text-sm text-gray-400">
                   {mapView === "factions"
                     ? mapText("mapNoMatchingFactions", "No matching factions.")
-                    : mapView === "climate"
-                      ? mapText("mapNoMatchingClimates", "No matching climates.")
-                      : mapText("mapNoMatchingRegions", "No matching regions.")}
+                    : mapView === "provinces"
+                      ? mapText("mapNoMatchingProvinces", "No matching provinces.")
+                      : mapView === "climate"
+                        ? mapText("mapNoMatchingClimates", "No matching climates.")
+                        : mapText("mapNoMatchingRegions", "No matching regions.")}
                 </div>
               )}
               {mapView === "factions" && isEditingOwnership && (

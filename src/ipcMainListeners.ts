@@ -152,6 +152,7 @@ import {
 } from "./esfMap/cache";
 import { getVanillaStartposFilePaths, loadEsfMapData, loadStartposRegionSlotTemplates } from "./esfMap/loader";
 import { addClimateDataToEsfMap } from "./esfMap/climates";
+import { addProvinceDataToEsfMap } from "./esfMap/provinces";
 import { addFactionDataToEsfMap, factionFlagPath } from "./esfMap/factions";
 import { addSettlementTypeDataToEsfMap } from "./esfMap/settlementTypes";
 import type { EsfMapDiplomacyIconUrls, EsfMapResponse } from "./esfMap/types";
@@ -4341,7 +4342,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           const registeredPath = registeredIconPath(flagPath);
           return registeredPath ? iconAssetUrl(buildings.iconGeneration, registeredPath) : undefined;
         });
-        const withClimates = addClimateDataToEsfMap(withFactions, buildings.data);
+        const withClimates = addProvinceDataToEsfMap(
+          addClimateDataToEsfMap(withFactions, buildings.data),
+          buildings.data,
+        );
         return {
           ...addSettlementTypeDataToEsfMap(withClimates, buildings.data),
           diplomacyIconUrls: buildings.diplomacyIconUrls,

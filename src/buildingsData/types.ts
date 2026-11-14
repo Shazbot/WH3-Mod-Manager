@@ -291,6 +291,10 @@ export interface BuiltBuildingsData {
   settlementTypes: BuildingsOption[];
   /** Settlement climates referenced by the campaign map settlement table. */
   climates: BuildingsOption[];
+  /** Effective `region_to_province_junctions_tables` rows, keyed by region. */
+  regionProvinces: Record<string, { province: string; isCapital: boolean }>;
+  /** Every `provinces_tables` key, named through `provinces_onscreen_<key>`. */
+  provinces: BuildingsOption[];
   /** Every `main_units` key, named through its land unit. The recruitment picker's options. */
   units: BuildingsOption[];
   /** Every `armed_citizenry_unit_groups` key. The garrison picker's options. */

@@ -86,6 +86,8 @@ export const BUILDINGS_TABLES = [
   "start_pos_region_foreign_slots_tables",
   "campaign_map_settlements_tables",
   "settlement_climate_types_tables",
+  "region_to_province_junctions_tables",
+  "provinces_tables",
   "building_chain_availability_set_ids_tables",
   "building_chain_availability_sets_tables",
   "building_chain_availabilities_tables",
@@ -147,6 +149,8 @@ export const BUILDINGS_TABLE_KEY_COLUMNS: Record<string, string[]> = {
   start_pos_region_foreign_slots_tables: ["campaign", "faction", "region", "slot_set"],
   campaign_map_settlements_tables: ["settlement_id"],
   settlement_climate_types_tables: ["type"],
+  region_to_province_junctions_tables: ["region"],
+  provinces_tables: ["key"],
   building_chain_availability_set_ids_tables: ["id"],
   building_chain_availability_sets_tables: ["building_chain", "id"],
   building_chain_availabilities_tables: ["id"],
@@ -664,6 +668,21 @@ export const buildBuildingsData = (tables: BuildingsTableRows, getLoc: Buildings
       (first, second) => first.localizedName.localeCompare(second.localizedName) || first.key.localeCompare(second.key),
     );
 
+  // --- provinces -------------------------------------------------------------
+  const regionProvinces: Record<string, { province: string; isCapital: boolean }> = {};
+  for (const row of rowsOf("region_to_province_junctions_tables")) {
+    const region = str(row, "region");
+    const province = str(row, "province");
+    if (region && province) regionProvinces[region] = { province, isCapital: str(row, "is_capital") === "true" };
+  }
+  const provinces: BuildingsOption[] = rowsOf("provinces_tables")
+    .map((row) => str(row, "key"))
+    .filter(Boolean)
+    .map((key) => ({ key, localizedName: localize(getLoc, `provinces_onscreen_${key}`) || key }))
+    .sort(
+      (first, second) => first.localizedName.localeCompare(second.localizedName) || first.key.localeCompare(second.key),
+    );
+
   // --- upgrades --------------------------------------------------------------
   // `building_upgrades_junction_tables`, not `building_downgrade_junctions_tables`. The latter is
   // entirely self-referential in vanilla - every one of its ~1500 rows maps a level to itself - so
@@ -972,6 +991,8 @@ export const buildBuildingsData = (tables: BuildingsTableRows, getLoc: Buildings
     factions,
     settlementTypes,
     climates,
+    regionProvinces,
+    provinces,
     units,
     unitGroups,
     effects,

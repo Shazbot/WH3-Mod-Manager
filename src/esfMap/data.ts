@@ -662,6 +662,8 @@ export function buildEsfMapData(
     settlementTypesByRegion: {},
     climates: [],
     climatesByRegion: {},
+    provinces: [],
+    provincesByRegion: {},
     backgroundImage: null,
     backgroundTextImage: null,
     startposWasCompressed: ownershipData.wasCompressed,

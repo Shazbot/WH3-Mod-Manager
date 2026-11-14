@@ -61,6 +61,14 @@ export interface EsfMapClimateOption {
   regionCount: number;
 }
 
+export interface EsfMapProvinceOption {
+  key: string;
+  label: string;
+  colour: EsfMapColour;
+  regionKeys: string[];
+  capitalRegion: string | null;
+}
+
 export type EsfMapGridSource = "lookup" | "region-areas";
 
 export interface EsfMapImage {
@@ -106,6 +114,8 @@ export interface EsfMapPayload {
   settlementTypesByRegion: Record<string, string[]>;
   climates: EsfMapClimateOption[];
   climatesByRegion: Record<string, string | null>;
+  provinces: EsfMapProvinceOption[];
+  provincesByRegion: Record<string, string | null>;
   mapDataPath: string;
   startposPath: string;
   lookupPath: string | null;
