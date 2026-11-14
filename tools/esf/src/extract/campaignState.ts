@@ -131,7 +131,8 @@ function emptyDiplo(): CampaignStateDiplomacy {
  *   [key, owner, subculture, "", owner, ""] lag behind some scripted transfers, so they are only a fallback.
  * - REGION_SLOT: ascii [instanceKey, template, type]; the building is the first ascii of its BUILDING_BASE.
  * - OLD_DIPLOMACY_RELATIONSHIP: 15 direct values per other faction (two are empty arrays); [0] other
- *   faction id, [2] stance ("neutral", "war", "military_allies"), [12] is -1 when military access is granted,
+ *   faction id, [2] stance ("neutral", "war", "military_allies", "defensive_allies", "master" = this faction is the other's
+ *   master, "vassal" = it is the other's vassal; [7] / [6] hold the turn the master / vassal treaty was signed), [12] is -1 when military access is granted,
  *   [14] a u32 list where 1659 marks a non-aggression pact and 4051 a trade agreement.
  */
 export interface CampaignStateOptions {
@@ -463,6 +464,8 @@ export function extractCampaignState(
         const stance = (g[2].value as { text?: string | null }).text ?? "";
         if (stance === "war") diplo.war.push(other);
         else if (stance === "military_allies") diplo.mil_ally.push(other);
+        else if (stance === "defensive_allies") diplo.def_ally.push(other);
+        else if (stance === "master") diplo.vassals.push(other);
         if (Number(g[12].value) === -1) diplo.mil_access.push(other);
         const codes = g[14].value as Buffer;
         for (let offset = 0; offset + 4 <= codes.length; offset += 4) {
@@ -479,7 +482,6 @@ export function extractCampaignState(
     out.push({ faction: f.key, chars, diplo });
   }
 
-  warnings.push("Defensive alliance and vassal relations could not be read from the file and were left empty.");
   if (!options.resourceBySlotTemplate) {
     warnings.push("Building resource keys could not be resolved without the slot template table and were left out.");
   }

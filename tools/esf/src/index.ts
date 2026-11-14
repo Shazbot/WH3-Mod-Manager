@@ -42,3 +42,10 @@ export type {
   CampaignStateRegion,
   CampaignStateUnit,
 } from "./extract/campaignState";
+
+export { applyCampaignEdits, applyCampaignEditsToEsf, LAND_RANK_XP_THRESHOLDS } from "./edit/applyCampaignEdits";
+export type {
+  ApplyCampaignEditsResult,
+  CampaignEditAction,
+  CampaignEdits,
+} from "./edit/applyCampaignEdits";

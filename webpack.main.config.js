@@ -24,6 +24,8 @@ module.exports = {
     mixerStartposWorker: "./src/mixerStartpos/worker.ts",
     // Forked by src/esfMap/campaignSave.ts to read campaign saves for the map panel's Import.
     campaignSaveWorker: "./src/esfMap/campaignSaveWorker.ts",
+    // Forked by src/esfMap/campaignSave.ts to write an edited copy of a save from the map panel's Export to save.
+    campaignSaveWriteWorker: "./src/esfMap/campaignSaveWriteWorker.ts",
   },
   // Put your normal webpack config below here
   module: {

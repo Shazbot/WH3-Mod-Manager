@@ -158,10 +158,12 @@ Legend:
 
 ### Buildings, ancillaries, campaign map
 
-- **I** `getBuildingsCatalog`, `getBuildingsRegionView`, `getBuildingsCaiRows`, `getAncillariesCatalog`, `getAncillariesDetail`, `getEsfMap`, `exportRegionOwnership`, `importRegionOwnership`
+- **I** `getBuildingsCatalog`, `getBuildingsRegionView`, `getBuildingsCaiRows`, `getAncillariesCatalog`, `getAncillariesDetail`, `getEsfMap`, `exportRegionOwnership`, `importRegionOwnership`, `exportCampaignSave`
 - **E** `buildingsDataRebuild`
 
-`importRegionOwnership` opens JSON, `.save` or `.esf` files. A JSON file returns `{ success, text, filePath }` (parsed in the renderer). A `.save`/`.esf` is read in a forked worker (webpack entry `campaignSaveWorker`, `src/esfMap/campaignSave.ts`) and returns the same plus `campaignKey` (the save's campaign, or null) and `warnings` (fields the extractor could not decode); `text` is extended map JSON. `importRegionOwnership(saveName?)` with a save file name skips the dialog and reads that file from the game saves folder (names with path parts or not ending in `.save` are rejected). The renderer switches campaign first when `campaignKey` differs from the loaded map, then applies the import.
+`importRegionOwnership` opens JSON, `.save` or `.esf` files. A JSON file returns `{ success, text, filePath }` (parsed in the renderer). A `.save`/`.esf` is read in a forked worker (webpack entry `campaignSaveWorker`, `src/esfMap/campaignSave.ts`) and returns the same plus `campaignKey` (the save's campaign, or null) and `warnings` (fields the extractor could not decode); `text` is extended map JSON. `importRegionOwnership(saveName?)` with a save file name skips the dialog and reads that file from the game saves folder (names with path parts or not ending in `.save` are rejected). The renderer switches campaign first when `campaignKey` differs from the loaded map, then applies the import. The renderer keeps the returned `filePath` of a save import as the source for `exportCampaignSave`.
+
+`exportCampaignSave(sourcePath, { ownership, actions })` shows a save dialog (default `<source>_edited.save` in the game saves folder, never the source file itself) and writes a copy of the source save with the map panel's edits applied, in a forked worker (webpack entry `campaignSaveWriteWorker`, `writeCampaignSave` in `src/esfMap/campaignSave.ts`, writer `tools/esf/src/edit/applyCampaignEdits.ts`). Returns `{ success, savedPath, applied, skipped }`; `skipped` lists edits the writer cannot represent (ownership, diplomacy, adding/removing characters or units, empty building slots, rank/subtype, confederation). The worker re-extracts its own output and fails if anything but the applied edits differs.
 
 ### Flows (node graph)
 

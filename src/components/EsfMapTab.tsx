@@ -434,6 +434,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     detected: Exclude<ReturnType<typeof parseMapFile>, { error: string }>;
     notes: string[];
     campaignKey: string;
+    sourcePath?: string;
   }>(undefined);
   const mapDragRef = useRef<{
     pointerId: number;
@@ -482,6 +483,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const [ownershipEdits, setOwnershipEdits] = useState<OwnershipEdits>({});
   const [editHistory, setEditHistory] = useState<OwnershipEdits[]>([]);
   const [isTransferringOwnership, setIsTransferringOwnership] = useState(false);
+  /** The `.save` the current extended state was imported from; the target of "Export to save…". */
+  const [importedSavePath, setImportedSavePath] = useState<string>();
   const [isImportMenuOpen, setIsImportMenuOpen] = useState(false);
   const importMenuRef = useRef<HTMLDivElement>(null);
   /** Extended map data is kept separate from ESF ownership so legacy map.json remains unchanged. */
@@ -919,6 +922,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     setExtendedState(undefined);
     setExtendedHistory([]);
     setExtendedImportUndo(undefined);
+    setImportedSavePath(undefined);
     setSelectedCharacterKey(undefined);
     setCharacterDragPreview(undefined);
     factionRegionCycleRef.current = undefined;
@@ -1220,11 +1224,51 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     );
   };
 
+  /** Writes the edits into a copy of the imported save; unsupported edits come back in `skipped`. */
+  const exportToSave = async () => {
+    if (!importedSavePath || !extendedDelta || isTransferringOwnership) return;
+    setIsTransferringOwnership(true);
+    await runGuarded(
+      async () => {
+        const result = await window.api?.exportCampaignSave(importedSavePath, {
+          ownership: ownershipEdits,
+          actions: extendedDelta.actions,
+        });
+        if (!result || result.canceled) return;
+        if (!result.success) {
+          showOwnershipToast("warning", [
+            mapMessage("mapSaveExportFailed", "Could not write the save: {{error}}", { error: result.error ?? "" }),
+          ]);
+          return;
+        }
+        const skipped = result.skipped ?? [];
+        const messages = [
+          mapMessage("mapSaveExported", "Save written to {{path}}: {{applied}} edit(s) applied, {{skipped}} skipped.", {
+            path: result.savedPath ?? "",
+            applied: result.applied?.length ?? 0,
+            skipped: skipped.length,
+          }),
+          ...skipped.slice(0, 5),
+        ];
+        if (skipped.length > 5) {
+          messages.push(mapMessage("mapSaveExportMoreSkipped", "…and {{count}} more skipped.", { count: skipped.length - 5 }));
+        }
+        showOwnershipToast(skipped.length > 0 ? "warning" : "success", messages);
+      },
+      {
+        onFinally: () => {
+          setIsTransferringOwnership(false);
+        },
+      },
+    );
+  };
+
   /** Applies a parsed map file to `targetMap`. A save of another campaign is applied after the switch, via the pending ref. */
   const applyImport = (
     detected: Exclude<ReturnType<typeof parseMapFile>, { error: string }>,
     targetMap: NonNullable<typeof baseMap>,
     notes: string[],
+    sourcePath?: string,
   ) => {
     const ownership =
       detected.format === "legacy"
@@ -1242,6 +1286,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       setOwnershipEdits({});
       setEditHistory([]);
       setExtendedState(createExtendedMapEditState(detected.document));
+      setImportedSavePath(sourcePath);
       setExtendedHistory([]);
       setSelectedCharacterKey(undefined);
       setSelectedFactionKey(undefined);
@@ -1252,6 +1297,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       setOwnershipEdits(edits);
       setExtendedImportUndo(undefined);
       setExtendedState(undefined);
+      setImportedSavePath(undefined);
       setExtendedHistory([]);
       setSelectedCharacterKey(undefined);
       setSelectedFactionKey(undefined);
@@ -1328,6 +1374,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           return;
         }
         const notes = result.warnings ?? [];
+        const sourcePath = result.filePath && /\.save$/i.test(result.filePath) ? result.filePath : undefined;
         const saveCampaign = result.campaignKey?.toLowerCase();
         if (saveCampaign && saveCampaign !== baseMap.campaignKey.toLowerCase()) {
           const target = campaignOptions.find((option) => option.key.toLowerCase() === saveCampaign);
@@ -1341,11 +1388,11 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             );
             return;
           }
-          pendingImportRef.current = { detected, notes, campaignKey: target.key.toLowerCase() };
+          pendingImportRef.current = { detected, notes, campaignKey: target.key.toLowerCase(), sourcePath };
           dispatch(setMapCampaignName(target.key));
           return;
         }
-        applyImport(detected, baseMap, notes);
+        applyImport(detected, baseMap, notes, sourcePath);
       },
       {
         onFinally: () => {
@@ -1388,7 +1435,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     }
     if (!baseMap || baseMap.campaignKey.toLowerCase() !== pending.campaignKey) return;
     pendingImportRef.current = undefined;
-    applyImport(pending.detected, baseMap, pending.notes);
+    applyImport(pending.detected, baseMap, pending.notes, pending.sourcePath);
   }, [baseMap, error, applyImport]);
 
   useEffect(() => {
@@ -2638,6 +2685,20 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
               >
                 {mapText("mapExportOwnership", "Export…")}
               </button>
+              {extendedState && (
+                <button
+                  type="button"
+                  onClick={() => void exportToSave()}
+                  disabled={isTransferringOwnership || !importedSavePath}
+                  title={mapText(
+                    "mapExportToSaveHint",
+                    "Write the edits into a copy of the imported save. Ownership, diplomacy, added or removed characters and units are not written.",
+                  )}
+                  className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-300 hover:bg-gray-800 disabled:opacity-40 disabled:hover:bg-gray-900"
+                >
+                  {mapText("mapExportToSave", "Export to save…")}
+                </button>
+              )}
             </div>
           </div>
         )}

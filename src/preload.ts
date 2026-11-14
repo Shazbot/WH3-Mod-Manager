@@ -1052,6 +1052,19 @@ const api = {
     error?: string;
   }> => ipcRenderer.invoke("importRegionOwnership", saveName),
 
+  /** Writes the map edits into a copy of the save `sourcePath` (save dialog; never overwrites the source). */
+  exportCampaignSave: (
+    sourcePath: string,
+    edits: { ownership?: Record<string, string | null>; actions: unknown[] },
+  ): Promise<{
+    success: boolean;
+    savedPath?: string;
+    applied?: string[];
+    skipped?: string[];
+    canceled?: boolean;
+    error?: string;
+  }> => ipcRenderer.invoke("exportCampaignSave", sourcePath, edits),
+
   updateCustomModSources: (data: {
     game: SupportedGames;
     customModFolders: CustomModFolder[];

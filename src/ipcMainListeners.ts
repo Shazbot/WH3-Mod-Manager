@@ -152,7 +152,7 @@ import {
 } from "./esfMap/cache";
 import { getVanillaStartposFilePaths, loadEsfMapData, loadStartposRegionSlotTemplates } from "./esfMap/loader";
 import { addClimateDataToEsfMap } from "./esfMap/climates";
-import { readCampaignSaveMap } from "./esfMap/campaignSave";
+import { readCampaignSaveMap, writeCampaignSave } from "./esfMap/campaignSave";
 import { addProvinceDataToEsfMap } from "./esfMap/provinces";
 import { addFactionDataToEsfMap, factionFlagPath } from "./esfMap/factions";
 import { addSettlementTypeDataToEsfMap } from "./esfMap/settlementTypes";
@@ -15300,6 +15300,46 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         return { success: true, text: await fs.promises.readFile(filePath, "utf8"), filePath };
       } catch (error) {
         console.error("Error importing region ownership:", error);
+        return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+      } finally {
+        if (requestingWindow && !requestingWindow.isDestroyed()) requestingWindow.focus();
+      }
+    },
+  );
+  /** Writes the map panel's edits into a copy of the save it was imported from. */
+  ipcMain.handle(
+    "exportCampaignSave",
+    async (
+      event,
+      sourcePath: string,
+      edits: import("./esfMap/campaignSaveTypes").CampaignSaveEdits,
+    ): Promise<{
+      success: boolean;
+      savedPath?: string;
+      applied?: string[];
+      skipped?: string[];
+      canceled?: boolean;
+      error?: string;
+    }> => {
+      const requestingWindow = BrowserWindow.fromWebContents(event.sender);
+      try {
+        if (typeof sourcePath !== "string" || !/\.save$/i.test(sourcePath) || !fs.existsSync(sourcePath)) {
+          return { success: false, error: "The source save is no longer available" };
+        }
+        const sourceName = nodePath.basename(sourcePath).replace(/\.save$/i, "");
+        const result = await dialog.showSaveDialog(requestingWindow || mainWindow || new BrowserWindow(), {
+          defaultPath: nodePath.join(getSavesFolderPath(), `${sourceName}_edited.save`),
+          filters: [{ name: "Warhammer save", extensions: ["save"] }],
+        });
+        if (result.canceled || !result.filePath) return { success: false, canceled: true };
+        const savedPath = /\.save$/i.test(result.filePath) ? result.filePath : `${result.filePath}.save`;
+        if (nodePath.resolve(savedPath).toLowerCase() === nodePath.resolve(sourcePath).toLowerCase()) {
+          return { success: false, error: "Choose a different file; the source save is never overwritten" };
+        }
+        const written = await writeCampaignSave(sourcePath, savedPath, edits);
+        return { success: true, savedPath, applied: written.applied, skipped: written.skipped };
+      } catch (error) {
+        console.error("Error exporting campaign save:", error);
         return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
       } finally {
         if (requestingWindow && !requestingWindow.isDestroyed()) requestingWindow.focus();
