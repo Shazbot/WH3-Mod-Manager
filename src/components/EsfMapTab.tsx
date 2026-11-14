@@ -1523,7 +1523,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
 
       if (mapView === "regions") {
         for (const area of map.areas) {
-          if (!regionMatchesSettlementType(area.regionKey)) continue;
+          // Sea areas carry no region key; leave them unshaded as the province view does.
+          if (!area.regionKey || !regionMatchesSettlementType(area.regionKey)) continue;
           const areaPath = areaPaths.get(areaGeometryKey(area));
           if (!areaPath) continue;
           context.fillStyle = `rgba(${area.colour[0]}, ${area.colour[1]}, ${area.colour[2]}, ${MAP_AREA_OPACITY})`;
