@@ -238,8 +238,9 @@ describe("buildBuildingsData", () => {
     ]);
   });
 
-  it("binds legacy Vampire chains to the Vampire availability set", () => {
-    expect(data.availabilitySetsByChain.wh2_main_VAMPIRES_legacy).toContain("wh_main_bas_vmp");
+  it("no longer binds legacy Vampire chains to the Vampire availability set", () => {
+    // The game draws them for nobody, Vampire Counts included; see AVAILABILITY_SET_BY_CHAIN_PREFIX.
+    expect(data.availabilitySetsByChain.wh2_main_VAMPIRES_legacy).toBeUndefined();
   });
 
   it("binds legacy Chaos horde chains to the Chaos availability set", () => {

@@ -1436,6 +1436,8 @@
   "buildingsUnbandedLevelsTooltip": "Levels, die an keinen Bausatz gebunden sind. Das Spiel hat kein Band, das sie anzieht, also lässt es sie außen vor.",
   "buildingsOtherCultureChains": "Ketten anderer Kulturen",
   "buildingsOtherCultureChainsTooltip": "Ketten, deren Ebenen nur andere Kulturen als die ausgewählte benennen.",
+  "buildingsChainsWithoutAvailability": "Ketten ohne Verfügbarkeit",
+  "buildingsChainsWithoutAvailabilityTooltip": "Ketten, die ein gemeinsamer Kettensatz anbietet, die aber kein Verfügbarkeitssatz nennt. Das Spiel gibt sie niemandem.",
   "buildingsNoMatches": "Keine Gebäude entsprechen diesen Filtern.",
   "buildingsNoIcon": "kein Symbol",
   "buildingsTurns": "Wendet sich",

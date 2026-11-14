@@ -167,6 +167,64 @@ describe("computeBoardLayout", () => {
     expect(columns).toEqual({ a1: 2, a2_a: 1, a2_b: 2, a2_c: 3 });
   });
 
+  it("keeps a fork's branches side by side when they require different tiers", () => {
+    // `wh_main_VAMPIRES_corpses_1` upgrades into `_corpses_2` (tier 2) or `_corpse_transport_1` (tier 3).
+    // By tier alone the three stack in one column and read as a straight upgrade line.
+    const board = view([
+      band("set", [
+        {
+          chainKey: "corpses",
+          tiles: [tile("corpses_1", 0, 0), tile("corpses_2", 1, 1), tile("corpse_transport_1", 1, 2)],
+        },
+        { chainKey: "next", tiles: [tile("next_1", 0)] },
+      ]),
+    ]);
+    board.edges = [
+      { fromLevelKey: "corpses_1", toLevelKey: "corpses_2", isImplicit: false },
+      { fromLevelKey: "corpses_1", toLevelKey: "corpse_transport_1", isImplicit: false },
+    ];
+    const [corpses, next] = computeBoardLayout(board).bands[0].columns;
+    expect(corpses.width).toBe(2);
+    expect(
+      Object.fromEntries(corpses.cells.map((cell) => [cell.tile.levelKey, [cell.gridRow, cell.gridColumn]])),
+    ).toEqual({
+      corpses_1: [3, 1],
+      corpses_2: [2, 1],
+      corpse_transport_1: [1, 2],
+    });
+    expect(next.gridColumn).toBe(3);
+  });
+
+  it("keeps each branch's own upgrades in that branch's lane", () => {
+    const board = view([
+      band("set", [{ chainKey: "a", tiles: [tile("a1", 0), tile("a2", 1), tile("a2_alt", 1, 2), tile("a3", 2, 3)] }]),
+    ]);
+    board.edges = [
+      { fromLevelKey: "a1", toLevelKey: "a2", isImplicit: false },
+      { fromLevelKey: "a1", toLevelKey: "a2_alt", isImplicit: false },
+      { fromLevelKey: "a2", toLevelKey: "a3", isImplicit: false },
+    ];
+    const cells = computeBoardLayout(board).bands[0].columns[0].cells;
+    expect(Object.fromEntries(cells.map((cell) => [cell.tile.levelKey, cell.gridColumn]))).toEqual({
+      a1: 1,
+      a2: 1,
+      a3: 1,
+      a2_alt: 2,
+    });
+  });
+
+  it("falls back to tiers when an upgrade stays on its own tier", () => {
+    // Laid out as a tree, a1 and a2 would share a lane and a row.
+    const board = view([band("set", [{ chainKey: "a", tiles: [tile("a1", 0), tile("a2", 0), tile("a2_alt", 1)] }])]);
+    board.edges = [
+      { fromLevelKey: "a1", toLevelKey: "a2", isImplicit: false },
+      { fromLevelKey: "a1", toLevelKey: "a2_alt", isImplicit: false },
+    ];
+    const column = computeBoardLayout(board).bands[0].columns[0];
+    const cells = new Set(column.cells.map((cell) => `${cell.gridRow}|${cell.gridColumn}`));
+    expect(cells.size).toBe(3);
+  });
+
   it("shifts the chains after a branching one across the columns it claimed", () => {
     const layout = computeBoardLayout(
       view([

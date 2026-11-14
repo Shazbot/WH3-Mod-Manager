@@ -587,6 +587,20 @@ const BuildingsFilters = memo(
                 />
                 {localized.buildingsOtherCultureChains || "Other cultures' chains"}
               </label>
+              <label
+                className="flex items-center gap-2 rounded px-3 py-2 text-sm text-white hover:bg-gray-700"
+                title={
+                  localized.buildingsChainsWithoutAvailabilityTooltip ||
+                  "Chains a shared chain set offers but no availability set names. The game gives them to nobody."
+                }
+              >
+                <input
+                  type="checkbox"
+                  checked={!!query.includeChainsWithoutAvailability}
+                  onChange={(event) => onQueryChange({ includeChainsWithoutAvailability: event.target.checked })}
+                />
+                {localized.buildingsChainsWithoutAvailability || "Chains without availability"}
+              </label>
             </div>
           )}
         </div>

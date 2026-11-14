@@ -1436,6 +1436,8 @@
   "buildingsUnbandedLevelsTooltip": "レベルは建物セットにバインドされません。ゲームには彼らを引き込むバンドがないため、彼らは除外されます。",
   "buildingsOtherCultureChains": "他文化の連鎖",
   "buildingsOtherCultureChainsTooltip": "選択したカルチャー以外のカルチャーのみをレベルで指定するチェーン。",
+  "buildingsChainsWithoutAvailability": "利用可能性のないチェーン",
+  "buildingsChainsWithoutAvailabilityTooltip": "共有チェーンセットが提供するものの、どの利用可能性セットにも記載されていないチェーン。ゲームは誰にも与えません。",
   "buildingsNoMatches": "これらのフィルターに一致する建物はありません。",
   "buildingsNoIcon": "アイコンなし",
   "buildingsTurns": "ターン",

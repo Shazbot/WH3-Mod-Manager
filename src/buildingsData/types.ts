@@ -409,6 +409,8 @@ export interface BuildingsRegionQuery {
   includeUnbandedLevels?: boolean;
   /** Show chains whose levels name only cultures other than the selected one. */
   includeOtherCultureChains?: boolean;
+  /** Show chains a shared chain set offers but no availability set names, which the game gives nobody. */
+  includeChainsWithoutAvailability?: boolean;
 }
 
 export interface BuildingsTile {

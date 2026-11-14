@@ -26,7 +26,11 @@ import {
  * input and a real expected output, which is the only way to tell whether the chain set,
  * availability, culture variant and building set rules here match the game's.
  *
- * Skipped when either dump is absent, so it costs nothing on a machine without them.
+ * `WHMM_BUILDINGS_DRAKENHOF_UI_DUMP` is the same panel in wh3_main_combi_region_castle_drakenhof on
+ * turn 1 as wh_main_vmp_schwartzhafen (9.0.5), kept as the raw `[ui]` script-log lines, so a second
+ * culture checks the same rules from another side.
+ *
+ * Skipped when a dump is absent, so it costs nothing on a machine without them.
  *
  * One thing this cannot check, because the data is not in the DB at all:
  *
@@ -36,10 +40,21 @@ import {
  */
 const DB_DUMP = process.env.WHMM_BUILDINGS_DB_DUMP ?? "/mnt/k/projects/wh3dump/db";
 const UI_DUMP = process.env.WHMM_BUILDINGS_UI_DUMP ?? "/mnt/k/wh3mods/altdorf.txt";
+const DRAKENHOF_UI_DUMP = process.env.WHMM_BUILDINGS_DRAKENHOF_UI_DUMP ?? "/mnt/k/wh3mods/drakenhof.txt";
+/**
+ * The wh3dump copy went missing once and the whole suite skipped silently, so fall back to the loose
+ * startpos the game itself ships.
+ */
 const STARTPOS_FILE =
-  process.env.WHMM_BUILDINGS_STARTPOS ?? "/mnt/k/projects/wh3dump/campaigns/wh3_main_combi/startpos.esf";
+  process.env.WHMM_BUILDINGS_STARTPOS ??
+  [
+    "/mnt/k/projects/wh3dump/campaigns/wh3_main_combi/startpos.esf",
+    "/mnt/k/SteamLibrary/steamapps/common/Total War WARHAMMER III/data/campaigns/wh3_main_combi/startpos.esf",
+  ].find((candidate) => fs.existsSync(candidate)) ??
+  "";
 
 const haveDumps = fs.existsSync(DB_DUMP) && fs.existsSync(UI_DUMP) && fs.existsSync(STARTPOS_FILE);
+const haveDrakenhofDumps = fs.existsSync(DB_DUMP) && fs.existsSync(DRAKENHOF_UI_DUMP) && fs.existsSync(STARTPOS_FILE);
 /** Foreign slots are region-agnostic, so their checks need only the DB dump. */
 const haveDbDump = fs.existsSync(DB_DUMP);
 
@@ -59,21 +74,32 @@ const EXPECTED_ALTDORF_SLOTS = [
  * Chains the DB permits at Altdorf that the live game does not draw, with nothing left in the data
  * to tell them apart. Asserted exactly, so a new extra - or one of these disappearing - fails.
  *
- * Was twelve. Two rules, each verified below to hide nothing the game shows, account for seven of
+ * Was twelve. Three rules, each verified below to hide nothing the game shows, account for eight of
  * them: a level in no building set has no band to be drawn in (the five `greenskin_vandalisation`
- * chains and `wh2_dlc12_dummy_nuclear_ruins`), and a chain whose levels name only other cultures is
- * somebody else's (`wh_main_horde_chaos_trolls`).
+ * chains and `wh2_dlc12_dummy_nuclear_ruins`), a chain whose levels name only other cultures is
+ * somebody else's (`wh_main_horde_chaos_trolls`), and a chain only a shared chain set offers with no
+ * availability set is one the game gives nobody (`wh_main_HUMAN_MIDDENHEIM_worship` since 9.0).
  *
- * What is left has genuinely no signal:
+ * What is left:
  *
- * - **Other Empire provinces' cults.** `wh_main_HUMAN_MIDDENHEIM_worship` and
- *   `wh_main_HUMAN_TALABEC_worship` are narrowed by faction in game; this query pins culture and
- *   subculture but not faction, so both stay in.
+ * - **Another Empire province's cult.** `wh_main_HUMAN_TALABEC_worship` is narrowed by faction in
+ *   game; this query pins culture and subculture but not faction, so it stays in.
+ * - **`wh3_dlc29_EMPIRE_worship_ulric`**, added in 9.0 after the UI dump was taken. Its availability
+ *   admits Karl Franz, so it is probably real, but nothing here can confirm it until the dump is
+ *   retaken.
+ * - **`wh3_main_foreign_slot_endgame`**. `wh_start.lua` registers it with
+ *   `cm:add_event_restricted_building_record` until the Vermintide endgame fires, which the DB
+ *   cannot express. It used to be hidden by accident, by reading settlement type bindings as "only
+ *   in that type".
  *
  * Showing these is defensible for a modding tool - it shows what the data permits - and the UI marks
  * them rather than hiding them.
  */
-const EXPECTED_EXTRAS = ["wh_main_HUMAN_MIDDENHEIM_worship", "wh_main_HUMAN_TALABEC_worship"];
+const EXPECTED_EXTRAS = [
+  "wh3_dlc29_EMPIRE_worship_ulric",
+  "wh3_main_foreign_slot_endgame",
+  "wh_main_HUMAN_TALABEC_worship",
+];
 
 /** RPFM TSV: line 1 is the column names, line 2 is a `#table;version;path` comment, then rows. */
 const readTsvTable = (tableName: string): Array<Record<string, string>> => {
@@ -100,23 +126,61 @@ const readTsvTable = (tableName: string): Array<Record<string, string>> => {
   return rows;
 };
 
-/** `CcoBuildingSetRecord<set> CcoBuildingChainRecord<chain> <level> > <widget path>` */
+/** Condensed dump (altdorf.txt): `CcoBuildingSetRecord<set> CcoBuildingChainRecord<chain> <level> > <widget path>` */
 const UI_LINE = /^CcoBuildingSetRecord(\S+) CcoBuildingChainRecord(\S+) (\S+)(?: >.*)?$/;
+/**
+ * Raw script-log dump (drakenhof.txt): the full widget path, with the level as the child of the
+ * chain's `slot_parent` - which also holds a `template_slot_entry` widget that is not a level.
+ */
+const LOG_CHAIN = /CcoBuildingSetRecord(\S+) > chain_list_parent > chain_list > CcoBuildingChainRecord(\S+)/;
+const LOG_LEVEL = /CcoBuildingChainRecord\S+ > building_chain > slot_parent > ([^\s>]+)/;
 
-const readGroundTruth = () => {
+const readGroundTruth = (dumpPath: string) => {
   const chainToSet = new Map<string, string>();
   const chains = new Set<string>();
   const levels = new Set<string>();
-  for (const line of fs.readFileSync(UI_DUMP, "utf8").split(/\r?\n/)) {
+  for (const line of fs.readFileSync(dumpPath, "utf8").split(/\r?\n/)) {
     const match = UI_LINE.exec(line);
-    if (!match) continue;
-    const [, setKey, chainKey, levelKey] = match;
-    if (levelKey.startsWith(">")) continue;
-    chainToSet.set(chainKey, setKey);
-    chains.add(chainKey);
-    levels.add(levelKey);
+    if (match) {
+      const [, setKey, chainKey, levelKey] = match;
+      if (levelKey.startsWith(">")) continue;
+      chainToSet.set(chainKey, setKey);
+      chains.add(chainKey);
+      levels.add(levelKey);
+      continue;
+    }
+    const chainMatch = LOG_CHAIN.exec(line);
+    if (!chainMatch) continue;
+    chainToSet.set(chainMatch[2], chainMatch[1]);
+    chains.add(chainMatch[2]);
+    const levelKey = LOG_LEVEL.exec(line)?.[1];
+    if (levelKey && levelKey !== "template_slot_entry") levels.add(levelKey);
   }
   return { chainToSet, chains, levels };
+};
+
+/** The shipped DB plus the region slots from the real startpos.esf, built once for every suite. */
+let shippedData: { tables: BuildingsTableRows; data: ReturnType<typeof buildBuildingsData> } | undefined;
+const loadShippedData = () => {
+  if (shippedData) return shippedData;
+  const tables: BuildingsTableRows = {};
+  for (const tableName of BUILDINGS_TABLES) tables[tableName] = readTsvTable(tableName);
+  // The DB dump has no start_pos_* tables. Supply the rows extracted from the real startpos.esf.
+  const startpos = fs.readFileSync(STARTPOS_FILE);
+  const identity = extractCampaignTableIdentity(startpos, parseEsfDocument(startpos));
+  const opened = openEsfBuffer(startpos);
+  tables.start_pos_region_slot_templates_tables = extractStartposRegionSlotTemplates(
+    opened.buffer,
+    parseEsfDocument(opened.buffer),
+    identity?.campaignName ?? CAMPAIGN,
+  ).map((row) => ({
+    campaign: row.campaign,
+    region: row.region,
+    slot_template: row.slotTemplate,
+    slot_type: row.slotType,
+  }));
+  shippedData = { tables, data: buildBuildingsData(tables, () => undefined) };
+  return shippedData;
 };
 
 const flattenView = (view: BuildingsRegionView) => {
@@ -136,30 +200,14 @@ const flattenView = (view: BuildingsRegionView) => {
 describe.skipIf(!haveDumps)("buildings derivation against the in-game Altdorf panel", () => {
   // Vitest still collects skipped suites; avoid reading optional fixtures during collection.
   if (!haveDumps) return;
-  const tables: BuildingsTableRows = {};
-  for (const tableName of BUILDINGS_TABLES) tables[tableName] = readTsvTable(tableName);
-  // The DB dump has no start_pos_* tables. Supply the rows extracted from the real startpos.esf.
-  const startpos = fs.readFileSync(STARTPOS_FILE);
-  const identity = extractCampaignTableIdentity(startpos, parseEsfDocument(startpos));
-  const opened = openEsfBuffer(startpos);
-  tables.start_pos_region_slot_templates_tables = extractStartposRegionSlotTemplates(
-    opened.buffer,
-    parseEsfDocument(opened.buffer),
-    identity?.campaignName ?? CAMPAIGN,
-  ).map((row) => ({
-    campaign: row.campaign,
-    region: row.region,
-    slot_template: row.slotTemplate,
-    slot_type: row.slotType,
-  }));
-  const data = buildBuildingsData(tables, () => undefined);
+  const { tables, data } = loadShippedData();
   const view = resolveRegionBuildings(data, {
     campaign: CAMPAIGN,
     region: REGION,
     culture: CULTURE,
     subculture: SUBCULTURE,
   });
-  const truth = readGroundTruth();
+  const truth = readGroundTruth(UI_DUMP);
   const ours = flattenView(view);
 
   it("gets the region's slots from the supplied startpos rows", () => {
@@ -216,6 +264,24 @@ describe.skipIf(!haveDumps)("buildings derivation against the in-game Altdorf pa
   it("shows exactly the documented extras and nothing else", () => {
     const extras = [...ours.chains].filter((chain) => !truth.chains.has(chain)).sort();
     expect(extras).toEqual(EXPECTED_EXTRAS);
+  });
+
+  /**
+   * 9.0 deleted the only availability row of several vampire chains that still sit in the generic
+   * secondary chain sets Altdorf's secondary slot reaches. Read as "unrestricted", that drew them in
+   * an Empire settlement.
+   */
+  it("hides the shared chain set chains 9.0 left without an availability set", () => {
+    const retired = ["wh_main_VAMPIRES_ossuary", "wh_main_VAMPIRES_armoury"];
+    const query = { campaign: CAMPAIGN, region: REGION, culture: CULTURE, subculture: SUBCULTURE, faction: CULTURE };
+    const chainsOf = (regionView: BuildingsRegionView) =>
+      new Set(regionView.bands.flatMap((band) => band.columns.map((column) => column.chainKey)));
+
+    const hidden = chainsOf(resolveRegionBuildings(data, query));
+    for (const chain of retired) expect(hidden.has(chain)).toBe(false);
+
+    const shown = chainsOf(resolveRegionBuildings(data, { ...query, includeChainsWithoutAvailability: true }));
+    for (const chain of retired) expect(shown.has(chain)).toBe(true);
   });
 
   /**
@@ -293,6 +359,114 @@ describe.skipIf(!haveDumps)("buildings derivation against the in-game Altdorf pa
 });
 
 /**
+ * The same checks against the Vampire Counts panel at Drakenhof.
+ *
+ * It caught what Altdorf could not: `wh2_main_special_drakenhof_court` is bound to Nagash's four
+ * settlement types since 9.x and was hidden by reading that as "only there", and the game draws none
+ * of the vampire chains 9.0 left without an availability set - not even for Vampire Counts.
+ */
+const DRAKENHOF_REGION = "wh3_main_combi_region_castle_drakenhof";
+const VMP_CULTURE = "wh_main_vmp_vampire_counts";
+const VMP_SUBCULTURE = "wh_main_sc_vmp_vampire_counts";
+const VLAD = "wh_main_vmp_schwartzhafen";
+
+/**
+ * Chains the DB permits at Drakenhof that the game, on turn 1, does not draw. Both are gated by
+ * campaign state the DB cannot express:
+ *
+ * - `wh_main_VAMPIRES_sylvanian_outpost` is unlocked by the `wh3_main_tech_vmp_vampires_final_4`
+ *   technology.
+ * - `wh3_main_foreign_slot_endgame` is held back by `cm:add_event_restricted_building_record` in
+ *   `wh_start.lua` until the Vermintide endgame.
+ */
+const EXPECTED_DRAKENHOF_EXTRAS = ["wh3_main_foreign_slot_endgame", "wh_main_VAMPIRES_sylvanian_outpost"];
+
+describe.skipIf(!haveDrakenhofDumps)("buildings derivation against the in-game Drakenhof panel", () => {
+  if (!haveDrakenhofDumps) return;
+  const { data } = loadShippedData();
+  const query = {
+    campaign: CAMPAIGN,
+    region: DRAKENHOF_REGION,
+    culture: VMP_CULTURE,
+    subculture: VMP_SUBCULTURE,
+    faction: VLAD,
+  };
+  const view = resolveRegionBuildings(data, query);
+  const truth = readGroundTruth(DRAKENHOF_UI_DUMP);
+  const ours = flattenView(view);
+
+  it("read the dump", () => {
+    expect(truth.chains.size).toBe(15);
+    expect(truth.levels.size).toBe(48);
+  });
+
+  it("shows every chain the game shows", () => {
+    expect([...truth.chains].filter((chain) => !ours.chains.has(chain)).sort()).toEqual([]);
+  });
+
+  it("shows every building level the game shows", () => {
+    expect([...truth.levels].filter((level) => !ours.levels.has(level)).sort()).toEqual([]);
+  });
+
+  it("puts each chain in the same building set the game does", () => {
+    const mismatched = [...truth.chainToSet.entries()]
+      .filter(([chain, setKey]) => ours.chainToSet.has(chain) && ours.chainToSet.get(chain) !== setKey)
+      .map(([chain, setKey]) => `${chain}: game=${setKey} ours=${ours.chainToSet.get(chain)}`)
+      .sort();
+    expect(mismatched).toEqual([]);
+  });
+
+  it("shows exactly the documented extras and nothing else", () => {
+    expect([...ours.chains].filter((chain) => !truth.chains.has(chain)).sort()).toEqual(EXPECTED_DRAKENHOF_EXTRAS);
+  });
+
+  it("keeps a chain bound to settlement types when none is picked", () => {
+    const court = "wh2_main_special_drakenhof_court";
+    expect(data.settlementTypeBindings[court]?.length).toBeGreaterThan(0);
+    expect(ours.chains.has(court)).toBe(true);
+  });
+
+  it("draws Bone Pits and the Necrotic Morgue as forks, as the game does", () => {
+    // Each branch requires a different settlement tier, so by tier alone the three tiles stacked
+    // into one column and read as a straight upgrade line.
+    const columns = computeBoardLayout(view).bands.flatMap((band) => band.columns);
+    for (const [chain, trunk, branches] of [
+      [
+        "wh_main_VAMPIRES_corpses",
+        "wh_main_VAMPIRES_corpses_1",
+        ["wh_main_VAMPIRES_corpses_2", "wh_main_VAMPIRES_corpse_transport_1"],
+      ],
+      [
+        "wh_main_VAMPIRES_shyish",
+        "wh_main_VAMPIRES_shyish_1",
+        ["wh_main_VAMPIRES_shyish_2", "wh_main_VAMPIRES_shyish_capital_1"],
+      ],
+    ] as const) {
+      const column = columns.find((entry) => entry.chainKey === chain);
+      const laneOf = (levelKey: string) => column?.cells.find((cell) => cell.tile.levelKey === levelKey)?.gridColumn;
+      expect(column?.width).toBe(2);
+      expect(new Set(branches.map(laneOf)).size).toBe(2);
+      expect(laneOf(trunk)).toBe(laneOf(branches[0]));
+    }
+  });
+
+  it("hides the vampire chains left without an availability set from Vampire Counts too", () => {
+    const retired = [
+      "wh_main_VAMPIRES_ossuary",
+      "wh_main_VAMPIRES_armoury",
+      "wh_main_VAMPIRES_necromancers",
+      "wh_pro02_VAMPIRES_isabella_unique",
+      "wh2_main_VAMPIRES_raisedead",
+      "wh2_main_VAMPIRES_terrorgheists",
+    ];
+    expect(retired.filter((chain) => ours.chains.has(chain))).toEqual([]);
+    const permissive = flattenView(resolveRegionBuildings(data, { ...query, includeChainsWithoutAvailability: true }));
+    // Every one of them is this rule's alone: turning it off brings all six back.
+    expect(retired.filter((chain) => permissive.chains.has(chain))).toEqual(retired);
+  });
+});
+
+/**
  * The foreign slot types against the shipped tables.
  *
  * Nothing here needs a region or the UI dump: a slot set grants its slots inside whatever settlement
@@ -345,9 +519,10 @@ describe.skipIf(!haveDbDump)("foreign slot types against the shipped tables", ()
       "wh3_main_sla_slaanesh",
       "wh3_main_tze_tzeentch",
     ]);
-    // Allied outposts are the broad case: most of the game's cultures, twelve named factions.
+    // Allied outposts are the broad case: most of the game's cultures, thirteen named factions.
+    // Was twelve until 9.0.5 bound `wh3_main_vmp_allied_outpost` to Neferata's availability set.
     expect(typeByKey.get("ALLIED")?.cultures).toHaveLength(26);
-    expect(typeByKey.get("ALLIED")?.factions).toHaveLength(12);
+    expect(typeByKey.get("ALLIED")?.factions).toHaveLength(13);
     expect(data.factions.length).toBeGreaterThan(500);
   });
 
@@ -428,8 +603,8 @@ describe.skipIf(!haveDbDump)("foreign slot types against the shipped tables", ()
   it("keeps the chains a settlement type binding would hide in a region", () => {
     // A settlement type binding means "also allowed in that special settlement", and 50 of the 53
     // chains a pirate cove permits carry one - the Chaos Dwarf, daemon and Norsca types. A region
-    // board draws such a chain only once that type is picked; a foreign slot has no settlement of
-    // its own, so the filter is skipped and they stay.
+    // board narrows to them only once a type is picked; a foreign slot has no settlement of its
+    // own, so the filter is skipped and they stay.
     const boundChain = "wh2_dlc12_under_empire_money_thieves";
     expect(data.settlementTypeBindings[boundChain]?.length).toBeGreaterThan(0);
 

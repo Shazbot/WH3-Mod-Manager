@@ -308,6 +308,8 @@ interface SlotTemplateChains {
   /** Which slot types offered each chain, which is what marks its level 0 as a ruin. */
   slotTypesByChain: Map<string, Set<string>>;
   foreignSlotChains: Set<string>;
+  /** Chains a slot template names by key, rather than reaching them through a chain set or superchain. */
+  directChains: Set<string>;
 }
 
 /**
@@ -331,6 +333,7 @@ const collectChainsForSlotTemplates = (
   const sourcesByChain = new Map<string, string[]>();
   const slotTypesByChain = new Map<string, Set<string>>();
   const foreignSlotChains = new Set<string>();
+  const directChains = new Set<string>();
   const addChain = (chain: string, source: string, slotType: string, isForeignSlot: boolean) => {
     // Legacy pre-rework horde chains remain in broad vanilla chain sets but are not region buildings.
     if (!allowHordeChains && chain.startsWith(HIDDEN_BUILDING_CHAIN_PREFIX)) return;
@@ -349,6 +352,7 @@ const collectChainsForSlotTemplates = (
     sourcesByChain.delete(chain);
     slotTypesByChain.delete(chain);
     foreignSlotChains.delete(chain);
+    directChains.delete(chain);
   };
 
   const removals: Array<{ chains: string[] }> = [];
@@ -371,7 +375,10 @@ const collectChainsForSlotTemplates = (
         : row.superChain
           ? `slot_template:${template} via super_chain:${row.superChain}`
           : `slot_template:${template}`;
-      for (const chain of chains) addChain(chain, via, slot.slotType, !!slot.isForeignSlot);
+      for (const chain of chains) {
+        addChain(chain, via, slot.slotType, !!slot.isForeignSlot);
+        if (row.chain && candidateChains.has(chain)) directChains.add(chain);
+      }
     }
     for (const superChain of data.superChainsByTemplate[template] ?? []) {
       for (const chain of data.superChains[superChain] ?? []) {
@@ -388,7 +395,7 @@ const collectChainsForSlotTemplates = (
   // the game may instead evaluate strictly in table order.
   for (const removal of removals) for (const chain of removal.chains) removeChain(chain);
 
-  return { candidateChains, sourcesByChain, slotTypesByChain, foreignSlotChains };
+  return { candidateChains, sourcesByChain, slotTypesByChain, foreignSlotChains, directChains };
 };
 
 interface RegionChainContext {
@@ -434,17 +441,35 @@ const resolveRegionChainContext = (data: BuiltBuildingsData, query: BuildingsReg
   const slotTemplates = [...regionSlotTemplates, ...foreignSlotTemplates, ...hordeSlotTemplates];
 
   // --- 2. slot templates -> candidate chains --------------------------------
-  const { candidateChains, sourcesByChain, slotTypesByChain, foreignSlotChains } = collectChainsForSlotTemplates(
-    data,
-    slotTemplates,
-    mode === "horde",
-  );
+  const { candidateChains, sourcesByChain, slotTypesByChain, foreignSlotChains, directChains } =
+    collectChainsForSlotTemplates(data, slotTemplates, mode === "horde");
 
   // --- 3. availability -------------------------------------------------------
+  /**
+   * A region chain that only a shared chain set or superchain offers, and that no availability set
+   * names, is one the game no longer gives anybody.
+   *
+   * The broad secondary chain sets (`wh3_main_secondary_core_generic_*`) hold every culture's
+   * buildings and rely on availability sets to narrow them. 444 of their 467 chains have one; the
+   * other 23 are all leftovers or somebody else's. The 9.0 patch retired several chains by deleting
+   * their only availability row - `wh_main_VAMPIRES_ossuary`, `_armoury` and `_necromancers`,
+   * `wh2_main_VAMPIRES_raisedead`, `wh_main_HUMAN_MIDDENHEIM_worship` - and reading "no row" as
+   * "unrestricted" drew the ossuary and armoury in every Empire settlement. Every one of the 17
+   * chains the game draws at Altdorf has an availability set, so this hides nothing real. The
+   * Drakenhof panel (Vlad, 9.0.5) agrees from the other side: the game no longer draws these for
+   * Vampire Counts either, nor `wh2_main_VAMPIRES_raisedead` and `_terrorgheists`.
+   *
+   * Chains a slot template names by key are exempt: ruins, occupied fortress gates and the like are
+   * swapped in by the engine and commonly have no availability set at all. So are foreign and horde
+   * slots, which this was never checked against.
+   */
+  const isRetiredSharedChain = (chain: string) =>
+    mode === "normal" && !directChains.has(chain) && !foreignSlotChains.has(chain);
   const availableChains: string[] = [];
   for (const chain of candidateChains) {
     const setIds = data.availabilitySetsByChain[chain];
     if (!setIds || setIds.length === 0) {
+      if (isRetiredSharedChain(chain) && !query.includeChainsWithoutAvailability) continue;
       availableChains.push(chain);
       continue;
     }
@@ -623,8 +648,12 @@ export const resolveRegionBuildings = (data: BuiltBuildingsData, query: Building
   const visibleChains = availableChains
     .filter((chain) => {
       if (mode !== "normal") return true;
+      // A binding means "also allowed in that special settlement", not "only there": 9.x bound
+      // `wh2_main_special_drakenhof_court` to Nagash's four settlement types, and the game still
+      // draws it in an ordinary Drakenhof. So with no type picked the bindings say nothing; picking
+      // one narrows the board to that type's chains.
+      if (!selectedSettlementType) return true;
       const bindings = data.settlementTypeBindings[chain];
-      if (!selectedSettlementType) return !bindings || bindings.length === 0;
       if (!bindings || bindings.length === 0) return false;
       if (bindings.some((binding) => binding.settlementType === selectedSettlementType && binding.exclude))
         return false;

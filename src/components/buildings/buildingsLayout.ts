@@ -61,6 +61,106 @@ export interface BoardLayout {
 
 const bandColour = (band: BuildingsSetBand) => `${band.colourR}, ${band.colourG}, ${band.colourB}`;
 
+/** Each tile's lane (0-based grid column offset within its chain), and how many lanes the chain needs. */
+interface ColumnLanes {
+  laneOf: (tile: BuildingsTile, index: number) => number;
+  width: number;
+}
+
+/**
+ * Lanes by tier: every tile of one tier side by side, and a narrower tier centred under the widest
+ * so the trunk of a branching chain sits between its branches rather than hugging the left edge.
+ * Right for a fork whose alternatives share a tier, and for every chain that does not fork at all.
+ */
+const lanesByTier = (tiles: BuildingsTile[]): ColumnLanes => {
+  const tilesByTier = new Map<number, BuildingsTile[]>();
+  for (const tile of tiles) {
+    const tier = tilesByTier.get(tile.tierRow) ?? [];
+    tier.push(tile);
+    tilesByTier.set(tile.tierRow, tier);
+  }
+  const width = Math.max(1, ...[...tilesByTier.values()].map((tier) => tier.length));
+  return {
+    width,
+    laneOf: (tile) => {
+      const tier = tilesByTier.get(tile.tierRow) ?? [tile];
+      return Math.floor((width - tier.length) / 2) + tier.indexOf(tile);
+    },
+  };
+};
+
+/**
+ * Lanes from the chain's own upgrade tree, so each branch of a fork keeps a lane of its own.
+ *
+ * Laying out by tier alone stacks a fork whose alternatives require different settlement tiers into
+ * one column, where it reads as a straight upgrade line: `wh_main_VAMPIRES_corpses_1` upgrades into
+ * either `_corpses_2` (tier 2) or `_corpse_transport_1` (tier 3), and `wh_main_VAMPIRES_shyish_1`
+ * into `_shyish_2` (tier 3) or `_shyish_capital_1` (tier 4). The game draws both as forks.
+ *
+ * Each subtree takes as many lanes as it has leaves and its root sits over them as `lanesByTier`
+ * would centre it; a tile no in-chain upgrade reaches packs into the first lane free on its row.
+ * Returns undefined when the chain has no fork, or when two tiles would still share a cell (a mod
+ * upgrading a level into one on its own tier), leaving those to `lanesByTier`.
+ */
+const lanesByUpgradeTree = (tiles: BuildingsTile[], edges: BuildingsUpgradeEdge[]): ColumnLanes | undefined => {
+  const indexByLevelKey = new Map<string, number>();
+  tiles.forEach((tile, index) => {
+    if (!indexByLevelKey.has(tile.levelKey)) indexByLevelKey.set(tile.levelKey, index);
+  });
+  const children = tiles.map((): number[] => []);
+  const hasParent = new Set<number>();
+  for (const edge of edges) {
+    const from = indexByLevelKey.get(edge.fromLevelKey);
+    const to = indexByLevelKey.get(edge.toLevelKey);
+    if (from === undefined || to === undefined || from === to || hasParent.has(to)) continue;
+    hasParent.add(to);
+    children[from].push(to);
+  }
+  if (!children.some((entry) => entry.length > 1)) return undefined;
+  // The lowest-tier branch continues straight up from the trunk; later ones step out to the right.
+  for (const entry of children)
+    entry.sort((first, second) => tiles[first].tierRow - tiles[second].tierRow || first - second);
+
+  /** Lays a subtree out from lane 0, returning its cells and width. Guards against a cycle. */
+  const visited = new Set<number>();
+  const layOut = (index: number): { cells: Array<{ index: number; lane: number }>; width: number } => {
+    visited.add(index);
+    const cells: Array<{ index: number; lane: number }> = [];
+    let width = 0;
+    for (const child of children[index]) {
+      if (visited.has(child)) continue;
+      const subtree = layOut(child);
+      for (const cell of subtree.cells) cells.push({ index: cell.index, lane: cell.lane + width });
+      width += subtree.width;
+    }
+    width = Math.max(1, width);
+    cells.unshift({ index, lane: Math.floor((width - 1) / 2) });
+    return { cells, width };
+  };
+
+  const laneByIndex = new Map<number, number>();
+  const occupied = new Set<string>();
+  const cellKey = (lane: number, index: number) => `${lane}|${tiles[index].tierRow}`;
+  for (let root = 0; root < tiles.length; root++) {
+    if (hasParent.has(root) || visited.has(root) || indexByLevelKey.get(tiles[root].levelKey) !== root) continue;
+    const subtree = layOut(root);
+    let base = 0;
+    while (subtree.cells.some((cell) => occupied.has(cellKey(base + cell.lane, cell.index)))) base++;
+    for (const cell of subtree.cells) {
+      laneByIndex.set(cell.index, base + cell.lane);
+      occupied.add(cellKey(base + cell.lane, cell.index));
+    }
+  }
+  // Every tile placed, and no two in one cell - otherwise the tree said something the grid cannot draw.
+  const placed = tiles.every((tile, index) => laneByIndex.has(indexByLevelKey.get(tile.levelKey) ?? index));
+  if (!placed || occupied.size !== laneByIndex.size) return undefined;
+
+  return {
+    width: Math.max(0, ...laneByIndex.values()) + 1,
+    laneOf: (tile, index) => laneByIndex.get(indexByLevelKey.get(tile.levelKey) ?? index) ?? 0,
+  };
+};
+
 export const computeBoardLayout = (view: BuildingsRegionView): BoardLayout => {
   let highestRow = 0;
   for (const band of view.bands) {
@@ -76,24 +176,15 @@ export const computeBoardLayout = (view: BuildingsRegionView): BoardLayout => {
     // chain claims as many as its widest tier needs, and the ones after it shift right.
     let nextGridColumn = 1;
     const columns: BoardColumn[] = band.columns.map((column) => {
-      const tilesByTier = new Map<number, BuildingsTile[]>();
-      for (const tile of column.tiles) {
-        const tier = tilesByTier.get(tile.tierRow) ?? [];
-        tier.push(tile);
-        tilesByTier.set(tile.tierRow, tier);
-      }
-      const width = Math.max(1, ...[...tilesByTier.values()].map((tier) => tier.length));
+      const { width, laneOf } = lanesByUpgradeTree(column.tiles, view.edges) ?? lanesByTier(column.tiles);
       const gridColumn = nextGridColumn;
       nextGridColumn += width;
 
-      const cells = column.tiles.map((tile) => {
+      const cells = column.tiles.map((tile, index) => {
         // Tier rows are 0-based from the bottom; CSS rows are 1-based and grow downwards, so tier 0
         // lands on rowCount.
         const gridRow = rowCount - tile.tierRow;
-        const tier = tilesByTier.get(tile.tierRow) ?? [tile];
-        // A narrower tier is centred under the widest one, so the trunk of a branching chain sits
-        // between its branches rather than hugging the left edge.
-        const cellColumn = gridColumn + Math.floor((width - tier.length) / 2) + tier.indexOf(tile);
+        const cellColumn = gridColumn + laneOf(tile, index);
         if (!cellByLevelKey[tile.levelKey]) {
           cellByLevelKey[tile.levelKey] = { setKey: band.setKey, gridRow, gridColumn: cellColumn };
         }

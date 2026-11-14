@@ -1436,6 +1436,8 @@
   "buildingsUnbandedLevelsTooltip": "건물 세트에 바인딩된 레벨이 없습니다. 게임에는 그들을 끌어들일 밴드가 없으므로 제외됩니다.",
   "buildingsOtherCultureChains": "다른 문화의 사슬",
   "buildingsOtherCultureChainsTooltip": "선택한 문화권이 아닌 문화권만 명명하는 수준의 체인입니다.",
+  "buildingsChainsWithoutAvailability": "가용성 없는 체인",
+  "buildingsChainsWithoutAvailabilityTooltip": "공유 체인 세트가 제공하지만 어떤 가용성 세트에도 지정되지 않은 체인입니다. 게임은 누구에게도 제공하지 않습니다.",
   "buildingsNoMatches": "이 필터와 일치하는 건물이 없습니다.",
   "buildingsNoIcon": "아이콘 없음",
   "buildingsTurns": "회전",

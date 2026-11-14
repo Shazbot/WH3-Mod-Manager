@@ -1436,6 +1436,8 @@
   "buildingsUnbandedLevelsTooltip": "Niveles vinculados a ningún conjunto de construcción. El juego no tiene una banda que los atraiga, por lo que los deja fuera.",
   "buildingsOtherCultureChains": "Cadenas de otras culturas",
   "buildingsOtherCultureChainsTooltip": "Cadenas cuyos niveles nombran únicamente culturas distintas a la seleccionada.",
+  "buildingsChainsWithoutAvailability": "Cadenas sin disponibilidad",
+  "buildingsChainsWithoutAvailabilityTooltip": "Cadenas que ofrece un conjunto de cadenas compartido pero que ningún conjunto de disponibilidad nombra. El juego no se las da a nadie.",
   "buildingsNoMatches": "Ningún edificio coincide con estos filtros.",
   "buildingsNoIcon": "sin icono",
   "buildingsTurns": "vueltas",

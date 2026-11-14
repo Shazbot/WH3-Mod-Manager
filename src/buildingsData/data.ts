@@ -41,8 +41,6 @@ export type BuildingsGetLoc = (key: string) => string | undefined;
 
 /** Explicit corrections for legacy vanilla rows whose generic DB relationships are too broad. */
 export const HIDDEN_BUILDING_CHAIN_PREFIX = "wh_main_horde_";
-export const VAMPIRE_BUILDING_CHAIN_PREFIX = "wh2_main_VAMPIRES_";
-export const VAMPIRE_BUILDING_AVAILABILITY_SET = "wh_main_bas_vmp";
 export const ROGUE_PORT_BUILDING_CHAIN = "wh2_main_rogue_port";
 export const ROGUE_BUILDING_AVAILABILITY_SET = "wh2_main_bas_rogue";
 export const CHAOS_HORDE_BUILDING_CHAIN_PREFIX = "wh_main_horde_chaos_";
@@ -52,14 +50,17 @@ export const CHAOS_HORDE_BUILDING_AVAILABILITY_SET = "wh_main_bas_chs";
  * Chain families vanilla leaves with no availability row of their own, and the set that describes
  * who actually builds them.
  *
- * `wh2_main_VAMPIRES_*` and `wh_main_horde_chaos_*` reach a board through a generic chain set and
- * carry nothing to narrow them: their culture variants leave `culture` empty throughout, so the
- * "chain naming only other cultures" rule cannot classify them either. Without this they show for
- * every culture - which is what `wh_main_horde_chaos_dragon_ogres` did on the horde board, the only
- * chain of the 124 there that did.
+ * `wh_main_horde_chaos_*` reaches a horde board through a generic chain set and carries nothing to
+ * narrow it: its culture variants leave `culture` empty throughout, so the "chain naming only other
+ * cultures" rule cannot classify it either. Without this `wh_main_horde_chaos_dragon_ogres` was the
+ * one chain of the horde board's 124 that showed for every culture.
+ *
+ * `wh2_main_VAMPIRES_*` used to be bound to `wh_main_bas_vmp` here too. The in-game Drakenhof panel
+ * (9.0.5, Vlad) draws neither `wh2_main_VAMPIRES_raisedead` nor `_terrorgheists`, the two such chains
+ * with no availability row, so a region board now hides them by the "chain set chain with no
+ * availability set" rule in derive.ts instead of granting them to Vampire Counts.
  */
 export const AVAILABILITY_SET_BY_CHAIN_PREFIX: ReadonlyArray<readonly [prefix: string, setId: string]> = [
-  [VAMPIRE_BUILDING_CHAIN_PREFIX, VAMPIRE_BUILDING_AVAILABILITY_SET],
   [CHAOS_HORDE_BUILDING_CHAIN_PREFIX, CHAOS_HORDE_BUILDING_AVAILABILITY_SET],
 ];
 
@@ -149,7 +150,7 @@ export const BUILDINGS_TABLE_KEY_COLUMNS: Record<string, string[]> = {
   start_pos_region_foreign_slots_tables: ["campaign", "faction", "region", "slot_set"],
   campaign_map_settlements_tables: ["settlement_id"],
   settlement_climate_types_tables: ["type"],
-  region_to_province_junctions_tables: ["region"],
+  region_to_province_junctions_tables: ["province", "region"],
   provinces_tables: ["key"],
   building_chain_availability_set_ids_tables: ["id"],
   building_chain_availability_sets_tables: ["building_chain", "id"],

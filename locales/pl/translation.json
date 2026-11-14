@@ -1436,6 +1436,8 @@
   "buildingsUnbandedLevelsTooltip": "Poziomy nie są powiązane z żadnym zestawem budynków. W grze nie ma zespołu, który mógłby ich przyciągnąć, więc ich pomija.",
   "buildingsOtherCultureChains": "Łańcuchy innych kultur",
   "buildingsOtherCultureChainsTooltip": "Łańcuchy, których poziomy wymieniają tylko kultury inne niż wybrana.",
+  "buildingsChainsWithoutAvailability": "Łańcuchy bez dostępności",
+  "buildingsChainsWithoutAvailabilityTooltip": "Łańcuchy oferowane przez wspólny zestaw łańcuchów, ale niewymienione w żadnym zestawie dostępności. Gra nie daje ich nikomu.",
   "buildingsNoMatches": "Żaden budynek nie pasuje do tych filtrów.",
   "buildingsNoIcon": "brak ikony",
   "buildingsTurns": "Zakręty",

@@ -1849,6 +1849,8 @@
   "buildingsUnbandedLevelsTooltip": "Levels bound to no building set. The game has no band to draw them in, so it leaves them out.",
   "buildingsOtherCultureChains": "Other cultures' chains",
   "buildingsOtherCultureChainsTooltip": "Chains whose levels name only cultures other than the selected one.",
+  "buildingsChainsWithoutAvailability": "Chains without availability",
+  "buildingsChainsWithoutAvailabilityTooltip": "Chains a shared chain set offers but no availability set names. The game gives them to nobody.",
   "buildingsNoMatches": "No buildings match these filters.",
   "buildingsNoIcon": "no icon",
   "buildingsTurns": "Turns",

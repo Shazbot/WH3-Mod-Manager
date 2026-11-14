@@ -1438,6 +1438,8 @@
   "buildingsUnbandedLevelsTooltip": "关卡不受任何建筑物集的限制。游戏中没有乐队可以吸引他们，因此将他们排除在外。",
   "buildingsOtherCultureChains": "其他文化的连锁店",
   "buildingsOtherCultureChainsTooltip": "其级别仅命名所选文化以外的文化的链。",
+  "buildingsChainsWithoutAvailability": "无可用性的建筑链",
+  "buildingsChainsWithoutAvailabilityTooltip": "由共享建筑链集提供、但没有任何可用性集引用的建筑链。游戏不会将其提供给任何人。",
   "buildingsNoMatches": "没有建筑物符合这些过滤器。",
   "buildingsNoIcon": "无图标",
   "buildingsTurns": "转弯",

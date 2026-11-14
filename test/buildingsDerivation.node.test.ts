@@ -144,13 +144,16 @@ describe("resolveRegionBuildings: chains from slot templates", () => {
     expect(chainKeysIn(resolveRegionBuildings(data, query()))).toEqual(["chain_a"]);
   });
 
+  // These check permission expansion; chains reached through a set have no availability set here.
+  const expansionQuery = query({ includeChainsWithoutAvailability: true });
+
   it("expands a super_chain permission", () => {
     const data = build({
       slot_template_permitted_building_chains_tables: [
         { slot_template: "tmpl_main", chain: "", chain_set: "", super_chain: "super_a", remove: "false" },
       ],
     });
-    expect(chainKeysIn(resolveRegionBuildings(data, query()))).toEqual(["chain_a", "chain_b"]);
+    expect(chainKeysIn(resolveRegionBuildings(data, expansionQuery))).toEqual(["chain_a", "chain_b"]);
   });
 
   it("expands a chain_set permission through its parent set", () => {
@@ -164,7 +167,7 @@ describe("resolveRegionBuildings: chains from slot templates", () => {
         { slot_template: "tmpl_main", chain: "", chain_set: "child", super_chain: "", remove: "false" },
       ],
     });
-    expect(chainKeysIn(resolveRegionBuildings(data, query()))).toEqual(["chain_a", "chain_c"]);
+    expect(chainKeysIn(resolveRegionBuildings(data, expansionQuery))).toEqual(["chain_a", "chain_c"]);
   });
 
   it("applies remove rows after every add, whatever order they appear in", () => {
@@ -174,7 +177,7 @@ describe("resolveRegionBuildings: chains from slot templates", () => {
         { slot_template: "tmpl_main", chain: "", chain_set: "", super_chain: "super_a", remove: "false" },
       ],
     });
-    expect(chainKeysIn(resolveRegionBuildings(data, query()))).toEqual(["chain_a"]);
+    expect(chainKeysIn(resolveRegionBuildings(data, expansionQuery))).toEqual(["chain_a"]);
   });
 
   it("picks up chains from the superchain junction table", () => {
@@ -184,7 +187,20 @@ describe("resolveRegionBuildings: chains from slot templates", () => {
         { id: "1", slot_template: "tmpl_main", building_superchain: "super_c" },
       ],
     });
-    expect(chainKeysIn(resolveRegionBuildings(data, query()))).toEqual(["chain_c"]);
+    expect(chainKeysIn(resolveRegionBuildings(data, expansionQuery))).toEqual(["chain_c"]);
+  });
+
+  it("drops a chain set's chain that no availability set names, but not one the template names", () => {
+    const data = build({
+      building_chain_sets_tables: [{ key: "shared" }],
+      building_chain_set_items_tables: [{ set: "shared", chain: "chain_b", super_chain: "", remove: "false" }],
+      slot_template_permitted_building_chains_tables: [
+        { slot_template: "tmpl_main", chain: "chain_a", chain_set: "", super_chain: "", remove: "false" },
+        { slot_template: "tmpl_main", chain: "", chain_set: "shared", super_chain: "", remove: "false" },
+      ],
+    });
+    expect(chainKeysIn(resolveRegionBuildings(data, query()))).toEqual(["chain_a"]);
+    expect(chainKeysIn(resolveRegionBuildings(data, expansionQuery))).toEqual(["chain_a", "chain_b"]);
   });
 
   it("records why each chain is in the view", () => {
@@ -276,45 +292,6 @@ describe("resolveRegionBuildings: availability", () => {
 
   it("leaves a chain with no availability set alone", () => {
     expect(chainKeysIn(resolveRegionBuildings(build(), query()))).toContain("chain_a");
-  });
-
-  it("scopes legacy Vampire chains through wh_main_bas_vmp", () => {
-    const tables = baseTables();
-    const vampireChain = "wh2_main_VAMPIRES_legacy";
-    tables.building_chains_tables.push({ key: vampireChain, building_superchain: "super_vmp" });
-    tables.building_levels_tables.push({
-      level_name: "vmp_1",
-      chain: vampireChain,
-      level: "0",
-      visible_in_ui: "true",
-    });
-    tables.building_culture_variants_tables.push({
-      building: "vmp_1",
-      culture: "",
-      subculture: "",
-      faction: "",
-      disables: "false",
-    });
-    tables.building_set_to_building_junctions_tables.push({
-      building_chain: vampireChain,
-      building_level: "",
-      building_set: "set_one",
-      exclude: "false",
-    });
-    tables.slot_template_permitted_building_chains_tables.push({
-      slot_template: "tmpl_main",
-      chain: vampireChain,
-      chain_set: "",
-      super_chain: "",
-      remove: "false",
-    });
-    tables.building_chain_availabilities_tables = [
-      { id: "vmp", set_id: "wh_main_bas_vmp", culture: "vmp", sub_culture: "", faction: "", campaign: "" },
-    ];
-    const data = buildBuildingsData(tables, noLoc);
-
-    expect(chainKeysIn(resolveRegionBuildings(data, query()))).not.toContain(vampireChain);
-    expect(chainKeysIn(resolveRegionBuildings(data, query({ culture: "vmp" })))).toContain(vampireChain);
   });
 
   it("scopes legacy Chaos horde chains through wh_main_bas_chs", () => {
@@ -554,8 +531,9 @@ describe("resolveRegionBuildings: settlement types", () => {
     expect(chainKeysIn(view)).toEqual(["chain_a"]);
   });
 
-  it("shows only chains without a settlement-type assignment when none is selected", () => {
-    expect(chainKeysIn(resolveRegionBuildings(withBindings(), query()))).toEqual(["chain_c"]);
+  it("ignores settlement-type assignments when none is selected", () => {
+    // A binding means "also allowed in that settlement type", so an ordinary settlement keeps them.
+    expect(chainKeysIn(resolveRegionBuildings(withBindings(), query()))).toEqual(["chain_a", "chain_b", "chain_c"]);
   });
 
   it("disables the settlement type filter when the selected culture has no assigned chains", () => {

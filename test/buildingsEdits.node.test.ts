@@ -841,7 +841,11 @@ describe("applyNewRowsToBuiltData", () => {
       },
     ]);
 
-    const view = resolveRegionBuildings(applyNewRowsToBuiltData(base, state), query);
+    // The fixture names no availability set, which would hide a chain reached only through a set.
+    const view = resolveRegionBuildings(applyNewRowsToBuiltData(base, state), {
+      ...query,
+      includeChainsWithoutAvailability: true,
+    });
     expect(view.bands.flatMap((band) => band.columns.map((column) => column.chainKey))).toEqual(["chain_a"]);
   });
 

@@ -1436,6 +1436,8 @@
   "buildingsUnbandedLevelsTooltip": "Seviyeler hiçbir bina setine bağlı değildir. Oyunun onları içine çekecek bir grubu yok, bu yüzden onları dışarıda bırakıyor.",
   "buildingsOtherCultureChains": "Diğer kültürlerin zincirleri",
   "buildingsOtherCultureChainsTooltip": "Düzeyleri yalnızca seçilen kültür dışındaki kültürleri adlandıran zincirler.",
+  "buildingsChainsWithoutAvailability": "Erişilebilirliği olmayan zincirler",
+  "buildingsChainsWithoutAvailabilityTooltip": "Ortak bir zincir setinin sunduğu ancak hiçbir erişilebilirlik setinin adlandırmadığı zincirler. Oyun bunları kimseye vermez.",
   "buildingsNoMatches": "Bu filtrelerle eşleşen bina yok.",
   "buildingsNoIcon": "simge yok",
   "buildingsTurns": "Dönüşler",

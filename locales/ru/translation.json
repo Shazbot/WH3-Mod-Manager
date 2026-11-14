@@ -1436,6 +1436,8 @@
   "buildingsUnbandedLevelsTooltip": "Уровни не привязаны к набору зданий. В игре нет группы, которая могла бы их привлечь, поэтому они остаются вне поля зрения.",
   "buildingsOtherCultureChains": "Цепи других культур",
   "buildingsOtherCultureChainsTooltip": "Цепочки, уровни которых называют только культуры, отличные от выбранной.",
+  "buildingsChainsWithoutAvailability": "Цепочки без доступности",
+  "buildingsChainsWithoutAvailabilityTooltip": "Цепочки, которые предлагает общий набор цепочек, но не называет ни один набор доступности. Игра не даёт их никому.",
   "buildingsNoMatches": "Ни одно здание не соответствует этим фильтрам.",
   "buildingsNoIcon": "нет значка",
   "buildingsTurns": "Повороты",
