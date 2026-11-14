@@ -9,11 +9,11 @@ Only delegate implementation work when operating in Plan mode.
 When in Plan mode:
 
 - Keep planning, architectural decisions, and ambiguity resolution with the parent agent.
-- Delegate implementation to Luna Max when Luna is capable of completing the task reliably.
+- Delegate implementation to agent (Sonnet if Claude or Luna High if Codex) when it's is capable of completing the task reliably.
 - Use `fork_turns="none"` by default.
-- Give Luna a compact, self-contained task with the goal, constraints, acceptance criteria, and relevant file hints.
-- Avoid duplicate repository exploration between the parent and Luna.
-- Normally use one Luna Max implementation worker.
+- Give agent a compact, self-contained task with the goal, constraints, acceptance criteria, and relevant file hints.
+- Avoid duplicate repository exploration between the parent and agent.
+- Normally use one agent Max implementation worker.
 - Keep delegation and worker summaries concise.
 
 When not in Plan mode:
