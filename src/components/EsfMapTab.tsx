@@ -64,7 +64,7 @@ const OWNERSHIP_HISTORY_LIMIT = 200;
 /** How many factions the brush list renders at once. The faction table runs to thousands of rows. */
 const LISTED_FACTION_LIMIT = 200;
 
-type MapView = "regions" | "provinces" | "factions" | "climate";
+type MapView = "regions" | "provinces" | "factions" | "climate" | "terrain";
 
 type CharacterMapEntry = {
   faction: string;
@@ -492,12 +492,15 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const [extendedHistory, setExtendedHistory] = useState<ExtendedMapEditState[]>([]);
   const [extendedImportUndo, setExtendedImportUndo] = useState<ExtendedMapImportUndo>();
   const [showCharacters, setShowCharacters] = useState(false);
+  const [showTerrain, setShowTerrain] = useState(false);
   const [selectedCharacterKey, setSelectedCharacterKey] = useState<{ faction: string; id: number }>();
   const [characterDragPreview, setCharacterDragPreview] = useState<{
     faction: string;
     id: number;
     x: number;
     y: number;
+    /** False until the pointer passes the drag threshold, so a plain click does not flash the terrain. */
+    moved: boolean;
   }>();
   const [buildingsView, setBuildingsView] = useState<BuildingsRegionView>();
   const [unitCatalog, setUnitCatalog] = useState<UnitViewerCatalogUnit[]>([]);
@@ -580,6 +583,11 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const extendedEditActions = extendedDelta?.actions ?? [];
   const isExtendedFormat = !!extendedState;
   const characterMapOverlayActive = isActive && !!map && showCharacters && !!extendedState;
+  // Terrain is its own view, an opt-in overlay elsewhere, and always shown while a character is dragged.
+  const terrainOverlayActive =
+    isActive && !!map?.characterPathfinding && (mapView === "terrain" || showTerrain || !!characterDragPreview?.moved);
+  // The terrain view lists regions in the sidebar.
+  const listView: Exclude<MapView, "terrain"> = mapView === "terrain" ? "regions" : mapView;
   const mapDisplayWidthPx = map ? Math.max(320, Math.round(map.width * zoom)) : 0;
   const mapDisplayHeightPx = map ? Math.max(240, Math.round(map.height * zoom)) : 0;
   const mapDisplayWidth = map ? `${mapDisplayWidthPx}px` : undefined;
@@ -1604,13 +1612,13 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     // While painting the list follows the brush, not whatever region was clicked last.
     const listedFactionKey = isEditingFactions ? brushFactionKey : selectedMarkerFactionKey;
     const itemKey =
-      mapView === "regions"
+      listView === "regions"
         ? selectedMarkerId === undefined
           ? undefined
           : `region:${selectedMarkerId}`
-        : mapView === "provinces" && selectedProvinceKey
+        : listView === "provinces" && selectedProvinceKey
           ? `province:${selectedProvinceKey}`
-          : mapView === "factions" && listedFactionKey
+          : listView === "factions" && listedFactionKey
             ? `faction:${listedFactionKey}`
             : undefined;
     if (!itemKey) return;
@@ -1621,8 +1629,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     brushFactionKey,
     filter,
     isEditingFactions,
+    listView,
     map,
-    mapView,
     selectedMarkerFactionKey,
     selectedMarkerId,
     selectedProvinceKey,
@@ -1799,7 +1807,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         context.stroke(areaPath);
       }
     } else if (
-      (mapView === "regions" || mapView === "climate") &&
+      (mapView === "regions" || mapView === "climate" || mapView === "terrain") &&
       selectedMarker &&
       regionMatchesSettlementType(selectedMarker.key)
     ) {
@@ -1815,7 +1823,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       }
     }
 
-    if (characterMapOverlayActive) {
+    if (terrainOverlayActive) {
       context.save();
       context.globalAlpha = isEditingOwnership ? OWNERSHIP_EDIT_TERRAIN_OPACITY : 1;
       drawCharacterTerrainAreas(context, map);
@@ -1843,7 +1851,6 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   }, [
     areaPaths,
     brushFactionKey,
-    characterMapOverlayActive,
     factionsByKey,
     isActive,
     isEditingOwnership,
@@ -1853,6 +1860,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     selectedFactionKey,
     selectedMarker,
     selectedSettlementType,
+    terrainOverlayActive,
   ]);
 
   const characterMapMarkers = useMemo<CharacterMapMarker[]>(() => {
@@ -2208,6 +2216,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           id: selectedCharacterAtPoint.character.id,
           x: selectedCharacterAtPoint.character.x,
           y: selectedCharacterAtPoint.character.y,
+          moved: false,
         });
         event.currentTarget.setPointerCapture(event.pointerId);
         event.preventDefault();
@@ -2243,7 +2252,13 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       if (characterDrag.hasMoved && event.type !== "pointercancel") {
         const mapPoint = mapCoordinatesAtClientPoint(event);
         const point = map && mapPoint ? mapPointToCharacterCoordinate(map, mapPoint) : undefined;
-        if (point) setCharacterDragPreview({ faction: characterDrag.faction, id: characterDrag.characterId, ...point });
+        if (point)
+          setCharacterDragPreview({
+            faction: characterDrag.faction,
+            id: characterDrag.characterId,
+            ...point,
+            moved: true,
+          });
       }
       event.preventDefault();
       return;
@@ -2471,14 +2486,15 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           role="tablist"
           aria-label={mapText("mapView", "Map view")}
         >
-          {(["regions", "provinces", "factions", "climate"] as const).map((view) => (
+          {(["regions", "provinces", "factions", "climate", "terrain"] as const).map((view) => (
             <button
               key={view}
               type="button"
               role="tab"
               aria-selected={mapView === view}
               onClick={() => setMapView(view)}
-              className={`rounded px-2 py-1 text-xs ${
+              disabled={view === "terrain" && !!map && !map.characterPathfinding}
+              className={`rounded px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-40 ${
                 mapView === view ? "bg-blue-800 text-gray-100" : "text-gray-400 hover:bg-gray-800 hover:text-gray-200"
               }`}
             >
@@ -2488,10 +2504,29 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                   ? mapText("mapProvinces", "Provinces")
                   : view === "factions"
                     ? mapText("mapFactions", "Factions")
-                    : mapText("mapClimate", "Climate")}
+                    : view === "climate"
+                      ? mapText("mapClimate", "Climate")
+                      : mapText("mapTerrain", "Terrain")}
             </button>
           ))}
         </div>
+        {map?.characterPathfinding && mapView !== "terrain" && (
+          <label
+            className="flex items-center gap-1 text-xs text-gray-400"
+            title={mapText(
+              "mapShowTerrainHint",
+              "Colour impassable, sea, river and beach terrain. Always shown while dragging a character.",
+            )}
+          >
+            <input
+              type="checkbox"
+              checked={showTerrain}
+              onChange={(event) => setShowTerrain(event.target.checked)}
+              className="accent-blue-600"
+            />
+            {mapText("mapShowTerrain", "Terrain")}
+          </label>
+        )}
         {extendedState && (
           <label
             className="flex items-center gap-1 text-xs text-gray-400"
@@ -2752,7 +2787,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                 +
               </button>
               <span>{Math.round(zoom * 100)}%</span>
-              {characterMapOverlayActive && (
+              {terrainOverlayActive && (
                 <div className="flex shrink-0 items-center gap-2 text-[0.7rem] text-gray-300" aria-label="Map terrain">
                   {(
                     [
@@ -2943,7 +2978,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
 
           <div className="flex min-h-0 flex-col overflow-hidden rounded border border-gray-700 bg-gray-900">
             <div className="border-b border-gray-800 px-3 py-2 text-sm text-gray-300">
-              {mapView === "factions"
+              {listView === "factions"
                 ? isEditingOwnership
                   ? brushFaction
                     ? mapMessage("mapPaintingAs", "Painting as {{faction}}", {
@@ -2953,9 +2988,9 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                   : mapMessage("mapFactionSummary", "{{count}} factions · flags at settlements", {
                       count: landholdingFactionCount,
                     })
-                : mapView === "provinces"
+                : listView === "provinces"
                   ? mapMessage("mapProvinceSummary", "{{count}} provinces", { count: map.provinces.length })
-                  : mapView === "climate"
+                  : listView === "climate"
                     ? mapMessage("mapClimateSummary", "{{count}} climates · colours at settlements", {
                         count: map.climates.length,
                       })
@@ -3478,11 +3513,11 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                 value={filter}
                 onChange={(event) => setFilter(event.target.value)}
                 placeholder={
-                  mapView === "factions"
+                  listView === "factions"
                     ? mapText("mapFilterFactions", "Filter factions…")
-                    : mapView === "provinces"
+                    : listView === "provinces"
                       ? mapText("mapFilterProvinces", "Filter provinces…")
-                      : mapView === "climate"
+                      : listView === "climate"
                         ? mapText("mapFilterClimates", "Filter climates…")
                         : mapText("mapFilterRegions", "Filter regions…")
                 }
@@ -3534,7 +3569,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                     })}
                 </div>
               )}
-              {mapView === "regions" ? (
+              {listView === "regions" ? (
                 filteredMarkers.map((marker) => (
                   <button
                     key={`${marker.id}-${marker.key}`}
@@ -3557,7 +3592,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                     </span>
                   </button>
                 ))
-              ) : mapView === "provinces" ? (
+              ) : listView === "provinces" ? (
                 filteredProvinces.map((province) => {
                   const isSelected = selectedProvince?.key === province.key;
                   const regionMarkers = province.regionKeys
@@ -3625,7 +3660,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                     </div>
                   );
                 })
-              ) : mapView === "climate" ? (
+              ) : listView === "climate" ? (
                 <>
                   <button
                     type="button"
@@ -3808,19 +3843,19 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                   );
                 })
               )}
-              {(mapView === "regions"
+              {(listView === "regions"
                 ? filteredMarkers.length
-                : mapView === "provinces"
+                : listView === "provinces"
                   ? filteredProvinces.length
-                  : mapView === "climate"
+                  : listView === "climate"
                     ? filteredClimates.length
                     : filteredFactions.length) === 0 && (
                 <div className="px-2 py-3 text-sm text-gray-400">
-                  {mapView === "factions"
+                  {listView === "factions"
                     ? mapText("mapNoMatchingFactions", "No matching factions.")
-                    : mapView === "provinces"
+                    : listView === "provinces"
                       ? mapText("mapNoMatchingProvinces", "No matching provinces.")
-                      : mapView === "climate"
+                      : listView === "climate"
                         ? mapText("mapNoMatchingClimates", "No matching climates.")
                         : mapText("mapNoMatchingRegions", "No matching regions.")}
                 </div>
