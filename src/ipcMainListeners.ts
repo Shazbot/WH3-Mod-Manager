@@ -244,7 +244,7 @@ import { packDataStore } from "./components/viewer/packDataStore";
 import i18n from "./configs/i18next.config";
 import { buildDBIndirectReferences, buildDBReferenceTree, type DBIndirectReferenceCacheContext } from "./DBClone";
 import { buildAbilityTooltipDataForEffects } from "./abilityTooltips";
-import { getSaveFiles, setupSavesWatcher } from "./gameSaves";
+import { getSaveFiles, getSavesFolderPath, setupSavesWatcher } from "./gameSaves";
 import { appendPackFileCollisions, removeFromPackFileCollisions } from "./modCompat/packFileCollisions";
 import { emptyAllCompatDataCollections, getCompatData } from "./modCompat/packFileCompatManager";
 import { appendPackTableCollisions, removeFromPackTableCollisions } from "./modCompat/packTableCollisions";
@@ -697,6 +697,19 @@ type CachedBuildingsData = {
   diplomacyIconUrls: EsfMapDiplomacyIconUrls;
 };
 let cachedBuildingsData: CachedBuildingsData | undefined;
+
+/** Reads a campaign `.save`/`.esf` into extended map JSON for the map panel. */
+const readSaveForMap = async (filePath: string) => {
+  // The map tab loads the buildings data before it can import, so its slot template rows are normally cached.
+  const slotTemplateRows = cachedBuildingsData?.tables.slot_templates_tables;
+  const resourceBySlotTemplate = slotTemplateRows
+    ? Object.fromEntries(
+        slotTemplateRows.filter((row) => row.key && row.resource).map((row) => [row.key.toLowerCase(), row.resource]),
+      )
+    : undefined;
+  const saved = await readCampaignSaveMap(filePath, resourceBySlotTemplate);
+  return { success: true, text: saved.text, filePath, campaignKey: saved.campaignKey, warnings: saved.warnings };
+};
 type CachedAncillariesData = {
   /** Covers the vanilla signature *and* every enabled mod's identity, so any change misses. */
   signature: string;
@@ -15247,6 +15260,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     "importRegionOwnership",
     async (
       event,
+      saveName?: string,
     ): Promise<{
       success: boolean;
       text?: string;
@@ -15258,6 +15272,20 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }> => {
       const requestingWindow = BrowserWindow.fromWebContents(event.sender);
       try {
+        if (saveName !== undefined) {
+          // A save picked from the list: no dialog, and the name must stay inside the saves folder.
+          const savesFolder = nodePath.resolve(getSavesFolderPath());
+          const savePath = nodePath.resolve(savesFolder, saveName);
+          if (
+            !saveName ||
+            nodePath.basename(saveName) !== saveName ||
+            nodePath.dirname(savePath) !== savesFolder ||
+            !/\.save$/i.test(saveName)
+          ) {
+            return { success: false, error: "Invalid save name" };
+          }
+          return await readSaveForMap(savePath);
+        }
         const defaultDirectory =
           appData.gamesToGameFolderPaths[appData.currentGame]?.gamePath || app.getPath("documents");
         const result = await showOpenDialog(requestingWindow || mainWindow || new BrowserWindow(), {
@@ -15268,19 +15296,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         if (result.canceled || result.filePaths.length === 0) return { success: false, canceled: true };
 
         const filePath = result.filePaths[0];
-        if (/\.(save|esf)$/i.test(filePath)) {
-          // The map tab loads the buildings data before it can import, so its slot template rows are normally cached.
-          const slotTemplateRows = cachedBuildingsData?.tables.slot_templates_tables;
-          const resourceBySlotTemplate = slotTemplateRows
-            ? Object.fromEntries(
-                slotTemplateRows
-                  .filter((row) => row.key && row.resource)
-                  .map((row) => [row.key.toLowerCase(), row.resource]),
-              )
-            : undefined;
-          const saved = await readCampaignSaveMap(filePath, resourceBySlotTemplate);
-          return { success: true, text: saved.text, filePath, campaignKey: saved.campaignKey, warnings: saved.warnings };
-        }
+        if (/\.(save|esf)$/i.test(filePath)) return await readSaveForMap(filePath);
         return { success: true, text: await fs.promises.readFile(filePath, "utf8"), filePath };
       } catch (error) {
         console.error("Error importing region ownership:", error);

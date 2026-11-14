@@ -1,8 +1,9 @@
 import { Modal } from "../flowbite/components/Modal/index";
 import React, { useMemo, useState, memo, useCallback } from "react";
-import { useAppSelector } from "../hooks";
+import { useAppDispatch, useAppSelector } from "../hooks";
 import { useLocalizations } from "../localizationContext";
 import classNames from "classnames";
+import { requestMapSaveImport } from "../appSlice";
 import { runGuarded } from "../utility/runGuarded";
 
 export interface SaveGameProps {
@@ -129,6 +130,7 @@ const PackComparisonModal = memo(
 );
 
 const SaveGame = memo((props: SaveGameProps) => {
+  const dispatch = useAppDispatch();
   const isWH3Running = useAppSelector((state) => state.app.isWH3Running);
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const isMakeUnitsGeneralsEnabled = useAppSelector((state) => state.app.isMakeUnitsGeneralsEnabled);
@@ -209,6 +211,14 @@ const SaveGame = memo((props: SaveGameProps) => {
       packDataOverwrites,
       userFlowOptions,
     ],
+  );
+
+  const onImportInMapClick = useCallback(
+    (name: string) => {
+      dispatch(requestMapSaveImport(name));
+      props.setIsOpen(false);
+    },
+    [dispatch, props],
   );
 
   const onComparePacksClick = useCallback(
@@ -305,7 +315,7 @@ const SaveGame = memo((props: SaveGameProps) => {
                     <div className="self-center leading-relaxed text-gray-500 dark:text-gray-300 h-[40px] truncate content-center">
                       {save.name}
                     </div>
-                    <div className="grid grid-cols-3 w-fit gap-2 justify-self-end">
+                    <div className="grid grid-cols-4 w-fit gap-2 justify-self-end">
                       <button
                         className={classNames(
                           "bg-green-500 hover:bg-green-700 font-bold text-white px-4 rounded h-[32px] w-full m-auto text-sm truncate",
@@ -333,6 +343,15 @@ const SaveGame = memo((props: SaveGameProps) => {
                       >
                         {localized.compareModsInSave}
                       </button>
+                      {/\.save$/i.test(save.name) && (
+                        <button
+                          className="bg-blue-500 hover:bg-blue-700 font-bold text-white px-2 rounded h-[32px] w-full text-xs m-auto truncate"
+                          type="button"
+                          onClick={() => onImportInMapClick(save.name)}
+                        >
+                          {(localized as Record<string, string | undefined>).mapImportSaveInMap || "Import in map"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

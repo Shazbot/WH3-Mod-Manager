@@ -113,3 +113,12 @@ describe("presets", () => {
     expect(state.lastSelectedPreset).toBeNull();
   });
 });
+
+describe("map save import handoff", () => {
+  it("queues a save name and clears it once consumed", async () => {
+    const { requestMapSaveImport, clearPendingMapSaveImport } = await import("../src/appSlice");
+    const queued = appReducer(initialState, requestMapSaveImport("a.save"));
+    expect(queued.pendingMapSaveImport).toBe("a.save");
+    expect(appReducer(queued, clearPendingMapSaveImport()).pendingMapSaveImport).toBeUndefined();
+  });
+});

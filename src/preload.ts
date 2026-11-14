@@ -1040,7 +1040,8 @@ const api = {
   ): Promise<{ success: boolean; savedPath?: string; canceled?: boolean; error?: string }> =>
     ipcRenderer.invoke("exportRegionOwnership", json, suggestedName),
 
-  importRegionOwnership: (): Promise<{
+  /** With `saveName` (a file in the game saves folder) the save is read directly, without the open dialog. */
+  importRegionOwnership: (saveName?: string): Promise<{
     success: boolean;
     text?: string;
     filePath?: string;
@@ -1049,7 +1050,7 @@ const api = {
     warnings?: string[];
     canceled?: boolean;
     error?: string;
-  }> => ipcRenderer.invoke("importRegionOwnership"),
+  }> => ipcRenderer.invoke("importRegionOwnership", saveName),
 
   updateCustomModSources: (data: {
     game: SupportedGames;

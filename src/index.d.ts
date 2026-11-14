@@ -373,6 +373,8 @@ declare global {
     unitViewerShowUnitCard: boolean;
     mapCampaignName: string;
     mapSelectedRegion?: MapRegionSelection;
+    /** Save file name the map panel should import once its map is loaded; cleared when consumed. */
+    pendingMapSaveImport?: string;
     isCreateSteamCollectionOpen: boolean;
     isImportSteamCollectionOpen: boolean;
     isPackSearcherOpen: boolean;

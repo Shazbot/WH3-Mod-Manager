@@ -1989,6 +1989,14 @@ const appSlice = createSlice({
       state.mapSelectedRegion = action.payload;
       state.currentTab = isMainWindowTabAvailable(state, "map") ? "map" : "mods";
     },
+    requestMapSaveImport: (state: AppState, action: PayloadAction<string>) => {
+      if (!isMainWindowTabAvailable(state, "map")) return;
+      state.pendingMapSaveImport = action.payload;
+      state.currentTab = "map";
+    },
+    clearPendingMapSaveImport: (state: AppState) => {
+      state.pendingMapSaveImport = undefined;
+    },
     setDataModsToEnableByName: (state: AppState, action: PayloadAction<string[]>) => {
       state.dataModsToEnableByName = action.payload;
     },
@@ -2280,6 +2288,8 @@ export const {
   selectFlowFile,
   requestFlowFileReload,
   setCurrentTab,
+  requestMapSaveImport,
+  clearPendingMapSaveImport,
   setMapCampaignName,
   selectMapRegion,
   clearMapRegionSelection,

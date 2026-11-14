@@ -1,7 +1,8 @@
 import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { Modal } from "../flowbite";
-import { addToast, clearMapRegionSelection, selectMapRegion, setMapCampaignName } from "../appSlice";
+import { addToast, clearMapRegionSelection, clearPendingMapSaveImport, selectMapRegion, setMapCampaignName } from "../appSlice";
+import { formatDistance } from "date-fns";
 import { unitAssetUrl } from "../assetUrls";
 import { useLocalizations } from "../localizationContext";
 import { useDeferredWhileInactive } from "./useDeferredWhileInactive";
@@ -394,6 +395,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const mods = useAppSelector((state) => state.app.currentPreset.mods);
   const mapCampaignName = useAppSelector((state) => state.app.mapCampaignName);
   const mapSelectedRegion = useAppSelector((state) => state.app.mapSelectedRegion);
+  const pendingMapSaveImport = useAppSelector((state) => state.app.pendingMapSaveImport);
+  const saves = useAppSelector((state) => state.app.saves);
   const enabledMods = useMemo(() => mods.filter((mod) => mod.isEnabled), [mods]);
   const enabledModsSignature = useMemo(
     () =>
@@ -479,6 +482,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const [ownershipEdits, setOwnershipEdits] = useState<OwnershipEdits>({});
   const [editHistory, setEditHistory] = useState<OwnershipEdits[]>([]);
   const [isTransferringOwnership, setIsTransferringOwnership] = useState(false);
+  const [isImportMenuOpen, setIsImportMenuOpen] = useState(false);
+  const importMenuRef = useRef<HTMLDivElement>(null);
   /** Extended map data is kept separate from ESF ownership so legacy map.json remains unchanged. */
   const [extendedState, setExtendedState] = useState<ExtendedMapEditState>();
   const [extendedHistory, setExtendedHistory] = useState<ExtendedMapEditState[]>([]);
@@ -1290,12 +1295,21 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     );
   };
 
-  const importOwnership = async () => {
+  const importableSaves = useMemo(
+    () => saves.filter((save) => /\.save$/i.test(save.name)).sort((a, b) => b.lastChanged - a.lastChanged),
+    [saves],
+  );
+  const formatSaveAge = (lastChanged: number) =>
+    lastChanged > 0 ? formatDistance(lastChanged, Date.now()).replace("about ", "~") + " ago" : "";
+
+  /** Without `saveName` the user picks a file; with one, that save is read directly. */
+  const importOwnership = async (saveName?: string) => {
     if (!baseMap || isTransferringOwnership) return;
+    setIsImportMenuOpen(false);
     setIsTransferringOwnership(true);
     await runGuarded(
       async () => {
-        const result = await window.api?.importRegionOwnership();
+        const result = await window.api?.importRegionOwnership(saveName);
         if (!result || result.canceled) return;
 
         const importFailed = (reason: string) =>
@@ -1340,6 +1354,29 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       },
     );
   };
+
+  // A save requested from the saves list: import it once the map is loaded, whether this tab was already open or not.
+  useEffect(() => {
+    if (!pendingMapSaveImport || !baseMap || isTransferringOwnership) return;
+    dispatch(clearPendingMapSaveImport());
+    void importOwnership(pendingMapSaveImport);
+  });
+
+  useEffect(() => {
+    if (!isImportMenuOpen) return;
+    const dismiss = (event: MouseEvent) => {
+      if (!importMenuRef.current?.contains(event.target as Node)) setIsImportMenuOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsImportMenuOpen(false);
+    };
+    document.addEventListener("mousedown", dismiss);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", dismiss);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isImportMenuOpen]);
 
   // Declared after the reset above so a save's import lands on top of the cleared state of its own campaign.
   useEffect(() => {
@@ -2544,14 +2581,55 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
               </button>
             )}
             <div className="ml-2 flex items-center gap-2 border-l border-gray-700 pl-2">
-              <button
-                type="button"
-                onClick={importOwnership}
-                disabled={isTransferringOwnership}
-                className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-300 hover:bg-gray-800 disabled:opacity-40 disabled:hover:bg-gray-900"
-              >
-                {mapText("mapImportOwnership", "Import…")}
-              </button>
+              <div ref={importMenuRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsImportMenuOpen((open) => !open)}
+                  disabled={isTransferringOwnership}
+                  aria-haspopup="menu"
+                  aria-expanded={isImportMenuOpen}
+                  className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-300 hover:bg-gray-800 disabled:opacity-40 disabled:hover:bg-gray-900"
+                >
+                  {mapText("mapImportOwnership", "Import…")}
+                </button>
+                {isImportMenuOpen && (
+                  <div
+                    role="menu"
+                    className="absolute left-0 top-full z-50 mt-1 min-w-[10rem] max-w-[20rem] rounded-md border border-gray-600 bg-gray-800 py-1 text-sm text-gray-200 shadow-lg"
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => void importOwnership()}
+                      className="block w-full px-4 py-2 text-left hover:bg-gray-700"
+                    >
+                      {mapText("mapImportFromFile", "File…")}
+                    </button>
+                    <div className="my-1 border-t border-gray-600" />
+                    <div className="px-4 py-1 text-xs text-gray-400">{mapText("mapImportFromSave", "Save")}</div>
+                    {importableSaves.length === 0 ? (
+                      <div className="px-4 py-2 text-xs italic text-gray-400">
+                        {mapText("mapImportNoSaves", "No saves found")}
+                      </div>
+                    ) : (
+                      <div className="max-h-64 overflow-y-auto">
+                        {importableSaves.map((save) => (
+                          <button
+                            key={save.name}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => void importOwnership(save.name)}
+                            className="flex w-full items-baseline justify-between gap-4 px-4 py-2 text-left hover:bg-gray-700"
+                          >
+                            <span className="truncate">{save.name.replace(/\.save$/i, "")}</span>
+                            <span className="shrink-0 text-xs text-gray-400">{formatSaveAge(save.lastChanged)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={exportOwnership}
