@@ -1111,17 +1111,49 @@ export interface BuildExtendedMapDeltaOptions {
   pendingConfederations?: ExtendedMapPendingConfederation[];
 }
 
+/**
+ * A document's diplomacy, indexed for pair lookups. A save holds ~300 factions, so scanning every group per
+ * lookup across every faction pair took seconds and froze the map after each edit.
+ */
+interface DiplomacyIndex {
+  /** First group per lower-cased faction name, as `findGroup` resolves it. */
+  groupsByName: Map<string, ExtendedMapFactionCharacters>;
+  /** Source group name (lower case) -> target relation key -> relations listed for it. */
+  relations: Map<string, Map<string, Set<ExtendedMapDiplomacyField>>>;
+}
+
+const buildDiplomacyIndex = (document: ExtendedMapDocument): DiplomacyIndex => {
+  const groupsByName = new Map<string, ExtendedMapFactionCharacters>();
+  for (const group of document.faction_to_chars) {
+    const name = group.faction.toLowerCase();
+    if (!groupsByName.has(name)) groupsByName.set(name, group);
+  }
+  const relations = new Map<string, Map<string, Set<ExtendedMapDiplomacyField>>>();
+  for (const [name, group] of groupsByName) {
+    const byTarget = new Map<string, Set<ExtendedMapDiplomacyField>>();
+    for (const field of EXTENDED_MAP_DIPLOMACY_FIELDS) {
+      for (const entry of group.diplo[field]) {
+        const target = relationKey(entry);
+        let fields = byTarget.get(target);
+        if (!fields) byTarget.set(target, (fields = new Set()));
+        fields.add(field);
+      }
+    }
+    relations.set(name, byTarget);
+  }
+  return { groupsByName, relations };
+};
+
 const diplomacyRelationsForPair = (
-  document: ExtendedMapDocument,
+  index: DiplomacyIndex,
   faction: string,
   targetFaction: string,
 ): ExtendedMapDiplomacyField[] => {
-  const source = findGroup(document, faction);
-  const target = findGroup(document, targetFaction);
+  const source = index.groupsByName.get(faction.toLowerCase());
+  const target = index.groupsByName.get(targetFaction.toLowerCase());
   if (!source || !target) return [];
-  return EXTENDED_MAP_DIPLOMACY_FIELDS.filter((field) =>
-    source.diplo[field].some((entry) => relationKey(entry) === relationKey(target.faction)),
-  );
+  const fields = index.relations.get(source.faction.toLowerCase())?.get(relationKey(target.faction));
+  return fields ? EXTENDED_MAP_DIPLOMACY_FIELDS.filter((field) => fields.has(field)) : [];
 };
 
 /** Builds a deterministic delta. Reverted edits naturally disappear because this compares baselines. */
@@ -1277,29 +1309,48 @@ export const buildExtendedMapDelta = (
   for (const group of [...beforeDocument.faction_to_chars, ...afterDocument.faction_to_chars])
     factionNames.set(relationKey(group.faction), group.faction);
   const sortedFactions = [...factionNames.entries()].sort(([first], [second]) => first.localeCompare(second));
-  for (let firstIndex = 0; firstIndex < sortedFactions.length; firstIndex += 1) {
-    for (let secondIndex = firstIndex + 1; secondIndex < sortedFactions.length; secondIndex += 1) {
-      const [, firstFaction] = sortedFactions[firstIndex];
-      const [, secondFaction] = sortedFactions[secondIndex];
-      const firstAfter = diplomacyRelationsForPair(afterDocument, firstFaction, secondFaction);
-      const secondAfter = diplomacyRelationsForPair(afterDocument, secondFaction, firstFaction);
-      const firstBefore = diplomacyRelationsForPair(beforeDocument, firstFaction, secondFaction);
-      const secondBefore = diplomacyRelationsForPair(beforeDocument, secondFaction, firstFaction);
-      const reverseVassal =
-        secondAfter.includes("vassals") || (!firstAfter.includes("vassals") && secondBefore.includes("vassals"));
-      const faction = reverseVassal ? secondFaction : firstFaction;
-      const targetFaction = reverseVassal ? firstFaction : secondFaction;
-      const beforeRelations = reverseVassal ? secondBefore : firstBefore;
-      const afterRelations = reverseVassal ? secondAfter : firstAfter;
-      if (equal(beforeRelations, afterRelations)) continue;
-      actions.push({
-        type: "set_diplomacy",
-        faction,
-        targetFaction,
-        before: beforeRelations,
-        after: afterRelations,
-      });
+  const beforeDiplomacy = buildDiplomacyIndex(beforeDocument);
+  const afterDiplomacy = buildDiplomacyIndex(afterDocument);
+  // Only pairs that list a relation in either document can differ, so visit those instead of every pair, in the
+  // same order the full pair walk would.
+  const sortedPositions = new Map(sortedFactions.map(([key], position) => [key, position]));
+  const candidatePairs = new Set<number>();
+  for (const index of [beforeDiplomacy, afterDiplomacy]) {
+    for (const [sourceName, byTarget] of index.relations) {
+      const sourcePosition = sortedPositions.get(
+        relationKey(index.groupsByName.get(sourceName)?.faction ?? sourceName),
+      );
+      if (sourcePosition === undefined) continue;
+      for (const targetKey of byTarget.keys()) {
+        const targetPosition = sortedPositions.get(targetKey);
+        if (targetPosition === undefined || targetPosition === sourcePosition) continue;
+        const [low, high] =
+          sourcePosition < targetPosition ? [sourcePosition, targetPosition] : [targetPosition, sourcePosition];
+        candidatePairs.add(low * sortedFactions.length + high);
+      }
     }
+  }
+  for (const pair of [...candidatePairs].sort((first, second) => first - second)) {
+    const [, firstFaction] = sortedFactions[Math.floor(pair / sortedFactions.length)];
+    const [, secondFaction] = sortedFactions[pair % sortedFactions.length];
+    const firstAfter = diplomacyRelationsForPair(afterDiplomacy, firstFaction, secondFaction);
+    const secondAfter = diplomacyRelationsForPair(afterDiplomacy, secondFaction, firstFaction);
+    const firstBefore = diplomacyRelationsForPair(beforeDiplomacy, firstFaction, secondFaction);
+    const secondBefore = diplomacyRelationsForPair(beforeDiplomacy, secondFaction, firstFaction);
+    const reverseVassal =
+      secondAfter.includes("vassals") || (!firstAfter.includes("vassals") && secondBefore.includes("vassals"));
+    const faction = reverseVassal ? secondFaction : firstFaction;
+    const targetFaction = reverseVassal ? firstFaction : secondFaction;
+    const beforeRelations = reverseVassal ? secondBefore : firstBefore;
+    const afterRelations = reverseVassal ? secondAfter : firstAfter;
+    if (equal(beforeRelations, afterRelations)) continue;
+    actions.push({
+      type: "set_diplomacy",
+      faction,
+      targetFaction,
+      before: beforeRelations,
+      after: afterRelations,
+    });
   }
   for (const pending of uniquePendingConfederations)
     actions.push({ type: "confederate", faction: pending.faction, targetFaction: pending.targetFaction });
