@@ -161,6 +161,8 @@ Legend:
 - **I** `getBuildingsCatalog`, `getBuildingsRegionView`, `getBuildingsCaiRows`, `getAncillariesCatalog`, `getAncillariesDetail`, `getEsfMap`, `exportRegionOwnership`, `importRegionOwnership`
 - **E** `buildingsDataRebuild`
 
+`importRegionOwnership` opens JSON, `.save` or `.esf` files. A JSON file returns `{ success, text, filePath }` (parsed in the renderer). A `.save`/`.esf` is read in a forked worker (webpack entry `campaignSaveWorker`, `src/esfMap/campaignSave.ts`) and returns the same plus `campaignKey` (the save's campaign, or null) and `warnings` (fields the extractor could not decode); `text` is extended map JSON. The renderer switches campaign first when `campaignKey` differs from the loaded map, then applies the import.
+
 ### Flows (node graph)
 
 - **I** `executeNode`, `executeNodeGraph`, `saveNodeFlow`, `listNativePatchFlowTemplates`, `inspectOnnxFlowPack`, `getFlowFilesFromPack`, `getFlowPackCatalog`, `selectFlowPackFile`, `selectFlowPackSavePath`, `saveFlowToPack`

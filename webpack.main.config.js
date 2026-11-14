@@ -22,6 +22,8 @@ module.exports = {
     index: ["./src/wh3AssetHostIpc.ts", "./src/index.ts"],
     // Forked by src/mixerStartpos/index.ts; bundled so the native @napi-rs/lzma goes through the asset relocator.
     mixerStartposWorker: "./src/mixerStartpos/worker.ts",
+    // Forked by src/esfMap/campaignSave.ts to read campaign saves for the map panel's Import.
+    campaignSaveWorker: "./src/esfMap/campaignSaveWorker.ts",
   },
   // Put your normal webpack config below here
   module: {
@@ -110,7 +112,7 @@ module.exports = {
     pathinfo: false,
     // Use unique chunk naming to avoid conflicts
     chunkFilename: isProduction ? "main.[name].[contenthash].js" : "main.[name].js",
-    filename: "[name].js", // index.js for the app, mixerStartposWorker.js for the worker
+    filename: "[name].js", // index.js for the app, mixerStartposWorker.js / campaignSaveWorker.js for the workers
     // Clean output directory
     clean: isProduction,
   },

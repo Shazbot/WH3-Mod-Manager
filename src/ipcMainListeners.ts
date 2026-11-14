@@ -152,6 +152,7 @@ import {
 } from "./esfMap/cache";
 import { getVanillaStartposFilePaths, loadEsfMapData, loadStartposRegionSlotTemplates } from "./esfMap/loader";
 import { addClimateDataToEsfMap } from "./esfMap/climates";
+import { readCampaignSaveMap } from "./esfMap/campaignSave";
 import { addProvinceDataToEsfMap } from "./esfMap/provinces";
 import { addFactionDataToEsfMap, factionFlagPath } from "./esfMap/factions";
 import { addSettlementTypeDataToEsfMap } from "./esfMap/settlementTypes";
@@ -15246,7 +15247,15 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     "importRegionOwnership",
     async (
       event,
-    ): Promise<{ success: boolean; text?: string; filePath?: string; canceled?: boolean; error?: string }> => {
+    ): Promise<{
+      success: boolean;
+      text?: string;
+      filePath?: string;
+      campaignKey?: string | null;
+      warnings?: string[];
+      canceled?: boolean;
+      error?: string;
+    }> => {
       const requestingWindow = BrowserWindow.fromWebContents(event.sender);
       try {
         const defaultDirectory =
@@ -15254,11 +15263,24 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         const result = await showOpenDialog(requestingWindow || mainWindow || new BrowserWindow(), {
           properties: ["openFile"],
           defaultPath: defaultDirectory,
-          filters: [{ name: "JSON", extensions: ["json"] }],
+          filters: [{ name: "Map files", extensions: ["json", "save", "esf"] }],
         });
         if (result.canceled || result.filePaths.length === 0) return { success: false, canceled: true };
 
         const filePath = result.filePaths[0];
+        if (/\.(save|esf)$/i.test(filePath)) {
+          // The map tab loads the buildings data before it can import, so its slot template rows are normally cached.
+          const slotTemplateRows = cachedBuildingsData?.tables.slot_templates_tables;
+          const resourceBySlotTemplate = slotTemplateRows
+            ? Object.fromEntries(
+                slotTemplateRows
+                  .filter((row) => row.key && row.resource)
+                  .map((row) => [row.key.toLowerCase(), row.resource]),
+              )
+            : undefined;
+          const saved = await readCampaignSaveMap(filePath, resourceBySlotTemplate);
+          return { success: true, text: saved.text, filePath, campaignKey: saved.campaignKey, warnings: saved.warnings };
+        }
         return { success: true, text: await fs.promises.readFile(filePath, "utf8"), filePath };
       } catch (error) {
         console.error("Error importing region ownership:", error);

@@ -1044,6 +1044,9 @@ const api = {
     success: boolean;
     text?: string;
     filePath?: string;
+    /** Set for `.save`/`.esf` imports: the save's campaign key (may be null) and undecoded-field notes. */
+    campaignKey?: string | null;
+    warnings?: string[];
     canceled?: boolean;
     error?: string;
   }> => ipcRenderer.invoke("importRegionOwnership"),

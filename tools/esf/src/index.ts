@@ -31,3 +31,14 @@ export { compressEsfBlock, repackCompressedEsf, repackAndVerify } from "./esf/re
 export type { CompressedEsfPieces, RepackResult } from "./esf/recompress";
 export { collectFactionKeys, findFactionKeyReferences, removeFaction, removeLastFaction } from "./edit/removeFaction";
 export type { RemoveFactionOptions, RemoveFactionReport } from "./edit/removeFaction";
+
+export { extractCampaignState } from "./extract/campaignState";
+export type {
+  CampaignState,
+  CampaignStateBuildingSlot,
+  CampaignStateCharacter,
+  CampaignStateDiplomacy,
+  CampaignStateFaction,
+  CampaignStateRegion,
+  CampaignStateUnit,
+} from "./extract/campaignState";

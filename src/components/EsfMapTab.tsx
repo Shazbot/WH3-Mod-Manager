@@ -426,6 +426,12 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const factionRegionCycleRef = useRef<{ factionKey: string; markerId: number }>(undefined);
   const factionFlagClickTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const mapContextMenuRef = useRef<HTMLDivElement>(null);
+  /** A save of another campaign waits here while the campaign switches, then applies once that map has loaded. */
+  const pendingImportRef = useRef<{
+    detected: Exclude<ReturnType<typeof parseMapFile>, { error: string }>;
+    notes: string[];
+    campaignKey: string;
+  }>(undefined);
   const mapDragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -1209,6 +1215,81 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     );
   };
 
+  /** Applies a parsed map file to `targetMap`. A save of another campaign is applied after the switch, via the pending ref. */
+  const applyImport = (
+    detected: Exclude<ReturnType<typeof parseMapFile>, { error: string }>,
+    targetMap: NonNullable<typeof baseMap>,
+    notes: string[],
+  ) => {
+    const ownership =
+      detected.format === "legacy"
+        ? detected.ownership
+        : Object.fromEntries(detected.document.regions.map((region) => [region.region, region.faction]));
+    const { edits, unknownRegions, unknownFactions } = ownershipEditsFromImport(
+      targetMap,
+      ownership,
+      targetMap.factions,
+    );
+    if (detected.format === "extended") {
+      const importedMap = applyOwnershipEdits(targetMap, edits, factionsByKey);
+      setExtendedImportUndo(captureExtendedMapImportUndo());
+      setOwnershipBaseline(regionOwnership(importedMap));
+      setOwnershipEdits({});
+      setEditHistory([]);
+      setExtendedState(createExtendedMapEditState(detected.document));
+      setExtendedHistory([]);
+      setSelectedCharacterKey(undefined);
+      setSelectedFactionKey(undefined);
+      setShowCharacters(true);
+    } else {
+      pushEditHistory();
+      setOwnershipBaseline({});
+      setOwnershipEdits(edits);
+      setExtendedImportUndo(undefined);
+      setExtendedState(undefined);
+      setExtendedHistory([]);
+      setSelectedCharacterKey(undefined);
+      setSelectedFactionKey(undefined);
+      setShowCharacters(false);
+    }
+
+    const messages = [
+      mapMessage(
+        "mapOwnershipImported",
+        detected.format === "extended"
+          ? "Imported extended map data and ownership for {{count}} region(s)."
+          : detected.format === "extended-export"
+            ? "Imported ownership and {{count}} extended action(s); action data is applied by the campaign importer."
+            : "Imported ownership for {{count}} region(s).",
+        {
+          count:
+            detected.format === "extended-export" ? detected.document.actions.length : Object.keys(edits).length,
+        },
+      ),
+    ];
+    if (unknownRegions.length > 0) {
+      messages.push(
+        mapMessage("mapOwnershipUnknownRegions", "{{count}} region(s) skipped, not in this campaign: {{keys}}", {
+          count: unknownRegions.length,
+          keys: unknownRegions.slice(0, 5).join(", "),
+        }),
+      );
+    }
+    if (unknownFactions.length > 0) {
+      messages.push(
+        mapMessage("mapOwnershipUnknownFactions", "{{count}} unknown faction key(s) kept as written: {{keys}}", {
+          count: unknownFactions.length,
+          keys: unknownFactions.slice(0, 5).join(", "),
+        }),
+      );
+    }
+    messages.push(...notes);
+    showOwnershipToast(
+      unknownRegions.length + unknownFactions.length + notes.length > 0 ? "warning" : "success",
+      messages,
+    );
+  };
+
   const importOwnership = async () => {
     if (!baseMap || isTransferringOwnership) return;
     setIsTransferringOwnership(true);
@@ -1232,69 +1313,25 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           importFailed(detected.error);
           return;
         }
-        const ownership =
-          detected.format === "legacy"
-            ? detected.ownership
-            : Object.fromEntries(detected.document.regions.map((region) => [region.region, region.faction]));
-        const { edits, unknownRegions, unknownFactions } = ownershipEditsFromImport(
-          baseMap,
-          ownership,
-          baseMap.factions,
-        );
-        if (detected.format === "extended") {
-          const importedMap = applyOwnershipEdits(baseMap, edits, factionsByKey);
-          setExtendedImportUndo(captureExtendedMapImportUndo());
-          setOwnershipBaseline(regionOwnership(importedMap));
-          setOwnershipEdits({});
-          setEditHistory([]);
-          setExtendedState(createExtendedMapEditState(detected.document));
-          setExtendedHistory([]);
-          setSelectedCharacterKey(undefined);
-          setSelectedFactionKey(undefined);
-          setShowCharacters(true);
-        } else {
-          pushEditHistory();
-          setOwnershipBaseline({});
-          setOwnershipEdits(edits);
-          setExtendedImportUndo(undefined);
-          setExtendedState(undefined);
-          setExtendedHistory([]);
-          setSelectedCharacterKey(undefined);
-          setSelectedFactionKey(undefined);
-          setShowCharacters(false);
+        const notes = result.warnings ?? [];
+        const saveCampaign = result.campaignKey?.toLowerCase();
+        if (saveCampaign && saveCampaign !== baseMap.campaignKey.toLowerCase()) {
+          const target = campaignOptions.find((option) => option.key.toLowerCase() === saveCampaign);
+          if (!target) {
+            importFailed(
+              mapMessage(
+                "mapOwnershipImportUnknownCampaign",
+                "This save is for campaign {{campaign}}, which is not available.",
+                { campaign: result.campaignKey ?? "" },
+              ),
+            );
+            return;
+          }
+          pendingImportRef.current = { detected, notes, campaignKey: target.key.toLowerCase() };
+          dispatch(setMapCampaignName(target.key));
+          return;
         }
-
-        const messages = [
-          mapMessage(
-            "mapOwnershipImported",
-            detected.format === "extended"
-              ? "Imported extended map data and ownership for {{count}} region(s)."
-              : detected.format === "extended-export"
-                ? "Imported ownership and {{count}} extended action(s); action data is applied by the campaign importer."
-                : "Imported ownership for {{count}} region(s).",
-            {
-              count:
-                detected.format === "extended-export" ? detected.document.actions.length : Object.keys(edits).length,
-            },
-          ),
-        ];
-        if (unknownRegions.length > 0) {
-          messages.push(
-            mapMessage("mapOwnershipUnknownRegions", "{{count}} region(s) skipped, not in this campaign: {{keys}}", {
-              count: unknownRegions.length,
-              keys: unknownRegions.slice(0, 5).join(", "),
-            }),
-          );
-        }
-        if (unknownFactions.length > 0) {
-          messages.push(
-            mapMessage("mapOwnershipUnknownFactions", "{{count}} unknown faction key(s) kept as written: {{keys}}", {
-              count: unknownFactions.length,
-              keys: unknownFactions.slice(0, 5).join(", "),
-            }),
-          );
-        }
-        showOwnershipToast(unknownRegions.length + unknownFactions.length > 0 ? "warning" : "success", messages);
+        applyImport(detected, baseMap, notes);
       },
       {
         onFinally: () => {
@@ -1303,6 +1340,19 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       },
     );
   };
+
+  // Declared after the reset above so a save's import lands on top of the cleared state of its own campaign.
+  useEffect(() => {
+    const pending = pendingImportRef.current;
+    if (!pending) return;
+    if (error) {
+      pendingImportRef.current = undefined;
+      return;
+    }
+    if (!baseMap || baseMap.campaignKey.toLowerCase() !== pending.campaignKey) return;
+    pendingImportRef.current = undefined;
+    applyImport(pending.detected, baseMap, pending.notes);
+  }, [baseMap, error, applyImport]);
 
   useEffect(() => {
     if (!isExtendedFormat || !window.api) {
