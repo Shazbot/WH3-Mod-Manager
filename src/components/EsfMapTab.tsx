@@ -64,6 +64,40 @@ const CHARACTER_MAX_SCREEN_RADIUS = 24;
 const OWNERSHIP_HISTORY_LIMIT = 200;
 /** How many factions the brush list renders at once. The faction table runs to thousands of rows. */
 const LISTED_FACTION_LIMIT = 200;
+const MIN_MAP_ZOOM = 0.5;
+const MAX_MAP_ZOOM = 6;
+/** Wheel zoom is previewed with a CSS transform and only committed to React once the wheel rests. */
+const WHEEL_ZOOM_COMMIT_DELAY_MS = 150;
+
+const clampMapZoom = (zoom: number) => Math.max(MIN_MAP_ZOOM, Math.min(MAX_MAP_ZOOM, zoom));
+
+const mapDisplaySize = (width: number, height: number, zoom: number) => ({
+  width: Math.max(320, Math.round(width * zoom)),
+  height: Math.max(240, Math.round(height * zoom)),
+});
+
+/** Scales the laid-out map at `fromZoom` so it looks exactly like the layout React will commit at `toZoom`. */
+const mapZoomPreviewTransform = (width: number, height: number, fromZoom: number, toZoom: number) => {
+  const from = mapDisplaySize(width, height, fromZoom);
+  const to = mapDisplaySize(width, height, toZoom);
+  return `scale(${to.width / from.width}, ${to.height / from.height})`;
+};
+
+type MapZoomAnchor = { mapX: number; mapY: number; clientX: number; clientY: number };
+
+/** Scrolls so the map point in the anchor sits under the anchor's client point again. */
+const keepMapPointUnderClient = (
+  surface: HTMLElement,
+  canvasWrap: HTMLElement,
+  mapWidth: number,
+  mapHeight: number,
+  anchor: MapZoomAnchor,
+) => {
+  const rect = surface.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  canvasWrap.scrollLeft += rect.left + (anchor.mapX * rect.width) / mapWidth - anchor.clientX;
+  canvasWrap.scrollTop += rect.top + (anchor.mapY * rect.height) / mapHeight - anchor.clientY;
+};
 
 type MapView = "regions" | "provinces" | "factions" | "climate" | "terrain";
 
@@ -446,14 +480,13 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     startScrollLeft: number;
     startScrollTop: number;
   }>(undefined);
-  const mapZoomAnchorRef = useRef<{
-    mapX: number;
-    mapY: number;
-    scaleX: number;
-    scaleY: number;
-    scrollLeft: number;
-    scrollTop: number;
-  }>(undefined);
+  const mapZoomAnchorRef = useRef<MapZoomAnchor>(undefined);
+  const mapContentRef = useRef<HTMLDivElement>(null);
+  /** Zoom the DOM is currently laid out at; `zoom` state can run ahead of it until the next commit. */
+  const renderedZoomRef = useRef(1);
+  /** Wheel zoom shown through a CSS transform but not yet committed to React state. */
+  const pendingZoomRef = useRef<number>(undefined);
+  const zoomCommitTimerRef = useRef<number>(undefined);
   const suppressMapClickRef = useRef(false);
   const characterDragRef = useRef<{
     pointerId: number;
@@ -475,7 +508,6 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const [climateSelectionKey, setClimateSelectionKey] = useState<string | null>();
   const [filter, setFilter] = useState("");
   const [zoom, setZoom] = useState(1);
-  const [isDraggingMap, setIsDraggingMap] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>();
   const [isEditingOwnership, setIsEditingOwnership] = useState(false);
@@ -592,8 +624,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     isActive && !!map?.characterPathfinding && (mapView === "terrain" || showTerrain || !!characterDragPreview?.moved);
   // The terrain view lists regions in the sidebar.
   const listView: Exclude<MapView, "terrain"> = mapView === "terrain" ? "regions" : mapView;
-  const mapDisplayWidthPx = map ? Math.max(320, Math.round(map.width * zoom)) : 0;
-  const mapDisplayHeightPx = map ? Math.max(240, Math.round(map.height * zoom)) : 0;
+  const mapDisplayWidthPx = map ? mapDisplaySize(map.width, map.height, zoom).width : 0;
+  const mapDisplayHeightPx = map ? mapDisplaySize(map.width, map.height, zoom).height : 0;
   const mapDisplayWidth = map ? `${mapDisplayWidthPx}px` : undefined;
   const mapDisplayHeight = map ? `${mapDisplayHeightPx}px` : undefined;
   const mapScaleX = map && map.width > 0 ? mapDisplayWidthPx / map.width : 1;
@@ -890,6 +922,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       const scaleX = surfaceRect.width / map.width;
       const scaleY = surfaceRect.height / map.height;
       if (!scaleX || !scaleY) return;
+      // An explicit centre wins over the pointer anchor of a wheel zoom that has not committed yet.
+      mapZoomAnchorRef.current = undefined;
 
       const targetLeft =
         canvasWrap.scrollLeft + surfaceRect.left - canvasWrapRect.left + mapX * scaleX - canvasWrap.clientWidth / 2;
@@ -1916,50 +1950,90 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     selectedCharacterKey,
   ]);
 
+  // Swap the wheel-zoom preview transform for the real layout in the same frame it commits.
   useLayoutEffect(() => {
+    renderedZoomRef.current = zoom;
+    const pending = pendingZoomRef.current;
+    // A wheel event can land between scheduling a commit and React rendering it; keep previewing it.
+    const stillPending = pending !== undefined && pending !== zoom;
+    const content = mapContentRef.current;
+    if (content)
+      content.style.transform = stillPending && map ? mapZoomPreviewTransform(map.width, map.height, zoom, pending) : "";
+
     const anchor = mapZoomAnchorRef.current;
+    if (!stillPending) {
+      pendingZoomRef.current = undefined;
+      mapZoomAnchorRef.current = undefined;
+    }
     const surface = mapSurfaceRef.current;
     const canvasWrap = canvasWrapRef.current;
-    if (!anchor || !surface || !canvasWrap || !map) return;
-
-    mapZoomAnchorRef.current = undefined;
-    const surfaceRect = surface.getBoundingClientRect();
-    const scaleX = surfaceRect.width / map.width;
-    const scaleY = surfaceRect.height / map.height;
-    if (!scaleX || !scaleY) return;
-
-    canvasWrap.scrollLeft = anchor.scrollLeft + anchor.mapX * (scaleX - anchor.scaleX);
-    canvasWrap.scrollTop = anchor.scrollTop + anchor.mapY * (scaleY - anchor.scaleY);
+    if (anchor && surface && canvasWrap && map)
+      keepMapPointUnderClient(surface, canvasWrap, map.width, map.height, anchor);
   }, [map, zoom]);
 
-  const changeZoom = useCallback((nextZoom: number) => setZoom(Math.max(0.5, Math.min(6, nextZoom))), []);
+  useEffect(() => () => window.clearTimeout(zoomCommitTimerRef.current), []);
+
+  const commitPendingZoom = useCallback(() => {
+    window.clearTimeout(zoomCommitTimerRef.current);
+    zoomCommitTimerRef.current = undefined;
+    const pending = pendingZoomRef.current;
+    if (pending === undefined) return;
+    if (pending === renderedZoomRef.current) {
+      // Wheeled back to where it started: the preview is already scale(1, 1) and no render will come.
+      pendingZoomRef.current = undefined;
+      mapZoomAnchorRef.current = undefined;
+      if (mapContentRef.current) mapContentRef.current.style.transform = "";
+      return;
+    }
+    setZoom(pending);
+  }, []);
+
+  /** Sets the zoom straight away, starting from any wheel zoom still being previewed. */
+  const changeZoom = useCallback((nextZoom: number | ((currentZoom: number) => number)) => {
+    window.clearTimeout(zoomCommitTimerRef.current);
+    zoomCommitTimerRef.current = undefined;
+    const currentZoom = pendingZoomRef.current ?? renderedZoomRef.current;
+    const target = clampMapZoom(typeof nextZoom === "function" ? nextZoom(currentZoom) : nextZoom);
+    // Leave any preview transform in place; the commit's layout effect removes it in the same frame.
+    pendingZoomRef.current = undefined;
+    mapZoomAnchorRef.current = undefined;
+    if (target === renderedZoomRef.current && mapContentRef.current) mapContentRef.current.style.transform = "";
+    setZoom(target);
+  }, []);
 
   const zoomAtPointer = useCallback(
     (event: WheelEvent) => {
       if (!map) return;
       const surface = mapSurfaceRef.current;
       const canvasWrap = canvasWrapRef.current;
-      if (!surface || !canvasWrap) return;
+      const content = mapContentRef.current;
+      if (!surface || !canvasWrap || !content) return;
+
+      const renderedZoom = renderedZoomRef.current;
+      const currentZoom = pendingZoomRef.current ?? renderedZoom;
+      const nextZoom = clampMapZoom(currentZoom * (event.deltaY < 0 ? 1.15 : 1 / 1.15));
+      if (nextZoom === currentZoom) return;
 
       const surfaceRect = surface.getBoundingClientRect();
-      const scaleX = surfaceRect.width / map.width;
-      const scaleY = surfaceRect.height / map.height;
-      if (!scaleX || !scaleY) return;
-
-      const nextZoom = Math.max(0.5, Math.min(6, zoom * (event.deltaY < 0 ? 1.15 : 1 / 1.15)));
-      if (nextZoom === zoom) return;
-
-      mapZoomAnchorRef.current = {
-        mapX: (event.clientX - surfaceRect.left) / scaleX,
-        mapY: (event.clientY - surfaceRect.top) / scaleY,
-        scaleX,
-        scaleY,
-        scrollLeft: canvasWrap.scrollLeft,
-        scrollTop: canvasWrap.scrollTop,
+      if (!surfaceRect.width || !surfaceRect.height) return;
+      const anchor: MapZoomAnchor = {
+        mapX: ((event.clientX - surfaceRect.left) / surfaceRect.width) * map.width,
+        mapY: ((event.clientY - surfaceRect.top) / surfaceRect.height) * map.height,
+        clientX: event.clientX,
+        clientY: event.clientY,
       };
-      changeZoom(nextZoom);
+
+      // Re-rendering the whole tab per wheel step is slow, so preview the zoom with a transform and
+      // commit it to React once the wheel rests.
+      pendingZoomRef.current = nextZoom;
+      mapZoomAnchorRef.current = anchor;
+      content.style.transform = mapZoomPreviewTransform(map.width, map.height, renderedZoom, nextZoom);
+      keepMapPointUnderClient(surface, canvasWrap, map.width, map.height, anchor);
+
+      window.clearTimeout(zoomCommitTimerRef.current);
+      zoomCommitTimerRef.current = window.setTimeout(commitPendingZoom, WHEEL_ZOOM_COMMIT_DELAY_MS);
     },
-    [changeZoom, map, zoom],
+    [commitPendingZoom, map],
   );
 
   useEffect(() => {
@@ -2037,8 +2111,9 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       setSelectedFactionKey((factionsByKey.get(normalizedKey)?.key ?? factionKeyToFocus).toLowerCase());
       selectMapMarker(marker);
     }
-    if (zoom < 2) {
-      setZoom(2);
+    const currentZoom = pendingZoomRef.current ?? renderedZoomRef.current;
+    if (currentZoom < 2 || pendingZoomRef.current !== undefined) {
+      changeZoom(Math.max(2, currentZoom));
       // Wait for the scaled surface to commit before calculating the scroll offset.
       requestAnimationFrame(() => requestAnimationFrame(() => centerMapOnMarker(marker)));
     } else centerMapOnMarker(marker);
@@ -2249,7 +2324,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       startScrollTop: canvasWrap.scrollTop,
     };
     suppressMapClickRef.current = false;
-    setIsDraggingMap(true);
+    // Set the cursor directly: a state change here would re-render the whole tab as the drag starts.
+    event.currentTarget.style.cursor = "grabbing";
     event.currentTarget.setPointerCapture(event.pointerId);
     event.preventDefault();
   };
@@ -2327,7 +2403,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     if (!drag || drag.pointerId !== event.pointerId) return;
 
     mapDragRef.current = undefined;
-    setIsDraggingMap(false);
+    event.currentTarget.style.cursor = "";
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -2781,7 +2857,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             <div className="flex items-center gap-2 border-b border-gray-800 px-3 py-2 text-xs text-gray-400">
               <button
                 type="button"
-                onClick={() => changeZoom(zoom / 1.2)}
+                onClick={() => changeZoom((currentZoom) => currentZoom / 1.2)}
                 className="rounded bg-gray-800 px-2 py-1 hover:bg-gray-700"
               >
                 −
@@ -2795,7 +2871,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
               </button>
               <button
                 type="button"
-                onClick={() => changeZoom(zoom * 1.2)}
+                onClick={() => changeZoom((currentZoom) => currentZoom * 1.2)}
                 className="rounded bg-gray-800 px-2 py-1 hover:bg-gray-700"
               >
                 +
@@ -2828,8 +2904,9 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             <div className="relative min-h-0 flex-1 overflow-hidden" style={{ position: "relative" }}>
               <div ref={canvasWrapRef} className="h-full overflow-auto p-3">
                 <div
+                  ref={mapContentRef}
                   className="relative inline-block align-top"
-                  style={{ width: mapDisplayWidth, height: mapDisplayHeight }}
+                  style={{ width: mapDisplayWidth, height: mapDisplayHeight, transformOrigin: "0 0" }}
                 >
                   <div
                     ref={mapSurfaceRef}
@@ -2863,7 +2940,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                         width: map ? `${map.width}px` : undefined,
                         height: map ? `${map.height}px` : undefined,
                       }}
-                      className={`absolute left-0 top-0 block ${isDraggingMap ? "cursor-grabbing" : isEditingFactions ? "cursor-crosshair" : "cursor-grab"} touch-none select-none rounded border border-transparent bg-transparent`}
+                      className={`absolute left-0 top-0 block ${isEditingFactions ? "cursor-crosshair" : "cursor-grab"} touch-none select-none rounded border border-transparent bg-transparent`}
                     />
                   </div>
                   {map.backgroundTextImage && (
