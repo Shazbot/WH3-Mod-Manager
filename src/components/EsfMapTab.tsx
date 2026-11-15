@@ -67,7 +67,7 @@ const CHARACTER_MAX_SCREEN_RADIUS = 24;
 const OWNERSHIP_HISTORY_LIMIT = 200;
 /** How many factions the brush list renders at once. The faction table runs to thousands of rows. */
 const LISTED_FACTION_LIMIT = 200;
-const MIN_MAP_ZOOM = 0.5;
+const MIN_MAP_ZOOM = 0.1;
 const MAX_MAP_ZOOM = 6;
 /** Wheel zoom is previewed with a CSS transform and only committed to React once the wheel rests. */
 const WHEEL_ZOOM_COMMIT_DELAY_MS = 150;
