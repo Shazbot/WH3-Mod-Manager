@@ -318,7 +318,7 @@ const SaveGame = memo((props: SaveGameProps) => {
                     <div className="flex gap-2 justify-self-end">
                       <button
                         className={classNames(
-                          "bg-green-500 hover:bg-green-700 font-bold text-white px-4 rounded h-[32px] m-auto text-sm whitespace-nowrap",
+                          "bg-green-600 hover:bg-green-700 font-bold text-white px-6 rounded h-[38px] min-w-[120px] m-auto text-base whitespace-nowrap shadow-sm",
                           {
                             "opacity-30": isWH3Running,
                           },
