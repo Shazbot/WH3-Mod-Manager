@@ -76,11 +76,35 @@ const mapDisplaySize = (width: number, height: number, zoom: number) => ({
   height: Math.max(240, Math.round(height * zoom)),
 });
 
+/** Screen radius of a character marker at a given map scale; markers stop growing past a maximum. */
+const characterMarkerRadius = (mapScale: number) =>
+  Math.min(CHARACTER_MARKER_RADIUS * mapScale, CHARACTER_MAX_SCREEN_RADIUS);
+
+const CHARACTER_PREVIEW_SCALE_X = "--character-marker-preview-scale-x";
+const CHARACTER_PREVIEW_SCALE_Y = "--character-marker-preview-scale-y";
+
 /** Scales the laid-out map at `fromZoom` so it looks exactly like the layout React will commit at `toZoom`. */
-const mapZoomPreviewTransform = (width: number, height: number, fromZoom: number, toZoom: number) => {
+const applyMapZoomPreview = (content: HTMLElement, width: number, height: number, fromZoom: number, toZoom: number) => {
   const from = mapDisplaySize(width, height, fromZoom);
   const to = mapDisplaySize(width, height, toZoom);
-  return `scale(${to.width / from.width}, ${to.height / from.height})`;
+  const scaleX = to.width / from.width;
+  const scaleY = to.height / from.height;
+  content.style.transform = `scale(${scaleX}, ${scaleY})`;
+  // The transform would grow character markers past their size cap; undo the difference on each marker.
+  content.style.setProperty(
+    CHARACTER_PREVIEW_SCALE_X,
+    String(characterMarkerRadius(to.width / width) / (characterMarkerRadius(from.width / width) * scaleX)),
+  );
+  content.style.setProperty(
+    CHARACTER_PREVIEW_SCALE_Y,
+    String(characterMarkerRadius(to.height / height) / (characterMarkerRadius(from.height / height) * scaleY)),
+  );
+};
+
+const clearMapZoomPreview = (content: HTMLElement) => {
+  content.style.transform = "";
+  content.style.removeProperty(CHARACTER_PREVIEW_SCALE_X);
+  content.style.removeProperty(CHARACTER_PREVIEW_SCALE_Y);
 };
 
 type MapZoomAnchor = { mapX: number; mapY: number; clientX: number; clientY: number };
@@ -1968,8 +1992,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         faction,
         x: drawPoint.x * mapScaleX,
         y: drawPoint.y * mapScaleY,
-        radiusX: Math.min(CHARACTER_MARKER_RADIUS * mapScaleX, CHARACTER_MAX_SCREEN_RADIUS),
-        radiusY: Math.min(CHARACTER_MARKER_RADIUS * mapScaleY, CHARACTER_MAX_SCREEN_RADIUS),
+        radiusX: characterMarkerRadius(mapScaleX),
+        radiusY: characterMarkerRadius(mapScaleY),
         borderWidth: 0.75,
         selected:
           selectedCharacterKey?.faction.toLowerCase() === faction.toLowerCase() &&
@@ -1996,8 +2020,10 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     // A wheel event can land between scheduling a commit and React rendering it; keep previewing it.
     const stillPending = pending !== undefined && pending !== zoom;
     const content = mapContentRef.current;
-    if (content)
-      content.style.transform = stillPending && map ? mapZoomPreviewTransform(map.width, map.height, zoom, pending) : "";
+    if (content) {
+      if (stillPending && map) applyMapZoomPreview(content, map.width, map.height, zoom, pending);
+      else clearMapZoomPreview(content);
+    }
 
     const anchor = mapZoomAnchorRef.current;
     if (!stillPending) {
@@ -2021,7 +2047,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       // Wheeled back to where it started: the preview is already scale(1, 1) and no render will come.
       pendingZoomRef.current = undefined;
       mapZoomAnchorRef.current = undefined;
-      if (mapContentRef.current) mapContentRef.current.style.transform = "";
+      if (mapContentRef.current) clearMapZoomPreview(mapContentRef.current);
       return;
     }
     setZoom(pending);
@@ -2036,7 +2062,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     // Leave any preview transform in place; the commit's layout effect removes it in the same frame.
     pendingZoomRef.current = undefined;
     mapZoomAnchorRef.current = undefined;
-    if (target === renderedZoomRef.current && mapContentRef.current) mapContentRef.current.style.transform = "";
+    if (target === renderedZoomRef.current && mapContentRef.current) clearMapZoomPreview(mapContentRef.current);
     setZoom(target);
   }, []);
 
@@ -2066,7 +2092,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       // commit it to React once the wheel rests.
       pendingZoomRef.current = nextZoom;
       mapZoomAnchorRef.current = anchor;
-      content.style.transform = mapZoomPreviewTransform(map.width, map.height, renderedZoom, nextZoom);
+      applyMapZoomPreview(content, map.width, map.height, renderedZoom, nextZoom);
       keepMapPointUnderClient(surface, canvasWrap, map.width, map.height, anchor);
 
       window.clearTimeout(zoomCommitTimerRef.current);
@@ -3044,6 +3070,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                           opacity: isEditingOwnership ? OWNERSHIP_EDIT_CHARACTER_OPACITY : 1,
                           boxShadow: marker.selected ? "0 0 0 3px #facc15" : undefined,
                           boxSizing: "border-box",
+                          // Counters a wheel-zoom preview so markers keep the size the zoom will commit.
+                          transform: `scale(var(${CHARACTER_PREVIEW_SCALE_X}, 1), var(${CHARACTER_PREVIEW_SCALE_Y}, 1))`,
                         }}
                       >
                         {marker.thumbnailSource && (
