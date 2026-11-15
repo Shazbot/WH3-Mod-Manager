@@ -823,7 +823,7 @@ describe("Unit Viewer catalog", () => {
   });
 
   it("resolves rider, mount and engine visual parts", () => {
-    const base = {
+    const base: UnitViewerTableRows = {
       battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "100" }],
       melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
       unit_variants_tables: [{ unit: "land", variant: "v_man" }],
