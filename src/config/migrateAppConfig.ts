@@ -187,6 +187,7 @@ const withDefaults = (config: AppConfig): AppConfig => {
     enabledModsPaneSortingType: config.enabledModsPaneSortingType ?? SortingType.Ordered,
     currentGame: config.currentGame ?? "wh3",
     hideRepeatedKeyPrefixes: config.hideRepeatedKeyPrefixes ?? true,
+    isGroupingSkillSetsByCulture: config.isGroupingSkillSetsByCulture ?? true,
     recentPackPaths: sanitizeRecentPackPaths(config.recentPackPaths, vanillaPackNames),
   };
 };

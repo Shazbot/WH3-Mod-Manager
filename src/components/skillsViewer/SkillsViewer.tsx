@@ -7,7 +7,12 @@ import SkillsView, { SkillsViewHandle, SkillsViewSnapshot } from "./SkillsView";
 import { SkillsDataContext } from "./skillsDataContext";
 import { Resizable } from "re-resizable";
 import debounce from "just-debounce-it";
-import { setHideRepeatedKeyPrefixes, setIsShowingSkillNodeSetNames, setSkillsData } from "../../appSlice";
+import {
+  setHideRepeatedKeyPrefixes,
+  setIsGroupingSkillSetsByCulture,
+  setIsShowingSkillNodeSetNames,
+  setSkillsData,
+} from "../../appSlice";
 
 type SkillTab = {
   id: string;
@@ -89,6 +94,19 @@ const SkillsViewer = memo(() => {
   const localized = useAppSelector((state) => state.app.currentLocalization);
   const isShowingSkillNodeSetNames = useAppSelector((state) => state.app.isShowingSkillNodeSetNames);
   const hideRepeatedKeyPrefixes = useAppSelector((state) => state.app.hideRepeatedKeyPrefixes);
+  const isGroupingSkillSetsByCulture = useAppSelector((state) => state.app.isGroupingSkillSetsByCulture);
+  const [isOptionsMenuOpen, setIsOptionsMenuOpen] = useState(false);
+  const optionsMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOptionsMenuOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (optionsMenuRef.current?.contains(event.target as Node)) return;
+      setIsOptionsMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [isOptionsMenuOpen]);
   const isLocalizingSubtypes = useAppSelector((state) => state.app.isLocalizingSubtypes);
 
   const getTabLabel = useCallback(
@@ -394,6 +412,7 @@ const SkillsViewer = memo(() => {
               <SkillsTreeView
                 tableFilter={dbTableFilter}
                 hideRepeatedKeyPrefixes={hideRepeatedKeyPrefixes}
+                groupByCulture={isGroupingSkillSetsByCulture}
                 onSelect={onTreeSelect}
                 onHover={onTreeHover}
                 onDoubleClick={onTreeDoubleClick}
@@ -472,24 +491,44 @@ const SkillsViewer = memo(() => {
             </button>
           </span>
         </span>
-        <label htmlFor="isShowingSkillNodeSetNamesCheckbox" className="ml-4 flex items-center text-sm">
-          <input
-            id="isShowingSkillNodeSetNamesCheckbox"
-            type="checkbox"
-            checked={!!isShowingSkillNodeSetNames}
-            onChange={() => dispatch(setIsShowingSkillNodeSetNames(!isShowingSkillNodeSetNames))}
-          ></input>
-          <span className="ml-2">{localized.showSkillNodeSetNames || "Show Skill Node Set Names"}</span>
-        </label>
-        <label htmlFor="hideRepeatedSkillKeyPrefixesCheckbox" className="ml-4 flex items-center text-sm">
-          <input
-            id="hideRepeatedSkillKeyPrefixesCheckbox"
-            type="checkbox"
-            checked={hideRepeatedKeyPrefixes}
-            onChange={(event) => dispatch(setHideRepeatedKeyPrefixes(event.target.checked))}
-          ></input>
-          <span className="ml-2">{localized.hideRepeatedKeyPrefixes || "Hide Repeated Key Prefixes"}</span>
-        </label>
+        <div className="relative ml-4 shrink-0" ref={optionsMenuRef}>
+          <button
+            type="button"
+            aria-expanded={isOptionsMenuOpen}
+            onClick={() => setIsOptionsMenuOpen((currentValue) => !currentValue)}
+            className="rounded border border-gray-700 bg-gray-900 px-2 py-1.5 text-xs text-gray-300 hover:border-blue-500 hover:bg-gray-800 hover:text-white"
+          >
+            {localized.options || "Options"}
+          </button>
+          {isOptionsMenuOpen && (
+            <div className="absolute bottom-full left-0 z-250 mb-1 w-64 rounded-lg border border-gray-700 bg-gray-800 p-1 text-left shadow-lg">
+              <label className="flex items-center gap-2 rounded px-3 py-2 text-sm text-white hover:bg-gray-700">
+                <input
+                  type="checkbox"
+                  checked={isGroupingSkillSetsByCulture}
+                  onChange={(event) => dispatch(setIsGroupingSkillSetsByCulture(event.target.checked))}
+                ></input>
+                {localized.groupSkillSetsByCulture || "Group by Culture"}
+              </label>
+              <label className="flex items-center gap-2 rounded px-3 py-2 text-sm text-white hover:bg-gray-700">
+                <input
+                  type="checkbox"
+                  checked={!!isShowingSkillNodeSetNames}
+                  onChange={() => dispatch(setIsShowingSkillNodeSetNames(!isShowingSkillNodeSetNames))}
+                ></input>
+                {localized.showSkillNodeSetNames || "Show Skill Node Set Names"}
+              </label>
+              <label className="flex items-center gap-2 rounded px-3 py-2 text-sm text-white hover:bg-gray-700">
+                <input
+                  type="checkbox"
+                  checked={hideRepeatedKeyPrefixes}
+                  onChange={(event) => dispatch(setHideRepeatedKeyPrefixes(event.target.checked))}
+                ></input>
+                {localized.hideRepeatedKeyPrefixes || "Hide Repeated Key Prefixes"}
+              </label>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -1584,6 +1584,8 @@
   "ancillariesSaveSkipDuplicates": "不要保存重复的行",
   "buildingsSaveSkipDuplicates": "不要保存重复的行",
   "hideRepeatedKeyPrefixes": "隐藏重复的键前缀",
+  "groupSkillSetsByCulture": "按文化分组",
+  "skillsOtherCulture": "其他",
   "nodeEditorFilterMatchMode": "过滤匹配模式",
   "nodeEditorFilterMatchModeFull": "满的",
   "nodeEditorFilterMatchModePartial": "部分的",

@@ -2,6 +2,7 @@ import { Pack, PackCollisions, PackedFile } from "./packFileTypes";
 import { NodeLinks, NodeSkill, SkillAndIcons } from "./skills";
 import { SupportedGames, supportedGames, SupportedLanguage } from "./supportedGames";
 import { emptyGameConfig } from "./config/migrateAppConfig";
+import type { SkillSetCultureSources } from "./skillsData/cultures";
 import Trie, { type KeyedLookup } from "./utility/trie";
 import type { AssetBytes } from "./assetProtocol";
 
@@ -18,6 +19,7 @@ interface AppData {
       forArmy: string;
       forNavy: string;
     }[];
+    skillSetCultureSources: SkillSetCultureSources;
     setToNodes: Record<string, string[]>;
     nodeLinks: NodeLinks;
     nodeToSkill: Record<string, NodeSkill>;
@@ -176,6 +178,7 @@ interface AppData {
   isShowingSkillsRankPanel: boolean;
   isShowingSkillDbKeys: boolean;
   hideRepeatedKeyPrefixes: boolean;
+  isGroupingSkillSetsByCulture: boolean;
   isShowingHiddenSkills: boolean;
   isShowingHiddenModifiersInsideSkills: boolean;
   isCheckingSkillRequirements: boolean;
@@ -262,6 +265,7 @@ const appData = {
   isShowingSkillsRankPanel: false,
   isShowingSkillDbKeys: false,
   hideRepeatedKeyPrefixes: true,
+  isGroupingSkillSetsByCulture: true,
   isShowingHiddenSkills: true,
   isShowingHiddenModifiersInsideSkills: true,
   isCheckingSkillRequirements: true,

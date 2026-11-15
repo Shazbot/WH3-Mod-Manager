@@ -192,6 +192,7 @@ const syncSkillsViewOptions = (appState: AppState) => {
     isShowingSkillsRankPanel: appState.isShowingSkillsRankPanel,
     isShowingSkillDbKeys: appState.isShowingSkillDbKeys,
     hideRepeatedKeyPrefixes: appState.hideRepeatedKeyPrefixes,
+    isGroupingSkillSetsByCulture: appState.isGroupingSkillSetsByCulture,
     isShowingHiddenSkills: appState.isShowingHiddenSkills,
     isShowingHiddenModifiersInsideSkills: appState.isShowingHiddenModifiersInsideSkills,
     isCheckingSkillRequirements: appState.isCheckingSkillRequirements,
@@ -202,6 +203,7 @@ const syncSkillsViewOptions = (appState: AppState) => {
     lastSentSkillsViewOptions?.isShowingSkillsRankPanel === nextSkillsViewOptions.isShowingSkillsRankPanel &&
     lastSentSkillsViewOptions?.isShowingSkillDbKeys === nextSkillsViewOptions.isShowingSkillDbKeys &&
     lastSentSkillsViewOptions?.hideRepeatedKeyPrefixes === nextSkillsViewOptions.hideRepeatedKeyPrefixes &&
+    lastSentSkillsViewOptions?.isGroupingSkillSetsByCulture === nextSkillsViewOptions.isGroupingSkillSetsByCulture &&
     lastSentSkillsViewOptions?.isShowingHiddenSkills === nextSkillsViewOptions.isShowingHiddenSkills &&
     lastSentSkillsViewOptions?.isShowingHiddenModifiersInsideSkills ===
       nextSkillsViewOptions.isShowingHiddenModifiersInsideSkills &&

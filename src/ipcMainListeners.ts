@@ -353,6 +353,7 @@ import {
   saveVanillaSkillsDataCoreCache,
 } from "./skillsData/cache";
 import { applyModOverlayToSkillsDataCore } from "./skillsData/overlay";
+import { createEmptySkillSetCultureSources, getSkillSetCultureData } from "./skillsData/cultures";
 import {
   clearIconAssets,
   iconAssetUrl,
@@ -1984,6 +1985,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     for (const table of skillTooltipTablesToRead) {
       if (!tablesToRead.includes(table)) tablesToRead.push(table);
     }
+    const cultureSourceTablesToRead = [
+      "faction_agent_permitted_subtypes_tables",
+      "factions_tables",
+      "cultures_subcultures_tables",
+    ]
+      .flatMap((tableName) => resolveTable(tableName))
+      .map((table) => `db\\${table}\\`);
+    for (const table of cultureSourceTablesToRead) {
+      if (!tablesToRead.includes(table)) tablesToRead.push(table);
+    }
     const effectBonusValueIdsUnitSetsTablesToRead = resolveTable("effect_bonus_value_ids_unit_sets_tables").map(
       (table) => `db\\${table}\\`,
     );
@@ -2207,6 +2218,25 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       subtypesToSet[agentSubtype] = subtypesToSet[agentSubtype] || [];
       if (!subtypesToSet[agentSubtype].includes(key)) subtypesToSet[agentSubtype].push(key);
     }
+    const skillSetCultureSources = createEmptySkillSetCultureSources();
+    getTableRowData(packsTableData, "cultures_subcultures_tables", (schemaFieldRow) => {
+      const subculture = schemaFieldRow.find((sF) => sF.name == "subculture")?.resolvedKeyValue;
+      const culture = schemaFieldRow.find((sF) => sF.name == "culture")?.resolvedKeyValue;
+      if (subculture && culture) skillSetCultureSources.subcultureToCulture[subculture] = culture;
+    });
+    getTableRowData(packsTableData, "factions_tables", (schemaFieldRow) => {
+      const faction = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
+      const subculture = schemaFieldRow.find((sF) => sF.name == "subculture")?.resolvedKeyValue;
+      if (faction && subculture) skillSetCultureSources.factionToSubculture[faction] = subculture;
+    });
+    getTableRowData(packsTableData, "faction_agent_permitted_subtypes_tables", (schemaFieldRow) => {
+      const faction = schemaFieldRow.find((sF) => sF.name == "faction")?.resolvedKeyValue;
+      const subtype = schemaFieldRow.find((sF) => sF.name == "subtype")?.resolvedKeyValue;
+      const modDisabled = schemaFieldRow.find((sF) => sF.name == "mod_disabled")?.resolvedKeyValue;
+      if (!faction || !subtype || modDisabled == "true" || modDisabled == "1") return;
+      const factions = (skillSetCultureSources.subtypeToFactions[subtype] ??= []);
+      if (!factions.includes(faction)) factions.push(faction);
+    });
     const setAndNodes: { set: string; node: string; modDisabled: string }[] = [];
     getTableRowData(packsTableData, "character_skill_node_set_items_tables", (schemaFieldRow) => {
       const set = schemaFieldRow.find((sF) => sF.name == "set")?.resolvedKeyValue;
@@ -2789,6 +2819,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     appData.skillsData = {
       subtypesToSet,
       subtypeAndSets,
+      skillSetCultureSources,
       setToNodes,
       nodeLinks,
       nodeToSkill,
@@ -2946,6 +2977,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       subtypesToSet,
       subtypeAndSets,
       currentSkills: kfSkills,
+      ...getSkillSetCultureData(subtypeAndSets, skillSetCultureSources, getLoc),
       ...treeNodeData,
       icons: pickIconsForSkills(icons, appData.skillsData.iconGeneration, kfSkills, kfTooltipIconPaths),
       subtypes,
@@ -3096,6 +3128,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       subtypeToNumSets,
       subtypesToSet,
       subtypeAndSets: cachedSkillsData.subtypeAndSets,
+      ...getSkillSetCultureData(
+        cachedSkillsData.subtypeAndSets,
+        cachedSkillsData.skillSetCultureSources,
+        getLoc,
+      ),
       ...treeNodeData,
       icons: pickIconsForSkills(icons, cachedSkillsData.iconGeneration, kfSkills, tooltipIconPaths),
       abilityTooltipsByKey,
@@ -6487,6 +6524,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       appData.isShowingSkillsRankPanel = appState.isShowingSkillsRankPanel ?? appData.isShowingSkillsRankPanel;
       appData.isShowingSkillDbKeys = appState.isShowingSkillDbKeys ?? appData.isShowingSkillDbKeys;
       appData.hideRepeatedKeyPrefixes = appState.hideRepeatedKeyPrefixes ?? appData.hideRepeatedKeyPrefixes;
+      appData.isGroupingSkillSetsByCulture = appState.isGroupingSkillSetsByCulture ?? appData.isGroupingSkillSetsByCulture;
       appData.isShowingHiddenSkills = appState.isShowingHiddenSkills ?? appData.isShowingHiddenSkills;
       appData.isShowingHiddenModifiersInsideSkills =
         appState.isShowingHiddenModifiersInsideSkills ?? appData.isShowingHiddenModifiersInsideSkills;
@@ -12393,6 +12431,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     appData.isShowingSkillsRankPanel = skillsViewOptions.isShowingSkillsRankPanel;
     appData.isShowingSkillDbKeys = skillsViewOptions.isShowingSkillDbKeys;
     appData.hideRepeatedKeyPrefixes = skillsViewOptions.hideRepeatedKeyPrefixes;
+    appData.isGroupingSkillSetsByCulture = skillsViewOptions.isGroupingSkillSetsByCulture;
     appData.isShowingHiddenSkills = skillsViewOptions.isShowingHiddenSkills;
     appData.isShowingHiddenModifiersInsideSkills = skillsViewOptions.isShowingHiddenModifiersInsideSkills;
     appData.isCheckingSkillRequirements = skillsViewOptions.isCheckingSkillRequirements;
@@ -12872,6 +12911,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       isShowingSkillsRankPanel: appData.isShowingSkillsRankPanel,
       isShowingSkillDbKeys: appData.isShowingSkillDbKeys,
       hideRepeatedKeyPrefixes: appData.hideRepeatedKeyPrefixes,
+      isGroupingSkillSetsByCulture: appData.isGroupingSkillSetsByCulture,
       isShowingHiddenSkills: appData.isShowingHiddenSkills,
       isShowingHiddenModifiersInsideSkills: appData.isShowingHiddenModifiersInsideSkills,
       isCheckingSkillRequirements: appData.isCheckingSkillRequirements,

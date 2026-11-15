@@ -1929,6 +1929,8 @@
   "viewerUnsavedPrefix": "未保存:",
   "viewerDeletedPrefix": "削除されました:",
   "hideRepeatedKeyPrefixes": "繰り返されるキープレフィックスを非表示にする",
+  "groupSkillSetsByCulture": "文化ごとにグループ化",
+  "skillsOtherCulture": "その他",
   "mapEditOwnership": "所有権の編集",
   "mapEditOwnershipHint": "左クリックすると、選択した勢力に地域が与えられます。 Ctrl キーを押しながら左クリックすると、その所有者が選択されます。右クリックすると空になります。",
   "mapUndo": "元に戻す",

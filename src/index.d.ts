@@ -418,6 +418,7 @@ declare global {
     isShowingSkillsRankPanel: boolean;
     isShowingSkillDbKeys: boolean;
     hideRepeatedKeyPrefixes: boolean;
+    isGroupingSkillSetsByCulture: boolean;
     isShowingHiddenSkills: boolean;
     isShowingHiddenModifiersInsideSkills: boolean;
     isCheckingSkillRequirements: boolean;
@@ -451,6 +452,7 @@ declare global {
     | "isShowingSkillsRankPanel"
     | "isShowingSkillDbKeys"
     | "hideRepeatedKeyPrefixes"
+    | "isGroupingSkillSetsByCulture"
     | "isShowingHiddenSkills"
     | "isShowingHiddenModifiersInsideSkills"
     | "isCheckingSkillRequirements"
@@ -506,6 +508,7 @@ declare global {
     | "isShowingSkillsRankPanel"
     | "isShowingSkillDbKeys"
     | "hideRepeatedKeyPrefixes"
+    | "isGroupingSkillSetsByCulture"
     | "isShowingHiddenSkills"
     | "isShowingHiddenModifiersInsideSkills"
     | "isCheckingSkillRequirements"
@@ -961,6 +964,8 @@ declare global {
     currentSkills: Skill[];
     subtypeToNumSets: subtypeToNumSets;
     subtypesToSet?: Record<string, string[]>;
+    setToCulture?: Record<string, string>;
+    culturesToLocalizedNames?: Record<string, string>;
     subtypeAndSets?: {
       key: string;
       agentSubtype: string;

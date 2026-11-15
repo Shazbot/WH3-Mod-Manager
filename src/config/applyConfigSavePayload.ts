@@ -33,6 +33,7 @@ export function applyConfigSavePayloadToAppData(payload: ConfigSavePayload) {
   appData.isShowingSkillsRankPanel = config.isShowingSkillsRankPanel ?? appData.isShowingSkillsRankPanel;
   appData.isShowingSkillDbKeys = config.isShowingSkillDbKeys ?? appData.isShowingSkillDbKeys;
   appData.hideRepeatedKeyPrefixes = config.hideRepeatedKeyPrefixes ?? appData.hideRepeatedKeyPrefixes;
+  appData.isGroupingSkillSetsByCulture = config.isGroupingSkillSetsByCulture ?? appData.isGroupingSkillSetsByCulture;
   appData.recentPackPaths = sanitizeRecentPackPaths(
     [...(appData.recentPackPaths ?? []), ...(config.recentPackPaths ?? [])],
     [...vanillaPackNames, ...(appData.allVanillaPackNames ?? [])],

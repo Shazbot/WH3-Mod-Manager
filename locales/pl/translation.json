@@ -1929,6 +1929,8 @@
   "viewerUnsavedPrefix": "Niezapisane:",
   "viewerDeletedPrefix": "Usunięto:",
   "hideRepeatedKeyPrefixes": "Ukryj powtarzające się przedrostki klawiszy",
+  "groupSkillSetsByCulture": "Grupuj według kultury",
+  "skillsOtherCulture": "Inne",
   "mapEditOwnership": "Edytuj własność",
   "mapEditOwnershipHint": "Kliknięcie lewym przyciskiem myszy daje region wybranej frakcji; Ctrl+lewy przycisk myszy wybiera właściciela; kliknięcie prawym przyciskiem myszy powoduje jego opróżnienie.",
   "mapUndo": "Anulować",

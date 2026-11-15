@@ -136,6 +136,7 @@ export function selectConfigSavePayload(appState: AppState): ConfigSavePayload {
       isShowingSkillsRankPanel: appState.isShowingSkillsRankPanel,
       isShowingSkillDbKeys: appState.isShowingSkillDbKeys,
       hideRepeatedKeyPrefixes: appState.hideRepeatedKeyPrefixes,
+      isGroupingSkillSetsByCulture: appState.isGroupingSkillSetsByCulture,
       isShowingHiddenSkills: appState.isShowingHiddenSkills,
       isShowingHiddenModifiersInsideSkills: appState.isShowingHiddenModifiersInsideSkills,
       isCheckingSkillRequirements: appState.isCheckingSkillRequirements,

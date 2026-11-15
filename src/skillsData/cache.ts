@@ -8,6 +8,7 @@ import { normalizeSkillIconPath, SkillAndIcons } from "../skills";
 import { gameToPackWithDBTablesName, SupportedGames } from "../supportedGames";
 import { getPackedFileMimeType } from "../utility/packFileViewing";
 import { iconAssetUrl, type AssetBytes } from "../assetUrls";
+import { createEmptySkillSetCultureSources } from "./cultures";
 import Trie, { type KeyedLookup } from "../utility/trie";
 
 export type SkillsDataCacheCore = Omit<
@@ -24,7 +25,7 @@ interface VanillaSkillsDataCoreCachePayload {
   core: SkillsDataCacheCore;
 }
 
-const VANILLA_SKILLS_DATA_CORE_CACHE_VERSION = 7;
+const VANILLA_SKILLS_DATA_CORE_CACHE_VERSION = 8;
 const VANILLA_SKILLS_DATA_CORE_CACHE_FILE = "vanilla-skills-data-core-cache.bin";
 
 let vanillaSkillsDataCoreCachePayload: VanillaSkillsDataCoreCachePayload | null = null;
@@ -213,6 +214,7 @@ export const cloneSkillsDataCore = (core: SkillsDataCacheCore): SkillsDataCacheC
 export const createEmptySkillsDataCore = (): SkillsDataCacheCore => ({
   subtypesToSet: {},
   subtypeAndSets: [],
+  skillSetCultureSources: createEmptySkillSetCultureSources(),
   setToNodes: {},
   nodeLinks: {},
   nodeToSkill: {},

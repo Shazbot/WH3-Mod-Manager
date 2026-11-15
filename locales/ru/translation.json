@@ -1929,6 +1929,8 @@
   "viewerUnsavedPrefix": "Не сохранено:",
   "viewerDeletedPrefix": "Удалено:",
   "hideRepeatedKeyPrefixes": "Скрыть повторяющиеся префиксы клавиш",
+  "groupSkillSetsByCulture": "Группировать по культуре",
+  "skillsOtherCulture": "Прочее",
   "mapEditOwnership": "Изменить владельца",
   "mapEditOwnershipHint": "Щелчок левой кнопкой мыши дает регион выбранной фракции; Ctrl+щелчок левой кнопкой мыши выбирает его владельца; щелчок правой кнопкой мыши очищает его.",
   "mapUndo": "Отменить",

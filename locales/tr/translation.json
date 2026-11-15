@@ -1582,6 +1582,8 @@
   "ancillariesSaveSkipDuplicates": "Yinelenen satırları kaydetme",
   "buildingsSaveSkipDuplicates": "Yinelenen satırları kaydetme",
   "hideRepeatedKeyPrefixes": "Tekrarlanan Anahtar Öneklerini Gizle",
+  "groupSkillSetsByCulture": "Kültüre göre grupla",
+  "skillsOtherCulture": "Diğer",
   "nodeEditorFilterMatchMode": "Filtre eşleştirme modu",
   "nodeEditorFilterMatchModeFull": "Tam dolu",
   "nodeEditorFilterMatchModePartial": "Kısmi",

@@ -1929,6 +1929,8 @@
   "viewerUnsavedPrefix": "저장되지 않은 항목:",
   "viewerDeletedPrefix": "삭제됨:",
   "hideRepeatedKeyPrefixes": "반복되는 키 접두사 숨기기",
+  "groupSkillSetsByCulture": "문화별로 그룹화",
+  "skillsOtherCulture": "기타",
   "mapEditOwnership": "소유권 수정",
   "mapEditOwnershipHint": "왼쪽 버튼을 클릭하면 선택한 진영에 지역이 제공됩니다. Ctrl+왼쪽 클릭으로 소유자를 선택합니다. 마우스 오른쪽 버튼을 클릭하면 비워집니다.",
   "mapUndo": "끄르다",

@@ -718,6 +718,8 @@
   "showSkillsRankPanel": "Show rank",
   "showSkillDbKeys": "Show DB keys in tooltips",
   "hideRepeatedKeyPrefixes": "Hide Repeated Key Prefixes",
+  "groupSkillSetsByCulture": "Group by Culture",
+  "skillsOtherCulture": "Other",
   "options": "Options",
   "relaunchingGame": "Auto-relaunching game (click to cancel)...",
   "queueUpRelaunchingGame": "Click to queue up relaunching the game once the game is closed.",

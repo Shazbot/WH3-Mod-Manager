@@ -1929,6 +1929,8 @@
   "viewerUnsavedPrefix": "No guardado:",
   "viewerDeletedPrefix": "Eliminado:",
   "hideRepeatedKeyPrefixes": "Ocultar prefijos de clave repetidos",
+  "groupSkillSetsByCulture": "Agrupar por cultura",
+  "skillsOtherCulture": "Otros",
   "mapEditOwnership": "Editar propiedad",
   "mapEditOwnershipHint": "El clic izquierdo le da una región a la facción seleccionada; Ctrl+clic izquierdo selecciona su propietario; el clic derecho lo vacía.",
   "mapUndo": "Deshacer",

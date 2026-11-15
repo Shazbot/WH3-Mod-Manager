@@ -672,6 +672,7 @@ exec ${quoteForShell(process.execPath)}
         isShowingSkillsRankPanel: appData.isShowingSkillsRankPanel,
         isShowingSkillDbKeys: appData.isShowingSkillDbKeys,
         hideRepeatedKeyPrefixes: appData.hideRepeatedKeyPrefixes,
+        isGroupingSkillSetsByCulture: appData.isGroupingSkillSetsByCulture,
         isShowingHiddenSkills: appData.isShowingHiddenSkills,
         isShowingHiddenModifiersInsideSkills: appData.isShowingHiddenModifiersInsideSkills,
         isCheckingSkillRequirements: appData.isCheckingSkillRequirements,

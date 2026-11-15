@@ -1292,6 +1292,7 @@ const appSlice = createSlice({
       state.isShowingSkillsRankPanel = fromConfigAppState.isShowingSkillsRankPanel ?? state.isShowingSkillsRankPanel;
       state.isShowingSkillDbKeys = fromConfigAppState.isShowingSkillDbKeys ?? state.isShowingSkillDbKeys;
       state.hideRepeatedKeyPrefixes = fromConfigAppState.hideRepeatedKeyPrefixes ?? state.hideRepeatedKeyPrefixes;
+      state.isGroupingSkillSetsByCulture = fromConfigAppState.isGroupingSkillSetsByCulture ?? state.isGroupingSkillSetsByCulture;
       state.isShowingHiddenSkills = fromConfigAppState.isShowingHiddenSkills ?? state.isShowingHiddenSkills;
       state.isShowingHiddenModifiersInsideSkills =
         fromConfigAppState.isShowingHiddenModifiersInsideSkills ?? state.isShowingHiddenModifiersInsideSkills;
@@ -2093,6 +2094,9 @@ const appSlice = createSlice({
     setHideRepeatedKeyPrefixes: (state: AppState, action: PayloadAction<boolean>) => {
       state.hideRepeatedKeyPrefixes = action.payload;
     },
+    setIsGroupingSkillSetsByCulture: (state: AppState, action: PayloadAction<boolean>) => {
+      state.isGroupingSkillSetsByCulture = action.payload;
+    },
     setIsShowingHiddenSkills: (state: AppState, action: PayloadAction<boolean>) => {
       state.isShowingHiddenSkills = action.payload;
     },
@@ -2107,6 +2111,7 @@ const appSlice = createSlice({
       state.isShowingSkillsRankPanel = action.payload.isShowingSkillsRankPanel;
       state.isShowingSkillDbKeys = action.payload.isShowingSkillDbKeys;
       state.hideRepeatedKeyPrefixes = action.payload.hideRepeatedKeyPrefixes;
+      state.isGroupingSkillSetsByCulture = action.payload.isGroupingSkillSetsByCulture;
       state.isShowingHiddenSkills = action.payload.isShowingHiddenSkills;
       state.isShowingHiddenModifiersInsideSkills = action.payload.isShowingHiddenModifiersInsideSkills;
       state.isCheckingSkillRequirements = action.payload.isCheckingSkillRequirements;
@@ -2328,6 +2333,7 @@ export const {
   setIsShowingSkillsRankPanel,
   setIsShowingSkillDbKeys,
   setHideRepeatedKeyPrefixes,
+  setIsGroupingSkillSetsByCulture,
   setIsShowingHiddenSkills,
   setIsShowingHiddenModifiersInsideSkills,
   setIsCheckingSkillRequirements,

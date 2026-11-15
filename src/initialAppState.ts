@@ -143,6 +143,7 @@ const initialState = {
   isShowingSkillsRankPanel: false,
   isShowingSkillDbKeys: false,
   hideRepeatedKeyPrefixes: true,
+  isGroupingSkillSetsByCulture: true,
   isShowingHiddenSkills: true,
   isShowingHiddenModifiersInsideSkills: true,
   isCheckingSkillRequirements: true,

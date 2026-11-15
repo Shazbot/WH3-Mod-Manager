@@ -8,6 +8,7 @@ import { buildKeyPrefixDisplay } from "../viewer/viewerHelpers";
 type SkillsTreeViewProps = {
   tableFilter: string;
   hideRepeatedKeyPrefixes?: boolean;
+  groupByCulture?: boolean;
   onSelect?: (subtype: string, subtypeIndex: number) => void;
   onHover?: (subtype: string, subtypeIndex: number) => void;
   onDoubleClick?: (subtype: string, subtypeIndex: number, firstClickSelected: boolean) => void;
@@ -46,6 +47,7 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
   const isLocalizingSubtypes = useAppSelector((state) => state.app.isLocalizingSubtypes);
   const isShowingSkillNodeSetNames = useAppSelector((state) => state.app.isShowingSkillNodeSetNames);
   const skillsData = useAppSelector((state) => state.app.skillsData);
+  const localized = useAppSelector((state) => state.app.currentLocalization);
   if (!skillsData || !skillsData.subtypes) {
     console.log("skillsData or skillsData.subtypes missing!");
     return <></>;
@@ -56,21 +58,22 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
   type TreeData = {
     name: string;
     children?: TreeData[];
-    metadata: TreeMetadata;
+    metadata: TreeMetadata | CultureMetadata;
   };
   type TreeMetadata = { subtype: string; subtypeIndex: number };
+  type CultureMetadata = { cultureKey: string };
 
-  const result = agentSubtypes.reduce(
+  const leaves = agentSubtypes.reduce(
     (treeData, subtype) => {
-      treeData.children = treeData.children || [];
       for (let i = 0; i < skillsData.subtypeToNumSets[subtype]; i++) {
-        treeData.children.push({ name: subtype, children: [], metadata: { subtype, subtypeIndex: i } });
+        treeData.push({ name: subtype, children: [], metadata: { subtype, subtypeIndex: i } });
       }
 
       return treeData;
     },
-    { name: "", children: [], metadata: { subtype: "", subtypeIndex: 0 } } as TreeData,
+    [] as TreeData[],
   );
+  const result: TreeData = { name: "", children: leaves, metadata: { subtype: "", subtypeIndex: 0 } };
 
   const hideRepeatedKeyPrefixes = props.hideRepeatedKeyPrefixes ?? true;
 
@@ -89,7 +92,7 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
     return `${subtypeName}${indexSuffix}`;
   };
 
-  const fullNodeLabels = (result.children ?? []).map((node) => getFullNodeLabel(node.metadata));
+  const fullNodeLabels = leaves.map((node) => getFullNodeLabel(node.metadata as TreeMetadata));
   const displayNodeLabels = (() => {
     if (!hideRepeatedKeyPrefixes) return undefined;
 
@@ -123,17 +126,51 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
   const getDisplayLabel = (fullLabel: string) => displayNodeLabels?.get(fullLabel) ?? fullLabel;
 
   if (hideRepeatedKeyPrefixes) {
-    result.children?.sort((first, second) => {
-      const firstLabel = getDisplayLabel(getFullNodeLabel(first.metadata));
-      const secondLabel = getDisplayLabel(getFullNodeLabel(second.metadata));
+    leaves.sort((first, second) => {
+      const firstLabel = getDisplayLabel(getFullNodeLabel(first.metadata as TreeMetadata));
+      const secondLabel = getDisplayLabel(getFullNodeLabel(second.metadata as TreeMetadata));
       return collator.compare(firstLabel, secondLabel);
     });
+  }
+
+  const groupByCulture = props.groupByCulture ?? false;
+  if (groupByCulture) {
+    const leavesByCulture = new Map<string, TreeData[]>();
+    for (const leaf of leaves) {
+      const cultureKey = skillsData.setToCulture?.[getSkillNodeSetKey(leaf.metadata as TreeMetadata)] ?? "";
+      const cultureLeaves = leavesByCulture.get(cultureKey) ?? [];
+      cultureLeaves.push(leaf);
+      leavesByCulture.set(cultureKey, cultureLeaves);
+    }
+    const getCultureName = (cultureKey: string) =>
+      cultureKey === ""
+        ? localized.skillsOtherCulture || "Other"
+        : (skillsData.culturesToLocalizedNames?.[cultureKey] ?? cultureKey);
+    result.children = Array.from(leavesByCulture.entries())
+      .sort(([firstKey], [secondKey]) => {
+        if (firstKey === "" || secondKey === "") return Number(firstKey === "") - Number(secondKey === "");
+        return collator.compare(getCultureName(firstKey), getCultureName(secondKey));
+      })
+      .map(([cultureKey, children]) => ({
+        name: getCultureName(cultureKey),
+        children,
+        metadata: { cultureKey },
+      }));
   }
 
   // console.log(result);
   const data = flattenTree(result);
 
-  const getFullNodeLabelForElement = (element: INode) => getFullNodeLabel(element.metadata as TreeMetadata);
+  const isCultureBranch = (element: INode) => element.metadata != null && "cultureKey" in element.metadata;
+  const expandedBranchIds = groupByCulture
+    ? data.filter((node) => node.parent != null && node.children.length > 0).map((node) => node.id)
+    : undefined;
+  const treeKey = groupByCulture
+    ? `culture:${(result.children ?? []).map((node) => (node.metadata as CultureMetadata).cultureKey).join("|")}`
+    : "flat";
+
+  const getFullNodeLabelForElement = (element: INode) =>
+    isCultureBranch(element) ? element.name : getFullNodeLabel(element.metadata as TreeMetadata);
 
   const getNodeLabel = (element: INode) => getDisplayLabel(getFullNodeLabelForElement(element));
 
@@ -152,7 +189,7 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
   const onTreeSelect = (treeProps: ITreeViewOnSelectProps) => {
     console.log("SkillsTreeView onTreeSelect");
     // console.log(props);
-    if (treeProps.isSelected) {
+    if (treeProps.isSelected && !isCultureBranch(treeProps.element)) {
       const parentLeaf = data.find((leaf) => leaf.id == treeProps.element.parent);
       if (parentLeaf) {
         const metadata = treeProps.element.metadata as TreeMetadata;
@@ -240,7 +277,9 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
   return (
     <div className="skills-node-sets-tree">
       <TreeView
+        key={treeKey}
         data={data}
+        defaultExpandedIds={expandedBranchIds}
         aria-label="Controlled expanded node tree"
         onSelect={(props) => onTreeSelect(props)}
         selectedIds={props.isSelectionCleared ? NO_SELECTED_IDS : undefined}
@@ -255,6 +294,21 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
           handleExpand,
           handleSelect,
         }) => {
+          if (isCultureBranch(element)) {
+            return (
+              <div
+                {...getNodeProps({ onClick: handleExpand })}
+                style={{ marginLeft: 40 * (level - 1), opacity: isDisabled ? 0.5 : 1 }}
+                className={
+                  "flex items-center not-first:mt-2 cursor-default " + (isTreeNodeFiltered(element) ? "hidden" : "")
+                }
+              >
+                <ArrowIcon className="" isOpen={isExpanded} />
+                <span className="font-semibold text-amber-100">{element.name}</span>
+                <span className="ml-2 text-xs text-gray-500">{element.children.length}</span>
+              </div>
+            );
+          }
           return (
             <div
               {...getNodeProps({ onClick: handleExpand })}

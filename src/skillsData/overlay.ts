@@ -1,5 +1,6 @@
 import { AmendedSchemaField } from "../packFileTypes";
 import { SkillsDataCacheCore } from "./cache";
+import { createEmptySkillSetCultureSources } from "./cultures";
 import { addSkillAutoUnlock, normalizeSkillIconPath, normalizeTaggedImagePath } from "../skills";
 
 export type GetTableRowDataFn = (
@@ -49,6 +50,26 @@ export const applyModOverlayToSkillsDataCore = (
     } else {
       core.subtypeAndSets.push(updated);
     }
+  });
+
+  const cultureSources = (core.skillSetCultureSources ??= createEmptySkillSetCultureSources());
+  getTableRowDataFn(modPacksTableData, "cultures_subcultures_tables", (schemaFieldRow) => {
+    const subculture = schemaFieldRow.find((sF) => sF.name == "subculture")?.resolvedKeyValue;
+    const culture = schemaFieldRow.find((sF) => sF.name == "culture")?.resolvedKeyValue;
+    if (subculture && culture) cultureSources.subcultureToCulture[subculture] = culture;
+  });
+  getTableRowDataFn(modPacksTableData, "factions_tables", (schemaFieldRow) => {
+    const faction = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
+    const subculture = schemaFieldRow.find((sF) => sF.name == "subculture")?.resolvedKeyValue;
+    if (faction && subculture) cultureSources.factionToSubculture[faction] = subculture;
+  });
+  getTableRowDataFn(modPacksTableData, "faction_agent_permitted_subtypes_tables", (schemaFieldRow) => {
+    const faction = schemaFieldRow.find((sF) => sF.name == "faction")?.resolvedKeyValue;
+    const subtype = schemaFieldRow.find((sF) => sF.name == "subtype")?.resolvedKeyValue;
+    const modDisabled = schemaFieldRow.find((sF) => sF.name == "mod_disabled")?.resolvedKeyValue;
+    if (!faction || !subtype || parseBool(modDisabled)) return;
+    const factions = (cultureSources.subtypeToFactions[subtype] ??= []);
+    if (!factions.includes(faction)) factions.push(faction);
   });
 
   const rebuiltSubtypesToSet: Record<string, string[]> = {};

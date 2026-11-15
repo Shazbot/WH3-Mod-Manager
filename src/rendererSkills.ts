@@ -57,6 +57,7 @@ store.subscribe(() => {
     isShowingSkillsRankPanel: state.isShowingSkillsRankPanel,
     isShowingSkillDbKeys: state.isShowingSkillDbKeys,
     hideRepeatedKeyPrefixes: state.hideRepeatedKeyPrefixes,
+    isGroupingSkillSetsByCulture: state.isGroupingSkillSetsByCulture,
     isShowingHiddenSkills: state.isShowingHiddenSkills,
     isShowingHiddenModifiersInsideSkills: state.isShowingHiddenModifiersInsideSkills,
     isCheckingSkillRequirements: state.isCheckingSkillRequirements,
@@ -67,6 +68,7 @@ store.subscribe(() => {
     lastSentSkillsViewOptions.isShowingSkillsRankPanel === skillsViewOptions.isShowingSkillsRankPanel &&
     lastSentSkillsViewOptions.isShowingSkillDbKeys === skillsViewOptions.isShowingSkillDbKeys &&
     lastSentSkillsViewOptions.hideRepeatedKeyPrefixes === skillsViewOptions.hideRepeatedKeyPrefixes &&
+    lastSentSkillsViewOptions.isGroupingSkillSetsByCulture === skillsViewOptions.isGroupingSkillSetsByCulture &&
     lastSentSkillsViewOptions.isShowingHiddenSkills === skillsViewOptions.isShowingHiddenSkills &&
     lastSentSkillsViewOptions.isShowingHiddenModifiersInsideSkills ===
       skillsViewOptions.isShowingHiddenModifiersInsideSkills &&

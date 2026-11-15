@@ -1929,6 +1929,8 @@
   "viewerUnsavedPrefix": "Nicht gespeichert:",
   "viewerDeletedPrefix": "Gelöscht:",
   "hideRepeatedKeyPrefixes": "Wiederholte Schlüsselpräfixe ausblenden",
+  "groupSkillSetsByCulture": "Nach Kultur gruppieren",
+  "skillsOtherCulture": "Andere",
   "mapEditOwnership": "Bearbeiten Sie den Besitz",
   "mapEditOwnershipHint": "Linksklick gibt der ausgewählten Fraktion eine Region; Strg+Linksklick wählt seinen Besitzer aus; Rechtsklick leert es.",
   "mapUndo": "Rückgängig machen",
