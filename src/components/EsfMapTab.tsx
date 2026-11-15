@@ -44,6 +44,7 @@ import type { BuildingsRegionView } from "../buildingsData/types";
 import type {
   UnitViewerCatalogUnit,
   UnitViewerCharacterExperienceData,
+  UnitViewerAgentSubtypeUnit,
   UnitViewerLordOption,
 } from "../unitViewer/types";
 import { runGuarded, runGuardedSync } from "../utility/runGuarded";
@@ -134,7 +135,9 @@ const findCharacterForUi = (
   characters.find((entry) => entry.faction.toLowerCase() === faction.toLowerCase() && entry.character.id === id)
     ?.character;
 
-const associatedUnitForSubculture = (option: UnitViewerLordOption, subculture: string | undefined) => {
+const associatedUnitForSubculture = (
+  option: Pick<UnitViewerLordOption, "associatedUnit" | "associatedUnitBySubculture">,
+  subculture: string | undefined) => {
   if (subculture) {
     const override = Object.entries(option.associatedUnitBySubculture ?? {}).find(
       ([key]) => key.toLowerCase() === subculture.toLowerCase(),
@@ -505,6 +508,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   const [buildingsView, setBuildingsView] = useState<BuildingsRegionView>();
   const [unitCatalog, setUnitCatalog] = useState<UnitViewerCatalogUnit[]>([]);
   const [lordOptions, setLordOptions] = useState<UnitViewerLordOption[]>([]);
+  const [agentSubtypeUnits, setAgentSubtypeUnits] = useState<Record<string, UnitViewerAgentSubtypeUnit>>({});
   const [characterExperience, setCharacterExperience] = useState<UnitViewerCharacterExperienceData>();
   const [unitViewerSessionId, setUnitViewerSessionId] = useState<string>();
   const [resolvedCharacterThumbnailPaths, setResolvedCharacterThumbnailPaths] = useState<string[]>([]);
@@ -661,9 +665,11 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       if (!projectCharacterCoordinateToMap(map, character.x, character.y)) continue;
       const mapFaction = factionsByKey.get(faction.toLowerCase());
       const lordOption = lordOptionBySubtype.get(character.subtype.toLowerCase());
+      const agentUnit = agentSubtypeUnits[character.subtype.toLowerCase()];
       const candidateUnitKeys = [
         character.units?.[0]?.unit_key,
         lordOption ? associatedUnitForSubculture(lordOption, mapFaction?.subculture) : undefined,
+        agentUnit ? associatedUnitForSubculture(agentUnit, mapFaction?.subculture) : undefined,
         character.subtype,
       ];
       const cardPath = candidateUnitKeys
@@ -673,7 +679,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       if (cardPath) result.set(characterUiKey(faction, character.id), cardPath);
     }
     return result;
-  }, [extendedCharacters, factionsByKey, lordOptions, map, unitCatalog]);
+  }, [agentSubtypeUnits, extendedCharacters, factionsByKey, lordOptions, map, unitCatalog]);
   const characterThumbnailPaths = useMemo(
     () => (showCharacters ? Array.from(new Set(characterThumbnailPathByKey.values())) : []),
     [characterThumbnailPathByKey, showCharacters],
@@ -1450,6 +1456,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     if (!isExtendedFormat || !window.api) {
       setUnitCatalog([]);
       setLordOptions([]);
+      setAgentSubtypeUnits({});
       setCharacterExperience(undefined);
       setUnitViewerSessionId(undefined);
       setResolvedCharacterThumbnailPaths([]);
@@ -1470,6 +1477,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           showOwnershipToast("warning", [response.error ?? "Could not load the unit roster."]);
           setUnitCatalog([]);
           setLordOptions([]);
+      setAgentSubtypeUnits({});
           setCharacterExperience(undefined);
           return;
         }
@@ -1478,12 +1486,14 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         setUnitViewerSessionId(response.sessionId);
         setUnitCatalog([...byKey.values()]);
         setLordOptions(response.lordOptions ?? []);
+        setAgentSubtypeUnits(response.agentSubtypeUnits ?? {});
         setCharacterExperience(response.characterExperience);
       })
       .catch((reason) => {
         if (current) {
           setUnitCatalog([]);
           setLordOptions([]);
+      setAgentSubtypeUnits({});
           setCharacterExperience(undefined);
           setUnitViewerSessionId(undefined);
           setResolvedCharacterThumbnailPaths([]);

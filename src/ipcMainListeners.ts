@@ -3665,6 +3665,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         sessionId,
         groups: built.data.groups,
         lordOptions: built.data.lordOptions,
+        agentSubtypeUnits: built.data.agentSubtypeUnits,
         unitGroups: built.data.unitGroups,
         constants: built.data.constants,
         characterExperience: built.data.characterExperience,

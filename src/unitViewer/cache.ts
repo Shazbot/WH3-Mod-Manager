@@ -5,7 +5,7 @@ import type { BuiltUnitViewerData } from "./data";
 import type { UnitViewerAbility, UnitViewerPainterVariantContext, UnitViewerUnitModel } from "./types";
 import { cloneCachedUnitViewerAbility, isCachedUnitViewerAbility } from "./cacheAbilities";
 
-const UNIT_VIEWER_CACHE_VERSION = 33;
+const UNIT_VIEWER_CACHE_VERSION = 34;
 const UNIT_VIEWER_CACHE_FILE = "unit-viewer-data-cache.bin";
 
 type FactionColour = NonNullable<UnitViewerPainterVariantContext["factionColours"]>[number];
@@ -30,6 +30,7 @@ type UnitViewerDiskPayload = {
     iconPathsByUnit: Array<[string, string[]]>;
     statIcons: Record<string, string>;
     lordOptions: BuiltUnitViewerData["lordOptions"];
+    agentSubtypeUnits: BuiltUnitViewerData["agentSubtypeUnits"];
     characterExperience: BuiltUnitViewerData["characterExperience"];
   };
 };
@@ -149,6 +150,7 @@ const deserialize = (payload: UnitViewerDiskPayload): BuiltUnitViewerData => ({
   iconPathsByUnit: new Map(payload.data.iconPathsByUnit),
   statIcons: payload.data.statIcons,
   lordOptions: payload.data.lordOptions || [],
+  agentSubtypeUnits: payload.data.agentSubtypeUnits || {},
   characterExperience: payload.data.characterExperience || { tiers: [], permittedSubtypes: [] },
 });
 
@@ -244,6 +246,7 @@ export const saveUnitViewerDiskCache = async (
         iconPathsByUnit: Array.from(data.iconPathsByUnit.entries()),
         statIcons: data.statIcons,
         lordOptions: data.lordOptions,
+        agentSubtypeUnits: data.agentSubtypeUnits,
         characterExperience: data.characterExperience,
       },
     };

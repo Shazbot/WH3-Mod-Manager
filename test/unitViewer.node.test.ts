@@ -625,6 +625,7 @@ describe("Unit Viewer catalog", () => {
       main_units_tables: [
         { unit: "lord_unit", land_unit: "lord_land", num_men: "1", caste: "lord" },
         { unit: "lord_unit_override", land_unit: "lord_land_override", num_men: "1", caste: "lord" },
+        { unit: "hero_unit", land_unit: "lord_land", num_men: "1", caste: "hero" },
       ],
       land_units_tables: [
         { key: "lord_land", man_entity: "entity", primary_melee_weapon: "weapon" },
@@ -640,7 +641,10 @@ describe("Unit Viewer catalog", () => {
         { unit: "lord_unit", faction: "faction_a" },
         { unit: "lord_unit_override", faction: "faction_b" },
       ],
-      agent_subtypes_tables: [{ key: "lord_subtype", associated_unit_override: "lord_unit" }],
+      agent_subtypes_tables: [
+        { key: "lord_subtype", associated_unit_override: "lord_unit" },
+        { key: "Hero_Subtype", associated_unit_override: "hero_unit" },
+      ],
       agent_subtype_subculture_overrides_tables: [
         {
           subtype: "lord_subtype",
@@ -662,6 +666,10 @@ describe("Unit Viewer catalog", () => {
         associatedUnitBySubculture: { subculture_b: "lord_unit_override" },
       },
     ]);
+    expect(built.agentSubtypeUnits.hero_subtype).toEqual({ associatedUnit: "hero_unit" });
+    expect(built.agentSubtypeUnits.lord_subtype.associatedUnitBySubculture).toEqual({
+      subculture_b: "lord_unit_override",
+    });
   });
 
   it("buckets units into the game's roster groups and falls back to the extended roster", () => {

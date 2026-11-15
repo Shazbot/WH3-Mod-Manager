@@ -15,6 +15,7 @@ import type {
   UnitViewerUnitModel,
   UnitViewerVisualPart,
   UnitViewerUnitSize,
+  UnitViewerAgentSubtypeUnit,
   UnitViewerLordOption,
 } from "./types";
 import { resolveTextReplacements } from "../skills";
@@ -601,6 +602,7 @@ export interface BuiltUnitViewerData {
   iconPathsByUnit: Map<string, string[]>;
   statIcons: Record<string, string>;
   lordOptions: UnitViewerLordOption[];
+  agentSubtypeUnits: Record<string, UnitViewerAgentSubtypeUnit>;
   characterExperience: UnitViewerCharacterExperienceData;
 }
 
@@ -1148,6 +1150,7 @@ export const buildUnitViewerData = (
     });
 
   const lordOptions: UnitViewerLordOption[] = [];
+  const agentSubtypeUnits: Record<string, UnitViewerAgentSubtypeUnit> = {};
   for (const [subtype, row] of agentSubtypes) {
     const baseAssociatedUnit = asString(row.associated_unit_override);
     const overrideRows = agentSubtypeOverrides.get(subtype) || [];
@@ -1157,6 +1160,23 @@ export const buildUnitViewerData = (
       const associatedUnit = asString(override.associated_unit_override);
       if (subculture && associatedUnit && units.get(associatedUnit)?.caste.toLowerCase() === "lord") {
         associatedUnitBySubculture[subculture] = associatedUnit;
+      }
+    }
+    {
+      const anyBySubculture: Record<string, string> = {};
+      for (const override of overrideRows) {
+        const subculture = asString(override.subculture);
+        const unitKey = asString(override.associated_unit_override);
+        if (subculture && unitKey && units.has(unitKey)) anyBySubculture[subculture] = unitKey;
+      }
+      const anyUnit = units.has(baseAssociatedUnit)
+        ? baseAssociatedUnit
+        : Object.values(anyBySubculture)[0];
+      if (anyUnit) {
+        agentSubtypeUnits[subtype.toLowerCase()] = {
+          associatedUnit: anyUnit,
+          ...(Object.keys(anyBySubculture).length > 0 ? { associatedUnitBySubculture: anyBySubculture } : {}),
+        };
       }
     }
     const associatedUnits = [baseAssociatedUnit, ...Object.values(associatedUnitBySubculture)].filter(Boolean);
@@ -1193,6 +1213,7 @@ export const buildUnitViewerData = (
     iconPathsByUnit,
     statIcons: {},
     lordOptions,
+    agentSubtypeUnits,
     characterExperience: effectiveCharacterExperienceData(tables),
   };
 };

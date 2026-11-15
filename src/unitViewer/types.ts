@@ -338,11 +338,19 @@ export interface UnitViewerUiGroup {
   order: number;
 }
 
+/** Associated unit of any agent subtype (heroes included), unlike lord-only `UnitViewerLordOption`. */
+export interface UnitViewerAgentSubtypeUnit {
+  associatedUnit: string;
+  associatedUnitBySubculture?: Record<string, string>;
+}
+
 export interface UnitViewerCatalogResponse {
   success: boolean;
   sessionId?: string;
   groups?: UnitViewerCatalogGroup[];
   lordOptions?: UnitViewerLordOption[];
+  /** Keyed by lower-cased agent subtype. */
+  agentSubtypeUnits?: Record<string, UnitViewerAgentSubtypeUnit>;
   unitGroups?: UnitViewerUiGroup[];
   constants?: UnitViewerConstants;
   characterExperience?: UnitViewerCharacterExperienceData;
