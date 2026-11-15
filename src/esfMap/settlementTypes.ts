@@ -1,4 +1,4 @@
-import { resolveRegionSettlementSiteTypes } from "../buildingsData/derive";
+import { resolveMaxBuildingSlotCount, resolveRegionSettlementSiteTypes } from "../buildingsData/derive";
 import type { BuiltBuildingsData } from "../buildingsData/types";
 import type { EsfMapPayload, EsfMapSettlementTypeOption } from "./types";
 
@@ -37,5 +37,11 @@ export const addSettlementTypeDataToEsfMap = (map: EsfMapPayload, buildings: Bui
     settlementSiteTypesByRegion[marker.key] = resolveRegionSettlementSiteTypes(buildings, map.campaignKey, marker.key);
   }
 
-  return { ...map, settlementTypes, settlementSiteTypesByRegion };
+  const buildingSlotCountsByRegion: Record<string, number> = {};
+  for (const marker of map.markers) {
+    const count = resolveMaxBuildingSlotCount(buildings, marker.primaryBuilding ?? undefined);
+    if (count !== undefined) buildingSlotCountsByRegion[marker.key] = count;
+  }
+
+  return { ...map, settlementTypes, settlementSiteTypesByRegion, buildingSlotCountsByRegion };
 };

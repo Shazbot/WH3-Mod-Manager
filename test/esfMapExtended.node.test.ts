@@ -537,6 +537,12 @@ describe("extended map files", () => {
     expect(state.document).toEqual(document);
   });
 
+  it("trims trailing empty slots beyond the slot count but never an occupied one", () => {
+    const slot = (building: string, type = "secondary") => ({ building, type, template: type });
+    expect(fillExtendedBuildingSlots([slot("a"), slot(""), slot("")], [], 2)).toEqual([slot("a"), slot("")]);
+    expect(fillExtendedBuildingSlots([slot("a"), slot("b"), slot("")], [], 1)).toEqual([slot("a"), slot("b")]);
+  });
+
   it("fills virtual slots from normal templates and records appended edits", () => {
     const templates = [
       { campaign: "campaign", region: "region_a", slotTemplate: "primary", slotType: "primary", id: "0" },

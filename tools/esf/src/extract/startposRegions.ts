@@ -13,6 +13,8 @@ export interface StartposRegion {
   settlementKey: string | null;
   /** settlement_types key, e.g. wh3_dlc27_norsca_core_settlement; null for an ordinary settlement. */
   settlementType: string | null;
+  /** Building key in the region's primary slot at campaign start; null when empty or absent. */
+  primaryBuilding: string | null;
 }
 
 interface RegionWalkState {
@@ -25,6 +27,8 @@ interface RegionWalkState {
    */
   regionStrings: string[];
   settlementStrings: string[];
+  slot: { strings: string[]; building: string | null } | null;
+  primaryBuilding: string | null;
 }
 
 function isRegionKey(key: string): boolean {
@@ -32,7 +36,7 @@ function isRegionKey(key: string): boolean {
 }
 
 function newRegionState(): RegionWalkState {
-  return { regionIndex: null, regionStrings: [], settlementStrings: [] };
+  return { regionIndex: null, regionStrings: [], settlementStrings: [], slot: null, primaryBuilding: null };
 }
 
 /**
@@ -68,9 +72,28 @@ export function extractStartposRegions(
       onRecordStart(record, stack) {
         if (record.name === "REGION" && stack[stack.length - 1] === "REGIONS_ARRAY") {
           current = newRegionState();
+        } else if (
+          current &&
+          record.name === "REGION_SLOT" &&
+          stack[stack.length - 1] === "REGION_SLOT_ARRAY" &&
+          stack[stack.length - 3] === "REGION"
+        ) {
+          current.slot = { strings: [], building: null };
         }
       },
       onRecordEnd(record, stack) {
+        if (
+          current?.slot &&
+          record.name === "REGION_SLOT" &&
+          stack[stack.length - 1] === "REGION_SLOT_ARRAY"
+        ) {
+          // REGION_SLOT's direct asciis are [instance key, template, type].
+          if (current.slot.strings[2]?.toLowerCase() === "primary" && current.primaryBuilding === null) {
+            current.primaryBuilding = current.slot.building || null;
+          }
+          current.slot = null;
+          return;
+        }
         if (record.name !== "REGION" || stack[stack.length - 1] !== "REGIONS_ARRAY" || !current) {
           return;
         }
@@ -99,6 +122,7 @@ export function extractStartposRegions(
           subculture: state.regionStrings[2] || null,
           settlementKey,
           settlementType,
+          primaryBuilding: state.primaryBuilding,
         });
       },
       onValue(value, stack) {
@@ -117,6 +141,16 @@ export function extractStartposRegions(
 
           if (value.type === "u32" && current.regionIndex === null) {
             current.regionIndex = Number(value.value);
+          }
+          return;
+        }
+
+        if (current.slot && value.type === "ascii") {
+          const ascii = value.value as { id: number; text: string | null };
+          if (parent === "REGION_SLOT") {
+            current.slot.strings.push(ascii.text ?? "");
+          } else if (parent === "BUILDING_BASE" && current.slot.building === null) {
+            current.slot.building = ascii.text ?? "";
           }
           return;
         }

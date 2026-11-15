@@ -23,6 +23,8 @@ export interface EsfMapMarker {
   settlementKey: string | null;
   /** settlement_types key the start pos gives this region's settlement; null for an ordinary one. */
   settlementType: string | null;
+  /** Building in the region's primary slot at campaign start (startpos); null when unknown or empty. */
+  primaryBuilding: string | null;
 }
 
 export interface EsfMapFaction {
@@ -116,6 +118,8 @@ export interface EsfMapPayload {
   settlementTypes: EsfMapSettlementTypeOption[];
   /** Settlement types each region's site can take, from its primary slot (keyed by marker key). */
   settlementSiteTypesByRegion: Record<string, string[]>;
+  /** Active building slots per region from its startpos primary building (keyed by marker key); absent when unresolved. */
+  buildingSlotCountsByRegion: Record<string, number>;
   climates: EsfMapClimateOption[];
   climatesByRegion: Record<string, string | null>;
   provinces: EsfMapProvinceOption[];

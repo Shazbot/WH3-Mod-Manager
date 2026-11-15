@@ -6,7 +6,7 @@ import { ASSET_SCHEME, MAP_CACHE_HOST, mapCacheImageUrl, type AssetBytes } from 
 import type { EsfMapImage, EsfMapPayload } from "./types";
 
 /** Bump whenever the derived map payload or the map extraction rules change. */
-const ESF_MAP_CACHE_VERSION = 15;
+const ESF_MAP_CACHE_VERSION = 16;
 const ESF_MAP_CACHE_FILE = "esf-map-data-cache.bin";
 const ESF_MAP_IMAGE_CACHE_DIR = "esf-map-images";
 const ESF_MAP_IMAGE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;

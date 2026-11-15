@@ -365,8 +365,10 @@ export const fillExtendedBuildingSlots = (
   maxSlotCount?: number,
 ): ExtendedMapBuildingSlot[] => {
   const slots = [...buildings];
-  if (typeof maxSlotCount !== "number" || !Number.isSafeInteger(maxSlotCount) || maxSlotCount <= slots.length)
-    return slots;
+  if (typeof maxSlotCount !== "number" || !Number.isSafeInteger(maxSlotCount)) return slots;
+  // Saves may list locked slots; drop trailing empty ones beyond the count, never an occupied slot.
+  while (slots.length > maxSlotCount && !slots[slots.length - 1]!.building) slots.pop();
+  if (maxSlotCount <= slots.length) return slots;
 
   const normalSlotTemplates = slotTemplates.filter(
     (slot) => !slot.isForeignSlot && slot.slotType.toLowerCase() !== "foreign",

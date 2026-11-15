@@ -1465,6 +1465,7 @@
   "mapProvinceRegionOther": "{{count}} regions · {{key}}",
   "mapProvinceCapital": "Capital",
   "mapProvince": "Province",
+  "mapBuildingSlots": "Building slots",
   "mapNoMatchingProvinces": "No matching provinces.",
   "mapSettlementType": "Settlement type",
   "mapNone": "(none)",

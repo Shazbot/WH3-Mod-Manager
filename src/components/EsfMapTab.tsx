@@ -897,6 +897,14 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       selectedExtendedRegion?.buildings?.find((slot) => slot.type.toLowerCase() === "primary")?.building || undefined,
     [selectedExtendedRegion],
   );
+  // An imported save's primary building overrides the startpos-derived count.
+  const selectedBuildingSlotCount = selectedExtendedRegion
+    ? selectedPrimaryBuilding
+      ? buildingsView?.maxSlotCount
+      : undefined
+    : selectedMarker
+      ? map?.buildingSlotCountsByRegion?.[selectedMarker.key]
+      : undefined;
   const selectedExtendedBuildingSlots = useMemo(
     () =>
       selectedExtendedRegion?.buildings
@@ -3196,6 +3204,11 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
                 </div>
                 {selectedMarker.settlementKey && (
                   <div className="text-[0.8125rem] text-gray-400">{selectedMarker.settlementKey}</div>
+                )}
+                {selectedBuildingSlotCount !== undefined && (
+                  <div className="text-[0.8125rem] text-gray-400">
+                    {mapText("mapBuildingSlots", "Building slots")}: {selectedBuildingSlotCount}
+                  </div>
                 )}
                 {selectedProvince && (
                   <div className="text-[0.8125rem] text-gray-400">
