@@ -309,16 +309,16 @@ const SaveGame = memo((props: SaveGameProps) => {
               {saves.map((save) => {
                 return (
                   <div
-                    className="grid grid-cols-[3fr_3fr] h-full p-2 hover:bg-gray-200 hover:text-gray-900 dark:hover:bg-gray-600 dark:hover:text-white"
+                    className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 h-full p-2 hover:bg-gray-200 hover:text-gray-900 dark:hover:bg-gray-600 dark:hover:text-white"
                     key={save.name}
                   >
                     <div className="self-center leading-relaxed text-gray-500 dark:text-gray-300 h-[40px] truncate content-center">
                       {save.name}
                     </div>
-                    <div className="grid grid-cols-4 w-fit gap-2 justify-self-end">
+                    <div className="flex gap-2 justify-self-end">
                       <button
                         className={classNames(
-                          "bg-green-500 hover:bg-green-700 font-bold text-white px-4 rounded h-[32px] w-full m-auto text-sm truncate",
+                          "bg-green-500 hover:bg-green-700 font-bold text-white px-4 rounded h-[32px] m-auto text-sm whitespace-nowrap",
                           {
                             "opacity-30": isWH3Running,
                           },
@@ -330,14 +330,14 @@ const SaveGame = memo((props: SaveGameProps) => {
                         {localized.loadSave}
                       </button>
                       <button
-                        className="bg-green-500 hover:bg-green-700 font-bold text-white px-4 rounded h-[32px] w-full text-sm m-auto truncate"
+                        className="bg-green-500 hover:bg-green-700 font-bold text-white px-4 rounded h-[32px] text-sm m-auto whitespace-nowrap"
                         type="button"
                         onClick={() => onEnableModsInSave(save.name)}
                       >
                         {localized.loadModsFromSave}
                       </button>
                       <button
-                        className="bg-blue-500 hover:bg-blue-700 font-bold text-white px-2 rounded h-[32px] w-full text-xs m-auto truncate"
+                        className="bg-blue-500 hover:bg-blue-700 font-bold text-white px-2 rounded h-[32px] text-xs m-auto whitespace-nowrap"
                         type="button"
                         onClick={() => onComparePacksClick(save.name)}
                       >
@@ -345,7 +345,7 @@ const SaveGame = memo((props: SaveGameProps) => {
                       </button>
                       {/\.save$/i.test(save.name) && (
                         <button
-                          className="bg-blue-500 hover:bg-blue-700 font-bold text-white px-2 rounded h-[32px] w-full text-xs m-auto truncate"
+                          className="bg-blue-500 hover:bg-blue-700 font-bold text-white px-2 rounded h-[32px] text-xs m-auto whitespace-nowrap"
                           type="button"
                           onClick={() => onImportInMapClick(save.name)}
                         >
