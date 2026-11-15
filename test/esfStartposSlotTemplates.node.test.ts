@@ -8,20 +8,28 @@ import {
   parseEsfDocument,
 } from "../tools/esf/src";
 
+/** The wh3dump copies are gone; fall back to the loose startposes the game ships. */
+const startposPath = (campaign: string) =>
+  [
+    `/mnt/k/projects/wh3dump/campaigns/${campaign}/startpos.esf`,
+    `/mnt/k/SteamLibrary/steamapps/common/Total War WARHAMMER III/data/campaigns/${campaign}/startpos.esf`,
+  ].find((candidate) => fs.existsSync(candidate)) ?? "";
+
 const fixtures = [
   {
-    path: "/mnt/k/projects/wh3dump/campaigns/wh3_main_chaos/startpos.esf",
+    path: startposPath("wh3_main_chaos"),
     campaign: "wh3_main_chaos",
     rowCount: 510,
   },
   {
-    path: "/mnt/k/projects/wh3dump/campaigns/wh3_main_combi/startpos.esf",
+    path: startposPath("wh3_main_combi"),
     campaign: "wh3_main_combi",
-    rowCount: 1270,
+    // 1270 before DLC29 added great_drakes_rest, krakens_cove and helspire_bay (2 + 3 + 3 rows).
+    rowCount: 1278,
   },
 ];
 
-const available = fixtures.every((fixture) => fs.existsSync(fixture.path));
+const available = fixtures.every((fixture) => !!fixture.path);
 
 describe.skipIf(!available)("startpos region slot-template extraction", () => {
   for (const fixture of fixtures) {
