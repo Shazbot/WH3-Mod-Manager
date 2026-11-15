@@ -177,6 +177,7 @@ const withDefaults = (config: AppConfig): AppConfig => {
     isRigidModelV2CompressionEnabled: config.isRigidModelV2CompressionEnabled ?? true,
     compressModsOnUpload: config.compressModsOnUpload ?? true,
     workshopModStagingMode,
+    buildingsZoom: Number.isFinite(config.buildingsZoom) ? Math.min(2.5, Math.max(0.5, config.buildingsZoom)) : 1,
     modListWidth: ["default", "wide", "full"].includes(config.modListWidth) ? config.modListWidth : "default",
     compressWorkshopModsOnStart: workshopModStagingMode === "copy" && !!config.compressWorkshopModsOnStart,
     optimizeWorkshopModsOnStart: workshopModStagingMode === "copy" && !!config.optimizeWorkshopModsOnStart,

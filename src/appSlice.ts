@@ -1251,6 +1251,7 @@ const appSlice = createSlice({
       state.isSubbedTimeEnabled = !!fromConfigAppState.isSubbedTimeEnabled;
       state.isDualModListLayoutEnabled = !!fromConfigAppState.isDualModListLayoutEnabled;
       state.modListDensity = fromConfigAppState.modListDensity ?? state.modListDensity;
+      state.buildingsZoom = fromConfigAppState.buildingsZoom ?? state.buildingsZoom;
       state.modListWidth = ["default", "wide", "full"].includes(fromConfigAppState.modListWidth)
         ? fromConfigAppState.modListWidth
         : "default";
@@ -1722,6 +1723,9 @@ const appSlice = createSlice({
     },
     toggleIsDualModListLayoutEnabled: (state: AppState) => {
       state.isDualModListLayoutEnabled = !state.isDualModListLayoutEnabled;
+    },
+    setBuildingsZoom: (state: AppState, action: PayloadAction<number>) => {
+      state.buildingsZoom = action.payload;
     },
     setModListDensity: (state: AppState, action: PayloadAction<ModListDensity>) => {
       state.modListDensity = action.payload;
@@ -2226,6 +2230,7 @@ export const {
   setUnitViewerUnsyncedAnimations,
   setUnitViewerShowUnitCard,
   setModListDensity,
+  setBuildingsZoom,
   setModListWidth,
   toggleIsPresetAuthorEnabled,
   toggleArePresetThumbnailsEnabled,

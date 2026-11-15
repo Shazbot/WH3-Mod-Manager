@@ -299,6 +299,25 @@ const BuildingsFilters = memo(
     const localized = useLocalizations();
     const [isOptionsMenuOpen, setIsOptionsMenuOpen] = useState(false);
     const optionsMenuRef = useRef<HTMLDivElement | null>(null);
+    const zoomSliderRef = useRef<HTMLInputElement | null>(null);
+    const zoomRef = useRef(zoom);
+    zoomRef.current = zoom;
+    const onZoomChangeRef = useRef(onZoomChange);
+    onZoomChangeRef.current = onZoomChange;
+
+    // Native listener: React's onWheel is passive and could not stop the page scrolling underneath.
+    useEffect(() => {
+      const slider = zoomSliderRef.current;
+      if (!slider) return;
+      const onWheel = (event: WheelEvent) => {
+        event.preventDefault();
+        const direction = event.deltaY < 0 ? 1 : -1;
+        const next = Math.min(250, Math.max(50, Math.round(zoomRef.current * 100) + direction * 5));
+        onZoomChangeRef.current(next / 100);
+      };
+      slider.addEventListener("wheel", onWheel, { passive: false });
+      return () => slider.removeEventListener("wheel", onWheel);
+    }, []);
     const noneOption = useMemo<SelectOption>(
       () => ({ value: "", label: localized.buildingsNone || "(none)" }),
       [localized.buildingsNone],
@@ -510,6 +529,7 @@ const BuildingsFilters = memo(
             step={5}
             value={Math.round(zoom * 100)}
             onChange={(event) => onZoomChange(Number(event.target.value) / 100)}
+            ref={zoomSliderRef}
             className="w-32"
           />
         </div>

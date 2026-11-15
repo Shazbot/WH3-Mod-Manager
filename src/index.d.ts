@@ -278,6 +278,8 @@ declare global {
     modListDensity: ModListDensity;
     /** Width of the ordinary All Mods workspace, including its utility sidebar. */
     modListWidth: ModListWidth;
+    /** Buildings panel zoom, as a multiplier (1 = 100%). */
+    buildingsZoom: number;
     /**
      * Number the rows of the dual layout's disabled list. The index is the mod's rank among every mod
      * rather than a prediction of where it lands once enabled, so it can be turned off for a quieter
@@ -468,6 +470,7 @@ declare global {
     | "isDualModListLayoutEnabled"
     | "modListDensity"
     | "modListWidth"
+    | "buildingsZoom"
     | "isShowingDisabledModsLoadOrder"
     | "isModListCategoryViewEnabled"
     | "isPresetAuthorEnabled"

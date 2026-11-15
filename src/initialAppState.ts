@@ -36,6 +36,7 @@ const initialState = {
   isDualModListLayoutEnabled: true,
   modListDensity: "comfortable",
   modListWidth: "default",
+  buildingsZoom: 1,
   isShowingDisabledModsLoadOrder: true,
   isModListCategoryViewEnabled: false,
   isPresetAuthorEnabled: false,

@@ -2,7 +2,7 @@ import React, { memo, useCallback, useEffect, useMemo, useReducer, useRef, useSt
 import { autoUpdate, flip, offset, shift, useFloating } from "@floating-ui/react";
 import { useAppDispatch, useAppSelector } from "../../hooks";
 import { useLocalizations } from "../../localizationContext";
-import { openMapForRegion } from "../../appSlice";
+import { openMapForRegion, setBuildingsZoom } from "../../appSlice";
 import { sortByNameAndLoadOrder } from "../../modSortingHelpers";
 import { useDeferredWhileInactive } from "../useDeferredWhileInactive";
 import BuildingsFilters from "./BuildingsFilters";
@@ -85,7 +85,8 @@ const BuildingsTab = memo(({ isActive = true }: BuildingsTabProps) => {
   const [rowIssues, setRowIssues] = useState<BuildingsRowIssue[] | undefined>();
   const [query, setQuery] = useState<BuildingsRegionQuery>(DEFAULT_QUERY);
   const [subTab, setSubTab] = useState<"board" | "tables">("board");
-  const [zoom, setZoom] = useState(1);
+  const zoom = useAppSelector((state) => state.app.buildingsZoom);
+  const setZoom = useCallback((value: number) => dispatch(setBuildingsZoom(value)), [dispatch]);
   const [error, setError] = useState<string | undefined>();
   const [isLoading, setIsLoading] = useState(false);
   const [isRebuildingData, setIsRebuildingData] = useState(false);
