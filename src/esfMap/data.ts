@@ -655,6 +655,7 @@ export function buildEsfMapData(
       ownerFaction: marker.ownership?.ownerFaction ?? null,
       subculture: marker.ownership?.subculture ?? null,
       settlementKey: marker.ownership?.settlementKey ?? null,
+      settlementType: marker.ownership?.settlementType ?? null,
     };
   });
   const areaColours = buildNeighbourAwareColours(
@@ -669,7 +670,7 @@ export function buildEsfMapData(
     startposPath: paths.startposPath,
     lookupPath: paths.lookupPath,
     settlementTypes: [],
-    settlementTypesByRegion: {},
+    settlementSiteTypesByRegion: {},
     climates: [],
     climatesByRegion: {},
     provinces: [],

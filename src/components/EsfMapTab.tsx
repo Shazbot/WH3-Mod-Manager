@@ -819,6 +819,43 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         : undefined,
     [extendedState, selectedMarker],
   );
+  /**
+   * The settlement types each region matches in the filter, keyed by lower-case region key: the
+   * types its site can take, plus its current type - the start pos's, or the imported save's once
+   * one is loaded. A map file that does not record types keeps the start pos's.
+   */
+  const settlementTypesByRegion = useMemo(() => {
+    const types = new Map<string, Set<string>>();
+    const add = (regionKey: string, type: string) => {
+      const key = regionKey.toLowerCase();
+      (types.get(key) ?? types.set(key, new Set()).get(key)!).add(type);
+    };
+    for (const [regionKey, siteTypes] of Object.entries(map?.settlementSiteTypesByRegion ?? {})) {
+      for (const type of siteTypes) add(regionKey, type);
+    }
+    const importedRegions = extendedState?.document.regions;
+    if (importedRegions?.some((region) => region.settlement_type !== undefined)) {
+      for (const region of importedRegions) if (region.settlement_type) add(region.region, region.settlement_type);
+    } else {
+      for (const marker of map?.markers ?? []) if (marker.settlementType) add(marker.key, marker.settlementType);
+    }
+    return types;
+  }, [extendedState, map]);
+  /** Only types some region matches, with how many regions match each. */
+  const settlementTypeOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const regionTypes of settlementTypesByRegion.values()) {
+      for (const type of regionTypes) counts.set(type, (counts.get(type) ?? 0) + 1);
+    }
+    const labels = new Map((map?.settlementTypes ?? []).map((option) => [option.key, option.label]));
+    return [...counts.entries()]
+      .map(([key, count]) => ({ key, label: `${labels.get(key) ?? key} (${count})` }))
+      .sort((first, second) => first.key.localeCompare(second.key));
+  }, [map, settlementTypesByRegion]);
+  // A type picked before importing a save may no longer exist on the map.
+  const activeSettlementType = settlementTypeOptions.some((option) => option.key === selectedSettlementType)
+    ? selectedSettlementType
+    : "";
   const selectedPrimaryBuilding = useMemo(
     () =>
       selectedExtendedRegion?.buildings?.find((slot) => slot.type.toLowerCase() === "primary")?.building || undefined,
@@ -1708,8 +1745,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       if (backgroundImage) context.drawImage(backgroundImage, 0, 0, map.width, map.height);
 
       const regionMatchesSettlementType = (regionKey: string | undefined) =>
-        !selectedSettlementType ||
-        (!!regionKey && map.settlementTypesByRegion[regionKey]?.includes(selectedSettlementType));
+        !activeSettlementType ||
+        (!!regionKey && !!settlementTypesByRegion.get(regionKey.toLowerCase())?.has(activeSettlementType));
 
       if (mapView === "regions") {
         for (const area of map.areas) {
@@ -1792,7 +1829,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     map,
     mapView,
     provinceByKey,
-    selectedSettlementType,
+    activeSettlementType,
+    settlementTypesByRegion,
     staticClimateFilterKey,
   ]);
 
@@ -1810,8 +1848,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     context.clearRect(0, 0, map.width, map.height);
 
     const regionMatchesSettlementType = (regionKey: string | undefined) =>
-      !selectedSettlementType ||
-      (!!regionKey && map.settlementTypesByRegion[regionKey]?.includes(selectedSettlementType));
+      !activeSettlementType ||
+      (!!regionKey && !!settlementTypesByRegion.get(regionKey.toLowerCase())?.has(activeSettlementType));
     const selectedFactionForMap = selectedFactionKey ?? factionKey(selectedMarker?.ownerFaction);
 
     if (mapView === "factions" && isEditingOwnership) {
@@ -1907,7 +1945,8 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     provinceByKey,
     selectedFactionKey,
     selectedMarker,
-    selectedSettlementType,
+    activeSettlementType,
+    settlementTypesByRegion,
     terrainOverlayActive,
   ]);
 
@@ -2682,15 +2721,15 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             )}
           </div>
         )}
-        {map && mapView === "regions" && map.settlementTypes.length > 0 && (
+        {map && mapView === "regions" && settlementTypeOptions.length > 0 && (
           <select
-            value={selectedSettlementType}
+            value={activeSettlementType}
             onChange={(event) => setSelectedSettlementType(event.target.value)}
             className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-200"
             aria-label={mapText("mapSettlementType", "Settlement type")}
           >
             <option value="">{mapText("mapNone", "(none)")}</option>
-            {map.settlementTypes.map((settlementType) => (
+            {settlementTypeOptions.map((settlementType) => (
               <option key={settlementType.key} value={settlementType.key}>
                 {settlementType.label}
               </option>

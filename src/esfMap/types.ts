@@ -21,6 +21,8 @@ export interface EsfMapMarker {
   ownerFaction: string | null;
   subculture: string | null;
   settlementKey: string | null;
+  /** settlement_types key the start pos gives this region's settlement; null for an ordinary one. */
+  settlementType: string | null;
 }
 
 export interface EsfMapFaction {
@@ -110,8 +112,10 @@ export interface EsfMapCoordinateBounds {
 export interface EsfMapPayload {
   campaignKey: string;
   availableCampaigns: EsfMapCampaignOption[];
+  /** Every settlement type the DB defines; a region's own type is `EsfMapMarker.settlementType`. */
   settlementTypes: EsfMapSettlementTypeOption[];
-  settlementTypesByRegion: Record<string, string[]>;
+  /** Settlement types each region's site can take, from its primary slot (keyed by marker key). */
+  settlementSiteTypesByRegion: Record<string, string[]>;
   climates: EsfMapClimateOption[];
   climatesByRegion: Record<string, string | null>;
   provinces: EsfMapProvinceOption[];

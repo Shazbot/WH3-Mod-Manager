@@ -610,20 +610,32 @@ export const resolveCulturesWithoutChains = (data: BuiltBuildingsData, query: Bu
     .map((culture) => culture.key);
 };
 
-export const resolveRegionSettlementTypes = (data: BuiltBuildingsData, query: BuildingsRegionQuery): string[] => {
-  const { cultureChains } = resolveRegionChainContext(data, query);
-  const settlementTypeKeys = new Set<string>();
-  for (const chain of cultureChains) {
-    const bindings = data.settlementTypeBindings[chain] ?? [];
-    const excluded = new Set(bindings.filter((binding) => binding.exclude).map((binding) => binding.settlementType));
-    for (const binding of bindings) {
-      if (!binding.exclude && !excluded.has(binding.settlementType)) settlementTypeKeys.add(binding.settlementType);
-    }
+/**
+ * A chain bound to more settlement types than this is not a site's own settlement chain but a
+ * special building kept through conversion: `wh2_dlc11_special_settlement_galleons_graveyard_other`
+ * names ten types and `wh2_main_wef_oak_of_ages_occupied` fourteen. A conversion's own settlement
+ * chains name one type, or two for `wh3_dlc23_chd_settlement_outpost` (outpost and devastated).
+ */
+const MAX_SITE_CHAIN_SETTLEMENT_TYPES = 2;
+
+/**
+ * The settlement types a region's site can take: those bound to a settlement chain its primary slot
+ * can hold. This is how the game marks dark fortress sites - 66 combi regions, Zanbaijin and
+ * Altdorf among them, permit `wh3_dlc20_settlement_woc_dark_fortress` - while conversion types such
+ * as the daemon or Norsca ones bind a chain every generic primary set holds, so they fit everywhere.
+ */
+export const resolveRegionSettlementSiteTypes = (data: BuiltBuildingsData, campaign: string, region: string) => {
+  const primarySlots = (data.regionSlotTemplates[`${campaign}|${region}`] ?? []).filter(
+    (slot) => slot.slotType === "primary",
+  );
+  const { candidateChains } = collectChainsForSlotTemplates(data, primarySlots);
+  const types = new Set<string>();
+  for (const chain of candidateChains) {
+    const bound = (data.settlementTypeBindings[chain] ?? []).filter((binding) => !binding.exclude);
+    if (bound.length > MAX_SITE_CHAIN_SETTLEMENT_TYPES) continue;
+    for (const binding of bound) types.add(binding.settlementType);
   }
-  for (const settlement of data.startPosSettlements[`${query.campaign}|${query.region}`] ?? []) {
-    if (settlement.settlementType) settlementTypeKeys.add(settlement.settlementType);
-  }
-  return [...settlementTypeKeys].sort((first, second) => first.localeCompare(second));
+  return [...types].sort((first, second) => first.localeCompare(second));
 };
 
 export const resolveRegionBuildings = (data: BuiltBuildingsData, query: BuildingsRegionQuery): BuildingsRegionView => {

@@ -11,6 +11,8 @@ export interface StartposRegion {
   subculture: string | null;
   /** Settlement level key, e.g. wh2_main_lzd_settlement_major_1. */
   settlementKey: string | null;
+  /** settlement_types key, e.g. wh3_dlc27_norsca_core_settlement; null for an ordinary settlement. */
+  settlementType: string | null;
 }
 
 interface RegionWalkState {
@@ -85,9 +87,10 @@ export function extractStartposRegions(
           return;
         }
 
-        // The settlement level key is the entry that is not the
-        // "settlement:<region>" self-reference.
-        const settlementKey = state.settlementStrings.find((text) => !text.startsWith("settlement:")) ?? null;
+        // SETTLEMENT's direct asciis are ["settlement:<region>", settlement type, settlement level
+        // key, ""]; the type is empty for an ordinary settlement. Shipped startposes and saves agree.
+        const settlementType = state.settlementStrings[1] || null;
+        const settlementKey = state.settlementStrings[2] || null;
 
         regions.push({
           regionIndex: state.regionIndex,
@@ -95,6 +98,7 @@ export function extractStartposRegions(
           ownerFaction: state.regionStrings[1] || null,
           subculture: state.regionStrings[2] || null,
           settlementKey,
+          settlementType,
         });
       },
       onValue(value, stack) {
@@ -118,10 +122,9 @@ export function extractStartposRegions(
         }
 
         if (parent === "SETTLEMENT" && value.type === "ascii") {
+          // Empty strings are kept: the values are positional.
           const ascii = value.value as { id: number; text: string | null };
-          if (ascii.text) {
-            current.settlementStrings.push(ascii.text);
-          }
+          current.settlementStrings.push(ascii.text ?? "");
         }
       },
     },

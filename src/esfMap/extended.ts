@@ -17,6 +17,8 @@ export interface ExtendedMapRegion {
   faction: string | null;
   buildings: ExtendedMapBuildingSlot[] | null;
   region: string;
+  /** settlement_types key, "" for an ordinary settlement. Only documents read from a save or startpos carry it. */
+  settlement_type?: string;
 }
 
 export interface ExtendedMapUnit {
@@ -220,7 +222,14 @@ const parseExtendedDocument = (
         buildings.push(slot);
       }
     }
-    regions.push({ faction, buildings, region });
+    if (value.settlement_type !== undefined && typeof value.settlement_type !== "string")
+      return { error: `Expected a string at ${path}.settlement_type.` };
+    regions.push({
+      faction,
+      buildings,
+      region,
+      ...(value.settlement_type !== undefined ? { settlement_type: value.settlement_type } : {}),
+    });
   }
 
   const faction_to_chars: ExtendedMapFactionCharacters[] = [];

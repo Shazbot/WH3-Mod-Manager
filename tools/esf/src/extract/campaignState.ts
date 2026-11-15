@@ -12,6 +12,8 @@ export interface CampaignStateRegion {
   faction: string | null;
   buildings: CampaignStateBuildingSlot[] | null;
   region: string;
+  /** settlement_types key; "" for an ordinary settlement. */
+  settlement_type?: string;
 }
 export interface CampaignStateUnit {
   id: number;
@@ -92,6 +94,8 @@ interface RegionAcc {
   strings: string[];
   bools: boolean[];
   slots: SlotAcc[];
+  /** Direct asciis of the region's SETTLEMENT: ["settlement:<region>", settlement type, level key, ""]. */
+  settlementStrings: string[];
 }
 
 const SCALING_SKILL = "wh3_main_skill_agent_action_success_scaling";
@@ -129,6 +133,8 @@ function emptyDiplo(): CampaignStateDiplomacy {
  *   experiencePoints], then u8 rank (0-9), UNIT_RECORD_KEY holds the unit key. Health is current/max soldiers.
  * - REGION: the fourth direct u32 is the owning faction id, second direct bool = abandoned. The direct asciis
  *   [key, owner, subculture, "", owner, ""] lag behind some scripted transfers, so they are only a fallback.
+ * - SETTLEMENT (directly under REGION): ascii ["settlement:<region>", settlement type, level key, ""]; the type is
+ *   empty for an ordinary settlement.
  * - REGION_SLOT: ascii [instanceKey, template, type]; the building is the first ascii of its BUILDING_BASE.
  * - OLD_DIPLOMACY_RELATIONSHIP: 15 direct values per other faction (two are empty arrays); [0] other
  *   faction id, [2] stance ("neutral", "war", "military_allies", "defensive_allies", "master" = this faction is the other's
@@ -201,7 +207,7 @@ export function extractCampaignState(
             if (parent === "FAMILY_TREE") family = { familyId: null, detailU32: null, detailAscii: [], scaling: null };
             break;
           case "REGION":
-            if (parent === "REGIONS_ARRAY") region = { u32s: [], strings: [], bools: [], slots: [] };
+            if (parent === "REGIONS_ARRAY") region = { u32s: [], strings: [], bools: [], slots: [], settlementStrings: [] };
             break;
           case "REGION_SLOT":
             if (region && parent === "REGION_SLOT_ARRAY") slot = { strings: [], building: null };
@@ -352,6 +358,10 @@ export function extractCampaignState(
           case "REGION_SLOT":
             if (slot && value.type === "ascii") slot.strings.push(text(value));
             break;
+          case "SETTLEMENT":
+            if (region && value.type === "ascii" && stack[stack.length - 2] === "REGION")
+              region.settlementStrings.push(text(value));
+            break;
           case "BUILDING_BASE":
             if (slot && slot.building === null && value.type === "ascii") slot.building = text(value);
             break;
@@ -390,7 +400,12 @@ export function extractCampaignState(
     const owner = abandoned
       ? null
       : (ownerId === undefined ? undefined : idToKey.get(ownerId)) || acc.strings[4] || acc.strings[1] || null;
-    regions.push({ faction: owner, buildings: !abandoned && buildings.length ? buildings : null, region: key });
+    regions.push({
+      faction: owner,
+      buildings: !abandoned && buildings.length ? buildings : null,
+      region: key,
+      settlement_type: acc.settlementStrings[1] ?? "",
+    });
   }
 
 

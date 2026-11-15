@@ -25,7 +25,7 @@ const createMapData = (backgroundContent = "map", backgroundTextContent = "text"
   campaignKey: "wh3_main_combi",
   availableCampaigns: [{ key: "wh3_main_combi", label: "Main Combi" }],
   settlementTypes: [],
-  settlementTypesByRegion: {},
+  settlementSiteTypesByRegion: {},
   climates: [],
   climatesByRegion: {},
   mapDataPath: "campaign_maps\\wh3_main_combi_map_1\\map_data.esf",
@@ -71,6 +71,7 @@ const createMapData = (backgroundContent = "map", backgroundTextContent = "text"
       ownerFaction: "wh3_main_faction",
       subculture: "wh3_main_sc_dwarfs",
       settlementKey: "settlement_1",
+      settlementType: null,
     },
   ],
   factions: [

@@ -4,78 +4,63 @@ import { addSettlementTypeDataToEsfMap } from "../src/esfMap/settlementTypes";
 import type { BuiltBuildingsData } from "../src/buildingsData/types";
 import type { EsfMapPayload } from "../src/esfMap/types";
 
+const binding = (chain: string, settlementType: string, exclude = false) => ({ chain, settlementType, exclude });
+
 const buildings = {
-  subcultures: [{ key: "emp_sub", localizedName: "Empire", culture: "emp" }],
-  factions: [],
   settlementTypes: [
-    { key: "capital", localizedName: "Capital" },
+    { key: "dark_fortress", localizedName: "Dark Fortress" },
     { key: "minor", localizedName: "Minor" },
   ],
   settlementTypeBindings: {
-    chain_a: [{ chain: "chain_a", settlementType: "capital", exclude: false }],
-    chain_b: [{ chain: "chain_b", settlementType: "minor", exclude: false }],
+    fortress_settlement: [binding("fortress_settlement", "dark_fortress")],
+    // A special building kept through conversion names many types and marks no site.
+    kept_special: ["dark_fortress", "minor", "a", "b"].map((type) => binding("kept_special", type)),
+    secondary_only: [binding("secondary_only", "minor")],
   },
   regionSlotTemplates: {
-    "camp|region_capital": [
-      { campaign: "camp", region: "region_capital", slotTemplate: "template", slotType: "secondary", id: "1" },
+    "camp|region_fortress": [
+      { campaign: "camp", region: "region_fortress", slotTemplate: "fortress_primary", slotType: "primary", id: "1" },
+    ],
+    "camp|region_plain": [
+      { campaign: "camp", region: "region_plain", slotTemplate: "plain_primary", slotType: "primary", id: "2" },
+      { campaign: "camp", region: "region_plain", slotTemplate: "plain_secondary", slotType: "secondary", id: "3" },
     ],
   },
-  foreignRegionSlotTemplates: {},
   permittedByTemplate: {
-    template: [{ slotTemplate: "template", chain: "chain_a", remove: false }],
+    fortress_primary: [{ slotTemplate: "fortress_primary", chain: "fortress_settlement", remove: false }],
+    plain_primary: [{ slotTemplate: "plain_primary", chain: "kept_special", remove: false }],
+    plain_secondary: [{ slotTemplate: "plain_secondary", chain: "secondary_only", remove: false }],
   },
   superChains: {},
   superChainsByTemplate: {},
   chainSetParents: {},
   chainSetItems: {},
-  chains: { chain_a: {} },
-  levelKeysByChain: {},
-  availabilitySetsByChain: {},
-  availabilitiesBySetId: {},
-  startPosSettlements: {},
+  chains: { fortress_settlement: {}, kept_special: {}, secondary_only: {} },
 } as unknown as BuiltBuildingsData;
 
 const map = {
   campaignKey: "camp",
   markers: [
-    {
-      id: 0,
-      regionIndex: 0,
-      key: "region_capital",
-      gx: 1,
-      gy: 1,
-      areaId: 0,
-      componentId: 0,
-      ownerFaction: null,
-      subculture: "emp_sub",
-      settlementKey: null,
-    },
-    {
-      id: 1,
-      regionIndex: 1,
-      key: "region_empty",
-      gx: 2,
-      gy: 2,
-      areaId: 1,
-      componentId: 1,
-      ownerFaction: null,
-      subculture: null,
-      settlementKey: null,
-    },
+    { key: "region_fortress", settlementType: null },
+    { key: "region_plain", settlementType: "mod_type" },
   ],
 } as unknown as EsfMapPayload;
 
 describe("ESF map settlement types", () => {
-  it("publishes every settlement type and the types each region can use", () => {
-    const enriched = addSettlementTypeDataToEsfMap(map, buildings);
-
-    expect(enriched.settlementTypes).toEqual([
-      { key: "capital", label: "Capital — capital" },
-      { key: "minor", label: "Minor — minor" },
+  it("publishes every settlement type the DB or the start pos names", () => {
+    expect(addSettlementTypeDataToEsfMap(map, buildings).settlementTypes.map((option) => option.key)).toEqual([
+      "a",
+      "b",
+      "dark_fortress",
+      "minor",
+      "mod_type",
     ]);
-    expect(enriched.settlementTypesByRegion).toEqual({
-      region_capital: ["capital"],
-      region_empty: [],
+  });
+
+  it("reads site types from primary slot settlement chains only", () => {
+    expect(addSettlementTypeDataToEsfMap(map, buildings).settlementSiteTypesByRegion).toEqual({
+      region_fortress: ["dark_fortress"],
+      region_plain: [],
     });
   });
 });
