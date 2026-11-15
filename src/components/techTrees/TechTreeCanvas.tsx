@@ -1828,7 +1828,7 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 bg-gray-900 border-b border-gray-700 px-3 py-1.5 flex-wrap shrink-0">
+      <div className="relative z-30 flex items-center gap-2 bg-gray-900 border-b border-gray-700 px-3 py-1.5 flex-wrap shrink-0">
         {(technologyTree?.uiTabs.length || 0) > 0 && (
           <select
             className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm"
@@ -1859,38 +1859,40 @@ const TechTreeCanvas = memo(({ setKey, isBlank = false, templateSetKey }: TechTr
             ))}
           </select>
         )}
-        <Dropdown dismissOnClick={false} label="View" color="light" className="min-w-48">
-          <DropdownItem className="p-0">
-            <label className="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={showHiddenTechnologies}
-                onChange={(event) => setShowHiddenTechnologies(event.target.checked)}
-              />
-              Show hidden
-            </label>
-          </DropdownItem>
-          <DropdownItem className="p-0">
-            <label className="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={showTechKeys}
-                onChange={(event) => setShowTechKeys(event.target.checked)}
-              />
-              Show tech keys
-            </label>
-          </DropdownItem>
-          <DropdownItem className="p-0">
-            <label className="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={isCheckingRequirements}
-                onChange={(event) => setIsCheckingRequirements(event.target.checked)}
-              />
-              Check requirements
-            </label>
-          </DropdownItem>
-        </Dropdown>
+        <div className="relative h-10 shrink-0">
+          <Dropdown dismissOnClick={false} label="View" color="light" className="min-w-48">
+            <DropdownItem className="p-0">
+              <label className="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showHiddenTechnologies}
+                  onChange={(event) => setShowHiddenTechnologies(event.target.checked)}
+                />
+                Show hidden
+              </label>
+            </DropdownItem>
+            <DropdownItem className="p-0">
+              <label className="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showTechKeys}
+                  onChange={(event) => setShowTechKeys(event.target.checked)}
+                />
+                Show tech keys
+              </label>
+            </DropdownItem>
+            <DropdownItem className="p-0">
+              <label className="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isCheckingRequirements}
+                  onChange={(event) => setIsCheckingRequirements(event.target.checked)}
+                />
+                Check requirements
+              </label>
+            </DropdownItem>
+          </Dropdown>
+        </div>
         {canEditTechnologyTrees && (
           <label className="text-xs flex items-center gap-1 cursor-pointer select-none">
             <input
