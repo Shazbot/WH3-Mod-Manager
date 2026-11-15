@@ -54,6 +54,9 @@ type EsfMapTabProps = {
 };
 
 const MAP_AREA_OPACITY = 0.36;
+/** Under the settlement type filter, regions that already have the type stand out from sites that could take it. */
+const MAP_CURRENT_SETTLEMENT_TYPE_OPACITY = 0.78;
+const MAP_CURRENT_SETTLEMENT_TYPE_OUTLINE = "rgba(255, 255, 255, 0.85)";
 const OWNERSHIP_EDIT_TERRAIN_OPACITY = 0.3;
 const OWNERSHIP_EDIT_CHARACTER_OPACITY = 0.45;
 const FACTION_FLAG_SIZE = 20;
@@ -844,10 +847,24 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     [extendedState, selectedMarker],
   );
   /**
-   * The settlement types each region matches in the filter, keyed by lower-case region key: the
-   * types its site can take, plus its current type - the start pos's, or the imported save's once
-   * one is loaded. A map file that does not record types keeps the start pos's.
+   * Each region's current settlement type, keyed by lower-case region key: the start pos's, or the
+   * imported save's once one is loaded. A map file that does not record types keeps the start pos's.
    */
+  const currentSettlementTypeByRegion = useMemo(() => {
+    const types = new Map<string, string>();
+    const importedRegions = extendedState?.document.regions;
+    if (importedRegions?.some((region) => region.settlement_type !== undefined)) {
+      for (const region of importedRegions) {
+        if (region.settlement_type) types.set(region.region.toLowerCase(), region.settlement_type);
+      }
+    } else {
+      for (const marker of map?.markers ?? []) {
+        if (marker.settlementType) types.set(marker.key.toLowerCase(), marker.settlementType);
+      }
+    }
+    return types;
+  }, [extendedState, map]);
+  /** The settlement types each region matches in the filter: the types its site can take, plus its current type. */
   const settlementTypesByRegion = useMemo(() => {
     const types = new Map<string, Set<string>>();
     const add = (regionKey: string, type: string) => {
@@ -857,14 +874,9 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     for (const [regionKey, siteTypes] of Object.entries(map?.settlementSiteTypesByRegion ?? {})) {
       for (const type of siteTypes) add(regionKey, type);
     }
-    const importedRegions = extendedState?.document.regions;
-    if (importedRegions?.some((region) => region.settlement_type !== undefined)) {
-      for (const region of importedRegions) if (region.settlement_type) add(region.region, region.settlement_type);
-    } else {
-      for (const marker of map?.markers ?? []) if (marker.settlementType) add(marker.key, marker.settlementType);
-    }
+    for (const [regionKey, type] of currentSettlementTypeByRegion) add(regionKey, type);
     return types;
-  }, [extendedState, map]);
+  }, [currentSettlementTypeByRegion, map]);
   /** Only types some region matches, with how many regions match each. */
   const settlementTypeOptions = useMemo(() => {
     const counts = new Map<string, number>();
@@ -1771,6 +1783,20 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
       const regionMatchesSettlementType = (regionKey: string | undefined) =>
         !activeSettlementType ||
         (!!regionKey && !!settlementTypesByRegion.get(regionKey.toLowerCase())?.has(activeSettlementType));
+      /** Fills a region shaded by the active view, emphasising one whose settlement already has the filtered type. */
+      const fillArea = (areaPath: Path2D, colour: readonly number[], regionKey: string | undefined) => {
+        const hasActiveType =
+          !!activeSettlementType &&
+          !!regionKey &&
+          currentSettlementTypeByRegion.get(regionKey.toLowerCase()) === activeSettlementType;
+        const opacity = hasActiveType ? MAP_CURRENT_SETTLEMENT_TYPE_OPACITY : MAP_AREA_OPACITY;
+        context.fillStyle = `rgba(${colour[0]}, ${colour[1]}, ${colour[2]}, ${opacity})`;
+        context.fill(areaPath, "evenodd");
+        if (!hasActiveType) return;
+        context.strokeStyle = MAP_CURRENT_SETTLEMENT_TYPE_OUTLINE;
+        context.lineWidth = 1;
+        context.stroke(areaPath);
+      };
 
       if (mapView === "regions") {
         for (const area of map.areas) {
@@ -1778,8 +1804,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           if (!area.regionKey || !regionMatchesSettlementType(area.regionKey)) continue;
           const areaPath = areaPaths.get(areaGeometryKey(area));
           if (!areaPath) continue;
-          context.fillStyle = `rgba(${area.colour[0]}, ${area.colour[1]}, ${area.colour[2]}, ${MAP_AREA_OPACITY})`;
-          context.fill(areaPath, "evenodd");
+          fillArea(areaPath, area.colour, area.regionKey);
         }
       }
 
@@ -1791,8 +1816,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           if (!province) continue;
           const areaPath = areaPaths.get(areaGeometryKey(area));
           if (!areaPath) continue;
-          context.fillStyle = `rgba(${province.colour[0]}, ${province.colour[1]}, ${province.colour[2]}, ${MAP_AREA_OPACITY})`;
-          context.fill(areaPath, "evenodd");
+          fillArea(areaPath, province.colour, area.regionKey);
         }
       }
 
@@ -1805,8 +1829,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           if (!climate) continue;
           const areaPath = areaPaths.get(areaGeometryKey(area));
           if (!areaPath) continue;
-          context.fillStyle = `rgba(${climate.colour[0]}, ${climate.colour[1]}, ${climate.colour[2]}, ${MAP_AREA_OPACITY})`;
-          context.fill(areaPath, "evenodd");
+          fillArea(areaPath, climate.colour, area.regionKey);
         }
       }
 
@@ -1854,6 +1877,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
     mapView,
     provinceByKey,
     activeSettlementType,
+    currentSettlementTypeByRegion,
     settlementTypesByRegion,
     staticClimateFilterKey,
   ]);
@@ -2753,6 +2777,10 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             onChange={(event) => setSelectedSettlementType(event.target.value)}
             className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-200"
             aria-label={mapText("mapSettlementType", "Settlement type")}
+            title={mapText(
+              "mapSettlementTypeHint",
+              "Bright, outlined regions already have this settlement type; faint ones are sites that could take it.",
+            )}
           >
             <option value="">{mapText("mapNone", "(none)")}</option>
             {settlementTypeOptions.map((settlementType) => (
