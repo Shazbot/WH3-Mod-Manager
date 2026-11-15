@@ -765,6 +765,39 @@ describe("Unit Viewer catalog", () => {
     });
   });
 
+  it("keeps heroes in the Heroes roster section when UI grouping data puts them under Lords", () => {
+    const tables: UnitViewerTableRows = {
+      main_units_tables: [
+        {
+          unit: "misgrouped_hero",
+          land_unit: "land",
+          num_men: "1",
+          caste: "hero",
+          ui_unit_group_land: "grouping_lord",
+        },
+      ],
+      land_units_tables: [{ key: "land", man_entity: "entity", primary_melee_weapon: "weapon" }],
+      battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "100" }],
+      melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
+      ui_unit_groupings_tables: [
+        { key: "grouping_hero", parent_group: "heroes_agents" },
+        { key: "grouping_lord", parent_group: "commander" },
+      ],
+      ui_unit_group_parents_tables: [
+        { key: "commander", order: "10" },
+        { key: "heroes_agents", order: "20" },
+      ],
+      factions_tables: [{ key: "faction", subculture: "culture" }],
+      units_custom_battle_permissions_tables: [{ unit: "misgrouped_hero", faction: "faction" }],
+    };
+
+    const built = buildUnitViewerData(tables, () => undefined);
+
+    expect(Object.fromEntries(built.groups[0].units.map((unit) => [unit.key, unit.uiGroupKey]))).toEqual({
+      misgrouped_hero: "heroes_agents",
+    });
+  });
+
   it("lets later mod rows replace vanilla unit and scalar constants", () => {
     const tables: UnitViewerTableRows = {
       main_units_tables: [

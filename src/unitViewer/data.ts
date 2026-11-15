@@ -374,14 +374,14 @@ const getUiGroupKey = (
   parentGroupKey: string,
   uiUnitGroupParents: Map<string, Record<string, string>>,
 ) => {
-  // A few vanilla lord rows (notably Drycha) point at the heroes parent despite their caste. Keep
-  // the leader section consistent with the badge, but preserve other custom battle groupings.
-  if (
-    caste.trim().toLowerCase() === "lord" &&
-    parentGroupKey === "heroes_agents" &&
-    uiUnitGroupParents.has("commander")
-  )
+  // A few vanilla rows point at the wrong leader parent for their caste: lords such as Drycha under
+  // heroes, and heroes such as the Plague Priest on Cauldron under lords. Keep the leader section
+  // consistent with the badge, but preserve other custom battle groupings.
+  const normalizedCaste = caste.trim().toLowerCase();
+  if (normalizedCaste === "lord" && parentGroupKey === "heroes_agents" && uiUnitGroupParents.has("commander"))
     return "commander";
+  if (normalizedCaste === "hero" && parentGroupKey === "commander" && uiUnitGroupParents.has("heroes_agents"))
+    return "heroes_agents";
   return uiUnitGroupParents.has(parentGroupKey) ? parentGroupKey : EXTENDED_ROSTER_GROUP_KEY;
 };
 

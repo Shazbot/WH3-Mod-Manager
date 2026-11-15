@@ -5,7 +5,7 @@ import type { BuiltUnitViewerData } from "./data";
 import type { UnitViewerAbility, UnitViewerPainterVariantContext, UnitViewerUnitModel } from "./types";
 import { cloneCachedUnitViewerAbility, isCachedUnitViewerAbility } from "./cacheAbilities";
 
-const UNIT_VIEWER_CACHE_VERSION = 34;
+const UNIT_VIEWER_CACHE_VERSION = 35;
 const UNIT_VIEWER_CACHE_FILE = "unit-viewer-data-cache.bin";
 
 type FactionColour = NonNullable<UnitViewerPainterVariantContext["factionColours"]>[number];
