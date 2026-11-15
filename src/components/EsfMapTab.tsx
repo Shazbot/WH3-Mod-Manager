@@ -652,14 +652,17 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         : [],
     [factionsByKey, map, mapScaleX, mapScaleY, mapView, regionGeometricCenters],
   );
-  const characterThumbnailPathByKey = useMemo(() => {
+  // Each character gets its card candidates in preference order. A unit's card path is derived from
+  // DB rows and may name a file no pack ships (wh_main_teb_cha_general_0 → wh_main_emp_general.png),
+  // so every candidate is prewarmed and the first one that actually resolves is drawn.
+  const characterThumbnailCandidatesByKey = useMemo(() => {
     const cardPathByUnitKey = new Map(
       unitCatalog
         .filter((unit) => !!unit.unitCardPath)
         .map((unit) => [unit.key.toLowerCase(), unit.unitCardPath!] as const),
     );
     const lordOptionBySubtype = new Map(lordOptions.map((option) => [option.subtype.toLowerCase(), option] as const));
-    const result = new Map<string, string>();
+    const result = new Map<string, string[]>();
     if (!map) return result;
     for (const { faction, character } of extendedCharacters) {
       if (!projectCharacterCoordinateToMap(map, character.x, character.y)) continue;
@@ -672,17 +675,17 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         agentUnit ? associatedUnitForSubculture(agentUnit, mapFaction?.subculture) : undefined,
         character.subtype,
       ];
-      const cardPath = candidateUnitKeys
+      const cardPaths = candidateUnitKeys
         .filter((key): key is string => !!key)
         .map((key) => cardPathByUnitKey.get(key.toLowerCase()))
-        .find((path): path is string => !!path);
-      if (cardPath) result.set(characterUiKey(faction, character.id), cardPath);
+        .filter((path): path is string => !!path);
+      if (cardPaths.length > 0) result.set(characterUiKey(faction, character.id), [...new Set(cardPaths)]);
     }
     return result;
   }, [agentSubtypeUnits, extendedCharacters, factionsByKey, lordOptions, map, unitCatalog]);
   const characterThumbnailPaths = useMemo(
-    () => (showCharacters ? Array.from(new Set(characterThumbnailPathByKey.values())) : []),
-    [characterThumbnailPathByKey, showCharacters],
+    () => (showCharacters ? Array.from(new Set(Array.from(characterThumbnailCandidatesByKey.values()).flat())) : []),
+    [characterThumbnailCandidatesByKey, showCharacters],
   );
   // Character coordinates are part of the extended document, but do not change which card assets
   // are needed. Keep the prewarm effect keyed to the actual path set so moving one character does
@@ -700,12 +703,13 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
   );
   const characterThumbnailUrls = useMemo(() => {
     if (!showCharacters || !unitViewerSessionId) return new Map<string, string>();
-    return new Map(
-      Array.from(characterThumbnailPathByKey.entries())
-        .filter(([, path]) => resolvedCharacterThumbnailPathSet.has(path))
-        .map(([key, path]) => [key, unitAssetUrl(unitViewerSessionId, path)] as const),
-    );
-  }, [characterThumbnailPathByKey, resolvedCharacterThumbnailPathSet, showCharacters, unitViewerSessionId]);
+    const result = new Map<string, string>();
+    for (const [key, paths] of characterThumbnailCandidatesByKey) {
+      const path = paths.find((candidate) => resolvedCharacterThumbnailPathSet.has(candidate));
+      if (path) result.set(key, unitAssetUrl(unitViewerSessionId, path));
+    }
+    return result;
+  }, [characterThumbnailCandidatesByKey, resolvedCharacterThumbnailPathSet, showCharacters, unitViewerSessionId]);
   const characterThumbnailSources = useMemo(
     () => Array.from(new Set(characterThumbnailUrls.values())),
     [characterThumbnailUrls],
