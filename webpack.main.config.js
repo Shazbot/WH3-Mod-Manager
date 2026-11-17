@@ -8,6 +8,30 @@ const AssetRelocatorPatch = require("@electron-forge/plugin-webpack/dist/util/As
 const isProduction = process.argv[process.argv.indexOf("--mode") + 1] === "production";
 const isVerbose = process.env.WEBPACK_VERBOSE === "1";
 
+/**
+ * Dev only: restart Electron after the watched main bundle rebuilds. Forge already recompiles main in
+ * watch mode but only relaunches when "rs" is typed; this webpack compiler runs in forge's process, so
+ * emitting "rs" on stdin reuses forge's own restart path. Disable with WHMM_NO_MAIN_RESTART=1.
+ */
+const restartElectronOnRebuild = () => ({
+  apply(compiler) {
+    let isFirstBuild = true;
+    let timer;
+    compiler.hooks.done.tap("RestartElectronOnRebuild", (stats) => {
+      if (isFirstBuild) {
+        isFirstBuild = false;
+        return;
+      }
+      if (stats.hasErrors()) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        console.info("[main] backend rebuilt, restarting Electron");
+        process.stdin.emit("data", "rs");
+      }, 300);
+    });
+  },
+});
+
 module.exports = {
   infrastructureLogging: {
     level: isVerbose ? "verbose" : "warn",
@@ -109,6 +133,7 @@ module.exports = {
         });
       },
     },
+    ...(isProduction || process.env.WHMM_NO_MAIN_RESTART === "1" ? [] : [restartElectronOnRebuild()]),
   ],
   output: {
     pathinfo: false,
