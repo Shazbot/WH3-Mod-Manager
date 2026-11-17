@@ -288,3 +288,7 @@ export const findParentOfNode = (
 
   return findParentOfNodeIter(tree, targetName, tree);
 };
+
+export function getDroppedPackPaths(paths: string[]): string[] {
+  return paths.filter((p) => p && p.toLowerCase().endsWith(".pack"));
+}

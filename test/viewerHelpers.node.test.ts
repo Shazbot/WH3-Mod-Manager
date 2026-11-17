@@ -4,6 +4,7 @@ import {
   buildKeyPrefixDisplay,
   getPercentileWidth,
   getDefaultSaveAsPackName,
+  getDroppedPackPaths,
   getPackFileInventory,
   getPreferredTreeTab,
   hasLoadedDBTable,
@@ -304,5 +305,14 @@ describe("repeated key prefix", () => {
 
   it("handles an empty column", () => {
     expect(buildKeyPrefixDisplay([])).toMatchObject({ depth: 0 });
+  });
+});
+
+describe("getDroppedPackPaths", () => {
+  it("keeps only non-empty .pack paths, case-insensitively", () => {
+    expect(getDroppedPackPaths(["C:\\a.pack", "C:\\b.PACK", "C:\\c.txt", "", "C:\\d.pack.bak"])).toEqual([
+      "C:\\a.pack",
+      "C:\\b.PACK",
+    ]);
   });
 });

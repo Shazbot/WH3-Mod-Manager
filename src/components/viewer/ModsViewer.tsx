@@ -41,7 +41,7 @@ import {
 } from "@/src/utility/packFileHelpers";
 import { clearPackDataStoreForPack } from "./packDataStore";
 import { clearPreparedTableForPack } from "./tablePrepCache";
-import { getDefaultSaveAsPackName, getPackFileInventory, getPreferredTreeTab, hasLoadedDBTable } from "./viewerHelpers";
+import { getDefaultSaveAsPackName, getDroppedPackPaths, getPackFileInventory, getPreferredTreeTab, hasLoadedDBTable } from "./viewerHelpers";
 import GlobalSearchPanel from "./GlobalSearchPanel";
 import LoadOrderRulesView from "./LoadOrderRulesView";
 import OpenPackDialog from "./OpenPackDialog";
@@ -1921,6 +1921,55 @@ const ModsViewer = memo(() => {
     window.api?.requestOpenModInViewer(packPath);
   }, []);
 
+  const [isFileDragOver, setIsFileDragOver] = useState(false);
+  useEffect(() => {
+    let depth = 0;
+    const hasFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes("Files");
+    const onDragEnter = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth++;
+      setIsFileDragOver(true);
+    };
+    const onDragOver = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    };
+    const onDragLeave = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) setIsFileDragOver(false);
+    };
+    const onDrop = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth = 0;
+      setIsFileDragOver(false);
+      const files = Array.from(e.dataTransfer?.files ?? []);
+      if (files.length === 0) return;
+      const paths = files.map((f) => window.api?.getPathForFile(f) ?? "");
+      const packPaths = getDroppedPackPaths(paths);
+      setIsFileMenuOpen(false);
+      setIsRecentPacksOpen(false);
+      if (packPaths.length === 0) {
+        showDialog(localized.viewerDroppedNonPackFiles || "Only .pack files can be opened.");
+        return;
+      }
+      packPaths.forEach(handleOpenPack);
+    };
+    window.addEventListener("dragenter", onDragEnter);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragenter", onDragEnter);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, [handleOpenPack, localized.viewerDroppedNonPackFiles, showDialog]);
+
   const handleAddNewFlow = () => {
     setIsFileMenuOpen(false);
     treeViewRefs.current[activePackPath ?? ""]?.openNewFlowDialog();
@@ -2106,6 +2155,11 @@ const ModsViewer = memo(() => {
 
   return (
     <>
+      {isFileDragOver && (
+        <div className="pointer-events-none fixed inset-0 z-[100] flex items-center justify-center border-2 border-dashed border-blue-500 bg-gray-900/80">
+          <span className="text-xl text-white">{localized.viewerDropPacksToOpen || "Drop .pack files to open"}</span>
+        </div>
+      )}
       {deepCloneTarget && (
         <Modal
           onClose={() => {

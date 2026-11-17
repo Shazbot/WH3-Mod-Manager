@@ -2086,6 +2086,8 @@
   "viewerOpenPack": "Open Pack",
   "viewerOpenRecent": "Open Recent",
   "viewerNoRecentPacks": "No recent packs",
+  "viewerDropPacksToOpen": "Drop .pack files to open",
+  "viewerDroppedNonPackFiles": "Only .pack files can be opened.",
   "viewerAddNewFlow": "Add New Flow",
   "viewerOpenDbPack": "open db.pack",
   "viewerSavePack": "Save Pack",

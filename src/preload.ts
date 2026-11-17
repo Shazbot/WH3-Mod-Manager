@@ -1,4 +1,4 @@
-import { ipcRenderer } from "electron";
+import { ipcRenderer, webUtils } from "electron";
 import { DBFieldName, DBFileName, DBVersion, Pack, PackCollisions, PackedFile } from "./packFileTypes";
 import { GameFolderPaths } from "./appData";
 import { SupportedGames } from "./supportedGames";
@@ -139,6 +139,7 @@ const api = {
   skillsAreReady: () => ipcRenderer.send("skillsAreReady"),
   techTreesAreReady: () => ipcRenderer.send("techTreesAreReady"),
   requestOpenModInViewer: (modPath: string) => ipcRenderer.send("requestOpenModInViewer", modPath),
+  getPathForFile: (file: File) => webUtils.getPathForFile(file),
   viewerClosedPack: (packPath: string) => ipcRenderer.send("viewerClosedPack", packPath),
   reloadPackForViewer: (packPath: string): Promise<ReloadPackForViewerResult> =>
     ipcRenderer.invoke("reloadPackForViewer", packPath),
