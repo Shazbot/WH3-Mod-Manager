@@ -83,9 +83,12 @@ export const autoStartNewCampaignScript = `local function press_start_campaign_b
             return context.string == "pj_auto_new_campaign_4"
         end,
         function(context)
-            local campaign_ie = find_uicomponent(core:get_ui_root(), "campaign_select_new", "button_start_parent", "button_start_campaign")
-            if campaign_ie then
-                campaign_ie:SimulateLClick()
+            local button_start_campaign = find_uicomponent(core:get_ui_root(), "campaign_select_new", "button_start_parent", "button_start_campaign")
+            if button_start_campaign then
+                out("WHMM: pressed start campaign button")
+                button_start_campaign:SimulateLClick()
+            else
+                out("WHMM: button_start_campaign missing")
             end
         end,
         false
@@ -107,6 +110,8 @@ local function press_karl_button()
                 campaign_karl:SimulateLClick()
 
                 press_start_campaign_button()
+            else
+                out("WHMM: campaign_karl missing")
             end
         end,
         false
@@ -128,6 +133,15 @@ local function press_emp_race_button()
                 campaign_empire:SimulateLClick()
 
                 press_karl_button()
+            else
+							local campaign_empire_not_mixu = find_uicomponent(core:get_ui_root(), "campaign_select_new", "right_holder", "tab_lord", "lord_details_panel", "faction_holder", "button_select_race", "popup_menu", "content", "culture_list", "CcoCultureRecordwh_main_emp_empire", "race_button")
+							if campaign_empire_not_mixu then
+								campaign_empire_not_mixu:SimulateLClick()
+
+								press_karl_button()
+							else
+                out("WHMM: campaign_empire missing")
+							end
             end
         end,
         false
@@ -153,6 +167,8 @@ local function press_new_campaign_button()
                     campaign_ie:SimulateLClick()
 
                     press_emp_race_button()
+                else
+                    out("WHMM: campaign_ie missing")
                 end
             end,
             false
