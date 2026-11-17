@@ -37,7 +37,7 @@ export class GameLogTail {
   /** Reads the whole file and returns its complete lines, then starts following it. */
   async open(): Promise<string[]> {
     const lines = await this.readFrom(0);
-    this.timer = setInterval(() => void this.poll(), this.options.intervalMs ?? 500);
+    this.timer = setInterval(() => void this.poll(), this.options.intervalMs ?? 250);
     return lines;
   }
 
