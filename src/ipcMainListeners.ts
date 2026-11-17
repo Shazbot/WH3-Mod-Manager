@@ -6392,12 +6392,19 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
     if (!dataWatcher) {
       const dataFolders = [dataFolder, nodePath.join(dataFolder, "modding")].filter(fsExtra.existsSync);
+      // Vanilla packs are never mods. chokidar 6 can emit "add" for files that already exist
+      // (a raw rename during its initial scan bypasses ignoreInitial), and a game update would
+      // emit "change"; either would otherwise list the vanilla pack as a mod.
+      const resolvedDataFolder = nodePath.resolve(dataFolder);
+      const isVanillaDataPack = (path: string) =>
+        appData.allVanillaPackNames.has(nodePath.basename(path)) &&
+        nodePath.resolve(nodePath.dirname(path)) === resolvedDataFolder;
       dataWatcher = watch(dataFolders, {
         depth: 0,
         ignoreInitial: true,
         awaitWriteFinish: true,
         followSymlinks: false,
-        ignored: isIgnoredInModFolder,
+        ignored: (path: string, stats?: fs.Stats) => isIgnoredInModFolder(path, stats) || isVanillaDataPack(path),
       })
         .on("error", logWatcherError("data"))
         .on("add", async (path) => {
