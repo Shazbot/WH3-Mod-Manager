@@ -1244,7 +1244,7 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
  * inherited and Chromium prefers it over ::-webkit-scrollbar, so any `scrollbar-*` utility still overrides it. */
 @layer base {
   html {
-    scrollbar-color: var(--color-blue-700) var(--color-gray-700);
+    scrollbar-color: --theme(--color-blue-700) --theme(--color-gray-700);
   }
 }
 
