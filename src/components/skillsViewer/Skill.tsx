@@ -671,7 +671,7 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
           )}
           <div
             ref={tooltipScrollRef}
-            className="nowheel max-h-[calc(92vh-50px)] overflow-y-auto"
+            className="nowheel thin-scrollbar max-h-[calc(92vh-50px)] overflow-y-auto"
             style={{ maxHeight: tooltipScrollMaxHeight }}
           >
             <div>

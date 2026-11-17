@@ -1240,11 +1240,19 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   bottom: -8px !important;
 }
 
-/* App-wide default scrollbar: blue thumb on a gray track, matching the mod list. `scrollbar-color` is
- * inherited and Chromium prefers it over ::-webkit-scrollbar, so any `scrollbar-*` utility still overrides it. */
+/* App-wide default scrollbar: blue thumb on a gray track, matching the mod list. tailwind-scrollbar's base
+ * resets `* { scrollbar-color: initial }`, so inheriting from `html` isn't enough: `html *` outranks that
+ * reset, and `scrollbar-*` utilities (utilities layer) still override this. Tooltips get a thin scrollbar. */
 @layer base {
-  html {
+  html,
+  html * {
     scrollbar-color: --theme(--color-blue-700) --theme(--color-gray-700);
+  }
+
+  .skillTooltip,
+  .skillTooltip *,
+  .thin-scrollbar {
+    scrollbar-width: thin;
   }
 }
 

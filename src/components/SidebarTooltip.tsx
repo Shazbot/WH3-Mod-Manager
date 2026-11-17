@@ -105,7 +105,7 @@ const SidebarTooltip = ({
       <div
         className={classNames(
           theme.content,
-          "max-h-[calc(100vh-60px)] max-w-[calc(100vw-1rem)] overflow-auto wrap-break-word",
+          "thin-scrollbar max-h-[calc(100vh-60px)] max-w-[calc(100vw-1rem)] overflow-auto wrap-break-word",
         )}
       >
         {content}
