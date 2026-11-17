@@ -308,6 +308,11 @@ const api = {
     ipcRenderer.on("gameLogAppend", listener);
     return () => ipcRenderer.removeListener("gameLogAppend", listener);
   },
+  onGameLogErrorCounts: (callback: (counts: Record<string, number>) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, counts: Record<string, number>) => callback(counts);
+    ipcRenderer.on("gameLogErrorCounts", listener);
+    return () => ipcRenderer.removeListener("gameLogErrorCounts", listener);
+  },
   onGameLogListChanged: (callback: () => void) => {
     const listener = () => callback();
     ipcRenderer.on("gameLogListChanged", listener);

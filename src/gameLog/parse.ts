@@ -29,6 +29,29 @@ export const stripPrefix = (line: string, mode: PrefixMode): string => {
 
 export const isErrorLine = (line: string) => ERROR_PATTERN.test(line);
 
+const ERROR_START_PATTERN = /script error/i;
+/** A SCRIPT ERROR's "stack traceback:" follows about 4 lines later; matches this close belong to the same error. */
+const ERROR_GROUP_LINES = 6;
+
+/** Running error count, resumable across chunks of one log. */
+export type ErrorCountState = { errors: number; linesSinceMatch: number };
+export const initialErrorCountState = (): ErrorCountState => ({ errors: 0, linesSinceMatch: ERROR_GROUP_LINES + 1 });
+
+/** Counts errors, not error lines: a SCRIPT ERROR line, or an error line not just after another one, starts a new one. */
+export const countErrors = (
+  lines: Iterable<string>,
+  state: ErrorCountState = initialErrorCountState(),
+): ErrorCountState => {
+  let { errors, linesSinceMatch } = state;
+  for (const line of lines) {
+    linesSinceMatch++;
+    if (!ERROR_PATTERN.test(line)) continue;
+    if (ERROR_START_PATTERN.test(line) || linesSinceMatch > ERROR_GROUP_LINES) errors++;
+    linesSinceMatch = 0;
+  }
+  return { errors, linesSinceMatch: Math.min(linesSinceMatch, ERROR_GROUP_LINES + 1) };
+};
+
 export const tagOf = (line: string): string => parseLine(line).tag ?? OTHER_TAG;
 
 export const compileQuery = (

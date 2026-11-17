@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   OTHER_TAG,
   compileQuery,
+  countErrors,
   countTags,
   filterLines,
+  initialErrorCountState,
   isCompileError,
   isErrorLine,
   parseLine,
@@ -77,5 +79,37 @@ describe("game log parsing", () => {
     expect(parseGameLogEnvironment("\n\n" + line("campaign"))).toBe("campaign");
     expect(parseGameLogEnvironment(line("battle"))).toBe("battle");
     expect(parseGameLogEnvironment("creating logfile script_log_171126_2217.txt")).toBeUndefined();
+  });
+});
+
+const scriptError = (message: string) => [
+  "********************",
+  "SCRIPT ERROR, timestamp <144.9s>",
+  `ERROR: ${message}`,
+  "",
+  "",
+  "stack traceback:",
+  "\t[string \"script\\_lib\\lib_core.lua\"]:250: in function 'get_ui_root'",
+  "********************",
+];
+
+describe("countErrors", () => {
+  it("counts a SCRIPT ERROR and its traceback as one error", () => {
+    expect(countErrors([...scriptError("a"), ...scriptError("b")]).errors).toBe(2);
+  });
+
+  it("counts separate error lines that are far apart", () => {
+    const filler = Array.from({ length: 10 }, () => "fine");
+    expect(countErrors(["attempt to index a nil value", ...filler, "foo.lua:12: oops"]).errors).toBe(2);
+  });
+
+  it("ignores lines without errors", () => {
+    expect(countErrors(["[ui] <1.0s> hello", "no interventions so we won't attempt to start any"]).errors).toBe(0);
+  });
+
+  it("resumes across chunks without double counting a split error", () => {
+    const lines = scriptError("a");
+    const first = countErrors(lines.slice(0, 3), initialErrorCountState());
+    expect(countErrors(lines.slice(3), first).errors).toBe(1);
   });
 });

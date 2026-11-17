@@ -71,6 +71,7 @@ const GameLogTab = memo(({ isActive = true }: GameLogTabProps) => {
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
 
   const [logs, setLogs] = useState<GameLogInfo[]>([]);
+  const [errorCounts, setErrorCounts] = useState<Record<string, number>>({});
   const [listError, setListError] = useState<string>();
   const [livePath, setLivePath] = useState<string>();
   const [hideSmall, setHideSmall] = useState(true);
@@ -106,6 +107,15 @@ const GameLogTab = memo(({ isActive = true }: GameLogTabProps) => {
     const nextLogs = result.logs ?? [];
     setListError(undefined);
     setLogs(nextLogs);
+    // Keep the last known count of a log that is being recounted, so a growing live log doesn't flicker.
+    setErrorCounts((previous) => {
+      const next: Record<string, number> = {};
+      for (const log of nextLogs) {
+        const count = result.errorCounts?.[log.path] ?? previous[log.path];
+        if (count !== undefined) next[log.path] = count;
+      }
+      return next;
+    });
     const newest = nextLogs.find((log) => log.isScriptLog);
     setLivePath(newest && Date.now() - newest.mtimeMs < LIVE_WINDOW_MS ? newest.path : undefined);
   }, []);
@@ -115,8 +125,12 @@ const GameLogTab = memo(({ isActive = true }: GameLogTabProps) => {
     if (!isActive) return;
     void refreshList();
     const removeListChanged = window.api?.onGameLogListChanged(() => void refreshList());
+    const removeErrorCounts = window.api?.onGameLogErrorCounts((counts) =>
+      setErrorCounts((previous) => ({ ...previous, ...counts })),
+    );
     return () => {
       removeListChanged?.();
+      removeErrorCounts?.();
       void window.api?.gameLogClose();
     };
   }, [isActive, refreshList]);
@@ -243,6 +257,7 @@ const GameLogTab = memo(({ isActive = true }: GameLogTabProps) => {
         <div className="w-64 shrink-0 min-h-0">
           <GameLogList
             logs={logs}
+            errorCounts={errorCounts}
             selectedPath={selectedPath}
             livePath={livePath}
             hideSmall={hideSmall}

@@ -5,6 +5,8 @@ import type { GameLogEnvironment, GameLogInfo } from "../../utility/logPaths";
 
 export type GameLogListProps = {
   logs: GameLogInfo[];
+  /** Log path -> number of errors; missing while a log has not been counted yet. */
+  errorCounts: Record<string, number>;
   selectedPath: string | undefined;
   livePath: string | undefined;
   hideSmall: boolean;
@@ -35,6 +37,13 @@ const EnvironmentTag = ({ environment }: { environment: GameLogEnvironment }) =>
     </span>
   );
 };
+
+const ErrorCount = ({ count }: { count: number | undefined }) =>
+  count ? (
+    <span className="ml-auto text-red-400">
+      {count} {count === 1 ? "error" : "errors"}
+    </span>
+  ) : null;
 
 const formatWhen = (log: GameLogInfo) => new Date(log.parsedDate ?? log.mtimeMs).toLocaleString();
 
@@ -97,6 +106,7 @@ const GameLogList = memo((props: GameLogListProps) => {
                   </>
                 )}
                 <span>{formatSize(log.size)}</span>
+                <ErrorCount count={props.errorCounts[log.path]} />
               </div>
             </button>
           );

@@ -5,6 +5,7 @@ import { BrowserWindow, ipcMain } from "electron";
 import chokidar from "chokidar";
 
 import appData from "./appData";
+import { getCachedGameLogErrorCounts, scanGameLogErrorCounts } from "./gameLogErrorCounts";
 import { GameLogTail } from "./gameLogTail";
 import { isGameLogFileName, listGameLogs, type GameLogInfo } from "./utility/logPaths";
 
@@ -16,7 +17,13 @@ export type GameLogSearchResult = {
   truncated?: boolean;
 };
 export type GameLogOpenResult = { success: boolean; error?: string; lines?: string[] };
-export type GameLogListResult = { success: boolean; error?: string; logs?: GameLogInfo[] };
+export type GameLogListResult = {
+  success: boolean;
+  error?: string;
+  logs?: GameLogInfo[];
+  /** Log path -> error count, for logs already counted at their current size; the rest arrive via gameLogErrorCounts. */
+  errorCounts?: Record<string, number>;
+};
 
 const MAX_MATCHES_PER_FILE = 200;
 const MAX_MATCHES_TOTAL = 2000;
@@ -137,7 +144,11 @@ export const registerGameLogIpc = (mainWindow: BrowserWindow) => {
     try {
       const logs = await listGameLogs(gamePath);
       ensureListWatcher(gamePath);
-      return { success: true, logs };
+      const errorCounts = await getCachedGameLogErrorCounts(logs);
+      scanGameLogErrorCounts(gamePath, logs, (counts) => {
+        if (!mainWindow.isDestroyed()) mainWindow.webContents.send("gameLogErrorCounts", counts);
+      });
+      return { success: true, logs, errorCounts };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
@@ -197,4 +208,3 @@ export const registerGameLogIpc = (mainWindow: BrowserWindow) => {
     stopListWatcher();
   });
 };
-
