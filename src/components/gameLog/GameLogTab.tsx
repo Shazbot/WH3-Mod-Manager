@@ -361,6 +361,8 @@ const GameLogTab = memo(({ isActive = true }: GameLogTabProps) => {
             </div>
           )}
           <GameLogViewer
+            // A fresh viewer per log, so a line selection never carries over to another log.
+            key={loaded?.path}
             lines={lines}
             rows={rows}
             prefixMode={prefixMode}
