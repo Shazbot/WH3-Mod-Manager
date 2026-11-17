@@ -5,6 +5,7 @@ import {
   compileQuery,
   countErrors,
   countTags,
+  errorStartLines,
   filterLines,
   initialErrorCountState,
   isCompileError,
@@ -118,5 +119,11 @@ describe("countErrors", () => {
     const lines = scriptError("a");
     const first = countErrors(lines.slice(0, 3), initialErrorCountState());
     expect(countErrors(lines.slice(3), first).errors).toBe(1);
+  });
+});
+
+describe("errorStartLines", () => {
+  it("marks only the SCRIPT ERROR line of each error", () => {
+    expect(errorStartLines(["ok", ...scriptError("a"), ...scriptError("b")])).toEqual([2, 10]);
   });
 });

@@ -14,6 +14,8 @@ export type GameLogListProps = {
   followLatest: boolean;
   onFollowLatestChange: (value: boolean) => void;
   onSelect: (path: string) => void;
+  /** Jumps to the next error of that log, selecting it first if needed. */
+  onErrorCountClick: (path: string) => void;
   onOpenFolder: () => void;
 };
 
@@ -41,13 +43,6 @@ const EnvironmentTag = ({ environment }: { environment: GameLogEnvironment }) =>
     </span>
   );
 };
-
-const ErrorCount = ({ count }: { count: number | undefined }) =>
-  count ? (
-    <span className="ml-auto text-red-400">
-      {count} {count === 1 ? "error" : "errors"}
-    </span>
-  ) : null;
 
 const formatWhen = (log: GameLogInfo) => new Date(log.parsedDate ?? log.mtimeMs).toLocaleString();
 
@@ -87,32 +82,44 @@ const GameLogList = memo((props: GameLogListProps) => {
         {visibleLogs.length === 0 && <div className="p-2 text-gray-400">No game logs found.</div>}
         {visibleLogs.map((log) => {
           const isSelected = log.path === props.selectedPath;
+          const errorCount = props.errorCounts[log.path];
           return (
-            <button
-              type="button"
-              key={log.path}
-              title={log.name}
-              onClick={() => props.onSelect(log.path)}
-              className={`block w-full text-left px-2 py-1 border-l-4 ${
-                isSelected ? "bg-gray-700 border-blue-600 text-white" : "border-transparent hover:bg-gray-700"
-              }`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate">{log.isScriptLog ? formatWhen(log) : log.name}</span>
-                {log.path === props.livePath && (
-                  <span className="text-xs px-1 rounded border border-green-500 text-green-400">LIVE</span>
-                )}
-              </div>
-              <div className="flex items-center gap-1 text-xs text-gray-400">
-                {log.environment && (
-                  <>
-                    <EnvironmentTag environment={log.environment} />·
-                  </>
-                )}
-                <span>{formatSize(log.size)}</span>
-                <ErrorCount count={props.errorCounts[log.path]} />
-              </div>
-            </button>
+            // The error count is its own button, so it sits beside the row button rather than inside it.
+            <div key={log.path} className="group relative">
+              <button
+                type="button"
+                title={log.name}
+                onClick={() => props.onSelect(log.path)}
+                className={`block w-full text-left px-2 py-1 border-l-4 ${
+                  isSelected ? "bg-gray-700 border-blue-600 text-white" : "border-transparent group-hover:bg-gray-700"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate">{log.isScriptLog ? formatWhen(log) : log.name}</span>
+                  {log.path === props.livePath && (
+                    <span className="text-xs px-1 rounded border border-green-500 text-green-400">LIVE</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 text-xs text-gray-400">
+                  {log.environment && (
+                    <>
+                      <EnvironmentTag environment={log.environment} />·
+                    </>
+                  )}
+                  <span>{formatSize(log.size)}</span>
+                </div>
+              </button>
+              {!!errorCount && (
+                <button
+                  type="button"
+                  title={isSelected ? "Jump to the next error" : "Open this log at its first error"}
+                  onClick={() => props.onErrorCountClick(log.path)}
+                  className="absolute right-2 bottom-1 text-xs text-red-400 hover:text-red-300 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 rounded-sm"
+                >
+                  {errorCount} {errorCount === 1 ? "error" : "errors"}
+                </button>
+              )}
+            </div>
           );
         })}
       </div>

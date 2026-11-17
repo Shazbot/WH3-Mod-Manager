@@ -36,19 +36,34 @@ const ERROR_GROUP_LINES = 6;
 export type ErrorCountState = { errors: number; linesSinceMatch: number };
 export const initialErrorCountState = (): ErrorCountState => ({ errors: 0, linesSinceMatch: ERROR_GROUP_LINES + 1 });
 
+/** Advances the state by one line; true when that line starts a new error. */
+const stepErrorCount = (state: ErrorCountState, line: string): boolean => {
+  state.linesSinceMatch++;
+  if (!ERROR_PATTERN.test(line)) return false;
+  const isStart = ERROR_START_PATTERN.test(line) || state.linesSinceMatch > ERROR_GROUP_LINES;
+  if (isStart) state.errors++;
+  state.linesSinceMatch = 0;
+  return isStart;
+};
+
 /** Counts errors, not error lines: a SCRIPT ERROR line, or an error line not just after another one, starts a new one. */
 export const countErrors = (
   lines: Iterable<string>,
   state: ErrorCountState = initialErrorCountState(),
 ): ErrorCountState => {
-  let { errors, linesSinceMatch } = state;
-  for (const line of lines) {
-    linesSinceMatch++;
-    if (!ERROR_PATTERN.test(line)) continue;
-    if (ERROR_START_PATTERN.test(line) || linesSinceMatch > ERROR_GROUP_LINES) errors++;
-    linesSinceMatch = 0;
-  }
-  return { errors, linesSinceMatch: Math.min(linesSinceMatch, ERROR_GROUP_LINES + 1) };
+  const next = { ...state };
+  for (const line of lines) stepErrorCount(next, line);
+  return { errors: next.errors, linesSinceMatch: Math.min(next.linesSinceMatch, ERROR_GROUP_LINES + 1) };
+};
+
+/** Indexes of the lines that start an error, by the same rule as countErrors. */
+export const errorStartLines = (lines: readonly string[]): number[] => {
+  const state = initialErrorCountState();
+  const starts: number[] = [];
+  lines.forEach((line, index) => {
+    if (stepErrorCount(state, line)) starts.push(index);
+  });
+  return starts;
 };
 
 export const tagOf = (line: string): string => parseLine(line).tag ?? OTHER_TAG;

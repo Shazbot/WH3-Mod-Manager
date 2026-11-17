@@ -7,7 +7,7 @@ import {
   countTags,
   filterLines,
   isCompileError,
-  isErrorLine,
+  errorStartLines,
   type PrefixMode,
 } from "../../gameLog/parse";
 import type { GameLogInfo } from "../../utility/logPaths";
@@ -90,6 +90,7 @@ const GameLogTab = memo(({ isActive = true }: GameLogTabProps) => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [scrollRequest, setScrollRequest] = useState<{ position: number; nonce: number }>();
   const [pendingJump, setPendingJump] = useState<{ path: string; lineNumber: number }>();
+  const [pendingFirstError, setPendingFirstError] = useState<string>();
   const [flashIndex, setFlashIndex] = useState<number>();
   const [errorCursor, setErrorCursor] = useState(-1);
 
@@ -177,13 +178,15 @@ const GameLogTab = memo(({ isActive = true }: GameLogTabProps) => {
       [...tagCounts.entries()].sort(([a], [b]) => (a === OTHER_TAG ? 1 : b === OTHER_TAG ? -1 : a.localeCompare(b))),
     [tagCounts],
   );
+  // One stop per error: a SCRIPT ERROR and its stack traceback are one error, as in the log list's count.
+  const errorStarts = useMemo(() => new Set(errorStartLines(lines)), [lines]);
   const errorPositions = useMemo(() => {
     const positions: number[] = [];
     rows.forEach((row, position) => {
-      if (row.kind === "line" && isErrorLine(lines[row.index])) positions.push(position);
+      if (row.kind === "line" && errorStarts.has(row.index)) positions.push(position);
     });
     return positions;
-  }, [rows, lines]);
+  }, [rows, errorStarts]);
 
   // Jump from a search result once that log has loaded.
   useEffect(() => {
@@ -196,6 +199,16 @@ const GameLogTab = memo(({ isActive = true }: GameLogTabProps) => {
     setScrollRequest({ position, nonce: Date.now() });
     setFlashIndex(lineIndex);
   }, [pendingJump, loaded, selectedPath, rows]);
+
+  // Jump to the first error of a log picked by its error count, once that log has loaded.
+  useEffect(() => {
+    if (!pendingFirstError || loaded?.path !== pendingFirstError || selectedPath !== pendingFirstError) return;
+    setPendingFirstError(undefined);
+    if (errorPositions.length === 0) return;
+    setErrorCursor(0);
+    setIsPinned(false);
+    setScrollRequest({ position: errorPositions[0], nonce: Date.now() });
+  }, [pendingFirstError, loaded, selectedPath, errorPositions]);
 
   useEffect(() => {
     if (flashIndex === undefined) return;
@@ -222,6 +235,16 @@ const GameLogTab = memo(({ isActive = true }: GameLogTabProps) => {
     setErrorCursor(next);
     setIsPinned(false);
     setScrollRequest({ position: errorPositions[next], nonce: Date.now() });
+  };
+
+  // The list's error count: the next error in the open log, or the first error of another log.
+  const onErrorCountClick = (path: string) => {
+    if (path === selectedPath && loaded?.path === path) {
+      goToError(1);
+      return;
+    }
+    selectLog(path);
+    setPendingFirstError(path);
   };
 
   const toggleTag = (tag: string) =>
@@ -263,6 +286,7 @@ const GameLogTab = memo(({ isActive = true }: GameLogTabProps) => {
             followLatest={followLatest}
             onFollowLatestChange={setFollowLatest}
             onSelect={selectLog}
+            onErrorCountClick={onErrorCountClick}
             onOpenFolder={openFolder}
           />
         </div>
