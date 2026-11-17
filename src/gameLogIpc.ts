@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as nodePath from "path";
 import * as readline from "readline";
 import { BrowserWindow, ipcMain } from "electron";
-import chokidar from "chokidar";
+import { watch, type FSWatcher } from "chokidar";
 
 import appData from "./appData";
 import { getCachedGameLogErrorCounts, scanGameLogErrorCounts } from "./gameLogErrorCounts";
@@ -41,7 +41,7 @@ const resolveLogPath = (value: unknown): string | undefined => {
 };
 
 let tail: GameLogTail | undefined;
-let listWatcher: chokidar.FSWatcher | undefined;
+let listWatcher: FSWatcher | undefined;
 let listWatcherPath: string | undefined;
 let listChangedTimer: NodeJS.Timeout | undefined;
 
@@ -119,17 +119,16 @@ export const registerGameLogIpc = (mainWindow: BrowserWindow) => {
     stopListWatcher();
     listWatcherPath = gamePath;
     // The game holds the live log open, so native fs events are unreliable: poll.
-    listWatcher = chokidar
-      .watch(gamePath, {
-        depth: 0,
-        usePolling: true,
-        interval: 1000,
-        ignoreInitial: true,
-        ignored: (path: string, stats?: fs.Stats) => {
-          if (path === gamePath) return false;
-          return stats ? stats.isFile() && !isGameLogFileName(nodePath.basename(path)) : false;
-        },
-      })
+    listWatcher = watch(gamePath, {
+      depth: 0,
+      backend: "polling",
+      pollingInterval: 1000,
+      ignoreInitial: true,
+      ignored: (path: string, stats?: fs.Stats) => {
+        if (path === gamePath) return false;
+        return stats ? stats.isFile() && !isGameLogFileName(nodePath.basename(path)) : false;
+      },
+    })
       // Without an error listener chokidar's error event throws.
       .on("error", (error) => console.log("Game log watcher error:", error))
       .on("add", (path) => isGameLogFileName(nodePath.basename(path)) && sendListChanged())

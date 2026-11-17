@@ -1,4 +1,4 @@
-import * as chokidar from "chokidar";
+import { watch, type FSWatcher } from "chokidar";
 import { app } from "electron";
 import * as path from "path";
 import * as fs from "fs";
@@ -6,7 +6,7 @@ import { gameToAppDataFolderName, gameToSteamId } from "./supportedGames";
 import appData from "./appData";
 import { findSteamAppsFolderSync, getCompatDataPrefixSync } from "./steamPaths";
 
-let savesWatcher: chokidar.FSWatcher | undefined;
+let savesWatcher: FSWatcher | undefined;
 
 let saves: GameSave[] = [];
 
@@ -86,13 +86,11 @@ export const setupSavesWatcher = async (cb: (saves: GameSave[]) => void) => {
     await savesWatcher.close();
   }
 
-  savesWatcher = chokidar
-    .watch(getSavesFolderPath(), {
-      depth: 0,
-      disableGlobbing: true,
-      ignoreInitial: true,
-      ignored: (path: string, stats?: fs.Stats) => !!stats && !stats.isDirectory() && !path.endsWith(".save"),
-    })
+  savesWatcher = watch(getSavesFolderPath(), {
+    depth: 0,
+    ignoreInitial: true,
+    ignored: (path: string, stats?: fs.Stats) => !!stats && !stats.isDirectory() && !path.endsWith(".save"),
+  })
     .on("error", (error: unknown) => console.log("saves watcher error:", error))
     .on("add", (path: string) => {
       upsertSave(path);

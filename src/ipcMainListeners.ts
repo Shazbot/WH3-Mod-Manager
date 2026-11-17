@@ -221,7 +221,7 @@ import { setVanillaDbCacheBuildProgressReporter } from "./vanillaDbCache/progres
 import bs from "binary-search";
 import { compress as zstdCompress, decompress as zstdDecompress } from "@mongodb-js/zstd";
 import * as cheerio from "cheerio";
-import chokidar from "chokidar";
+import { watch, type FSWatcher } from "chokidar";
 import { format } from "date-fns";
 import electronLog from "electron-log/main";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
@@ -559,11 +559,11 @@ const resolveSkillGenerationTemplate = (
     .replaceAll("${r}", variables.row)
     .replaceAll("${column}", variables.column)
     .replaceAll("${c}", variables.column);
-let contentWatcher: chokidar.FSWatcher | undefined;
-let dataWatcher: chokidar.FSWatcher | undefined;
-let downloadsWatcher: chokidar.FSWatcher | undefined;
-let mergedWatcher: chokidar.FSWatcher | undefined;
-let customModFoldersWatcher: chokidar.FSWatcher | undefined;
+let contentWatcher: FSWatcher | undefined;
+let dataWatcher: FSWatcher | undefined;
+let downloadsWatcher: FSWatcher | undefined;
+let mergedWatcher: FSWatcher | undefined;
+let customModFoldersWatcher: FSWatcher | undefined;
 // Without an error listener chokidar's error event throws, which aborts the pending "add"
 // (e.g. EBUSY while Explorer is still copying a pack), so the pack never shows up.
 const logWatcherError = (watcherName: string) => (error: unknown) =>
@@ -6339,17 +6339,15 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       (!!stats && !stats.isDirectory() && !path.endsWith(".pack") && !isLegacyWorkshopBin(path));
     if (!contentWatcher) {
       console.log("content folder:", contentFolder);
-      contentWatcher = chokidar
-        .watch(contentFolder, {
-          depth: 1,
-          disableGlobbing: true,
-          ignoreInitial: true,
-          ignored: isIgnoredInContentFolder,
-          awaitWriteFinish: {
-            stabilityThreshold: 2000,
-            pollInterval: 100,
-          },
-        })
+      contentWatcher = watch(contentFolder, {
+        depth: 1,
+        ignoreInitial: true,
+        ignored: isIgnoredInContentFolder,
+        awaitWriteFinish: {
+          stabilityThreshold: 2000,
+          pollInterval: 100,
+        },
+      })
         .on("error", logWatcherError("content"))
         .on("add", async (path) => {
           console.log("NEW CONTENT ADD", path);
@@ -6377,14 +6375,12 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         .replaceAll("//", "/")
         .replace("/content/", "/downloads/");
       console.log("downloads folder:", downloadsFolder);
-      downloadsWatcher = chokidar
-        .watch(downloadsFolder, {
-          depth: 1,
-          disableGlobbing: true,
-          ignoreInitial: true,
-          awaitWriteFinish: true,
-          ignored: isIgnoredInModFolder,
-        })
+      downloadsWatcher = watch(downloadsFolder, {
+        depth: 1,
+        ignoreInitial: true,
+        awaitWriteFinish: true,
+        ignored: isIgnoredInModFolder,
+      })
         .on("error", logWatcherError("downloads"))
         .on("add", async (path) => {
           console.log("NEW DOWNLOADS ADD", path);
@@ -6396,15 +6392,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
     if (!dataWatcher) {
       const dataFolders = [dataFolder, nodePath.join(dataFolder, "modding")].filter(fsExtra.existsSync);
-      dataWatcher = chokidar
-        .watch(dataFolders, {
-          depth: 0,
-          disableGlobbing: true,
-          ignoreInitial: true,
-          awaitWriteFinish: true,
-          followSymlinks: false,
-          ignored: isIgnoredInModFolder,
-        })
+      dataWatcher = watch(dataFolders, {
+        depth: 0,
+        ignoreInitial: true,
+        awaitWriteFinish: true,
+        followSymlinks: false,
+        ignored: isIgnoredInModFolder,
+      })
         .on("error", logWatcherError("data"))
         .on("add", async (path) => {
           console.log("dataWatcher add:", path);
@@ -6423,15 +6417,13 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     const existingCustomFolders = customFolders.filter((folder) => fsExtra.existsSync(folder.path));
     if (!customModFoldersWatcher && existingCustomFolders.length > 0) {
       const customFolderPaths = existingCustomFolders.map((folder) => folder.path);
-      customModFoldersWatcher = chokidar
-        .watch(customFolderPaths, {
-          depth: 1,
-          disableGlobbing: true,
-          ignoreInitial: true,
-          awaitWriteFinish: true,
-          followSymlinks: false,
-          ignored: isIgnoredInModFolder,
-        })
+      customModFoldersWatcher = watch(customFolderPaths, {
+        depth: 1,
+        ignoreInitial: true,
+        awaitWriteFinish: true,
+        followSymlinks: false,
+        ignored: isIgnoredInModFolder,
+      })
         .on("error", logWatcherError("custom mod folders"))
         .on("add", async (path) => onNewPackFound(path, true))
         .on("unlink", async (path) => onPackDeleted(path))
@@ -6442,18 +6434,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     if (!mergedWatcher) {
       const mergedDirPath = nodePath.join(gamePath, "/merged/");
       await fsExtra.ensureDir(mergedDirPath);
-      mergedWatcher = chokidar
-        .watch(mergedDirPath, {
-          depth: 0,
-          disableGlobbing: true,
-          ignoreInitial: false,
-          awaitWriteFinish: {
-            stabilityThreshold: 3000,
-            pollInterval: 100,
-          },
-          ignored: isIgnoredInModFolder,
-          usePolling: true,
-        })
+      mergedWatcher = watch(mergedDirPath, {
+        depth: 0,
+        ignoreInitial: false,
+        awaitWriteFinish: {
+          stabilityThreshold: 3000,
+          pollInterval: 100,
+        },
+        ignored: isIgnoredInModFolder,
+        backend: "polling",
+      })
         .on("error", logWatcherError("merged"))
         .on("add", async (path) => {
           onNewPackFound(path);
