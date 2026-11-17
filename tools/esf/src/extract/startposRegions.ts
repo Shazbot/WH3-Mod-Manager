@@ -82,11 +82,7 @@ export function extractStartposRegions(
         }
       },
       onRecordEnd(record, stack) {
-        if (
-          current?.slot &&
-          record.name === "REGION_SLOT" &&
-          stack[stack.length - 1] === "REGION_SLOT_ARRAY"
-        ) {
+        if (current?.slot && record.name === "REGION_SLOT" && stack[stack.length - 1] === "REGION_SLOT_ARRAY") {
           // REGION_SLOT's direct asciis are [instance key, template, type].
           if (current.slot.strings[2]?.toLowerCase() === "primary" && current.primaryBuilding === null) {
             current.primaryBuilding = current.slot.building || null;

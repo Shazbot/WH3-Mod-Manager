@@ -3,8 +3,7 @@
 export const OTHER_TAG = "(other)";
 
 const PREFIX_PATTERN = /^\[([^\]]+)\] <([\d.]+)s> {1,5}/;
-const ERROR_PATTERN =
-  /script error|stack traceback|attempt to (index|call|perform|compare|concatenate)|\.lua:\d+:/i;
+const ERROR_PATTERN = /script error|stack traceback|attempt to (index|call|perform|compare|concatenate)|\.lua:\d+:/i;
 
 export type ParsedLine = { tag?: string; time?: string; body: string };
 export type PrefixMode = "full" | "hideTimestamp" | "hideTagAndTimestamp";
@@ -60,7 +59,10 @@ export const compileQuery = (
 ): RegExp | { error: string } | undefined => {
   if (!pattern) return undefined;
   try {
-    return new RegExp(options.isRegex ? pattern : pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), options.caseSensitive ? "" : "i");
+    return new RegExp(
+      options.isRegex ? pattern : pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      options.caseSensitive ? "" : "i",
+    );
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Invalid regular expression" };
   }

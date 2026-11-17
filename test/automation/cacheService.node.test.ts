@@ -843,14 +843,19 @@ describe("automation cache service", () => {
   });
 
   it("releases completed visual-pack records instead of retaining them until request end", async () => {
-    const root = workspace(), packPath = path.join(root, "visual-retention.pack");
+    const root = workspace(),
+      packPath = path.join(root, "visual-retention.pack");
     await writeRawPack(packPath, [{ name: "model.bin", buffer: Buffer.from("one") }], metadata());
     const cache = makeService({ memoryMiB: 1 });
     const scope = cache.beginRequest({ policy: new FilesystemPolicy({ readRoots: [root] }) });
     const pack = await scope.readPackIndex(packPath);
     let loads = 0;
-    const load = async () => { loads++; return { blob: "x".repeat(300_000) }; };
-    const valid = (value: unknown): value is { blob: string } => Boolean(value && typeof value === "object" && "blob" in value);
+    const load = async () => {
+      loads++;
+      return { blob: "x".repeat(300_000) };
+    };
+    const valid = (value: unknown): value is { blob: string } =>
+      Boolean(value && typeof value === "object" && "blob" in value);
     try {
       await scope.getVisualReference(pack, pack.entries[0], "fixture", valid, load);
       await scope.flushVisualsPack(pack);
@@ -859,18 +864,29 @@ describe("automation cache service", () => {
       expect(cache.stats().entries.visuals).toBe(0);
       await scope.getVisualReference(pack, pack.entries[0], "fixture", valid, load);
       expect(loads).toBe(2);
-    } finally { scope.close(); }
+    } finally {
+      scope.close();
+    }
   });
 
   it("validates descriptor snapshots without repeating path authorization for each payload", async () => {
-    const root = workspace(), packPath = path.join(root, "session.pack");
-    await writeRawPack(packPath, Array.from({ length: 20 }, (_, index) => ({ name: `${index}.txt`, buffer: Buffer.from(`value${index}`) })), metadata());
+    const root = workspace(),
+      packPath = path.join(root, "session.pack");
+    await writeRawPack(
+      packPath,
+      Array.from({ length: 20 }, (_, index) => ({ name: `${index}.txt`, buffer: Buffer.from(`value${index}`) })),
+      metadata(),
+    );
     let authorizations = 0;
     class CountingPolicy extends FilesystemPolicy {
-      override async assertReadPath(value: string) { authorizations++; return super.assertReadPath(value); }
+      override async assertReadPath(value: string) {
+        authorizations++;
+        return super.assertReadPath(value);
+      }
     }
     const policy = new CountingPolicy({ readRoots: [root] });
-    const cache = makeService(), scope = cache.beginRequest({ policy });
+    const cache = makeService(),
+      scope = cache.beginRequest({ policy });
     const pack = await scope.readPackIndex(packPath);
     authorizations = 0;
     try {
@@ -885,16 +901,24 @@ describe("automation cache service", () => {
       const other = path.join(root, "other.pack");
       await writeRawPack(other, [{ name: "other.txt", buffer: Buffer.from("other") }], metadata());
       const fd = fs.openSync(other, "r");
-      try { await expect(scope.assertPackSnapshot(pack, fd)).rejects.toMatchObject({ code: "CONFLICT" }); }
-      finally { fs.closeSync(fd); }
-    } finally { scope.close(); }
+      try {
+        await expect(scope.assertPackSnapshot(pack, fd)).rejects.toMatchObject({ code: "CONFLICT" });
+      } finally {
+        fs.closeSync(fd);
+      }
+    } finally {
+      scope.close();
+    }
   });
 
   it("rejects a source replaced during a pack session and closes the borrowed handle on failure", async () => {
-    const root = workspace(), packPath = path.join(root, "session.pack"), replacement = path.join(root, "replacement.pack");
+    const root = workspace(),
+      packPath = path.join(root, "session.pack"),
+      replacement = path.join(root, "replacement.pack");
     await writeRawPack(packPath, [{ name: "one.txt", buffer: Buffer.from("one") }], metadata());
     await writeRawPack(replacement, [{ name: "two.txt", buffer: Buffer.from("two") }], metadata());
-    const cache = makeService(), context = makeContext(root, cache);
+    const cache = makeService(),
+      context = makeContext(root, cache);
     const scope = cache.beginRequest({ policy: context.policy });
     const pack = await scope.readPackIndex(packPath);
     const originalOpen = fs.promises.open.bind(fs.promises);
@@ -905,27 +929,36 @@ describe("automation cache service", () => {
       return handle;
     });
     try {
-      await expect(withAutomationPackReadSession(pack, { ...context, cacheRequest: scope }, async (session) => {
-        expect((await session.readPayload(pack.entries[0])).toString()).toBe("one");
-        fs.renameSync(replacement, packPath);
-      })).rejects.toMatchObject({ code: "CONFLICT" });
+      await expect(
+        withAutomationPackReadSession(pack, { ...context, cacheRequest: scope }, async (session) => {
+          expect((await session.readPayload(pack.entries[0])).toString()).toBe("one");
+          fs.renameSync(replacement, packPath);
+        }),
+      ).rejects.toMatchObject({ code: "CONFLICT" });
       expect(closes).toHaveLength(1);
       expect(closes[0]).toHaveBeenCalledOnce();
-    } finally { openSpy.mockRestore(); scope.close(); }
+    } finally {
+      openSpy.mockRestore();
+      scope.close();
+    }
   });
 
   it("enforces policy and cancellation for source sessions without a cache", async () => {
-    const root = workspace(), packPath = path.join(root, "session.pack");
+    const root = workspace(),
+      packPath = path.join(root, "session.pack");
     await writeRawPack(packPath, [{ name: "one.txt", buffer: Buffer.from("one") }], metadata());
     const pack = readPackIndex(packPath, { game: "wh3" });
-    await expect(withAutomationPackReadSession(pack, { policy: new FilesystemPolicy({ readRoots: [] }) }, async () => undefined))
-      .rejects.toMatchObject({ code: "IO_ACCESS" });
+    await expect(
+      withAutomationPackReadSession(pack, { policy: new FilesystemPolicy({ readRoots: [] }) }, async () => undefined),
+    ).rejects.toMatchObject({ code: "IO_ACCESS" });
     const controller = new AbortController();
     const context = createAutomationContext({ readRoots: [root], signal: controller.signal });
-    await expect(withAutomationPackReadSession(pack, context, async (session) => {
-      controller.abort();
-      return session.readPayload(pack.entries[0]);
-    })).rejects.toMatchObject({ code: "CANCELLED" });
+    await expect(
+      withAutomationPackReadSession(pack, context, async (session) => {
+        controller.abort();
+        return session.readPayload(pack.entries[0]);
+      }),
+    ).rejects.toMatchObject({ code: "CANCELLED" });
   });
 
   it("rejects changed source snapshots and unauthorized source/cache reads", async () => {

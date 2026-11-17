@@ -135,7 +135,19 @@ const planPass = async (payload: BackgroundModsPayload, signal: AbortSignal): Pr
       await cache.evict();
       if (!finished || !hooks?.onRunReport || outcomes.length + cachedMods.length === 0) return;
       for (const { mod, plan } of cachedMods) {
-        const result = await optimizer.produce(mod, plan, { signal, compress: async () => ({ name: mod.name, status: "noEligibleFiles", success: true, compressedFileCount: 0, warnings: [] }), onProgress: () => undefined }).catch(() => undefined);
+        const result = await optimizer
+          .produce(mod, plan, {
+            signal,
+            compress: async () => ({
+              name: mod.name,
+              status: "noEligibleFiles",
+              success: true,
+              compressedFileCount: 0,
+              warnings: [],
+            }),
+            onProgress: () => undefined,
+          })
+          .catch(() => undefined);
         if (result?.status === "ready") outcomes.push({ name: mod.name, status: "restored", summary: result.summary });
       }
       hooks.onRunReport(

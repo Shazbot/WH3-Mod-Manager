@@ -48,7 +48,10 @@ export const buildCacheOptions = (compressRigidModels: boolean, options?: Worksh
   const effective = options ?? DEFAULT_WORKSHOP_OPTIMIZER_OPTIONS;
   const result: Record<string, boolean | string> = { ...WORKSHOP_OPTIMIZER_HOST_OPTIONS, compressRigidModels };
   for (const [key, value] of Object.entries(effective)) {
-    if (key in WORKSHOP_OPTIMIZER_HOST_OPTIONS || value !== DEFAULT_WORKSHOP_OPTIMIZER_OPTIONS[key as keyof WorkshopOptimizerOptions]) {
+    if (
+      key in WORKSHOP_OPTIMIZER_HOST_OPTIONS ||
+      value !== DEFAULT_WORKSHOP_OPTIMIZER_OPTIONS[key as keyof WorkshopOptimizerOptions]
+    ) {
       result[key] = value;
     }
   }

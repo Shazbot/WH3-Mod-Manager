@@ -1250,7 +1250,8 @@ const loadOnnxLinkedTableData = async (
     if (file?.path) sourceFilesByPath.set(file.path.toLowerCase(), file);
   }
   for (const table of inputData.tables) {
-    if (table.sourceFile?.path) sourceFilesByPath.set(table.sourceFile.path.toLowerCase(), { ...table.sourceFile, loaded: true });
+    if (table.sourceFile?.path)
+      sourceFilesByPath.set(table.sourceFile.path.toLowerCase(), { ...table.sourceFile, loaded: true });
   }
   for (const vanillaPath of getVanillaPackPathsInLoadOrder()) {
     if (fs.existsSync(vanillaPath)) {
@@ -1259,9 +1260,10 @@ const loadOnnxLinkedTableData = async (
     }
   }
   const sourceFiles = [...sourceFilesByPath.values()].filter((file) => file.loaded !== false);
-  const matchingSourceFiles = schemaTableNames.length > 0
-    ? await narrowFilesToPacksWithTables(sourceFiles, schemaTableNames, `ONNX Node ${nodeId}`)
-    : [];
+  const matchingSourceFiles =
+    schemaTableNames.length > 0
+      ? await narrowFilesToPacksWithTables(sourceFiles, schemaTableNames, `ONNX Node ${nodeId}`)
+      : [];
   const collisionTableData: DBTablesNodeTable[] = [];
   for (const sourceFile of matchingSourceFiles) {
     if (!sourceFile.loaded) continue;
@@ -1299,16 +1301,19 @@ const resolveOnnxSourcePackPath = (selectedPackName: string | undefined, context
   for (const pack of candidatePacks) {
     if (pack.name.toLowerCase() !== nameKey && normalizedPackName(pack.path) !== fileKey) continue;
     const resolvedPath = resolveFlowSourcePackPath(pack.path, context);
-    const resolvedKey = process.platform === "win32"
-      ? path.resolve(resolvedPath).replace(/\\/g, "/").toLowerCase()
-      : path.resolve(resolvedPath);
+    const resolvedKey =
+      process.platform === "win32"
+        ? path.resolve(resolvedPath).replace(/\\/g, "/").toLowerCase()
+        : path.resolve(resolvedPath);
     matchesByPath.set(resolvedKey, resolvedPath);
   }
   const matches = [...matchesByPath.values()];
   if (matches.length !== 1) {
-    throw new Error(matches.length === 0
-      ? `Selected ONNX source pack '${selectedName}' is not available`
-      : `Selected ONNX source pack name '${selectedName}' is ambiguous`);
+    throw new Error(
+      matches.length === 0
+        ? `Selected ONNX source pack '${selectedName}' is not available`
+        : `Selected ONNX source pack name '${selectedName}' is ambiguous`,
+    );
   }
   return matches[0];
 };
@@ -1319,7 +1324,11 @@ const getOnnxPackedFileBytes = (packedFile: PackedFile | undefined, pathLabel: s
   throw new Error(`ONNX packed file '${pathLabel}' has no readable payload`);
 };
 
-const normalizeOnnxTableName = (name: string) => name.replace(/^db[\\/]/i, "").replace(/[\\/].*$/, "").toLowerCase();
+const normalizeOnnxTableName = (name: string) =>
+  name
+    .replace(/^db[\\/]/i, "")
+    .replace(/[\\/].*$/, "")
+    .toLowerCase();
 
 const executeStandaloneOnnxNode = async (
   nodeId: string,
@@ -1337,10 +1346,17 @@ const executeStandaloneOnnxNode = async (
     throw new Error("Standalone model path must be relative to the source pack");
   }
   const packedModelPath = modelPath.replace(/\\/g, "/");
-  if (!isSafeOnnxPackPath(packedModelPath)) throw new Error("Standalone model path must be a safe relative packed-file path");
+  if (!isSafeOnnxPackPath(packedModelPath))
+    throw new Error("Standalone model path must be a safe relative packed-file path");
   const sourcePackPath = resolveOnnxSourcePackPath(config.selectedPackName, executionContext);
-  const indexedPack = await readPackCached(sourcePackPath, { skipParsingTables: true, skipSorting: true }, executionContext);
-  const packedFilesByPath = new Map(indexedPack.packedFiles.map((packedFile) => [normalizePackFilePathKey(packedFile.name), packedFile.name]));
+  const indexedPack = await readPackCached(
+    sourcePackPath,
+    { skipParsingTables: true, skipSorting: true },
+    executionContext,
+  );
+  const packedFilesByPath = new Map(
+    indexedPack.packedFiles.map((packedFile) => [normalizePackFilePathKey(packedFile.name), packedFile.name]),
+  );
   const indexedModelPath = packedFilesByPath.get(normalizePackFilePathKey(packedModelPath.replace(/\//g, "\\")));
   if (!indexedModelPath) throw new Error(`Source pack is missing standalone model '${packedModelPath}'`);
   const modelPack = await readPackCached(
@@ -1349,7 +1365,9 @@ const executeStandaloneOnnxNode = async (
     executionContext,
   );
   const modelBytes = getOnnxPackedFileBytes(
-    modelPack.packedFiles.find((packedFile) => normalizePackFilePathKey(packedFile.name) === normalizePackFilePathKey(indexedModelPath)),
+    modelPack.packedFiles.find(
+      (packedFile) => normalizePackFilePathKey(packedFile.name) === normalizePackFilePathKey(indexedModelPath),
+    ),
     packedModelPath,
   );
   const metadata = await inspectStandaloneOnnxBytes(modelBytes);
@@ -1362,33 +1380,53 @@ const executeStandaloneOnnxNode = async (
   const inputBindings: Record<string, OnnxInputBinding[]> = {};
   for (const input of metadata.inputs) {
     const stored = config.standaloneInputBindings?.[input.name] || [];
-    const inferred = input.width === 1
-      ? inferOnnxInputBinding({ name: input.name, type: input.type }, rootTableName, schema).defaultBinding
-      : undefined;
-    const bindings = Array.from({ length: input.width }, (_unused, index) => stored[index] || (index === 0 ? inferred : undefined) || {
-      kind: "unresolved" as const,
-      reason: `Assign feature ${index + 1} of '${input.name}'`,
-    });
+    const inferred =
+      input.width === 1
+        ? inferOnnxInputBinding({ name: input.name, type: input.type }, rootTableName, schema).defaultBinding
+        : undefined;
+    const bindings = Array.from(
+      { length: input.width },
+      (_unused, index) =>
+        stored[index] ||
+        (index === 0 ? inferred : undefined) || {
+          kind: "unresolved" as const,
+          reason: `Assign feature ${index + 1} of '${input.name}'`,
+        },
+    );
     for (const binding of bindings) {
-      if (binding.kind === "unresolved") throw new Error(`Assign all standalone model inputs:\n${input.name}: ${binding.reason || "unresolved"}`);
+      if (binding.kind === "unresolved")
+        throw new Error(`Assign all standalone model inputs:\n${input.name}: ${binding.reason || "unresolved"}`);
       if (binding.kind === "column" || binding.kind === "column-present" || binding.kind === "reference-present") {
         if (!isValidOnnxForwardPath(binding.path, rootTableName, binding.tableName, schema)) {
           throw new Error(`Standalone input '${input.name}' has an invalid or stale schema reference path`);
         }
         if (binding.kind === "column" || binding.kind === "column-present") {
-          const schemaName = Object.keys(schema).find((name) => normalizeOnnxTableName(name) === normalizeOnnxTableName(binding.tableName));
-          const field = schemaName ? schema[schemaName]?.[0]?.fields.find((candidate) => candidate.name === binding.column) : undefined;
-          if (!field) throw new Error(`Standalone input '${input.name}' maps to missing column '${binding.tableName}.${binding.column}'`);
+          const schemaName = Object.keys(schema).find(
+            (name) => normalizeOnnxTableName(name) === normalizeOnnxTableName(binding.tableName),
+          );
+          const field = schemaName
+            ? schema[schemaName]?.[0]?.fields.find((candidate) => candidate.name === binding.column)
+            : undefined;
+          if (!field)
+            throw new Error(
+              `Standalone input '${input.name}' maps to missing column '${binding.tableName}.${binding.column}'`,
+            );
           const numericTypes = new Set(["Boolean", "I16", "I32", "I64", "F32", "F64", "ColourRGB"]);
           if (binding.kind === "column" && (input.type === "float32") !== numericTypes.has(field.field_type)) {
-            throw new Error(`Standalone input '${input.name}' type does not match '${binding.tableName}.${binding.column}'`);
+            throw new Error(
+              `Standalone input '${input.name}' type does not match '${binding.tableName}.${binding.column}'`,
+            );
           }
         }
       }
     }
     inputBindings[input.name] = bindings;
   }
-  const targetName = modelPath.split(/[\\/]/).pop()?.replace(/\.onnx$/i, "") || "";
+  const targetName =
+    modelPath
+      .split(/[\\/]/)
+      .pop()
+      ?.replace(/\.onnx$/i, "") || "";
   let inferredTarget: { tableName: string; column: string } | undefined;
   try {
     const target = parseOnnxModelTarget(targetName);
@@ -1408,27 +1446,41 @@ const executeStandaloneOnnxNode = async (
   if (!isValidOnnxForwardPath(outputBinding.path, rootTableName, outputBinding.tableName, schema)) {
     throw new Error(`Standalone output needs a valid forward schema reference path to '${outputBinding.tableName}'`);
   }
-  const targetSchemaName = Object.keys(schema).find((name) => normalizeOnnxTableName(name) === normalizeOnnxTableName(outputBinding.tableName));
+  const targetSchemaName = Object.keys(schema).find(
+    (name) => normalizeOnnxTableName(name) === normalizeOnnxTableName(outputBinding.tableName),
+  );
   const targetFields = targetSchemaName ? schema[targetSchemaName]?.[0]?.fields : undefined;
   const targetField = targetFields?.find((field) => field.name === outputBinding.column);
   if (!targetField || !["Boolean", "I16", "I32", "I64", "F32", "F64"].includes(targetField.field_type)) {
-    throw new Error(`Standalone output targets missing or non-numeric column '${outputBinding.tableName}.${outputBinding.column}'`);
+    throw new Error(
+      `Standalone output targets missing or non-numeric column '${outputBinding.tableName}.${outputBinding.column}'`,
+    );
   }
   for (const step of outputBinding.path) {
-    const childName = Object.keys(schema).find((name) => normalizeOnnxTableName(name) === normalizeOnnxTableName(step.targetTable));
+    const childName = Object.keys(schema).find(
+      (name) => normalizeOnnxTableName(name) === normalizeOnnxTableName(step.targetTable),
+    );
     const childKeys = childName ? schema[childName]?.[0]?.fields.filter((field) => field.is_key) : [];
     if (childKeys?.length !== 1 || childKeys[0].name !== step.targetColumn) {
-      throw new Error(`Standalone output cannot safely clone linked rows at '${step.targetTable}.${step.targetColumn}'`);
+      throw new Error(
+        `Standalone output cannot safely clone linked rows at '${step.targetTable}.${step.targetColumn}'`,
+      );
     }
   }
   const linkedTableNames = new Set<string>();
   for (const bindings of Object.values(inputBindings)) {
-    for (const binding of bindings) if (binding.kind === "column" || binding.kind === "column-present" || binding.kind === "reference-present") {
-      for (const step of binding.path) linkedTableNames.add(step.targetTable);
-    }
+    for (const binding of bindings)
+      if (binding.kind === "column" || binding.kind === "column-present" || binding.kind === "reference-present") {
+        for (const step of binding.path) linkedTableNames.add(step.targetTable);
+      }
   }
   for (const step of outputBinding.path) linkedTableNames.add(step.targetTable);
-  const { linkedTableData, collisionTableData } = await loadOnnxLinkedTableData(nodeId, inputData, linkedTableNames, executionContext);
+  const { linkedTableData, collisionTableData } = await loadOnnxLinkedTableData(
+    nodeId,
+    inputData,
+    linkedTableNames,
+    executionContext,
+  );
   const rootRows = rootTables.flatMap((tableData) => getRowsForPackedFile(tableData.table, executionContext));
   const predictions = await runOnnxStandaloneInference({
     modelBytes,
@@ -1456,7 +1508,11 @@ const executeStandaloneOnnxNode = async (
     linkedTableData,
     collisionTableData,
     strength,
-    cloneIdentity: [executionContext?.flowSourcePackName || "manual", executionContext?.flowFileName || "", nodeId].join("|"),
+    cloneIdentity: [
+      executionContext?.flowSourcePackName || "manual",
+      executionContext?.flowFileName || "",
+      nodeId,
+    ].join("|"),
   });
   return { success: true, data: output };
 };
@@ -1476,7 +1532,12 @@ const executeOnnxNode = async (
   let inputData: DBTablesNodeData;
   if (incomingData.type === "PackFiles") {
     if (!Array.isArray(incomingData.files)) return { success: false, error: "Invalid PackFiles input" };
-    const selected = await executeTableSelectionDropdownNode(nodeId, normalizeOnnxTableName(config.rootTableName || "main_units_tables"), incomingData, executionContext);
+    const selected = await executeTableSelectionDropdownNode(
+      nodeId,
+      normalizeOnnxTableName(config.rootTableName || "main_units_tables"),
+      incomingData,
+      executionContext,
+    );
     if (!selected.success) return selected;
     inputData = selected.data as DBTablesNodeData;
   } else {
@@ -1497,8 +1558,14 @@ const executeOnnxNode = async (
   validateOnnxBundlePaths(paths);
 
   const sourcePackPath = resolveOnnxSourcePackPath(config.selectedPackName, executionContext);
-  const indexedPack = await readPackCached(sourcePackPath, { skipParsingTables: true, skipSorting: true }, executionContext);
-  const indexedByPath = new Map(indexedPack.packedFiles.map((packedFile) => [normalizePackFilePathKey(packedFile.name), packedFile]));
+  const indexedPack = await readPackCached(
+    sourcePackPath,
+    { skipParsingTables: true, skipSorting: true },
+    executionContext,
+  );
+  const indexedByPath = new Map(
+    indexedPack.packedFiles.map((packedFile) => [normalizePackFilePathKey(packedFile.name), packedFile]),
+  );
   const manifestPackedPath = paths.modelsManifestPath.replace(/\//g, "\\");
   const preprocessorManifestPackedPath = paths.preprocessorManifestPath.replace(/\//g, "\\");
   const preprocessorModelPackedPath = paths.preprocessorModelPath.replace(/\//g, "\\");
@@ -1517,11 +1584,16 @@ const executeOnnxNode = async (
     executionContext,
   );
   const manifestText = getOnnxPackedFileBytes(
-    manifestPack.packedFiles.find((packedFile) => normalizePackFilePathKey(packedFile.name) === normalizePackFilePathKey(manifestPackedPath)),
+    manifestPack.packedFiles.find(
+      (packedFile) => normalizePackFilePathKey(packedFile.name) === normalizePackFilePathKey(manifestPackedPath),
+    ),
     paths.modelsManifestPath,
   ).toString("utf8");
   const preprocessorText = getOnnxPackedFileBytes(
-    manifestPack.packedFiles.find((packedFile) => normalizePackFilePathKey(packedFile.name) === normalizePackFilePathKey(preprocessorManifestPackedPath)),
+    manifestPack.packedFiles.find(
+      (packedFile) =>
+        normalizePackFilePathKey(packedFile.name) === normalizePackFilePathKey(preprocessorManifestPackedPath),
+    ),
     paths.preprocessorManifestPath,
   ).toString("utf8");
   const metadata = parseOnnxBundleMetadata(manifestText, preprocessorText);
@@ -1541,13 +1613,20 @@ const executeOnnxNode = async (
         throw new Error(`Input '${input.name}' has an invalid or stale schema reference path`);
       }
       if (binding.kind === "column" || binding.kind === "column-present") {
-        const fields = Object.keys(schema).find((name) => normalizeOnnxTableName(name) === normalizeOnnxTableName(binding.tableName));
-        const field = fields ? schema[fields]?.[0]?.fields.find((candidate) => candidate.name === binding.column) : undefined;
-        if (!field) throw new Error(`Input '${input.name}' maps to missing column '${binding.tableName}.${binding.column}'`);
+        const fields = Object.keys(schema).find(
+          (name) => normalizeOnnxTableName(name) === normalizeOnnxTableName(binding.tableName),
+        );
+        const field = fields
+          ? schema[fields]?.[0]?.fields.find((candidate) => candidate.name === binding.column)
+          : undefined;
+        if (!field)
+          throw new Error(`Input '${input.name}' maps to missing column '${binding.tableName}.${binding.column}'`);
         const numericTypes = new Set(["Boolean", "I16", "I32", "I64", "F32", "F64", "ColourRGB"]);
         const sourceIsNumeric = numericTypes.has(field.field_type);
         if (binding.kind === "column" && (input.type === "float32") !== sourceIsNumeric) {
-          throw new Error(`Input '${input.name}' expects ${input.type}, but '${binding.tableName}.${binding.column}' is ${field.field_type}`);
+          throw new Error(
+            `Input '${input.name}' expects ${input.type}, but '${binding.tableName}.${binding.column}' is ${field.field_type}`,
+          );
         }
       }
     }
@@ -1568,18 +1647,25 @@ const executeOnnxNode = async (
     if (!isValidOnnxForwardPath(binding.path, rootTableName, binding.tableName, schema)) {
       throw new Error(`Output '${model.key}' needs a valid forward schema reference path to '${binding.tableName}'`);
     }
-    const schemaName = Object.keys(schema).find((name) => normalizeOnnxTableName(name) === normalizeOnnxTableName(binding.tableName));
+    const schemaName = Object.keys(schema).find(
+      (name) => normalizeOnnxTableName(name) === normalizeOnnxTableName(binding.tableName),
+    );
     const schemaFields = schemaName ? schema[schemaName]?.[0]?.fields : undefined;
     const targetField = schemaFields?.find((field) => field.name === binding.column);
-    if (!targetField) throw new Error(`Output '${model.key}' targets missing column '${binding.tableName}.${binding.column}'`);
+    if (!targetField)
+      throw new Error(`Output '${model.key}' targets missing column '${binding.tableName}.${binding.column}'`);
     if (!["Boolean", "I16", "I32", "I64", "F32", "F64"].includes(targetField.field_type)) {
       throw new Error(`Output '${model.key}' targets non-numeric column '${binding.tableName}.${binding.column}'`);
     }
     for (const step of binding.path) {
-      const childName = Object.keys(schema).find((name) => normalizeOnnxTableName(name) === normalizeOnnxTableName(step.targetTable));
+      const childName = Object.keys(schema).find(
+        (name) => normalizeOnnxTableName(name) === normalizeOnnxTableName(step.targetTable),
+      );
       const childKeyFields = childName ? schema[childName]?.[0]?.fields.filter((field) => field.is_key) : [];
       if (childKeyFields?.length !== 1 || childKeyFields[0].name !== step.targetColumn) {
-        throw new Error(`Output '${model.key}' cannot safely clone linked rows at '${step.targetTable}.${step.targetColumn}'`);
+        throw new Error(
+          `Output '${model.key}' cannot safely clone linked rows at '${step.targetTable}.${step.targetColumn}'`,
+        );
       }
     }
     outputBindings[model.key] = binding;
@@ -1606,9 +1692,16 @@ const executeOnnxNode = async (
   const enabledModelPaths = activeModels
     .filter((model) => model.file)
     .map((model) => joinOnnxPackPath(paths.modelsDirectory, model.file!));
-  const packedModelPathsByKey = new Map(indexedPack.packedFiles.map((packedFile) => [normalizePackFilePathKey(packedFile.name), packedFile.name]));
-  const requiredPackedPaths = [preprocessorModelPackedPath, ...enabledModelPaths.map((name) => name.replace(/\//g, "\\"))];
-  const missingModelPath = requiredPackedPaths.find((name) => !packedModelPathsByKey.has(normalizePackFilePathKey(name)));
+  const packedModelPathsByKey = new Map(
+    indexedPack.packedFiles.map((packedFile) => [normalizePackFilePathKey(packedFile.name), packedFile.name]),
+  );
+  const requiredPackedPaths = [
+    preprocessorModelPackedPath,
+    ...enabledModelPaths.map((name) => name.replace(/\//g, "\\")),
+  ];
+  const missingModelPath = requiredPackedPaths.find(
+    (name) => !packedModelPathsByKey.has(normalizePackFilePathKey(name)),
+  );
   if (missingModelPath) throw new Error(`ONNX bundle is missing model payload '${missingModelPath}'`);
   const modelPack = await readPackCached(
     sourcePackPath,
@@ -1619,7 +1712,9 @@ const executeOnnxNode = async (
     },
     executionContext,
   );
-  const modelBuffers = new Map(modelPack.packedFiles.map((packedFile) => [normalizePackFilePathKey(packedFile.name), packedFile]));
+  const modelBuffers = new Map(
+    modelPack.packedFiles.map((packedFile) => [normalizePackFilePathKey(packedFile.name), packedFile]),
+  );
   const preprocessorBytes = getOnnxPackedFileBytes(
     modelBuffers.get(normalizePackFilePathKey(preprocessorModelPackedPath)),
     paths.preprocessorModelPath,
@@ -1627,7 +1722,12 @@ const executeOnnxNode = async (
   const modelPayloads = activeModels.map((definition) => ({
     definition,
     ...(definition.file
-      ? { bytes: getOnnxPackedFileBytes(modelBuffers.get(normalizePackFilePathKey(joinOnnxPackPath(paths.modelsDirectory, definition.file))), definition.file) }
+      ? {
+          bytes: getOnnxPackedFileBytes(
+            modelBuffers.get(normalizePackFilePathKey(joinOnnxPackPath(paths.modelsDirectory, definition.file))),
+            definition.file,
+          ),
+        }
       : {}),
   }));
 
@@ -1655,7 +1755,11 @@ const executeOnnxNode = async (
     linkedTableData,
     collisionTableData,
     strength,
-    cloneIdentity: [executionContext?.flowSourcePackName || "manual", executionContext?.flowFileName || "", nodeId].join("|"),
+    cloneIdentity: [
+      executionContext?.flowSourcePackName || "manual",
+      executionContext?.flowFileName || "",
+      nodeId,
+    ].join("|"),
   });
   return { success: true, data: output };
 };

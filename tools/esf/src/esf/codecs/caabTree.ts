@@ -97,7 +97,7 @@ function readGroupRanges(
   blockStartOffset: number,
   blockEndOffset: number,
   groupCount: number,
-  hasNestedBlocks: boolean
+  hasNestedBlocks: boolean,
 ): { ranges: { start: number; end: number }[]; widths: number[] } {
   if (!hasNestedBlocks) {
     return { ranges: [{ start: blockStartOffset, end: blockEndOffset }], widths: [] };
@@ -124,10 +124,7 @@ function readGroupRanges(
 }
 
 /** Turns a group's child records plus the gaps between them into an item list. */
-function buildGroupItems(
-  range: { start: number; end: number },
-  children: ChildEntry[]
-): CaabItem[] {
+function buildGroupItems(range: { start: number; end: number }, children: ChildEntry[]): CaabItem[] {
   const items: CaabItem[] = [];
   let cursor = range.start;
 
@@ -153,7 +150,7 @@ function buildGroupItems(
 export function buildCaabTree(
   buffer: Buffer,
   header: Pick<CaabHeaderFields, "recordNamesOffset">,
-  tables: Pick<CaabStringTables, "recordNames" | "utf8ById" | "utf16ById">
+  tables: Pick<CaabStringTables, "recordNames" | "utf8ById" | "utf16ById">,
 ): CaabRecordNode {
   const stack: OpenRecord[] = [];
   const recordNameIndex = new Map<string, number>();
@@ -169,7 +166,8 @@ export function buildCaabTree(
 
       // Re-read the record's own size fields so their original encoded widths
       // are preserved; the walker reports the values but not how wide they were.
-      const sizeFieldOffset = record.startOffset + 1 + (isRoot || (record.flags & RECORD_FLAG_HAS_NON_OPTIMIZED_INFO) !== 0 ? 3 : 1);
+      const sizeFieldOffset =
+        record.startOffset + 1 + (isRoot || (record.flags & RECORD_FLAG_HAS_NON_OPTIMIZED_INFO) !== 0 ? 3 : 1);
       const blockSizeInfo = readCauleb128(buffer, sizeFieldOffset);
       const blockSizeWidth = blockSizeInfo.nextOffset - sizeFieldOffset;
       let groupCountWidth = 0;
@@ -203,7 +201,7 @@ export function buildCaabTree(
         record.blockStartOffset,
         record.blockEndOffset,
         record.groupCount,
-        hasNestedBlocks
+        hasNestedBlocks,
       );
       node.groupSizeWidths = groupSizeWidths;
 
@@ -242,9 +240,7 @@ export function buildCaabTree(
       if (!open) {
         throw new Error("CAAB record end without a matching start.");
       }
-      open.node.groups = open.groupRanges.map((range, index) =>
-        buildGroupItems(range, open.groupChildren[index])
-      );
+      open.node.groups = open.groupRanges.map((range, index) => buildGroupItems(range, open.groupChildren[index]));
     },
   });
 
@@ -344,7 +340,9 @@ export function replaceByteRanges(root: CaabRecordNode, replacements: CaabByteRe
         while (replacementIndex < ordered.length && ordered[replacementIndex].start < item.end) {
           const replacement = ordered[replacementIndex];
           if (replacement.start < item.start || replacement.end > item.end || replacement.start < cursor) {
-            throw new Error(`Replacement range [${replacement.start}, ${replacement.end}) is not covered by one raw span.`);
+            throw new Error(
+              `Replacement range [${replacement.start}, ${replacement.end}) is not covered by one raw span.`,
+            );
           }
           if (replacement.start > cursor) parts.push({ kind: "raw", start: cursor, end: replacement.start });
           parts.push({ kind: "bytes", data: replacement.data });

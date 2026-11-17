@@ -8,6 +8,5 @@ export const filterVisualsModelPreviewWarnings = (
     ? [...warnings]
     : warnings.filter(
         (warning) =>
-          warning !== NON_MODDER_STUMP_WARNING &&
-          !warning.startsWith("Composed models use different skeletons ("),
+          warning !== NON_MODDER_STUMP_WARNING && !warning.startsWith("Composed models use different skeletons ("),
       );

@@ -76,9 +76,19 @@ const definitions: Record<string, DBVersion[]> = {
       field("enabled", false, "Boolean"),
     ]),
   ],
-  building_culture_variants_tables: [schema([field("key", true), field("building"), field("culture"), field("variant")])],
+  building_culture_variants_tables: [
+    schema([field("key", true), field("building"), field("culture"), field("variant")]),
+  ],
   mercenary_unit_groups_tables: [schema([field("key", true), field("unit_record"), field("group")])],
-  unit_set_to_unit_junctions_tables: [schema([field("unit_set", true), field("unit_record"), field("unit_caste"), field("unit_category"), field("unit_class")])],
+  unit_set_to_unit_junctions_tables: [
+    schema([
+      field("unit_set", true),
+      field("unit_record"),
+      field("unit_caste"),
+      field("unit_category"),
+      field("unit_class"),
+    ]),
+  ],
   units_to_exclusive_faction_permissions_tables: [
     schema([field("key", true), field("faction", true), field("allowed", false, "Boolean")]),
   ],
@@ -89,7 +99,9 @@ const definitions: Record<string, DBVersion[]> = {
   battlefield_engines_tables: [schema([field("key", true), field("variant"), field("model")])],
   land_units_to_extra_engines_tables: [schema([field("land_unit", true), field("battle_engine", true)])],
   agent_subtypes_tables: [schema([field("key", true), field("associated_unit_override")])],
-  agent_subtype_subculture_overrides_tables: [schema([field("key", true), field("associated_unit_override"), field("subtype")])],
+  agent_subtype_subculture_overrides_tables: [
+    schema([field("key", true), field("associated_unit_override"), field("subtype")]),
+  ],
   faction_agent_permitted_subtypes_tables: [schema([field("faction", true), field("subtype", true)])],
   campaign_character_art_sets_tables: [schema([field("art_set_id", true), field("agent_subtype"), field("faction")])],
   campaign_character_arts_tables: [
@@ -398,7 +410,10 @@ describe("localization and unit lookups", () => {
         db("ui_unit_groupings", [{ key: "group", parent_group: "commander" }]),
         db("ui_unit_group_parents", [{ key: "commander" }]),
         loc({ land_units_onscreen_name_land_key: "Swordsmen" }),
-        { name: "variantmeshes\\variantmeshdefinitions\\test.variantmeshdefinition", buffer: Buffer.from("<root><source>variantmeshes/variantmeshdefinitions/test_model.wsmodel</source></root>") },
+        {
+          name: "variantmeshes\\variantmeshdefinitions\\test.variantmeshdefinition",
+          buffer: Buffer.from("<root><source>variantmeshes/variantmeshdefinitions/test_model.wsmodel</source></root>"),
+        },
         { name: "variantmeshes\\variantmeshdefinitions\\test_model.wsmodel", buffer: Buffer.from("<root/>") },
       ],
       metadata,
@@ -446,24 +461,59 @@ describe("localization and unit lookups", () => {
     });
     expect(item.visuals.variants.items[0]).toMatchObject({ status: "found", packPath: pack });
     expect(result.complete).toBe(false); // Partial fixture lacks some optional coverage tables.
-    expect(await run({ operation: "unit_resolve", packPaths: [pack], query: "visual", searchBy: "variant" })).toMatchObject({
+    expect(
+      await run({ operation: "unit_resolve", packPaths: [pack], query: "visual", searchBy: "variant" }),
+    ).toMatchObject({
       total: 1,
       items: [expect.objectContaining({ mainUnitKey: "main_key" })],
     });
-    expect(await run({ operation: "unit_resolve", packPaths: [pack], query: "variantmeshes/variantmeshdefinitions/test.variantmeshdefinition", searchBy: "mesh" })).toMatchObject({
+    expect(
+      await run({
+        operation: "unit_resolve",
+        packPaths: [pack],
+        query: "variantmeshes/variantmeshdefinitions/test.variantmeshdefinition",
+        searchBy: "mesh",
+      }),
+    ).toMatchObject({
       total: 1,
       items: [expect.objectContaining({ mainUnitKey: "main_key" })],
     });
-    expect(await run({ operation: "unit_resolve", packPaths: [pack], query: "test.variantmeshdefinition", searchBy: "mesh", match: "contains" })).toMatchObject({
+    expect(
+      await run({
+        operation: "unit_resolve",
+        packPaths: [pack],
+        query: "test.variantmeshdefinition",
+        searchBy: "mesh",
+        match: "contains",
+      }),
+    ).toMatchObject({
       total: 1,
     });
-    const wsmodel = await run({ operation: "unit_resolve", packPaths: [pack], query: "test_model", searchBy: "mesh", match: "contains" });
+    const wsmodel = await run({
+      operation: "unit_resolve",
+      packPaths: [pack],
+      query: "test_model",
+      searchBy: "mesh",
+      match: "contains",
+    });
     expect(wsmodel).toMatchObject({ total: 1, items: [expect.objectContaining({ mainUnitKey: "main_key" })] });
-    const batch = await run({ operation: "unit_resolve", packPaths: [pack], queries: ["test_model", "test.variantmeshdefinition"], searchBy: "mesh", match: "contains" });
-    expect(batch).toMatchObject({ results: [
-      { query: "test_model", total: 1, items: [expect.objectContaining({ mainUnitKey: "main_key" })] },
-      { query: "test.variantmeshdefinition", total: 1, items: [expect.objectContaining({ mainUnitKey: "main_key" })] },
-    ] });
+    const batch = await run({
+      operation: "unit_resolve",
+      packPaths: [pack],
+      queries: ["test_model", "test.variantmeshdefinition"],
+      searchBy: "mesh",
+      match: "contains",
+    });
+    expect(batch).toMatchObject({
+      results: [
+        { query: "test_model", total: 1, items: [expect.objectContaining({ mainUnitKey: "main_key" })] },
+        {
+          query: "test.variantmeshdefinition",
+          total: 1,
+          items: [expect.objectContaining({ mainUnitKey: "main_key" })],
+        },
+      ],
+    });
   });
 
   it("searches typed DB field values and keeps row identity and bounded-result diagnostics", async () => {
@@ -472,25 +522,56 @@ describe("localization and unit lookups", () => {
       pack,
       [
         db("main_units", [{ ...main("needle_unit", "needle_land"), num_men: 65 }]),
-        db("building_units_allowed", [{ key: "rule", unit: "needle_unit", building: "barracks", faction: "f", conditions: "", enabled: true }]),
+        db("building_units_allowed", [
+          { key: "rule", unit: "needle_unit", building: "barracks", faction: "f", conditions: "", enabled: true },
+        ]),
         { name: "db\\unsupported_table_tables\\data", buffer: Buffer.from([1, 2, 3]) },
       ],
       metadata,
     );
-    const numeric = await executeAutomationRequest({ operation: "pack_search", packPath: pack, query: "65" }, context());
+    const numeric = await executeAutomationRequest(
+      { operation: "pack_search", packPath: pack, query: "65" },
+      context(),
+    );
     expect(numeric).toMatchObject({
       ok: true,
-      data: { results: [expect.objectContaining({ kind: "db", table: "main_units_tables", filePath: "db\\main_units_tables\\data", field: "num_men", typedValue: 65, rowIdentity: { unit: "needle_unit" } })] },
+      data: {
+        results: [
+          expect.objectContaining({
+            kind: "db",
+            table: "main_units_tables",
+            filePath: "db\\main_units_tables\\data",
+            field: "num_men",
+            typedValue: 65,
+            rowIdentity: { unit: "needle_unit" },
+          }),
+        ],
+      },
     });
-    const boolean = await executeAutomationRequest({ operation: "pack_search", packPath: pack, query: "true" }, context());
+    const boolean = await executeAutomationRequest(
+      { operation: "pack_search", packPath: pack, query: "true" },
+      context(),
+    );
     expect(boolean).toMatchObject({
       ok: true,
-      data: { results: [expect.objectContaining({ kind: "db", field: "enabled", typedValue: true, rowIdentity: { key: "rule" } })] },
+      data: {
+        results: [
+          expect.objectContaining({ kind: "db", field: "enabled", typedValue: true, rowIdentity: { key: "rule" } }),
+        ],
+      },
     });
-    expect(boolean.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: "SKIPPED_UNSUPPORTED_DB" })]));
-    const noContent = await executeAutomationRequest({ operation: "pack_search", packPath: pack, query: "true", content: false }, context());
+    expect(boolean.diagnostics).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "SKIPPED_UNSUPPORTED_DB" })]),
+    );
+    const noContent = await executeAutomationRequest(
+      { operation: "pack_search", packPath: pack, query: "true", content: false },
+      context(),
+    );
     expect(noContent).toMatchObject({ ok: true, data: { results: [], truncated: false } });
-    const bounded = await executeAutomationRequest({ operation: "pack_search", packPath: pack, query: "needle", maxResults: 1 }, context());
+    const bounded = await executeAutomationRequest(
+      { operation: "pack_search", packPath: pack, query: "needle", maxResults: 1 },
+      context(),
+    );
     expect(bounded).toMatchObject({ ok: true, data: { truncated: true, results: [expect.any(Object)] } });
   });
 
@@ -573,17 +654,33 @@ describe("localization and unit lookups", () => {
       [
         db("land_units", [land("land_a")]),
         db("main_units", [main("unit_a", "land_a")]),
-        db("unit_variants", [{ unit: "land_a", faction: "faction_a", variant: "visual_a", name: "Unit A", unit_card: "card" }]),
+        db("unit_variants", [
+          { unit: "land_a", faction: "faction_a", variant: "visual_a", name: "Unit A", unit_card: "card" },
+        ]),
         db("variants", [{ variant_name: "visual_a", variant_filename: "unit" }]),
         db("units_custom_battle_permissions", [{ unit: "unit_a", faction: "faction_a", general_uniform: "" }]),
         db("factions", [{ key: "faction_a", subculture: "sub_a" }]),
         db("cultures_subcultures", [{ subculture: "sub_a", culture: "culture_a" }]),
-        db("building_units_allowed", [{ key: "rule", unit: "unit_a", building: "barracks", faction: "faction_a", conditions: "unlock", enabled: true }]),
+        db("building_units_allowed", [
+          {
+            key: "rule",
+            unit: "unit_a",
+            building: "barracks",
+            faction: "faction_a",
+            conditions: "unlock",
+            enabled: true,
+          },
+        ]),
         loc({ land_units_onscreen_name_land_a: "Unit A", factions_screen_name_faction_a: "Faction A" }),
-        { name: visualPath, buffer: Buffer.from("<root><source>variantmeshes/variantmeshdefinitions/child.wsmodel</source></root>") },
+        {
+          name: visualPath,
+          buffer: Buffer.from("<root><source>variantmeshes/variantmeshdefinitions/child.wsmodel</source></root>"),
+        },
         {
           name: "variantmeshes\\variantmeshdefinitions\\child.wsmodel",
-          buffer: Buffer.from("<root><source>textures/shared.dds</source><definition>variantmeshes/variantmeshdefinitions/unit.variantmeshdefinition</definition></root>"),
+          buffer: Buffer.from(
+            "<root><source>textures/shared.dds</source><definition>variantmeshes/variantmeshdefinitions/unit.variantmeshdefinition</definition></root>",
+          ),
         },
         { name: "textures\\shared.dds", buffer: Buffer.from("support texture") },
       ],
@@ -614,31 +711,70 @@ describe("localization and unit lookups", () => {
             roster: expect.objectContaining({
               scopeSource: "customBattlePermissions",
               factions: expect.arrayContaining([expect.objectContaining({ key: "faction_a" })]),
-              customBattlePermissions: expect.arrayContaining([expect.objectContaining({ row: { unit: "unit_a", faction: "faction_a", general_uniform: "" } })]),
+              customBattlePermissions: expect.arrayContaining([
+                expect.objectContaining({ row: { unit: "unit_a", faction: "faction_a", general_uniform: "" } }),
+              ]),
             }),
-            roots: expect.arrayContaining([expect.objectContaining({ path: visualPath, rootKind: "variant", chain: expect.arrayContaining([expect.objectContaining({ to: "textures\\shared.dds" })]) })]),
+            roots: expect.arrayContaining([
+              expect.objectContaining({
+                path: visualPath,
+                rootKind: "variant",
+                chain: expect.arrayContaining([expect.objectContaining({ to: "textures\\shared.dds" })]),
+              }),
+            ]),
           }),
         ]),
       },
     });
     const report = JSON.parse(readFileSync(path.join(root, "asset-users-report.json"), "utf8")) as any;
     expect(report.users).toHaveLength(1);
-    expect(report.users[0].roots[0].chain).toEqual(expect.arrayContaining([expect.objectContaining({ to: "textures\\shared.dds" })]));
-    await writeRawPack(target, [
-      { name: "textures\\shared.dds", buffer: Buffer.from("target texture") },
-      { name: "textures\\other.dds", buffer: Buffer.from("other texture") },
-    ], metadata);
+    expect(report.users[0].roots[0].chain).toEqual(
+      expect.arrayContaining([expect.objectContaining({ to: "textures\\shared.dds" })]),
+    );
+    await writeRawPack(
+      target,
+      [
+        { name: "textures\\shared.dds", buffer: Buffer.from("target texture") },
+        { name: "textures\\other.dds", buffer: Buffer.from("other texture") },
+      ],
+      metadata,
+    );
     const indexingCompletions: number[] = [];
-    const batchContext = createAutomationContext({ schemaProvider: async () => definitions, readRoots: [root],
-      progress: (update) => { if (update.stage === "indexing" && update.completed === update.total) indexingCompletions.push(update.completed ?? 0); } });
-    const batchUsers = await executeAutomationRequest({ operation: "asset_users", packPath: target, packPaths: [support],
-      targetPaths: ["textures/shared.dds", "textures/other.dds"] }, batchContext);
-    expect(batchUsers).toMatchObject({ ok: true, data: { totalTargets: 2, targets: [
-      { targetPath: "textures\\shared.dds", total: 1, users: [expect.objectContaining({ mainUnitKey: "unit_a" })] },
-      { targetPath: "textures\\other.dds", total: 0, changedPathCoverage: { status: "noMatch", complete: true } },
-    ] } });
-    const singleShared = await executeAutomationRequest({ operation: "asset_users", packPath: target, packPaths: [support], targetPath: "textures/shared.dds" }, batchContext);
-    const singleOther = await executeAutomationRequest({ operation: "asset_users", packPath: target, packPaths: [support], targetPath: "textures/other.dds" }, batchContext);
+    const batchContext = createAutomationContext({
+      schemaProvider: async () => definitions,
+      readRoots: [root],
+      progress: (update) => {
+        if (update.stage === "indexing" && update.completed === update.total)
+          indexingCompletions.push(update.completed ?? 0);
+      },
+    });
+    const batchUsers = await executeAutomationRequest(
+      {
+        operation: "asset_users",
+        packPath: target,
+        packPaths: [support],
+        targetPaths: ["textures/shared.dds", "textures/other.dds"],
+      },
+      batchContext,
+    );
+    expect(batchUsers).toMatchObject({
+      ok: true,
+      data: {
+        totalTargets: 2,
+        targets: [
+          { targetPath: "textures\\shared.dds", total: 1, users: [expect.objectContaining({ mainUnitKey: "unit_a" })] },
+          { targetPath: "textures\\other.dds", total: 0, changedPathCoverage: { status: "noMatch", complete: true } },
+        ],
+      },
+    });
+    const singleShared = await executeAutomationRequest(
+      { operation: "asset_users", packPath: target, packPaths: [support], targetPath: "textures/shared.dds" },
+      batchContext,
+    );
+    const singleOther = await executeAutomationRequest(
+      { operation: "asset_users", packPath: target, packPaths: [support], targetPath: "textures/other.dds" },
+      batchContext,
+    );
     expect(batchUsers.ok && singleShared.ok && singleOther.ok).toBe(true);
     if (batchUsers.ok && singleShared.ok && singleOther.ok) {
       expect((batchUsers.data as any).targets[0].users).toEqual(singleShared.data.users);
@@ -646,7 +782,13 @@ describe("localization and unit lookups", () => {
     }
     expect(indexingCompletions).toHaveLength(3); // One shared index for the batch, one per single request.
     const limited = await executeAutomationRequest(
-      { operation: "asset_users", packPath: target, packPaths: [support], targetPath: "textures/shared.dds", maxNodes: 1 },
+      {
+        operation: "asset_users",
+        packPath: target,
+        packPaths: [support],
+        targetPath: "textures/shared.dds",
+        maxNodes: 1,
+      },
       createAutomationContext({ schemaProvider: async () => definitions, readRoots: [root] }),
     );
     expect(limited).toMatchObject({ ok: true, data: { complete: false } });
@@ -658,28 +800,47 @@ describe("localization and unit lookups", () => {
     const visualEntries = (unitKey: string, landKey: string, filename: string) => {
       const visualPath = `variantmeshes\\variantmeshdefinitions\\${filename}.variantmeshdefinition`;
       return [
-        { name: visualPath, buffer: Buffer.from(`<root><source>variantmeshes/variantmeshdefinitions/${filename}.wsmodel</source></root>`) },
-        { name: `variantmeshes\\variantmeshdefinitions\\${filename}.wsmodel`, buffer: Buffer.from("<root><source>textures/shared.dds</source></root>") },
+        {
+          name: visualPath,
+          buffer: Buffer.from(`<root><source>variantmeshes/variantmeshdefinitions/${filename}.wsmodel</source></root>`),
+        },
+        {
+          name: `variantmeshes\\variantmeshdefinitions\\${filename}.wsmodel`,
+          buffer: Buffer.from("<root><source>textures/shared.dds</source></root>"),
+        },
       ];
     };
-    await writeRawPack(support, [
-      db("main_units", [main("unit_a", "land_a"), main("unit_b", "land_b")]),
-      db("land_units", [land("land_a"), land("land_b")]),
-      db("unit_variants", [
-        { unit: "land_a", faction: "faction_unit_a", variant: "variant_unit_a", name: "unit_a", unit_card: "" },
-        { unit: "land_b", faction: "faction_unit_b", variant: "variant_unit_b", name: "unit_b", unit_card: "" },
-      ]),
-      db("variants", [
-        { variant_name: "variant_unit_a", variant_filename: "alpha" },
-        { variant_name: "variant_unit_b", variant_filename: "beta" },
-      ]),
-      ...visualEntries("unit_a", "land_a", "alpha"), ...visualEntries("unit_b", "land_b", "beta"),
-    ], metadata);
+    await writeRawPack(
+      support,
+      [
+        db("main_units", [main("unit_a", "land_a"), main("unit_b", "land_b")]),
+        db("land_units", [land("land_a"), land("land_b")]),
+        db("unit_variants", [
+          { unit: "land_a", faction: "faction_unit_a", variant: "variant_unit_a", name: "unit_a", unit_card: "" },
+          { unit: "land_b", faction: "faction_unit_b", variant: "variant_unit_b", name: "unit_b", unit_card: "" },
+        ]),
+        db("variants", [
+          { variant_name: "variant_unit_a", variant_filename: "alpha" },
+          { variant_name: "variant_unit_b", variant_filename: "beta" },
+        ]),
+        ...visualEntries("unit_a", "land_a", "alpha"),
+        ...visualEntries("unit_b", "land_b", "beta"),
+      ],
+      metadata,
+    );
     await writeRawPack(target, [{ name: "textures\\shared.dds", buffer: Buffer.from("target") }], metadata);
     const context = createAutomationContext({ schemaProvider: async () => definitions, readRoots: [root] });
     const runUsers = async (extra: Record<string, unknown> = {}) => {
-      const response = await executeAutomationRequest({ operation: "asset_users", packPath: target, packPaths: [support],
-        targetPath: "textures/shared.dds", ...extra }, context);
+      const response = await executeAutomationRequest(
+        {
+          operation: "asset_users",
+          packPath: target,
+          packPaths: [support],
+          targetPath: "textures/shared.dds",
+          ...extra,
+        },
+        context,
+      );
       if (!response.ok) throw new Error(JSON.stringify(response.error));
       return response.data as any;
     };
@@ -687,7 +848,11 @@ describe("localization and unit lookups", () => {
     const byLandKey = await runUsers({ unitKeys: ["LAND_B"] });
     expect(byLandKey.users.map((user: any) => user.mainUnitKey)).toEqual(["unit_b"]);
     expect(byLandKey.coverage).toMatchObject({
-      scope: { unitKeys: ["land_b"], rootGlob: null, packScope: { targetPack: target, modPackPaths: [support, target], vanillaPackPaths: [] } },
+      scope: {
+        unitKeys: ["land_b"],
+        rootGlob: null,
+        packScope: { targetPack: target, modPackPaths: [support, target], vanillaPackPaths: [] },
+      },
       units: { total: 2, selected: 1, scanned: 2 },
       roots: { discovered: 1, filtered: 1, unique: 1, selected: 1, scanned: 1 },
     });
@@ -709,68 +874,138 @@ describe("localization and unit lookups", () => {
     const unitEntries = (unitKey: string, landKey: string, filename: string) => {
       const visualPath = `variantmeshes\\variantmeshdefinitions\\${filename}.variantmeshdefinition`;
       return [
-        db("main_units", [main(unitKey, landKey)], `${filename}_main`), db("land_units", [land(landKey)], `${filename}_land`),
-        db("unit_variants", [{ unit: landKey, faction: `faction_${unitKey}`, variant: `variant_${unitKey}`, name: unitKey, unit_card: "" }], `${filename}_unit_variants`),
+        db("main_units", [main(unitKey, landKey)], `${filename}_main`),
+        db("land_units", [land(landKey)], `${filename}_land`),
+        db(
+          "unit_variants",
+          [
+            {
+              unit: landKey,
+              faction: `faction_${unitKey}`,
+              variant: `variant_${unitKey}`,
+              name: unitKey,
+              unit_card: "",
+            },
+          ],
+          `${filename}_unit_variants`,
+        ),
         db("variants", [{ variant_name: `variant_${unitKey}`, variant_filename: filename }], `${filename}_variants`),
-        { name: visualPath, buffer: Buffer.from(`<root><source>variantmeshes/variantmeshdefinitions/${filename}.wsmodel</source></root>`) },
-        { name: `variantmeshes\\variantmeshdefinitions\\${filename}.wsmodel`, buffer: Buffer.from("<root><source>textures/shared.dds</source></root>") },
+        {
+          name: visualPath,
+          buffer: Buffer.from(`<root><source>variantmeshes/variantmeshdefinitions/${filename}.wsmodel</source></root>`),
+        },
+        {
+          name: `variantmeshes\\variantmeshdefinitions\\${filename}.wsmodel`,
+          buffer: Buffer.from("<root><source>textures/shared.dds</source></root>"),
+        },
       ];
     };
     await writeRawPack(vanilla, unitEntries("unit_vanilla", "land_vanilla", "vanilla_root"), metadata);
     await writeRawPack(support, unitEntries("unit_mod", "land_mod", "mod_root"), metadata);
     await writeRawPack(target, [{ name: "textures\\shared.dds", buffer: Buffer.from("target") }], metadata);
     const context = createAutomationContext({ schemaProvider: async () => definitions, readRoots: [root] });
-    const request = { operation: "asset_users", packPath: target, packPaths: [support], vanillaPackPaths: [vanilla], targetPath: "textures/shared.dds" };
+    const request = {
+      operation: "asset_users",
+      packPath: target,
+      packPaths: [support],
+      vanillaPackPaths: [vanilla],
+      targetPath: "textures/shared.dds",
+    };
     const full = await executeAutomationRequest(request, context);
-    expect(full).toMatchObject({ ok: true, data: { users: expect.arrayContaining([
-      expect.objectContaining({ mainUnitKey: "unit_mod" }), expect.objectContaining({ mainUnitKey: "unit_vanilla" }),
-    ]) } });
+    expect(full).toMatchObject({
+      ok: true,
+      data: {
+        users: expect.arrayContaining([
+          expect.objectContaining({ mainUnitKey: "unit_mod" }),
+          expect.objectContaining({ mainUnitKey: "unit_vanilla" }),
+        ]),
+      },
+    });
     const limited = await executeAutomationRequest({ ...request, maxRoots: 1 }, context);
-    expect(limited).toMatchObject({ ok: true, data: {
-      usageComplete: false,
-      coverage: { roots: { unique: 2, selected: 1 } },
-      users: [expect.objectContaining({ mainUnitKey: "unit_mod" })],
-    } });
+    expect(limited).toMatchObject({
+      ok: true,
+      data: {
+        usageComplete: false,
+        coverage: { roots: { unique: 2, selected: 1 } },
+        users: [expect.objectContaining({ mainUnitKey: "unit_mod" })],
+      },
+    });
   });
 
   it("separates optional metadata gaps from unresolved selected-unit visual references", async () => {
     const support = path.join(root, "asset-users-optional-tables.pack");
     const target = path.join(root, "asset-users-optional-target.pack");
     const makeEntries = (mount: string, variant: string) => [
-      db("main_units", [main("unit_a", "land_a")]), db("land_units", [{ ...land("land_a"), mount }]),
+      db("main_units", [main("unit_a", "land_a")]),
+      db("land_units", [{ ...land("land_a"), mount }]),
       db("unit_variants", [{ unit: "land_a", faction: "faction_a", variant, name: "A", unit_card: "" }]),
       db("variants", [{ variant_name: "variant_a", variant_filename: "unit_a" }]),
-      { name: "variantmeshes\\variantmeshdefinitions\\unit_a.variantmeshdefinition", buffer: Buffer.from("<root><source>variantmeshes/variantmeshdefinitions/unit_a.wsmodel</source></root>") },
-      { name: "variantmeshes\\variantmeshdefinitions\\unit_a.wsmodel", buffer: Buffer.from("<root><source>textures/shared.dds</source></root>") },
+      {
+        name: "variantmeshes\\variantmeshdefinitions\\unit_a.variantmeshdefinition",
+        buffer: Buffer.from("<root><source>variantmeshes/variantmeshdefinitions/unit_a.wsmodel</source></root>"),
+      },
+      {
+        name: "variantmeshes\\variantmeshdefinitions\\unit_a.wsmodel",
+        buffer: Buffer.from("<root><source>textures/shared.dds</source></root>"),
+      },
     ];
     await writeRawPack(support, makeEntries("", "variant_a"), metadata);
     await writeRawPack(target, [{ name: "textures\\shared.dds", buffer: Buffer.from("target") }], metadata);
     const context = createAutomationContext({ schemaProvider: async () => definitions, readRoots: [root] });
-    const request = { operation: "asset_users", packPath: target, packPaths: [support], targetPath: "textures/shared.dds" };
+    const request = {
+      operation: "asset_users",
+      packPath: target,
+      packPaths: [support],
+      targetPath: "textures/shared.dds",
+    };
     const optionalMissing = await executeAutomationRequest(request, context);
-    expect(optionalMissing).toMatchObject({ ok: true, data: {
-      usageComplete: true,
-      metadataComplete: false,
-      complete: false,
-      metadataCoverage: { missingTables: expect.arrayContaining(["units_custom_battle_permissions"]) },
-    } });
-    expect((optionalMissing as any).data.usageDiagnostics).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: "UNIT_VISUAL_JOIN_TABLE_MISSING", path: "db\\units_custom_battle_permissions_tables" }),
-    ]));
+    expect(optionalMissing).toMatchObject({
+      ok: true,
+      data: {
+        usageComplete: true,
+        metadataComplete: false,
+        complete: false,
+        metadataCoverage: { missingTables: expect.arrayContaining(["units_custom_battle_permissions"]) },
+      },
+    });
+    expect((optionalMissing as any).data.usageDiagnostics).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "UNIT_VISUAL_JOIN_TABLE_MISSING",
+          path: "db\\units_custom_battle_permissions_tables",
+        }),
+      ]),
+    );
 
     await writeRawPack(support, makeEntries("missing_mount", "variant_a"), metadata);
     const unresolvedMount = await executeAutomationRequest(request, context);
-    expect(unresolvedMount).toMatchObject({ ok: true, data: {
-      usageComplete: false,
-      diagnostics: expect.arrayContaining([expect.objectContaining({ code: "UNRESOLVED_UNIT_VISUAL", message: expect.stringContaining("Mount missing_mount") })]),
-    } });
+    expect(unresolvedMount).toMatchObject({
+      ok: true,
+      data: {
+        usageComplete: false,
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({
+            code: "UNRESOLVED_UNIT_VISUAL",
+            message: expect.stringContaining("Mount missing_mount"),
+          }),
+        ]),
+      },
+    });
 
     await writeRawPack(support, makeEntries("", "missing_variant"), metadata);
     const unresolvedVariant = await executeAutomationRequest(request, context);
-    expect(unresolvedVariant).toMatchObject({ ok: true, data: {
-      usageComplete: false,
-      diagnostics: expect.arrayContaining([expect.objectContaining({ code: "UNRESOLVED_UNIT_VISUAL", message: expect.stringContaining("Variant missing_variant") })]),
-    } });
+    expect(unresolvedVariant).toMatchObject({
+      ok: true,
+      data: {
+        usageComplete: false,
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({
+            code: "UNRESOLVED_UNIT_VISUAL",
+            message: expect.stringContaining("Variant missing_variant"),
+          }),
+        ]),
+      },
+    });
   });
 
   it("maps both diff states through moved visuals and full DB/LOC deltas before pagination", async () => {
@@ -844,12 +1079,24 @@ describe("localization and unit lookups", () => {
         : { name: "textures\\new.dds", buffer: Buffer.from("same texture") };
       const visualFiles = before
         ? [
-            { name: "variantmeshes\\variantmeshdefinitions\\units\\a.variantmeshdefinition", buffer: Buffer.from("<root><source>textures/old.dds</source></root>") },
-            { name: "variantmeshes\\variantmeshdefinitions\\units\\c.variantmeshdefinition", buffer: Buffer.from("<root><source>textures/old.dds</source></root>") },
+            {
+              name: "variantmeshes\\variantmeshdefinitions\\units\\a.variantmeshdefinition",
+              buffer: Buffer.from("<root><source>textures/old.dds</source></root>"),
+            },
+            {
+              name: "variantmeshes\\variantmeshdefinitions\\units\\c.variantmeshdefinition",
+              buffer: Buffer.from("<root><source>textures/old.dds</source></root>"),
+            },
           ]
         : [
-            { name: "variantmeshes\\variantmeshdefinitions\\units\\a.variantmeshdefinition", buffer: Buffer.from("<root><source>textures/new.dds</source></root>") },
-            { name: "variantmeshes\\variantmeshdefinitions\\units\\b.variantmeshdefinition", buffer: Buffer.from("<root><source>textures/new.dds</source></root>") },
+            {
+              name: "variantmeshes\\variantmeshdefinitions\\units\\a.variantmeshdefinition",
+              buffer: Buffer.from("<root><source>textures/new.dds</source></root>"),
+            },
+            {
+              name: "variantmeshes\\variantmeshdefinitions\\units\\b.variantmeshdefinition",
+              buffer: Buffer.from("<root><source>textures/new.dds</source></root>"),
+            },
           ];
       return [
         db("main_units", mainRows),
@@ -866,7 +1113,14 @@ describe("localization and unit lookups", () => {
         ]),
         db("units_custom_battle_permissions", customPermissions),
         db("building_units_allowed", [
-          { key: "rule_a", unit: "unit_a", building: "barracks", faction: "faction_a", conditions: before ? "old" : "new", enabled: true },
+          {
+            key: "rule_a",
+            unit: "unit_a",
+            building: "barracks",
+            faction: "faction_a",
+            conditions: before ? "old" : "new",
+            enabled: true,
+          },
         ]),
         ...emptyTables,
         loc(locRows),
@@ -920,9 +1174,7 @@ describe("localization and unit lookups", () => {
     expect(full.affectedUnits.checklist.unscoped).toEqual([
       expect.objectContaining({ unitKey: "unit_c", classification: "customBattlePermission" }),
     ]);
-    expect(full.affectedUnits.checklist.unknown).toEqual([
-      expect.objectContaining({ landUnitKey: "orphan_land" }),
-    ]);
+    expect(full.affectedUnits.checklist.unknown).toEqual([expect.objectContaining({ landUnitKey: "orphan_land" })]);
     expect(data.affectedUnits.analysis.before.roots).toBeGreaterThan(0);
     expect(data.affectedUnits.analysis.after.roots).toBeGreaterThan(0);
   });
@@ -931,21 +1183,56 @@ describe("localization and unit lookups", () => {
     const beforePath = path.join(root, "unscoped-before.pack");
     const afterPath = path.join(root, "unscoped-after.pack");
     const entries = [
-      db("main_units", [{ unit: "unscoped_unit", land_unit: "unscoped_land", caste: "infantry", num_men: 100, ui_unit_group_land: "" }]),
-      db("land_units", [{ key: "unscoped_land", category: "inf_melee", class: "melee", mount: ".", engine: ".", num_mounts: 0, num_engines: 0 }]),
-      db("unit_variants", [{ unit: "unscoped_land", variant: "unscoped_variant", faction: "", name: "", unit_card: "" }]),
+      db("main_units", [
+        { unit: "unscoped_unit", land_unit: "unscoped_land", caste: "infantry", num_men: 100, ui_unit_group_land: "" },
+      ]),
+      db("land_units", [
+        {
+          key: "unscoped_land",
+          category: "inf_melee",
+          class: "melee",
+          mount: ".",
+          engine: ".",
+          num_mounts: 0,
+          num_engines: 0,
+        },
+      ]),
+      db("unit_variants", [
+        { unit: "unscoped_land", variant: "unscoped_variant", faction: "", name: "", unit_card: "" },
+      ]),
       db("variants", [{ variant_name: "unscoped_variant", variant_filename: "unscoped" }]),
       db("units_custom_battle_permissions", [{ unit: "unscoped_unit", faction: "", general_uniform: "" }]),
     ];
     const filePath = "variantmeshes\\variantmeshdefinitions\\unscoped.variantmeshdefinition";
     await writeRawPack(beforePath, [...entries, { name: filePath, buffer: Buffer.from("<VARIANT_MESH />") }], metadata);
-    await writeRawPack(afterPath, [...entries, { name: filePath, buffer: Buffer.from("<VARIANT_MESH><!-- changed --></VARIANT_MESH>") }], metadata);
-    const response = await executeAutomationRequest({ operation: "pack_diff", beforePath, afterPath, affectedUnits: true }, context());
-    expect(response).toMatchObject({ ok: true, data: { affectedUnits: {
-      total: 1,
-      items: [{ unitKey: "unscoped_unit", states: [expect.objectContaining({ state: "before" }), expect.objectContaining({ state: "after" })] }],
-      checklist: { unscoped: [{ unitKey: "unscoped_unit", landUnitKey: "unscoped_land", classification: "customBattlePermission" }] },
-    } } });
+    await writeRawPack(
+      afterPath,
+      [...entries, { name: filePath, buffer: Buffer.from("<VARIANT_MESH><!-- changed --></VARIANT_MESH>") }],
+      metadata,
+    );
+    const response = await executeAutomationRequest(
+      { operation: "pack_diff", beforePath, afterPath, affectedUnits: true },
+      context(),
+    );
+    expect(response).toMatchObject({
+      ok: true,
+      data: {
+        affectedUnits: {
+          total: 1,
+          items: [
+            {
+              unitKey: "unscoped_unit",
+              states: [expect.objectContaining({ state: "before" }), expect.objectContaining({ state: "after" })],
+            },
+          ],
+          checklist: {
+            unscoped: [
+              { unitKey: "unscoped_unit", landUnitKey: "unscoped_land", classification: "customBattlePermission" },
+            ],
+          },
+        },
+      },
+    });
   });
 
   it("keeps matched paths unresolved under indexing limits and deduplicates campaign review bytes", async () => {
@@ -959,7 +1246,9 @@ describe("localization and unit lookups", () => {
     const unitRows = [
       db("main_units", [{ ...main("limited_unit", "limited_land"), caste: "lord" }]),
       db("land_units", [{ ...land("limited_land"), engine: "ship_engine" }]),
-      db("unit_variants", [{ unit: "limited_land", faction: "faction_a", variant: "test_variant", name: "Test", unit_card: "" }]),
+      db("unit_variants", [
+        { unit: "limited_land", faction: "faction_a", variant: "test_variant", name: "Test", unit_card: "" },
+      ]),
       db("variants", [{ variant_name: "test_variant", variant_filename: "units/test" }]),
       db("battlefield_engines", [{ key: "ship_engine", variant: ".", model: campaignPath }]),
       db("units_custom_battle_permissions", [{ unit: "limited_unit", faction: "faction_a", general_uniform: "" }]),
@@ -969,7 +1258,10 @@ describe("localization and unit lookups", () => {
     ];
     const makeEntries = (model: Buffer, campaignShip: Buffer) => [
       ...unitRows,
-      { name: rootPath, buffer: Buffer.from("<root><source>variantmeshes/variantmeshdefinitions/units/test.wsmodel</source></root>") },
+      {
+        name: rootPath,
+        buffer: Buffer.from("<root><source>variantmeshes/variantmeshdefinitions/units/test.wsmodel</source></root>"),
+      },
       { name: modelPath, buffer: model },
       { name: campaignPath, buffer: campaignShip },
     ];
@@ -977,27 +1269,48 @@ describe("localization and unit lookups", () => {
     const afterModel = Buffer.from("<root><changed /></root>");
     await writeRawPack(beforePath, makeEntries(beforeModel, beforeCampaign), metadata);
     await writeRawPack(afterPath, makeEntries(afterModel, afterCampaign), metadata);
-    const response = await executeAutomationRequest({
-      operation: "pack_diff", beforePath, afterPath, affectedUnits: true, affectedMaxScanSources: 1,
-    }, context());
+    const response = await executeAutomationRequest(
+      {
+        operation: "pack_diff",
+        beforePath,
+        afterPath,
+        affectedUnits: true,
+        affectedMaxScanSources: 1,
+      },
+      context(),
+    );
     if (!response.ok) throw new Error(JSON.stringify(response.error));
     const affected = (response.data as any).affectedUnits;
     expect(affected.items).toEqual(expect.arrayContaining([expect.objectContaining({ unitKey: "limited_unit" })]));
-    expect(affected.changedPathCoverage).toEqual(expect.arrayContaining([
-      expect.objectContaining({ path: modelPath, status: "matched", complete: false }),
-      expect.objectContaining({ path: campaignPath, status: "matched", complete: false }),
-    ]));
+    expect(affected.changedPathCoverage).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: modelPath, status: "matched", complete: false }),
+        expect.objectContaining({ path: campaignPath, status: "matched", complete: false }),
+      ]),
+    );
     expect(affected.unresolvedPaths).toEqual(expect.arrayContaining([modelPath, campaignPath]));
     const checklist = affected.checklist;
     const unit = checklist.units.find((item: any) => item.unitKey === "limited_unit");
-    expect(unit).toMatchObject({ key: "limited_unit", name: "Limited Lord", role: "lord", customBattleFactions: [{ key: "faction_a" }] });
+    expect(unit).toMatchObject({
+      key: "limited_unit",
+      name: "Limited Lord",
+      role: "lord",
+      customBattleFactions: [{ key: "faction_a" }],
+    });
     expect(unit.changedFiles.filter((file: any) => file.path === modelPath)).toHaveLength(1);
     expect(unit.changedFiles.filter((file: any) => file.path === campaignPath)).toHaveLength(1);
     expect(unit.changedBytes).toBe(afterModel.length + afterCampaign.length);
-    expect(checklist.campaignReviewAssets).toEqual(expect.arrayContaining([
-      expect.objectContaining({ path: campaignPath, status: "matched", complete: false, campaignOnly: false,
-        mappedUnits: [expect.objectContaining({ unitKey: "limited_unit" })] }),
-    ]));
+    expect(checklist.campaignReviewAssets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: campaignPath,
+          status: "matched",
+          complete: false,
+          campaignOnly: false,
+          mappedUnits: [expect.objectContaining({ unitKey: "limited_unit" })],
+        }),
+      ]),
+    );
   });
 
   it("returns a complete empty affected-unit result without resolving unit databases for unchanged packs", async () => {
@@ -1008,7 +1321,11 @@ describe("localization and unit lookups", () => {
     await writeRawPack(afterPath, entries, metadata);
     const response = await executeAutomationRequest(
       { operation: "pack_diff", beforePath, afterPath, affectedUnits: true },
-      createAutomationContext({ schemaProvider: async () => { throw new Error("unit schema must not be loaded"); } }),
+      createAutomationContext({
+        schemaProvider: async () => {
+          throw new Error("unit schema must not be loaded");
+        },
+      }),
     );
     expect(response).toMatchObject({
       ok: true,

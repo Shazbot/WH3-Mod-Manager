@@ -33,13 +33,16 @@ function readCauleb128(source: Buffer, offset: number): { value: number; nextOff
   throw new Error(`Invalid CAULEB128 group size at offset ${offset}.`);
 }
 
-export function groupRanges(record: {
-  name: string;
-  flags: number;
-  groupCount: number;
-  blockStartOffset: number;
-  blockEndOffset: number;
-}, source: Buffer): GroupRange[] {
+export function groupRanges(
+  record: {
+    name: string;
+    flags: number;
+    groupCount: number;
+    blockStartOffset: number;
+    blockEndOffset: number;
+  },
+  source: Buffer,
+): GroupRange[] {
   if ((record.flags & 0x40) === 0) {
     return [{ start: record.blockStartOffset, end: record.blockEndOffset }];
   }
@@ -98,7 +101,7 @@ export function collectFactionArrayIdSpans(
   source: Buffer,
   header: { recordNamesOffset: number },
   tables: Pick<CaabStringTables, "recordNames" | "utf8ById" | "utf16ById">,
-  factionsBefore: number
+  factionsBefore: number,
 ): ExplicitFactionIdSpan[] {
   const rows: ExplicitFactionIdSpan[] = [];
   let current: { startOffset: number; rowIndex: number; span?: ExplicitFactionIdSpan } | null = null;
@@ -135,7 +138,12 @@ export function collectFactionArrayIdSpans(
   return rows;
 }
 
-function expectedIndexedFactionId(recordName: string, rowIndex: number, rowCount: number, factionsBefore: number): number {
+function expectedIndexedFactionId(
+  recordName: string,
+  rowIndex: number,
+  rowCount: number,
+  factionsBefore: number,
+): number {
   if (rowCount === factionsBefore) return rowIndex + FACTION_ID_BASE;
   if (rowCount !== factionsBefore + 1) {
     throw new Error(`${recordName} has ${rowCount} rows for ${factionsBefore} factions.`);
@@ -156,7 +164,7 @@ export function collectIndexedFactionIdSpans(
   source: Buffer,
   header: { recordNamesOffset: number },
   tables: Pick<CaabStringTables, "recordNames" | "utf8ById" | "utf16ById">,
-  factionsBefore: number
+  factionsBefore: number,
 ): ExplicitFactionIdSpan[] {
   const wanted = new Set<string>(EXPLICIT_FACTION_ID_INDEXED_RECORDS);
   const counts = new Map<string, number>();
@@ -165,7 +173,11 @@ export function collectIndexedFactionIdSpans(
 
   walkCaabNodes(source, header, tables, {
     onRecordStart(record) {
-      if (!wanted.has(record.name) || (record.groupCount !== factionsBefore && record.groupCount !== factionsBefore + 1)) return;
+      if (
+        !wanted.has(record.name) ||
+        (record.groupCount !== factionsBefore && record.groupCount !== factionsBefore + 1)
+      )
+        return;
       active.push({
         recordName: record.name,
         startOffset: record.startOffset,
@@ -176,7 +188,8 @@ export function collectIndexedFactionIdSpans(
     },
     onValue(value, stack) {
       const current = active[active.length - 1];
-      if (!current || stack[stack.length - 1] !== current.recordName || value.kind !== "value" || value.type !== "u32") return;
+      if (!current || stack[stack.length - 1] !== current.recordName || value.kind !== "value" || value.type !== "u32")
+        return;
       const offset = value.startOffset;
       if (offset === undefined) return;
       const rowIndex = groupIndexForOffset(current.ranges, offset);

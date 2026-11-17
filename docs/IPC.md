@@ -23,11 +23,11 @@ Counts in this document come from the source as of 2026-10-26:
 
 ## Where the code is
 
-| Side                 | File                                                                                                                                                                                         |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Renderer API         | `src/preload.ts`: the `api` object, assigned with `window.api = api` (the `contextBridge` call is commented out). Typed as `window.api?: api` in `src/index.d.ts`.                           |
-| Event → Redux wiring | `src/rendererMain.ts` (55 subscriptions), plus `rendererViewer.ts`, `rendererSkills.ts`, `rendererTechTrees.ts`. Components subscribe to their own feature events, e.g. `DBDuplication.tsx`. |
-| Main handlers        | `src/ipcMainListeners.ts` (159 handlers, all inside `registerIpcMainListeners()`), `src/wh3AssetHostIpc.ts` (10), `src/gameLogIpc.ts` (4), `src/workshopModOptimizer/visualCheckIpc.ts` (6), `src/index.ts` (4)       |
+| Side                 | File                                                                                                                                                                                                            |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Renderer API         | `src/preload.ts`: the `api` object, assigned with `window.api = api` (the `contextBridge` call is commented out). Typed as `window.api?: api` in `src/index.d.ts`.                                              |
+| Event → Redux wiring | `src/rendererMain.ts` (55 subscriptions), plus `rendererViewer.ts`, `rendererSkills.ts`, `rendererTechTrees.ts`. Components subscribe to their own feature events, e.g. `DBDuplication.tsx`.                    |
+| Main handlers        | `src/ipcMainListeners.ts` (159 handlers, all inside `registerIpcMainListeners()`), `src/wh3AssetHostIpc.ts` (10), `src/gameLogIpc.ts` (4), `src/workshopModOptimizer/visualCheckIpc.ts` (6), `src/index.ts` (4) |
 
 ## The three message kinds
 

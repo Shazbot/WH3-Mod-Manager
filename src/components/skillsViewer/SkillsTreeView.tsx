@@ -63,16 +63,13 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
   type TreeMetadata = { subtype: string; subtypeIndex: number };
   type CultureMetadata = { cultureKey: string };
 
-  const leaves = agentSubtypes.reduce(
-    (treeData, subtype) => {
-      for (let i = 0; i < skillsData.subtypeToNumSets[subtype]; i++) {
-        treeData.push({ name: subtype, children: [], metadata: { subtype, subtypeIndex: i } });
-      }
+  const leaves = agentSubtypes.reduce((treeData, subtype) => {
+    for (let i = 0; i < skillsData.subtypeToNumSets[subtype]; i++) {
+      treeData.push({ name: subtype, children: [], metadata: { subtype, subtypeIndex: i } });
+    }
 
-      return treeData;
-    },
-    [] as TreeData[],
-  );
+    return treeData;
+  }, [] as TreeData[]);
   const result: TreeData = { name: "", children: leaves, metadata: { subtype: "", subtypeIndex: 0 } };
 
   const hideRepeatedKeyPrefixes = props.hideRepeatedKeyPrefixes ?? true;

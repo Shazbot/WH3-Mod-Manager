@@ -66,7 +66,7 @@ export const parseLibraryFolders = (contents: string): string[] => {
     const parsed = VDF.parse(contents) as SteamLibraryFolders;
     return Object.entries(parsed.libraryfolders ?? {})
       .filter(([key]) => /^\d+$/.test(key))
-      .map(([, entry]) => typeof entry === "string" ? entry : entry.path)
+      .map(([, entry]) => (typeof entry === "string" ? entry : entry.path))
       .filter((libraryPath): libraryPath is string => Boolean(libraryPath))
       .map((libraryPath) => libraryPath.replaceAll("\\\\", "\\").replaceAll("//", "/"));
   } catch {

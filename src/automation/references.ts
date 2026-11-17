@@ -2,7 +2,11 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { z } from "zod";
 import { vanillaInputs, discoverGameDataPath, parseManifestPackNames, validateManifestPackName } from "./vanilla";
-import { getSupportedVisualReferenceDetails, type VisualReferenceDetail, type VisualReferenceExtraction } from "../visuals/dependencies";
+import {
+  getSupportedVisualReferenceDetails,
+  type VisualReferenceDetail,
+  type VisualReferenceExtraction,
+} from "../visuals/dependencies";
 import { toVariantMeshDefinitionPath } from "../visuals/paths";
 import { getVisualsFileExtension } from "../visuals/cache";
 import { getFilenameRelativePathMatch, parseFilenameRelativePaths } from "../utility/filenameRelativePaths";
@@ -128,23 +132,57 @@ export interface CachedRmv2ReferenceModel {
 }
 
 const cachedXmlSchema = z.object({
-  valid: z.boolean(), error: z.string().optional(),
-  references: z.array(z.object({
-    path: z.string(), extension: z.enum(["variantmeshdefinition", "wsmodel", "rigid_model_v2", "xml.material", "dds"]),
-    location: z.string(), sourceField: z.string(),
-    relationship: z.enum(["variant-mesh-reference", "model", "geometry", "material", "texture"]),
-  }).passthrough()).max(50000),
-  unsupportedReferences: z.array(z.object({ path: z.string(), location: z.string(), sourceField: z.string() }).passthrough()).max(50000),
+  valid: z.boolean(),
+  error: z.string().optional(),
+  references: z
+    .array(
+      z
+        .object({
+          path: z.string(),
+          extension: z.enum(["variantmeshdefinition", "wsmodel", "rigid_model_v2", "xml.material", "dds"]),
+          location: z.string(),
+          sourceField: z.string(),
+          relationship: z.enum(["variant-mesh-reference", "model", "geometry", "material", "texture"]),
+        })
+        .passthrough(),
+    )
+    .max(50000),
+  unsupportedReferences: z
+    .array(z.object({ path: z.string(), location: z.string(), sourceField: z.string() }).passthrough())
+    .max(50000),
 });
-const cachedRigidSchema = z.object({ lods: z.array(z.object({
-  lodIndex: z.number().int().min(0),
-  parts: z.array(z.object({
-    lodIndex: z.number().int().min(0), partIndex: z.number().int().min(0), complete: z.boolean(),
-    unsupportedReason: z.string().optional(), materialTypeId: z.number(), materialTypeName: z.string(),
-    textures: z.array(z.object({ typeId: z.number().nullable(), typeName: z.string().nullable(), path: z.string(),
-      legacy: z.boolean(), source: z.enum(["weightedTexture", "terrainTexturePath"]) })).optional(),
-  })).max(50000),
-})).max(256) });
+const cachedRigidSchema = z.object({
+  lods: z
+    .array(
+      z.object({
+        lodIndex: z.number().int().min(0),
+        parts: z
+          .array(
+            z.object({
+              lodIndex: z.number().int().min(0),
+              partIndex: z.number().int().min(0),
+              complete: z.boolean(),
+              unsupportedReason: z.string().optional(),
+              materialTypeId: z.number(),
+              materialTypeName: z.string(),
+              textures: z
+                .array(
+                  z.object({
+                    typeId: z.number().nullable(),
+                    typeName: z.string().nullable(),
+                    path: z.string(),
+                    legacy: z.boolean(),
+                    source: z.enum(["weightedTexture", "terrainTexturePath"]),
+                  }),
+                )
+                .optional(),
+            }),
+          )
+          .max(50000),
+      }),
+    )
+    .max(256),
+});
 const isCachedXml = (value: unknown): value is VisualReferenceExtraction => cachedXmlSchema.safeParse(value).success;
 const isCachedRigid = (value: unknown): value is CachedRmv2ReferenceModel => cachedRigidSchema.safeParse(value).success;
 
@@ -245,7 +283,8 @@ export const prepareReferenceEnvironment = async (
         if ((indexedEntries++ & 127) === 0) await yieldToEventLoop(context.signal);
         const key = normalizePackFilePathKey(entry.name);
         const parsed = key.startsWith("db\\") ? parseDBTablePath(key) : undefined;
-        if (visualsOnly && !getVisualsFileExtension(key) && parsed?.dbFolder !== "db" && !key.endsWith(".loc")) continue;
+        if (visualsOnly && !getVisualsFileExtension(key) && parsed?.dbFolder !== "db" && !key.endsWith(".loc"))
+          continue;
         const group = provider.entriesByPath.get(key) ?? [];
         group.push(entry);
         provider.entriesByPath.set(key, group);
@@ -308,8 +347,13 @@ export const resolveReferenceAsset = (
   }
   // Unit queries keep sparse maps, but explicit/unsupported paths must still report their
   // real providers. Index those rare paths on demand rather than retaining every game file.
-  if (environment.visualsOnly && !environment.assetCandidates.has(key) && !getVisualsFileExtension(key) &&
-      !key.startsWith("db\\") && !key.endsWith(".loc")) {
+  if (
+    environment.visualsOnly &&
+    !environment.assetCandidates.has(key) &&
+    !getVisualsFileExtension(key) &&
+    !key.startsWith("db\\") &&
+    !key.endsWith(".loc")
+  ) {
     for (const provider of environment.providers) {
       const entries = provider.pack.entries.filter((entry) => normalizePackFilePathKey(entry.name) === key);
       if (!entries.length) continue;
@@ -353,7 +397,9 @@ export const loadVisualReferenceExtraction = async (
   let cached = retainInEnvironment ? environment.referenceTextCache.get(cacheKey) : undefined;
   if (!cached) {
     const load = async () => {
-      const bytes = await (session ? session.readPayload(entry) : readAutomationPayload(provider.pack, entry, environment.context));
+      const bytes = await (session
+        ? session.readPayload(entry)
+        : readAutomationPayload(provider.pack, entry, environment.context));
       return getSupportedVisualReferenceDetails(decodePackedTextBuffer(bytes));
     };
     cached = environment.context.cacheRequest?.getVisualReference
@@ -376,10 +422,20 @@ export const loadRigidReferenceModel = async (
   let cached = retainInEnvironment ? environment.referenceRmv2Cache.get(cacheKey) : undefined;
   if (!cached) {
     const load = async () => {
-      const compact = (lods: Array<{ lodIndex: number; parts: Array<{
-        lodIndex: number; partIndex: number; complete: boolean; unsupportedReason?: string;
-        materialTypeId: number; materialTypeName: string; textures?: Rmv2Texture[];
-      }> }>): CachedRmv2ReferenceModel => ({
+      const compact = (
+        lods: Array<{
+          lodIndex: number;
+          parts: Array<{
+            lodIndex: number;
+            partIndex: number;
+            complete: boolean;
+            unsupportedReason?: string;
+            materialTypeId: number;
+            materialTypeName: string;
+            textures?: Rmv2Texture[];
+          }>;
+        }>,
+      ): CachedRmv2ReferenceModel => ({
         lods: lods.map((lod) => ({
           lodIndex: lod.lodIndex,
           parts: lod.parts.map((part) => ({
@@ -402,11 +458,14 @@ export const loadRigidReferenceModel = async (
           );
         const readMetadata = (reader: import("../packCore").RawPayloadRangeReader) =>
           parseRmv2TextureMetadata(reader, { checkCancelled: () => throwIfAborted(environment.context.signal) });
-        const parsed = await (session ? session.withRangeReader(entry, readMetadata)
+        const parsed = await (session
+          ? session.withRangeReader(entry, readMetadata)
           : withAutomationPayloadRangeReader(provider.pack, entry, environment.context, readMetadata));
         return compact(parsed.lods);
       }
-      const bytes = await (session ? session.readPayload(entry) : readAutomationPayload(provider.pack, entry, environment.context));
+      const bytes = await (session
+        ? session.readPayload(entry)
+        : readAutomationPayload(provider.pack, entry, environment.context));
       return compact(parseRmv2(bytes, { textureSlotsOnly: true }).lods);
     };
     cached = environment.context.cacheRequest?.getVisualReference

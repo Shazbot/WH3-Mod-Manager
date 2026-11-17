@@ -32,7 +32,11 @@ const steamLayout = () => {
 };
 const pack = (file: string, names: string[] = ["script\\a.lua"]) => {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  return writeRawPack(file, names.map((name) => ({ name, buffer: Buffer.from(`-- ${name}`) })), metadata);
+  return writeRawPack(
+    file,
+    names.map((name) => ({ name, buffer: Buffer.from(`-- ${name}`) })),
+    metadata,
+  );
 };
 
 describe("bare pack names", () => {
@@ -119,15 +123,30 @@ describe("pack read globs", () => {
     await pack(file, ["script\\campaign\\mod\\one.lua", "script\\two.lua", "ui\\two.lua", "text\\[x].txt"]);
 
     const one = await executeAutomationRequest({ operation: "pack_read_file", packPath: file, filePath: "**/ONE.lua" });
-    expect(one).toMatchObject({ ok: true, data: { filePath: "script\\campaign\\mod\\one.lua", content: "-- script\\campaign\\mod\\one.lua" } });
+    expect(one).toMatchObject({
+      ok: true,
+      data: { filePath: "script\\campaign\\mod\\one.lua", content: "-- script\\campaign\\mod\\one.lua" },
+    });
 
-    const exact = await executeAutomationRequest({ operation: "pack_read_file", packPath: file, filePath: "text/[x].txt" });
+    const exact = await executeAutomationRequest({
+      operation: "pack_read_file",
+      packPath: file,
+      filePath: "text/[x].txt",
+    });
     expect(exact).toMatchObject({ ok: true, data: { filePath: "text\\[x].txt" } });
 
-    const none = await executeAutomationRequest({ operation: "pack_read_file", packPath: file, filePath: "**/three.lua" });
+    const none = await executeAutomationRequest({
+      operation: "pack_read_file",
+      packPath: file,
+      filePath: "**/three.lua",
+    });
     expect(none).toMatchObject({ ok: false, error: { code: "VALIDATION" } });
 
-    const several = await executeAutomationRequest({ operation: "pack_read_file", packPath: file, filePath: "**/two.lua" });
+    const several = await executeAutomationRequest({
+      operation: "pack_read_file",
+      packPath: file,
+      filePath: "**/two.lua",
+    });
     expect(several).toMatchObject({
       ok: false,
       error: { code: "CONFLICT", details: { matches: ["script\\two.lua", "ui\\two.lua"] } },

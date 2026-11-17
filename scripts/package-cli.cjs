@@ -35,7 +35,17 @@ function locateCmake() {
     const addVisualStudioCmake = (installationPath) => {
       if (installationPath) {
         candidates.push(
-          path.join(installationPath, "Common7", "IDE", "CommonExtensions", "Microsoft", "CMake", "CMake", "bin", "cmake.exe"),
+          path.join(
+            installationPath,
+            "Common7",
+            "IDE",
+            "CommonExtensions",
+            "Microsoft",
+            "CMake",
+            "CMake",
+            "bin",
+            "cmake.exe",
+          ),
         );
       }
     };
@@ -48,10 +58,14 @@ function locateCmake() {
       "vswhere.exe",
     );
     if (fsSync.existsSync(vswherePath)) {
-      const vswhere = spawnSync(vswherePath, ["-latest", "-products", "*", "-version", "[17.0,18.0)", "-property", "installationPath"], {
-        encoding: "utf8",
-        windowsHide: true,
-      });
+      const vswhere = spawnSync(
+        vswherePath,
+        ["-latest", "-products", "*", "-version", "[17.0,18.0)", "-property", "installationPath"],
+        {
+          encoding: "utf8",
+          windowsHide: true,
+        },
+      );
       if (vswhere.status === 0) addVisualStudioCmake(vswhere.stdout.trim());
     }
 
@@ -69,17 +83,24 @@ function locateCmake() {
     if (version[0] > 3 || (version[0] === 3 && version[1] >= 21)) return candidate;
   }
 
-  const checkedSummary = checked.length > 0 ? ` Found: ${checked.join(", ")}.` : " No usable CMake executable was found.";
-  fail(`CMake 3.21 or newer is required for the Visual Studio 2022 generator.${checkedSummary} Install a newer CMake or set CMAKE_EXECUTABLE to its path.`);
+  const checkedSummary =
+    checked.length > 0 ? ` Found: ${checked.join(", ")}.` : " No usable CMake executable was found.";
+  fail(
+    `CMake 3.21 or newer is required for the Visual Studio 2022 generator.${checkedSummary} Install a newer CMake or set CMAKE_EXECUTABLE to its path.`,
+  );
 }
 
 function run(command, args, label) {
   const result = spawnSync(command, args, { cwd: projectRoot, stdio: "inherit", windowsHide: true });
   if (result.error) {
-    fail(`${label} could not run (${result.error.message}). Install CMake and Visual Studio 2022 C++ build tools, then retry yarn make.`);
+    fail(
+      `${label} could not run (${result.error.message}). Install CMake and Visual Studio 2022 C++ build tools, then retry yarn make.`,
+    );
   }
   if (result.status !== 0) {
-    fail(`${label} failed with exit code ${result.status ?? "unknown"}. Check that Visual Studio 2022 C++ and the Windows SDK are installed.`);
+    fail(
+      `${label} failed with exit code ${result.status ?? "unknown"}. Check that Visual Studio 2022 C++ and the Windows SDK are installed.`,
+    );
   }
 }
 
@@ -94,7 +115,9 @@ function assertPeArchitecture(filePath, expectedMachine, label) {
   }
   const machine = bytes.readUInt16LE(peOffset + 4);
   if (machine !== expectedMachine) {
-    fail(`${label} has PE machine 0x${machine.toString(16)}, which does not match the requested architecture (expected 0x${expectedMachine.toString(16)}): ${filePath}`);
+    fail(
+      `${label} has PE machine 0x${machine.toString(16)}, which does not match the requested architecture (expected 0x${expectedMachine.toString(16)}): ${filePath}`,
+    );
   }
 }
 
@@ -154,7 +177,9 @@ async function stageNativeCodecs(headlessStage, archInfo) {
     fail(`${platformPackageName}/package.json must name a simple .node main entry.`);
   }
   if (platformPackageJson.version !== lz4Package.version) {
-    fail(`LZ4 native package version ${platformPackageJson.version} does not match lz4-napi ${lz4Package.version}; reinstall dependencies before packaging.`);
+    fail(
+      `LZ4 native package version ${platformPackageJson.version} does not match lz4-napi ${lz4Package.version}; reinstall dependencies before packaging.`,
+    );
   }
 
   await copyFile(
@@ -218,7 +243,9 @@ async function stageNativeCodecs(headlessStage, archInfo) {
 
 async function buildLauncher(buildDirectory, archInfo) {
   if (process.platform !== "win32") {
-    fail("Windows CLI packaging requires a native Windows build host so CMake can use MSVC. Run yarn make from Windows with Visual Studio 2022 C++ build tools installed.");
+    fail(
+      "Windows CLI packaging requires a native Windows build host so CMake can use MSVC. Run yarn make from Windows with Visual Studio 2022 C++ build tools installed.",
+    );
   }
 
   const cmake = locateCmake();
@@ -267,12 +294,18 @@ async function packageWindowsCli({ platform, arch, outputPaths }) {
     for (const outputPath of outputPaths) {
       const appDirectory = path.resolve(outputPath);
       const resourcesDirectory = path.join(appDirectory, "resources");
-      await requireFile(path.join(appDirectory, "wh3mm.exe"), "packaged wh3mm.exe", "Re-run Electron Forge packaging before staging the CLI.");
+      await requireFile(
+        path.join(appDirectory, "wh3mm.exe"),
+        "packaged wh3mm.exe",
+        "Re-run Electron Forge packaging before staging the CLI.",
+      );
       try {
         const resourceInfo = await fs.stat(resourcesDirectory);
         if (!resourceInfo.isDirectory()) throw new Error("not a directory");
       } catch {
-        fail(`packaged resources directory is missing: ${resourcesDirectory}. Re-run Electron Forge packaging before staging the CLI.`);
+        fail(
+          `packaged resources directory is missing: ${resourcesDirectory}. Re-run Electron Forge packaging before staging the CLI.`,
+        );
       }
 
       const stagedHeadless = path.join(resourcesDirectory, `.headless-staging-${process.pid}`);

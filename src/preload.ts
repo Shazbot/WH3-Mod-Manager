@@ -239,7 +239,12 @@ const api = {
       | "reqModIdToName"
       | "dependencyPacks"
     >[],
-    settings: { optimize: boolean; workshopModStagingMode: string; optimizerOptions: WorkshopOptimizerOptions; compressRigidModels: boolean },
+    settings: {
+      optimize: boolean;
+      workshopModStagingMode: string;
+      optimizerOptions: WorkshopOptimizerOptions;
+      compressRigidModels: boolean;
+    },
   ) => ipcRenderer.send("updateWorkshopOptimizerBackground", enabledMods, settings),
   getWorkshopOptimizerBackgroundStatus: (): Promise<WorkshopOptimizerBackgroundStatus | undefined> =>
     ipcRenderer.invoke("getWorkshopOptimizerBackgroundStatus"),
@@ -303,8 +308,10 @@ const api = {
   gameLogSearch: (request: { query: string; isRegex: boolean; caseSensitive: boolean }): Promise<GameLogSearchResult> =>
     ipcRenderer.invoke("gameLogSearch", request),
   onGameLogAppend: (callback: (payload: { path: string; lines: string[]; isReset: boolean }) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, payload: { path: string; lines: string[]; isReset: boolean }) =>
-      callback(payload);
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      payload: { path: string; lines: string[]; isReset: boolean },
+    ) => callback(payload);
     ipcRenderer.on("gameLogAppend", listener);
     return () => ipcRenderer.removeListener("gameLogAppend", listener);
   },
@@ -950,8 +957,22 @@ const api = {
     }>;
     outputs?: Array<{ name: string; type: string; shape: Array<number | string> }>;
     bindingCandidates?: {
-      columns: Array<{ id: string; tableName: string; column: string; path: unknown[]; label: string; fieldType?: string }>;
-      references: Array<{ id: string; tableName: string; column: string; path: unknown[]; label: string; fieldType?: string }>;
+      columns: Array<{
+        id: string;
+        tableName: string;
+        column: string;
+        path: unknown[];
+        label: string;
+        fieldType?: string;
+      }>;
+      references: Array<{
+        id: string;
+        tableName: string;
+        column: string;
+        path: unknown[];
+        label: string;
+        fieldType?: string;
+      }>;
     };
     defaultOutput?: { tableName: string; column: string; paths: unknown[][] };
     warnings?: string[];
@@ -1064,7 +1085,9 @@ const api = {
     ipcRenderer.invoke("exportRegionOwnership", json, suggestedName),
 
   /** With `saveName` (a file in the game saves folder) the save is read directly, without the open dialog. */
-  importRegionOwnership: (saveName?: string): Promise<{
+  importRegionOwnership: (
+    saveName?: string,
+  ): Promise<{
     success: boolean;
     text?: string;
     filePath?: string;

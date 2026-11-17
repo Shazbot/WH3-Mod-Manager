@@ -36,7 +36,11 @@ describe("optimizer cache housekeeping", () => {
   });
 
   /** Adds an entry for a source pack that exists on disk unless `missing`. */
-  const add = async (id: number, name: string, options: { missing?: boolean; bytes?: number; profile?: string } = {}) => {
+  const add = async (
+    id: number,
+    name: string,
+    options: { missing?: boolean; bytes?: number; profile?: string } = {},
+  ) => {
     await cache.ensureDirectories();
     const sourcePath = path.join(sources, name);
     if (!options.missing) fs.writeFileSync(sourcePath, "source");

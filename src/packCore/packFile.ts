@@ -185,11 +185,7 @@ export const readRawPayload = (pack: Pick<CorePack, "path">, entry: CorePackEntr
 };
 
 /** Reads a bounded prefix of an uncompressed entry without allocating its stored payload. */
-export const readRawPayloadPrefix = (
-  pack: Pick<CorePack, "path">,
-  entry: CorePackEntry,
-  maxBytes: number,
-): Buffer => {
+export const readRawPayloadPrefix = (pack: Pick<CorePack, "path">, entry: CorePackEntry, maxBytes: number): Buffer => {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new Error(`Invalid payload prefix size: ${maxBytes}`);
   if (entry.is_compressed) throw new Error(`Cannot read a raw prefix from compressed payload ${entry.name}`);
   if (!Number.isSafeInteger(entry.start_pos) || entry.start_pos < 0) {
@@ -235,8 +231,12 @@ export const openRawPackReadSession = async (pack: Pick<CorePack, "path">): Prom
     let closed = false;
     const checkEntry = (entry: CorePackEntry) => {
       if (closed) throw new Error(`Pack reader is closed for ${pack.path}`);
-      if (!Number.isSafeInteger(entry.start_pos) || entry.start_pos < 0 ||
-          !Number.isSafeInteger(entry.file_size) || entry.file_size < 0)
+      if (
+        !Number.isSafeInteger(entry.start_pos) ||
+        entry.start_pos < 0 ||
+        !Number.isSafeInteger(entry.file_size) ||
+        entry.file_size < 0
+      )
         throw new Error(`Invalid payload offset or size for ${entry.name}`);
       const end = entry.start_pos + entry.file_size;
       if (!Number.isSafeInteger(end) || end > stat.size)
@@ -251,7 +251,8 @@ export const openRawPackReadSession = async (pack: Pick<CorePack, "path">): Prom
           throw new Error(`Stored payload ${entry.name} exceeds configured ${maxBytes} byte limit`);
         const raw = readExactly(handle.fd, entry.file_size, entry.start_pos, pack.path);
         const logical = entry.is_compressed ? await decompressPackedPayload(raw, entry.name, maxBytes) : raw;
-        if (logical.length > maxBytes) throw new Error(`Logical payload ${entry.name} exceeds configured ${maxBytes} byte limit`);
+        if (logical.length > maxBytes)
+          throw new Error(`Logical payload ${entry.name} exceeds configured ${maxBytes} byte limit`);
         return logical;
       },
       rangeReader(entry, maxBytes = DEFAULT_MAX_PAYLOAD_RANGE_BYTES) {
@@ -267,18 +268,22 @@ export const openRawPackReadSession = async (pack: Pick<CorePack, "path">): Prom
             if (rangeClosed) throw new Error(`Range reader is closed for ${entry.name}`);
             if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(length) || length < 0)
               throw new Error(`Invalid payload range for ${entry.name}: offset ${offset}, length ${length}`);
-            if (length > maxBytes) throw new Error(`Payload range for ${entry.name} exceeds configured ${maxBytes} byte limit`);
+            if (length > maxBytes)
+              throw new Error(`Payload range for ${entry.name} exceeds configured ${maxBytes} byte limit`);
             const end = offset + length;
             if (!Number.isSafeInteger(end) || end > entry.file_size)
               throw new Error(`Payload range for ${entry.name} ends at ${end}, beyond entry size ${entry.file_size}`);
-            try { return readExactly(handle.fd, length, entry.start_pos + offset, pack.path); }
-            catch (error) {
+            try {
+              return readExactly(handle.fd, length, entry.start_pos + offset, pack.path);
+            } catch (error) {
               if (error instanceof Error && error.message.includes("short read"))
                 throw new Error(`Short read for ${entry.name} at offset ${entry.start_pos + offset}`);
               throw error;
             }
           },
-          async close() { rangeClosed = true; },
+          async close() {
+            rangeClosed = true;
+          },
         };
       },
       async close() {
@@ -304,8 +309,14 @@ export const openRawPayloadRangeReader = async (
   const session = await openRawPackReadSession(pack);
   try {
     const reader = session.rangeReader(entry, maxRangeBytes);
-    return { length: reader.length, readRange: reader.readRange,
-      close: async () => { await reader.close(); await session.close(); } };
+    return {
+      length: reader.length,
+      readRange: reader.readRange,
+      close: async () => {
+        await reader.close();
+        await session.close();
+      },
+    };
   } catch (error) {
     await session.close();
     throw error;

@@ -65,13 +65,11 @@ export function findCompressedEsfBlock(buffer: Buffer): CompressedEsfBlock | nul
           props = value.value.payload;
         }
       },
-    }
+    },
   );
 
   if (!stream || uncompressedSize === null || !props) {
-    throw new Error(
-      "ESF declares COMPRESSED_DATA but the stream, its size or its LZMA properties could not be read."
-    );
+    throw new Error("ESF declares COMPRESSED_DATA but the stream, its size or its LZMA properties could not be read.");
   }
 
   return { stream, uncompressedSize, props };
@@ -117,7 +115,7 @@ export function decompressEsfBlock(block: CompressedEsfBlock): Buffer {
     throw new Error(
       format === "unknown"
         ? `Unrecognised compression format (properties ${block.props.toString("hex")}).`
-        : `Compressed block uses ${format}, which is not supported yet; only LZMA1 is implemented.`
+        : `Compressed block uses ${format}, which is not supported yet; only LZMA1 is implemented.`,
     );
   }
 
@@ -140,15 +138,13 @@ export function decompressEsfBlock(block: CompressedEsfBlock): Buffer {
     } catch {
       throw new Error(
         `LZMA decompression failed with both the declared size (${block.uncompressedSize}) and an ` +
-          `unknown size: ${(declaredSizeError as Error).message}`
+          `unknown size: ${(declaredSizeError as Error).message}`,
       );
     }
   }
 
   if (decompressed.length !== block.uncompressedSize) {
-    throw new Error(
-      `LZMA output size mismatch: got ${decompressed.length} bytes, expected ${block.uncompressedSize}.`
-    );
+    throw new Error(`LZMA output size mismatch: got ${decompressed.length} bytes, expected ${block.uncompressedSize}.`);
   }
 
   return decompressed;

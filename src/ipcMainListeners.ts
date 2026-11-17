@@ -907,7 +907,8 @@ interface ActiveWorkshopStagingRun {
   lastProgress: WorkshopStagingProgress;
 }
 /** Set while a user-started "Optimize now" run reports through the launch progress card. */
-let foregroundOptimizerStatus: ((status: import("./workshopModOptimizer/background").BackgroundStatus) => void) | undefined;
+let foregroundOptimizerStatus:
+  ((status: import("./workshopModOptimizer/background").BackgroundStatus) => void) | undefined;
 let activeWorkshopStagingRun: ActiveWorkshopStagingRun | undefined;
 const globalSearchCancelStateByWebContentsId = new Map<
   number,
@@ -3129,11 +3130,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       subtypeToNumSets,
       subtypesToSet,
       subtypeAndSets: cachedSkillsData.subtypeAndSets,
-      ...getSkillSetCultureData(
-        cachedSkillsData.subtypeAndSets,
-        cachedSkillsData.skillSetCultureSources,
-        getLoc,
-      ),
+      ...getSkillSetCultureData(cachedSkillsData.subtypeAndSets, cachedSkillsData.skillSetCultureSources, getLoc),
       ...treeNodeData,
       icons: pickIconsForSkills(icons, cachedSkillsData.iconGeneration, kfSkills, tooltipIconPaths),
       abilityTooltipsByKey,
@@ -6525,7 +6522,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       appData.isShowingSkillsRankPanel = appState.isShowingSkillsRankPanel ?? appData.isShowingSkillsRankPanel;
       appData.isShowingSkillDbKeys = appState.isShowingSkillDbKeys ?? appData.isShowingSkillDbKeys;
       appData.hideRepeatedKeyPrefixes = appState.hideRepeatedKeyPrefixes ?? appData.hideRepeatedKeyPrefixes;
-      appData.isGroupingSkillSetsByCulture = appState.isGroupingSkillSetsByCulture ?? appData.isGroupingSkillSetsByCulture;
+      appData.isGroupingSkillSetsByCulture =
+        appState.isGroupingSkillSetsByCulture ?? appData.isGroupingSkillSetsByCulture;
       appData.isShowingHiddenSkills = appState.isShowingHiddenSkills ?? appData.isShowingHiddenSkills;
       appData.isShowingHiddenModifiersInsideSkills =
         appState.isShowingHiddenModifiersInsideSkills ?? appData.isShowingHiddenModifiersInsideSkills;
@@ -8640,23 +8638,31 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   );
   ipcMain.handle(
     "inspectOnnxFlowPack",
-    async (_event, request: {
-      packPath: string;
-      mode: "bundle" | "standalone";
-      rootTableName: string;
-      modelsDirectory?: string;
-      modelsManifestPath?: string;
-      preprocessorManifestPath?: string;
-      preprocessorModelPath?: string;
-      standaloneModelPath?: string;
-    }) => {
+    async (
+      _event,
+      request: {
+        packPath: string;
+        mode: "bundle" | "standalone";
+        rootTableName: string;
+        modelsDirectory?: string;
+        modelsManifestPath?: string;
+        preprocessorManifestPath?: string;
+        preprocessorModelPath?: string;
+        standaloneModelPath?: string;
+      },
+    ) => {
       try {
         const packPath = request.packPath;
         if (!packPath) throw new Error("Choose an ONNX source pack");
         const rootTableName = request.rootTableName || "main_units_tables";
-        const schema = selectOnnxSchemaVersions(await getSchemaForGame(appData.currentGame), await getDefaultTableVersions());
+        const schema = selectOnnxSchemaVersions(
+          await getSchemaForGame(appData.currentGame),
+          await getDefaultTableVersions(),
+        );
         const index = await readPack(packPath, { skipParsingTables: true, skipSorting: true });
-        const entryByPath = new Map(index.packedFiles.map((entry) => [normalizePackFilePathKey(entry.name), entry.name]));
+        const entryByPath = new Map(
+          index.packedFiles.map((entry) => [normalizePackFilePathKey(entry.name), entry.name]),
+        );
         const readEntries = async (paths: string[]) => {
           const normalizedPaths = paths.map((filePath) => {
             const safePath = filePath.replace(/\\/g, "/");
@@ -8665,7 +8671,11 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             if (!packedName) throw new Error(`Source pack is missing '${filePath}'`);
             return packedName;
           });
-          const result = await readPack(packPath, { skipParsingTables: true, skipSorting: true, filesToRead: normalizedPaths });
+          const result = await readPack(packPath, {
+            skipParsingTables: true,
+            skipSorting: true,
+            filesToRead: normalizedPaths,
+          });
           return new Map(result.packedFiles.map((entry) => [normalizePackFilePathKey(entry.name), entry]));
         };
         const readBytes = (entry: PackedFile | undefined, label: string): Buffer => {
@@ -8683,13 +8693,21 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         };
         if (request.mode === "standalone") {
           const modelPath = request.standaloneModelPath || "";
-          if (!isSafeOnnxPackPath(modelPath)) throw new Error("Standalone model path must be a safe relative packed-file path");
+          if (!isSafeOnnxPackPath(modelPath))
+            throw new Error("Standalone model path must be a safe relative packed-file path");
           const entries = await readEntries([modelPath]);
-          const modelBytes = readBytes(entries.get(normalizePackFilePathKey(modelPath.replace(/\//g, "\\"))), modelPath);
+          const modelBytes = readBytes(
+            entries.get(normalizePackFilePathKey(modelPath.replace(/\//g, "\\"))),
+            modelPath,
+          );
           const metadata = await inspectStandaloneOnnxBytes(modelBytes);
           let target: { tableName: string; column: string } | undefined;
           try {
-            const basename = modelPath.split(/[\\/]/).pop()?.replace(/\.onnx$/i, "") || "";
+            const basename =
+              modelPath
+                .split(/[\\/]/)
+                .pop()
+                ?.replace(/\.onnx$/i, "") || "";
             const parsed = parseOnnxModelTarget(basename);
             target = { tableName: parsed.tableName, column: parsed.column };
           } catch {
@@ -8718,8 +8736,14 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         validateOnnxBundlePaths(paths);
         const entries = await readEntries([paths.modelsManifestPath, paths.preprocessorManifestPath]);
         const metadata = parseOnnxBundleMetadata(
-          readBytes(entries.get(normalizePackFilePathKey(paths.modelsManifestPath.replace(/\//g, "\\"))), paths.modelsManifestPath).toString("utf8"),
-          readBytes(entries.get(normalizePackFilePathKey(paths.preprocessorManifestPath.replace(/\//g, "\\"))), paths.preprocessorManifestPath).toString("utf8"),
+          readBytes(
+            entries.get(normalizePackFilePathKey(paths.modelsManifestPath.replace(/\//g, "\\"))),
+            paths.modelsManifestPath,
+          ).toString("utf8"),
+          readBytes(
+            entries.get(normalizePackFilePathKey(paths.preprocessorManifestPath.replace(/\//g, "\\"))),
+            paths.preprocessorManifestPath,
+          ).toString("utf8"),
         );
         return {
           success: true,
@@ -14245,7 +14269,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
               canCreateSymbolicLinks: appData.canCreateSymbolicLinks,
               recreateDestination: cleanUpWorkshopModStagingAfterGameExit,
               compressMods: compressWorkshopMods,
-              includeRigidModelV2: startGameOptions.isRigidModelV2CompressionEnabled ?? appData.isRigidModelV2CompressionEnabled,
+              includeRigidModelV2:
+                startGameOptions.isRigidModelV2CompressionEnabled ?? appData.isRigidModelV2CompressionEnabled,
               optimizer: workshopOptimizer,
               optimizerProfile: workshopOptimizer ? WORKSHOP_OPTIMIZER_PROFILE_ID : undefined,
               skipOptimizationSignal: workshopStagingRun?.skipOptimizationController.signal,
@@ -15140,7 +15165,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   });
   ipcMain.on(
     "updateWorkshopOptimizerBackground",
-    (_event, enabledMods: Mod[], settings: { optimize: boolean; workshopModStagingMode: string; optimizerOptions?: WorkshopOptimizerOptions; compressRigidModels?: boolean }) => {
+    (
+      _event,
+      enabledMods: Mod[],
+      settings: {
+        optimize: boolean;
+        workshopModStagingMode: string;
+        optimizerOptions?: WorkshopOptimizerOptions;
+        compressRigidModels?: boolean;
+      },
+    ) => {
       const gamePath = getCurrentGamePath();
       const dataFolder = appData.gamesToGameFolderPaths[appData.currentGame]?.dataFolder;
       if (!gamePath || !dataFolder) return;
@@ -15148,7 +15182,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         gamePath,
         dataFolder,
         optimizerOptions: normalizeWorkshopOptimizerOptions(settings.optimizerOptions),
-        compressRigidModels: typeof settings.compressRigidModels === "boolean" ? settings.compressRigidModels : undefined,
+        compressRigidModels:
+          typeof settings.compressRigidModels === "boolean" ? settings.compressRigidModels : undefined,
         mods: sortByNameAndLoadOrder(enabledMods.filter((mod) => mod.isEnabled)).map((mod) => ({
           name: mod.name,
           path: mod.path,
@@ -15179,7 +15214,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     };
     activeWorkshopStagingRun = run;
     run.controller.signal.addEventListener("abort", () => background.cancel(), { once: true });
-    const send = (status: "running" | "complete" | "cancelled" | "failed", overrides: Partial<WorkshopModStagingProgressEvent> = {}) =>
+    const send = (
+      status: "running" | "complete" | "cancelled" | "failed",
+      overrides: Partial<WorkshopModStagingProgressEvent> = {},
+    ) =>
       sendWorkshopStagingProgress(event.sender, {
         runId: run.runId,
         status,

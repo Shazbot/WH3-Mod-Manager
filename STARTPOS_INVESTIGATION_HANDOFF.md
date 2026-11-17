@@ -142,7 +142,6 @@ Do **not** skip removal/remapping of the target `CAI_WORLD_FACTIONS` positional 
 
 Before another game run: ensure no WH3 process is running; use WHMM CLI with only Mixer and the new single diagnostic pack; verify `modified.log` names the intended pack; record whether the user reached the campaign map; collect the new minidump if it crashes. Do not attach a live debugger or modify the installed EXE.
 
-
 ## Continuation through v39 — 2026-11-10
 
 This section supersedes the earlier recommended v35 diagnostic. Separate builders,
@@ -214,6 +213,7 @@ campaign autostart and the user explicitly reported that it loads fine (campaign
 map). This is the positive control; process survival alone is not success.
 
 Two source fixes are implemented in WHMM tools/esf/src/edit/removeFaction.ts:
+
 1. CAI_CHARACTER_POSTS removal now follows sibling OWNED_DIRECT faction ownership.
    Old numeric-key matching deleted unrelated posts (3245/3246/32345 owned by
    27558, plus 7930625 owned by 27630). Target-owned post is 5222913, BDI638210,
@@ -248,7 +248,7 @@ native endian/ID representation with the current JS helper's displayed values.
 
 v45 removes exactly that confirmed dangling mobile reference from CAI_THEATRE,
 on top of v44. Builder /tmp/whmm-startpos-v45/build.cjs; pack
- data/!!b_mixer_ravenqueen_removed_theatre_v45.pack.
+data/!!b_mixer_ravenqueen_removed_theatre_v45.pack.
 WHMM CLI create and full-payload validation pass. Currently launched with an
 automated first-error debugger; campaign result is pending at this checkpoint.
 No mobile belief, generic arrays, or u16 ordinal experiments are in v44/v45.
@@ -278,6 +278,7 @@ Do not enable the older failed removal diagnostics alongside this pack.
 
 Native debugging established successive root failures rather than the secondary
 cleanup AV:
+
 - v44 fixed historical-map count (809 -> 808), removing the reader overrun.
 - v45 deleted the proven mobile reference in CAI_THEATRE, native ID66426,
   displayed as7996161 by the existing JS three-byte decoder.
@@ -295,13 +296,14 @@ cleanup AV:
 
 The repeated destruction crash was only an error-cleanup symptom. No executable
 change was needed. Installed Warhammer3.exe remains SHA256
- d2a8a58288bf8bd86768f21ff6be036cebb1916f9c312999c60afc1abe13789f.
+d2a8a58288bf8bd86768f21ff6be036cebb1916f9c312999c60afc1abe13789f.
 The original executable remains preserved. Live debugger v48 log ends with a
 normal shutdown handler and contains no captured failure breakpoint.
 `script_log_101126_2233.txt` records human/player faction turn start, loading-screen
 dismissal, and the Empire campaign flyover, independently supporting user report.
 
 Source fixes now live in WHMM tools/esf/src/edit/:
+
 - removeFaction.ts: post ownership, historical count, mobile-dependent and
   schema-aware reference cleanup integration and report fields.
 - caiMobileReferences.ts: only known theatre/region mobile arrays, diplomatic
@@ -313,7 +315,7 @@ Source fixes now live in WHMM tools/esf/src/edit/:
   caiMobileDependents.test.ts (3): all17 pass. yarn esf:build passed.
   Permanent machine-readable test report:
   `startpos_investigation_final/regression-tests.json`.
-README documents the positive result and remaining validation scope.
+  README documents the positive result and remaining validation scope.
 
 Validation scope: this specific Mixer Ravenqueen-removal campaign loads.
 Save/reload, end-turn progression, other factions, and arbitrary edited startpos
@@ -324,7 +326,6 @@ The WSL temporary directory was cleared after the successful test. Several old
 full dumps that had been moved to /tmp are therefore no longer available there.
 Permanent debugger logs, game packs, source fixes, and v35-v45 artifact folders
 remain. Do not rely on /tmp builders/reports as permanent evidence.
-
 
 ## Final source-generated pack and comparison
 
@@ -360,16 +361,13 @@ Build: yarn esf:build passed. All17 focused regression tests passed, with report
 `regression-tests.json`. Pack report: `source-pack-validation.json`.
 Keep v48 as the user-confirmed fallback. Use only one removal override with Mixer.
 
-
 Final user confirmation: "campaign loaded fine" for the source-generated
 `!!b_mixer_ravenqueen_removed_verified.pack` launch. The same runtime log also
 records loading-screen dismissal and Empire campaign cinematic start at132.5s.
 Both v48 and the final production-generated pack therefore have explicit
 user-confirmed campaign-load success. Save/reload and end-turn remain untested.
 
-
 ## Two-faction test — 2026-11-10
-
 
 Removed `ovn_alb_host_ravenqueen` and `ovn_alb_order_of_the_truthsayers`.
 Input was the verified Ravenqueen-free `startpos_investigation_final/source-generated.esf`.
@@ -393,7 +391,6 @@ skipping, script logging and campaign autostart. Older one-faction overrides
 were excluded. Campaign result is pending at this checkpoint; do not infer
 campaign success from process launch alone.
 
-
 ## Confirmed campaign-load success
 
 The user reported "loaded fine" for the two-faction pack. The launch log
@@ -405,11 +402,9 @@ Use `!!b_mixer_two_albion_factions_removed.pack` with Mixer, excluding the older
 one-faction overrides. Faction count is806 and both requested faction keys are
 absent from serialized node references. Save/reload and end-turn remain untested.
 
-
 ## All Mixer-table factions — 2026-11-11
 
 See game-directory `startpos_all_mixer_factions/HANDOFF.md` for the current bulk-removal investigation. 254 DB keys, 247 present, expected561 survivors. Batch two-faction parity and21 focused tests pass. Full campaign result is pending. Existing two-faction success above remains the last confirmed campaign result.
-
 
 ## First bulk runtime fault and numeric REGION-owner fix — 2026-11-11
 
@@ -448,7 +443,6 @@ preserved; current source supersedes their numeric-owner handling.
 A fresh original-input batch is generating startpos-region-owners.esf,
 removal-region-owners-report.json and removal-region-owners.log. It will be
 packaged and campaign-tested separately from the failed initial bulk pack.
-
 
 ## V3 sea-region fault and v4 candidate
 

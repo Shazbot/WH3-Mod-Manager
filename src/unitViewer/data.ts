@@ -1169,9 +1169,7 @@ export const buildUnitViewerData = (
         const unitKey = asString(override.associated_unit_override);
         if (subculture && unitKey && units.has(unitKey)) anyBySubculture[subculture] = unitKey;
       }
-      const anyUnit = units.has(baseAssociatedUnit)
-        ? baseAssociatedUnit
-        : Object.values(anyBySubculture)[0];
+      const anyUnit = units.has(baseAssociatedUnit) ? baseAssociatedUnit : Object.values(anyBySubculture)[0];
       if (anyUnit) {
         agentSubtypeUnits[subtype.toLowerCase()] = {
           associatedUnit: anyUnit,

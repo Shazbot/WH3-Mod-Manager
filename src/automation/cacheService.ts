@@ -124,8 +124,13 @@ export interface AutomationCacheRequestScope {
     order?: ExactVanillaLocFileOrder,
   ): Promise<RawLocalizationLookupLease | undefined>;
   getVisualsCatalog(pack: CorePack): Promise<VisualsPackCacheEntry | undefined>;
-  getVisualReference<T>(pack: CorePack, entry: CorePackEntry, kind: string,
-    validate: (value: unknown) => value is T, load: () => Promise<T>): Promise<T>;
+  getVisualReference<T>(
+    pack: CorePack,
+    entry: CorePackEntry,
+    kind: string,
+    validate: (value: unknown) => value is T,
+    load: () => Promise<T>,
+  ): Promise<T>;
   flushVisuals(): Promise<void>;
   flushVisualsPack(pack: CorePack): Promise<void>;
   close(): void;
@@ -494,7 +499,13 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
     sourceFallbacks: 0,
     persistentWrites: 0,
   };
-  const visualStats: VisualsCacheStats = { catalogHits: 0, referenceHits: 0, referenceMisses: 0, sourceParses: 0, persistentWrites: 0 };
+  const visualStats: VisualsCacheStats = {
+    catalogHits: 0,
+    referenceHits: 0,
+    referenceMisses: 0,
+    sourceParses: 0,
+    persistentWrites: 0,
+  };
   let closed = false;
   let warningSent = false;
   let defaultSchemaSnapshot: LoadedSchemaSnapshot | undefined;
@@ -1431,20 +1442,36 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
     };
 
     const visualSession = createVisualsCacheSession({
-      cacheDir, whmmCacheDir, payloadLimit, policy: request.policy, checkCancelled: checkOpen, stats: visualStats,
-      onPersistenceUnavailable: () => warnOnce("Headless cache persistence is unavailable under the configured write roots; using readable cache, memory, or source data."),
+      cacheDir,
+      whmmCacheDir,
+      payloadLimit,
+      policy: request.policy,
+      checkCancelled: checkOpen,
+      stats: visualStats,
+      onPersistenceUnavailable: () =>
+        warnOnce(
+          "Headless cache persistence is unavailable under the configured write roots; using readable cache, memory, or source data.",
+        ),
       retained: (key) => budget.get(key)?.value,
       retain: (key, value, bytes, sourcePath) => {
         budget.admit({ key, kind: "visuals", value: deepFreeze(value), bytes, pins: 0, metadata: { sourcePath } });
       },
       async mapCatalogPath(filePath) {
-        if (process.platform !== "linux" || !(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) ||
-            !/^(?:[a-z]:[\\/]|\\\\)/i.test(filePath)) return filePath;
+        if (
+          process.platform !== "linux" ||
+          !(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) ||
+          !/^(?:[a-z]:[\\/]|\\\\)/i.test(filePath)
+        )
+          return filePath;
         let pending = catalogPaths.get(filePath);
         if (!pending) {
           pending = new Promise<string>((resolve, reject) => {
-            execFile("wslpath", ["-u", "--", filePath], { encoding: "utf8", timeout: 5000, signal: request.signal },
-              (error, stdout) => error ? reject(error) : resolve(stdout.trim()));
+            execFile(
+              "wslpath",
+              ["-u", "--", filePath],
+              { encoding: "utf8", timeout: 5000, signal: request.signal },
+              (error, stdout) => (error ? reject(error) : resolve(stdout.trim())),
+            );
           });
           catalogPaths.set(filePath, pending);
         }
@@ -1454,9 +1481,15 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
     const visualSource = async (pack: CorePack): Promise<VisualsCacheSource> => {
       checkOpen();
       const identity = scopedSources.get(pack);
-      if (!identity) throw new AutomationError("CONFLICT", "Visual source has no request snapshot", { packPath: pack.path });
-      return { path: identity.path, identity: identityString(identity), size: Number(identity.size),
-        mtimeMs: Number(identity.mtimeNs) / 1e6, ctimeMs: Number(identity.ctimeNs) / 1e6 };
+      if (!identity)
+        throw new AutomationError("CONFLICT", "Visual source has no request snapshot", { packPath: pack.path });
+      return {
+        path: identity.path,
+        identity: identityString(identity),
+        size: Number(identity.size),
+        mtimeMs: Number(identity.mtimeNs) / 1e6,
+        ctimeMs: Number(identity.ctimeNs) / 1e6,
+      };
     };
     const scope: AutomationCacheRequestScope = {
       async readPackIndex(packPath) {
@@ -1474,7 +1507,10 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
         // This request already read a fresh immutable snapshot. Reauthorize and compare
         // identity above, then share it across states even when retained index caching is off.
         const scopedIndex = scopedIndexes.get(canonicalPath);
-        if (scopedIndex) { counters.hits.packIndexes++; return scopedIndex; }
+        if (scopedIndex) {
+          counters.hits.packIndexes++;
+          return scopedIndex;
+        }
         const key = `index:${currentIdentity}:${DEFAULT_GAME}:${maxIndexBytes}`;
         budget.dropWhere(
           (entry) =>
@@ -1520,8 +1556,14 @@ export const createAutomationCacheService = (options: AutomationCacheServiceOpti
         const expected = scopedSources.get(pack);
         if (descriptor !== undefined) {
           const expectedIdentity = expected ? identityString(expected) : packIdentityByObject.get(pack);
-          if (!expectedIdentity || identityString(identityFromAuthorizedDescriptor(expected?.path ?? pack.path, descriptor)) !== expectedIdentity)
-            throw new AutomationError("CONFLICT", "Open pack source does not match its request snapshot", { packPath: pack.path });
+          if (
+            !expectedIdentity ||
+            identityString(identityFromAuthorizedDescriptor(expected?.path ?? pack.path, descriptor)) !==
+              expectedIdentity
+          )
+            throw new AutomationError("CONFLICT", "Open pack source does not match its request snapshot", {
+              packPath: pack.path,
+            });
           return;
         }
         if (!expected) {

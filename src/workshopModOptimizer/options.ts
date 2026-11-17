@@ -22,8 +22,11 @@ export const DEFAULT_WORKSHOP_OPTIMIZER_OPTIONS = {
 } as const;
 
 export type WorkshopOptimizerOptions = {
-  -readonly [K in keyof typeof DEFAULT_WORKSHOP_OPTIMIZER_OPTIONS]:
-    K extends "armyScope" ? "subculture" | "culture" : K extends "siblingScope" ? "model" | "pack" : boolean;
+  -readonly [K in keyof typeof DEFAULT_WORKSHOP_OPTIMIZER_OPTIONS]: K extends "armyScope"
+    ? "subculture" | "culture"
+    : K extends "siblingScope"
+      ? "model" | "pack"
+      : boolean;
 };
 
 /**
@@ -49,8 +52,11 @@ export const getWorkshopOptimizerOptionUnavailableReason = (
   }
   if (
     key === "optimizeGeometry" &&
-    !options.mergeCompatibleMeshes && !options.crossRigidMerges && !options.buildAtlases &&
-    !options.sharedTextureRepack && !options.remakeEditorLods
+    !options.mergeCompatibleMeshes &&
+    !options.crossRigidMerges &&
+    !options.buildAtlases &&
+    !options.sharedTextureRepack &&
+    !options.remakeEditorLods
   ) {
     return "Requires a model rewriting option, such as mesh merging or old editor LOD repair.";
   }
@@ -60,7 +66,7 @@ export const getWorkshopOptimizerOptionUnavailableReason = (
 
 /** Ignore unknown keys and invalid values from old or hand-edited config files and IPC payloads. */
 export const normalizeWorkshopOptimizerOptions = (value: unknown): WorkshopOptimizerOptions => {
-  const source = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const source = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
   const result = { ...DEFAULT_WORKSHOP_OPTIMIZER_OPTIONS } as WorkshopOptimizerOptions;
   for (const key of Object.keys(result) as (keyof WorkshopOptimizerOptions)[]) {
     const candidate = source[key];

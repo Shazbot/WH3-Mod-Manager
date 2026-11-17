@@ -480,10 +480,12 @@ const runSearch: OperationHandler<"pack_search"> = async (request, context) => {
   if (Boolean(request.query) === Boolean(request.queries))
     throw new AutomationError("INVALID_ARGUMENT", "pack search requires exactly one of query or queries");
   const queries = request.queries ?? [request.query!];
-  const matchers = queries.map((query) => createSearchMatcher(query, {
-    caseSensitive: request.caseSensitive,
-    regex: request.regex,
-  }));
+  const matchers = queries.map((query) =>
+    createSearchMatcher(query, {
+      caseSensitive: request.caseSensitive,
+      regex: request.regex,
+    }),
+  );
   const batched = Boolean(request.queries);
   if (matchers.some((matcher) => !matcher.isValidRegex))
     throw new AutomationError("INVALID_ARGUMENT", "Search regular expression is invalid or too long");
@@ -500,7 +502,8 @@ const runSearch: OperationHandler<"pack_search"> = async (request, context) => {
     if ((searchEntries++ & 127) === 0) await yieldToEventLoop(context.signal);
     if (request.fileGlob && !isPackedPathMatch(entry.name, undefined, request.fileGlob)) continue;
     const filenameQueries = queries.filter((_query, index) => matchers[index].test(entry.name));
-    if (filenameQueries.length) addResult({ kind: "filename", filePath: entry.name, ...(batched ? { queries: filenameQueries } : {}) });
+    if (filenameQueries.length)
+      addResult({ kind: "filename", filePath: entry.name, ...(batched ? { queries: filenameQueries } : {}) });
     if (!request.content) continue;
     const isText = isTextPackedFilePath(entry.name.replace(/\//g, "\\").toLowerCase());
     const parsedTablePath = parseDBTablePath(normalizeInternalPackPath(entry.name).toLowerCase());
@@ -517,7 +520,12 @@ const runSearch: OperationHandler<"pack_search"> = async (request, context) => {
       } catch (error) {
         if (error instanceof AutomationError && ["CANCELLED", "IO_ACCESS"].includes(error.code)) throw error;
         diagnostics.push(
-          diagnostic("SKIPPED_UNREADABLE", error instanceof Error ? error.message : String(error), "warning", entry.name),
+          diagnostic(
+            "SKIPPED_UNREADABLE",
+            error instanceof Error ? error.message : String(error),
+            "warning",
+            entry.name,
+          ),
         );
         continue;
       }
@@ -530,7 +538,10 @@ const runSearch: OperationHandler<"pack_search"> = async (request, context) => {
         for (const match of matches) {
           throwIfAborted(context.signal);
           const signature = JSON.stringify(match);
-          const group = matchGroups.get(signature) ?? { match: match as unknown as Record<string, unknown>, queries: [] };
+          const group = matchGroups.get(signature) ?? {
+            match: match as unknown as Record<string, unknown>,
+            queries: [],
+          };
           group.queries.push(queries[index]);
           matchGroups.set(signature, group);
         }

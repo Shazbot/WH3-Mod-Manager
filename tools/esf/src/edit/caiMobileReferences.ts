@@ -14,20 +14,27 @@ function rewriteCaiReferenceArrays(
   header: { recordNamesOffset: number },
   tables: CaabStringTables,
   removedComponentIds: ReadonlySet<number>,
-  mode: "mobile" | "dependent"
+  mode: "mobile" | "dependent",
 ): number {
   const widths: Record<number, number> = { 0x56: 1, 0x57: 2, 0x58: 3, 0x48: 4 };
   const frames: { name: string; arrayIndex: number }[] = [];
   let removed = 0;
   const edits: (CaabByteReplacement & { matches: number })[] = [];
   walkCaabNodes(source, header, tables, {
-    onRecordStart(record) { frames.push({ name: record.name, arrayIndex: 0 }); },
-    onRecordEnd() { frames.pop(); },
+    onRecordStart(record) {
+      frames.push({ name: record.name, arrayIndex: 0 });
+    },
+    onRecordEnd() {
+      frames.pop();
+    },
     onValue(value) {
       if (value.kind !== "array") return;
       const frame = frames[frames.length - 1];
       const index = frame.arrayIndex++;
-      const mobile = (frame.name === "CAI_THEATRE" && index === 0) || (frame.name === "CAI_REGION" && index === 4) || frame.name === "CAI_GARRISONABLE";
+      const mobile =
+        (frame.name === "CAI_THEATRE" && index === 0) ||
+        (frame.name === "CAI_REGION" && index === 4) ||
+        frame.name === "CAI_GARRISONABLE";
       const paired = index === 0 && ["CAI_ANALYSER", "CAI_FACTION_MANAGER_MANAGER"].includes(frame.name);
       const diplomatic = frame.name === "CAI_DIPLOMATIC_ANALYSIS";
       if (mode === "mobile" ? !mobile : !(paired || diplomatic)) return;
@@ -39,9 +46,10 @@ function rewriteCaiReferenceArrays(
       const chunks: Buffer[] = [];
       let matches = 0;
       for (let at = 0; at < payload.length; at += stride) {
-        const idAt = (offset: number) => width === 3 ? payload.readUIntBE(offset, width) : payload.readUIntLE(offset, width);
-        if (removedComponentIds.has(idAt(at)) ||
-            (stride === width * 2 && removedComponentIds.has(idAt(at + width)))) matches++;
+        const idAt = (offset: number) =>
+          width === 3 ? payload.readUIntBE(offset, width) : payload.readUIntLE(offset, width);
+        if (removedComponentIds.has(idAt(at)) || (stride === width * 2 && removedComponentIds.has(idAt(at + width))))
+          matches++;
         else chunks.push(payload.subarray(at, at + stride));
       }
       if (!matches) return;
@@ -57,10 +65,16 @@ function rewriteCaiReferenceArrays(
   // Deleted records still exist in the source walk. Retain only edits covered by
   // surviving raw spans, then apply every replacement in one tree traversal.
   const spans: CaabRawSpan[] = [];
-  function visit(node: CaabRecordNode): void { for (const group of node.groups) for (const item of group) { if (item.kind === "record") visit(item); else if (item.kind === "raw") spans.push(item); } }
+  function visit(node: CaabRecordNode): void {
+    for (const group of node.groups)
+      for (const item of group) {
+        if (item.kind === "record") visit(item);
+        else if (item.kind === "raw") spans.push(item);
+      }
+  }
   visit(root);
   let cursor = 0;
-  const live = edits.filter(edit => {
+  const live = edits.filter((edit) => {
     while (cursor < spans.length && spans[cursor].end <= edit.start) cursor++;
     const span = spans[cursor];
     return span && span.start <= edit.start && span.end >= edit.end;
@@ -70,27 +84,54 @@ function rewriteCaiReferenceArrays(
   return removed;
 }
 
-export function removeCaiMobileReferences(root: CaabRecordNode, source: Buffer, header: { recordNamesOffset: number }, tables: CaabStringTables, removedIds: ReadonlySet<number>): number {
+export function removeCaiMobileReferences(
+  root: CaabRecordNode,
+  source: Buffer,
+  header: { recordNamesOffset: number },
+  tables: CaabStringTables,
+  removedIds: ReadonlySet<number>,
+): number {
   return rewriteCaiReferenceArrays(root, source, header, tables, removedIds, "mobile");
 }
 
 /** CAI_ANALYSER and manager arrays hold pairs; delete complete pairs only. */
-export function removeCaiDependentReferenceArrays(root: CaabRecordNode, source: Buffer, header: { recordNamesOffset: number }, tables: CaabStringTables, removedIds: ReadonlySet<number>): number {
+export function removeCaiDependentReferenceArrays(
+  root: CaabRecordNode,
+  source: Buffer,
+  header: { recordNamesOffset: number },
+  tables: CaabStringTables,
+  removedIds: ReadonlySet<number>,
+): number {
   return rewriteCaiReferenceArrays(root, source, header, tables, removedIds, "dependent");
 }
 
 /** Reject references that native theatre/region resolvers must resolve. */
-export function validateCaiMobileReferences(source: Buffer, header: { recordNamesOffset: number }, tables: CaabStringTables): number {
-  const ids = new Set<number>(), references: { name: string; id: number }[] = [];
+export function validateCaiMobileReferences(
+  source: Buffer,
+  header: { recordNamesOffset: number },
+  tables: CaabStringTables,
+): number {
+  const ids = new Set<number>(),
+    references: { name: string; id: number }[] = [];
   const frames: { name: string; arrayIndex: number; componentIdRead: boolean; scalarIndex: number }[] = [];
   const widths: Record<number, number> = { 0x56: 1, 0x57: 2, 0x58: 3, 0x48: 4 };
   walkCaabNodes(source, header, tables, {
-    onRecordStart(record) { frames.push({ name: record.name, arrayIndex: 0, componentIdRead: false, scalarIndex: 0 }); },
-    onRecordEnd() { frames.pop(); },
+    onRecordStart(record) {
+      frames.push({ name: record.name, arrayIndex: 0, componentIdRead: false, scalarIndex: 0 });
+    },
+    onRecordEnd() {
+      frames.pop();
+    },
     onValue(value) {
       const frame = frames[frames.length - 1];
-      if (frame.name === "CAI_BDI_COMPONENT" && !frame.componentIdRead && value.kind === "value" && value.type === "u32") {
-        ids.add(value.value as number); frame.componentIdRead = true;
+      if (
+        frame.name === "CAI_BDI_COMPONENT" &&
+        !frame.componentIdRead &&
+        value.kind === "value" &&
+        value.type === "u32"
+      ) {
+        ids.add(value.value as number);
+        frame.componentIdRead = true;
       }
       if (frame.name === "CAI_GARRISONABLE" && value.kind === "value" && value.type === "u32") {
         const index = frame.scalarIndex++;
@@ -98,12 +139,24 @@ export function validateCaiMobileReferences(source: Buffer, header: { recordName
       }
       if (value.kind !== "array") return;
       const index = frame.arrayIndex++;
-      if (!((frame.name === "CAI_THEATRE" && index === 0) || (frame.name === "CAI_REGION" && index === 4) || frame.name === "CAI_GARRISONABLE" || (frame.name === "CAI_BASIC_REGION_GROUP_ANALYSIS" && index < 3))) return;
-      const width = widths[value.marker], payload = value.value.payload;
+      if (!(
+        (frame.name === "CAI_THEATRE" && index === 0) ||
+        (frame.name === "CAI_REGION" && index === 4) ||
+        frame.name === "CAI_GARRISONABLE" ||
+        (frame.name === "CAI_BASIC_REGION_GROUP_ANALYSIS" && index < 3)
+      ))
+        return;
+      const width = widths[value.marker],
+        payload = value.value.payload;
       if (!width || payload.length % width) throw new Error(`Invalid mobile-reference array in ${frame.name}.`);
-      for (let at = 0; at < payload.length; at += width) references.push({ name: frame.name, id: width === 3 ? payload.readUIntBE(at, width) : payload.readUIntLE(at, width) });
+      for (let at = 0; at < payload.length; at += width)
+        references.push({
+          name: frame.name,
+          id: width === 3 ? payload.readUIntBE(at, width) : payload.readUIntLE(at, width),
+        });
     },
   });
-  for (const reference of references) if (!ids.has(reference.id)) throw new Error(`${reference.name} references missing AI component ${reference.id}.`);
+  for (const reference of references)
+    if (!ids.has(reference.id)) throw new Error(`${reference.name} references missing AI component ${reference.id}.`);
   return references.length;
 }

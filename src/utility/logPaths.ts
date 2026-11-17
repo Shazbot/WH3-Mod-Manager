@@ -94,7 +94,9 @@ export const listGameLogs = async (gamePath: string): Promise<GameLogInfo[]> => 
             mtimeMs: stats.mtimeMs,
             parsedDate: parseScriptLogTimestamp(entry.name),
             isScriptLog,
-            environment: isScriptLog ? await readGameLogEnvironment(filePath, stats.size).catch(() => undefined) : undefined,
+            environment: isScriptLog
+              ? await readGameLogEnvironment(filePath, stats.size).catch(() => undefined)
+              : undefined,
           };
         } catch {
           return undefined;

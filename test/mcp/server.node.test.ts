@@ -144,24 +144,44 @@ describe("WH3 MCP stdio server", () => {
 
   it("extracts folders through the shared operation and enforces write roots", async () => {
     const packPath = path.join(allowedRoot, "extract-source.pack");
-    await writeRawPack(packPath, [{ name: "script/example.lua", buffer: Buffer.from("return 1") },
-      { name: "script/bad", is_compressed: true, buffer: Buffer.alloc(12, 255) },
-      { name: "ui/icon.dds", buffer: Buffer.from([0, 255]) }], metadata());
+    await writeRawPack(
+      packPath,
+      [
+        { name: "script/example.lua", buffer: Buffer.from("return 1") },
+        { name: "script/bad", is_compressed: true, buffer: Buffer.alloc(12, 255) },
+        { name: "ui/icon.dds", buffer: Buffer.from([0, 255]) },
+      ],
+      metadata(),
+    );
     const outputPath = path.join(allowedRoot, "extracted");
     const session = await connect();
     try {
-      const result = await session.client.callTool({ name: "pack_extract", arguments: {
-        packPaths: [packPath], folders: ["script"], outputPath,
-      } });
+      const result = await session.client.callTool({
+        name: "pack_extract",
+        arguments: {
+          packPaths: [packPath],
+          folders: ["script"],
+          outputPath,
+        },
+      });
       expect(result.isError, JSON.stringify(result.structuredContent)).not.toBe(true);
-      expect(responseEnvelope(result)).toMatchObject({ ok: true, data: { extractedFiles: 1, rawFiles: 1, skippedFiles: 1, complete: false } });
+      expect(responseEnvelope(result)).toMatchObject({
+        ok: true,
+        data: { extractedFiles: 1, rawFiles: 1, skippedFiles: 1, complete: false },
+      });
       expect(readFileSync(path.join(outputPath, "script/example.lua"), "utf8")).toBe("return 1");
       expect(existsSync(path.join(outputPath, "ui"))).toBe(false);
-      const denied = await session.client.callTool({ name: "pack_extract", arguments: {
-        packPaths: [packPath], outputPath: path.join(outsideRoot, "denied-extraction"),
-      } });
+      const denied = await session.client.callTool({
+        name: "pack_extract",
+        arguments: {
+          packPaths: [packPath],
+          outputPath: path.join(outsideRoot, "denied-extraction"),
+        },
+      });
       expect(responseEnvelope(denied)).toMatchObject({ ok: false, error: { code: "IO_ACCESS" } });
-    } finally { await session.close(); }
+    } finally {
+      await session.close();
+    }
   });
 
   it("adds the mod and launch tools only with --allow-game-control", async () => {
@@ -173,7 +193,9 @@ describe("WH3 MCP stdio server", () => {
       expect(listed.tools.find((tool) => tool.name === "game_launch")?.inputSchema).toMatchObject({
         properties: { temporary: { type: "boolean" }, only: { type: "array" } },
       });
-    } finally { await session.close(); }
+    } finally {
+      await session.close();
+    }
   });
 
   it("registers all shared operations with descriptions and typed input schemas", async () => {
@@ -214,7 +236,11 @@ describe("WH3 MCP stdio server", () => {
         },
       });
       expect(listed.tools.find((tool) => tool.name === "pack_diff")?.inputSchema).toMatchObject({
-        properties: { detectMoves: { type: "boolean" }, details: { type: "boolean" }, affectedUnits: { type: "boolean" } },
+        properties: {
+          detectMoves: { type: "boolean" },
+          details: { type: "boolean" },
+          affectedUnits: { type: "boolean" },
+        },
       });
       expect(listed.tools.find((tool) => tool.name === "pack_textures")?.inputSchema).toMatchObject({
         required: ["packPath"],
@@ -222,12 +248,23 @@ describe("WH3 MCP stdio server", () => {
       });
       expect(listed.tools.find((tool) => tool.name === "asset_users")?.inputSchema).toMatchObject({
         required: ["packPath"],
-        properties: { packPaths: { type: "array" }, targetPath: { type: "string" }, targetPaths: { type: "array" },
-          maxNodes: { type: "integer" }, maxScanSources: { type: "integer" }, maxIndexEdges: { type: "integer" } },
+        properties: {
+          packPaths: { type: "array" },
+          targetPath: { type: "string" },
+          targetPaths: { type: "array" },
+          maxNodes: { type: "integer" },
+          maxScanSources: { type: "integer" },
+          maxIndexEdges: { type: "integer" },
+        },
       });
       expect(listed.tools.find((tool) => tool.name === "unit_resolve")?.inputSchema).toMatchObject({
-        properties: { query: { type: "string" }, queries: { type: "array" }, searchBy: { type: "string" },
-          maxScanSources: { type: "integer" }, maxIndexEdges: { type: "integer" } },
+        properties: {
+          query: { type: "string" },
+          queries: { type: "array" },
+          searchBy: { type: "string" },
+          maxScanSources: { type: "integer" },
+          maxIndexEdges: { type: "integer" },
+        },
       });
       for (const name of [
         "pack_subset",
@@ -385,13 +422,18 @@ describe("WH3 MCP stdio server", () => {
       await server.connect(serverTransport);
       await client.connect(clientTransport);
       const updates: Array<{ progress: number; total?: number }> = [];
-      const response = await client.callTool({ name: "pack_diff", arguments: { beforePath, afterPath } }, {
-        onprogress: (update) => updates.push({ progress: update.progress, total: update.total }),
-      });
+      const response = await client.callTool(
+        { name: "pack_diff", arguments: { beforePath, afterPath } },
+        {
+          onprogress: (update) => updates.push({ progress: update.progress, total: update.total }),
+        },
+      );
       expect(response.isError).not.toBe(true);
       expect(updates.length).toBeGreaterThan(0);
       expect(updates.every((update) => update.total === undefined || update.progress <= update.total)).toBe(true);
-      expect(updates.map((update) => update.progress)).toEqual([...updates.map((update) => update.progress)].sort((a, b) => a - b));
+      expect(updates.map((update) => update.progress)).toEqual(
+        [...updates.map((update) => update.progress)].sort((a, b) => a - b),
+      );
     } finally {
       await client.close();
       await server.close();
@@ -536,10 +578,14 @@ describe("WH3 MCP stdio server", () => {
         arguments: { packPath, targetPath: "textures/test.dds" },
       });
       expect(users.isError, JSON.stringify(users.structuredContent)).not.toBe(true);
-      const usersCli = spawnSync(process.execPath, [cliEntry, "asset", "users", packPath, "textures/test.dds", "--format", "json"], {
-        cwd: projectRoot,
-        encoding: "utf8",
-      });
+      const usersCli = spawnSync(
+        process.execPath,
+        [cliEntry, "asset", "users", packPath, "textures/test.dds", "--format", "json"],
+        {
+          cwd: projectRoot,
+          encoding: "utf8",
+        },
+      );
       expect(usersCli.status, usersCli.stderr).toBe(0);
       expect(JSON.parse(usersCli.stdout)).toEqual(responseEnvelope(users));
     } finally {

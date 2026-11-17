@@ -1,5 +1,11 @@
 import { LzmaCompressor } from "@napi-rs/lzma";
-import { CaabStringTables, parseCaabStringTables, parseCbabStringTables, readCaabHeader, walkCaabNodes } from "./codecs/caabBinary";
+import {
+  CaabStringTables,
+  parseCaabStringTables,
+  parseCbabStringTables,
+  readCaabHeader,
+  walkCaabNodes,
+} from "./codecs/caabBinary";
 import { buildCaabTree, replaceByteRange } from "./codecs/caabTree";
 import { cauleb128Length, writeCauleb128, writeCaabBuffer } from "./codecs/caabWriter";
 import { decompressEsfBlock, findCompressedEsfBlock } from "./compressed";
@@ -101,7 +107,12 @@ function findBlockValueSpans(buffer: Buffer, recordNamesOffset: number, tables: 
         }
         const span = { start: value.startOffset, end: value.endOffset };
 
-        if (parent === "COMPRESSED_DATA" && value.kind === "array" && value.marker === MARKER_U8_ARRAY && !streamValue) {
+        if (
+          parent === "COMPRESSED_DATA" &&
+          value.kind === "array" &&
+          value.marker === MARKER_U8_ARRAY &&
+          !streamValue
+        ) {
           streamValue = span;
           return;
         }
@@ -116,7 +127,7 @@ function findBlockValueSpans(buffer: Buffer, recordNamesOffset: number, tables: 
           propsValue = span;
         }
       },
-    }
+    },
   );
 
   if (!streamValue || !sizeValue || !propsValue) {
@@ -190,7 +201,7 @@ export async function repackAndVerify(outer: Buffer, inner: Buffer): Promise<Rep
   const decoded = decompressEsfBlock(reopened);
   if (!decoded.equals(inner)) {
     throw new Error(
-      `Repacked stream decompresses to ${decoded.length} bytes that differ from the ${inner.length} bytes written.`
+      `Repacked stream decompresses to ${decoded.length} bytes that differ from the ${inner.length} bytes written.`,
     );
   }
 

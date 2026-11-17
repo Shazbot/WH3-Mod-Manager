@@ -58,7 +58,9 @@ export const resolveSkillSetCultures = (
     };
 
     if (counts.size) {
-      const candidates = Array.from(counts.keys()).sort((a, b) => counts.get(b)! - counts.get(a)! || collator.compare(a, b));
+      const candidates = Array.from(counts.keys()).sort(
+        (a, b) => counts.get(b)! - counts.get(a)! || collator.compare(a, b),
+      );
       result[set.key] = findByCode(candidates) ?? candidates[0];
       continue;
     }

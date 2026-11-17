@@ -7,13 +7,17 @@ export const defaultCliCacheDirectory = (
   environment: NodeJS.ProcessEnv = process.env,
   home = os.homedir(),
 ): string => {
-  if (platform === "win32") return path.win32.join(environment.LOCALAPPDATA || path.win32.join(home, "AppData", "Local"), "wh3mm");
+  if (platform === "win32")
+    return path.win32.join(environment.LOCALAPPDATA || path.win32.join(home, "AppData", "Local"), "wh3mm");
   if (platform === "darwin") return path.join(home, "Library", "Caches", "wh3mm");
   const root = environment.XDG_CACHE_HOME;
   return path.join(root && path.isAbsolute(root) ? root : path.join(home, ".cache"), "wh3mm");
 };
 
-const oneLine = (value: unknown): string => String(value ?? "unknown").replace(/[\r\n\t]+/g, " ").trim();
+const oneLine = (value: unknown): string =>
+  String(value ?? "unknown")
+    .replace(/[\r\n\t]+/g, " ")
+    .trim();
 
 export const createCliProgressReporter = (
   write: (value: string) => void,
@@ -33,10 +37,17 @@ export const createCliProgressReporter = (
     previousPhase = phase;
     previousTime = time;
     previousSignature = signature;
-    const counts = update.completed === undefined ? "" : ` ${update.completed}${update.total === undefined ? "" : `/${update.total}`}`;
+    const counts =
+      update.completed === undefined
+        ? ""
+        : ` ${update.completed}${update.total === undefined ? "" : `/${update.total}`}`;
     const details = (["units", "paths", "edges"] as const)
-      .filter((key) => update[key] !== undefined).map((key) => `${key}=${update[key]}`).join(" ");
-    write(`[progress] ${oneLine(update.state ? `${update.state} ${update.stage}` : update.stage)}${counts}${details ? ` ${details}` : ""}${update.message ? `: ${oneLine(update.message)}` : ""}\n`);
+      .filter((key) => update[key] !== undefined)
+      .map((key) => `${key}=${update[key]}`)
+      .join(" ");
+    write(
+      `[progress] ${oneLine(update.state ? `${update.state} ${update.stage}` : update.stage)}${counts}${details ? ` ${details}` : ""}${update.message ? `: ${oneLine(update.message)}` : ""}\n`,
+    );
   };
 };
 
@@ -44,14 +55,21 @@ export const createCliProgressReporter = (
 export const formatAffectedChecklist = (data: Record<string, any>): string => {
   const affected = data.affectedUnits;
   const checklist = affected.checklist ?? {};
-  const lines = [`${affected.total ?? 0} affected units; ${affected.complete ? "complete" : "incomplete — see unresolved paths and diagnostics"}`];
+  const lines = [
+    `${affected.total ?? 0} affected units; ${affected.complete ? "complete" : "incomplete — see unresolved paths and diagnostics"}`,
+  ];
   for (const unit of checklist.units ?? []) {
-    const factions = (unit.customBattleFactions ?? []).map((faction: any) => oneLine(faction.key)).join(", ") || "unknown";
+    const factions =
+      (unit.customBattleFactions ?? []).map((faction: any) => oneLine(faction.key)).join(", ") || "unknown";
     const files = (unit.changedFiles ?? []).map((file: any) => oneLine(file.path)).join(", ") || "none";
-    lines.push(`${oneLine(unit.key)} | ${oneLine(unit.name)} | ${oneLine(unit.role)} | custom battle: ${factions} | ${unit.changedBytes ?? 0} bytes | ${files}`);
+    lines.push(
+      `${oneLine(unit.key)} | ${oneLine(unit.name)} | ${oneLine(unit.role)} | custom battle: ${factions} | ${unit.changedBytes ?? 0} bytes | ${files}`,
+    );
   }
   for (const asset of checklist.campaignReviewAssets ?? []) {
-    lines.push(`${oneLine(asset.classification ?? "unknown usage")} | ${oneLine(asset.path)} | ${asset.bytes ?? 0} bytes | ${oneLine(asset.reason)}`);
+    lines.push(
+      `${oneLine(asset.classification ?? "unknown usage")} | ${oneLine(asset.path)} | ${asset.bytes ?? 0} bytes | ${oneLine(asset.reason)}`,
+    );
   }
   for (const asset of checklist.unmappedAssets ?? []) {
     lines.push(`unmapped (${oneLine(asset.status)}) | ${oneLine(asset.path)} | ${asset.bytes ?? 0} bytes`);

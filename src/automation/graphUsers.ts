@@ -57,8 +57,8 @@ export const createIncomingVisualReferenceIndex = async (
   const ddsTargets = targetPaths.filter((targetPath) => pathExtension(targetPath) === "dds");
   const requestedDdsKeys = new Set(ddsTargets.map(normalizePackFilePathKey));
   const supportedTargets = new Set([...supportedSourceExtensions, "dds"]);
-  const hasNonDdsSupportedTargets = [...targetExtensions].some(
-    (extension) => Boolean(extension && extension !== "dds" && supportedSourceExtensions.has(extension)),
+  const hasNonDdsSupportedTargets = [...targetExtensions].some((extension) =>
+    Boolean(extension && extension !== "dds" && supportedSourceExtensions.has(extension)),
   );
   const incoming = new Map<string, IncomingVisualReferenceEdge[]>();
   const edgeByPair = new Map<string, IncomingVisualReferenceEdge>();
@@ -70,13 +70,14 @@ export const createIncomingVisualReferenceIndex = async (
   let scannedGroups = 0;
   let totalCandidatePaths = 0;
   const report = (force = false) => {
-    if (force || (scannedSources & 255) === 0) environment.context.progress?.({
-      stage: "indexing",
-      completed: scannedSources,
-      total: totalCandidatePaths,
-      edges: edgeByPair.size,
-      message: `Indexed ${scannedSources} visual sources`,
-    });
+    if (force || (scannedSources & 255) === 0)
+      environment.context.progress?.({
+        stage: "indexing",
+        completed: scannedSources,
+        total: totalCandidatePaths,
+        edges: edgeByPair.size,
+        message: `Indexed ${scannedSources} visual sources`,
+      });
   };
   const noteIncomplete = (code: string, message: string, sourcePath?: string) => {
     complete = false;
@@ -93,7 +94,11 @@ export const createIncomingVisualReferenceIndex = async (
     if (resolution.status === "missing") continue;
     needsTextures = true;
     if (resolution.status === "ambiguous")
-      noteIncomplete("INCOMING_REFERENCE_TARGET_AMBIGUOUS", `Multiple effective entries provide ${resolution.path}`, resolution.path);
+      noteIncomplete(
+        "INCOMING_REFERENCE_TARGET_AMBIGUOUS",
+        `Multiple effective entries provide ${resolution.path}`,
+        resolution.path,
+      );
   }
   const sourceExtensions = new Set<string>(
     hasNonDdsSupportedTargets || needsTextures ? ["variantmeshdefinition", "wsmodel", "xml.material"] : [],
@@ -101,7 +106,10 @@ export const createIncomingVisualReferenceIndex = async (
   if (needsTextures) sourceExtensions.add("rigid_model_v2");
   let edgeLimitHit = false;
   const addReference = (
-    source: { provider: ReferenceProvider; entry: ReferenceEnvironment["providers"][number]["pack"]["entries"][number] },
+    source: {
+      provider: ReferenceProvider;
+      entry: ReferenceEnvironment["providers"][number]["pack"]["entries"][number];
+    },
     detail: VisualReferenceDetail,
   ) => {
     const requestedKey = normalizePackFilePathKey(detail.path);
@@ -114,7 +122,11 @@ export const createIncomingVisualReferenceIndex = async (
       resolutionCache.set(requestedKey, resolution);
     }
     if (resolution.status === "ambiguous") {
-      noteIncomplete("INCOMING_REFERENCE_TARGET_AMBIGUOUS", `Multiple effective entries provide ${resolution.path}`, resolution.path);
+      noteIncomplete(
+        "INCOMING_REFERENCE_TARGET_AMBIGUOUS",
+        `Multiple effective entries provide ${resolution.path}`,
+        resolution.path,
+      );
       return;
     }
     if (resolution.status !== "found" || !resolution.winner) return;
@@ -135,7 +147,10 @@ export const createIncomingVisualReferenceIndex = async (
         sourceKey,
         targetKey,
         sourceProvider: { packPath: source.provider.pack.path, providerKind: source.provider.kind },
-        targetProvider: { packPath: resolution.winner.provider.pack.path, providerKind: resolution.winner.provider.kind },
+        targetProvider: {
+          packPath: resolution.winner.provider.pack.path,
+          providerKind: resolution.winner.provider.kind,
+        },
         details: [],
       };
       edgeByPair.set(pair, edge);
@@ -143,25 +158,43 @@ export const createIncomingVisualReferenceIndex = async (
       group.push(edge);
       incoming.set(targetKey, group);
     }
-    if (!edge.details.some((item) => item.relationship === detail.relationship && item.location === detail.location &&
-        JSON.stringify(item.conditional) === JSON.stringify(detail.conditional))) edge.details.push(detail);
+    if (
+      !edge.details.some(
+        (item) =>
+          item.relationship === detail.relationship &&
+          item.location === detail.location &&
+          JSON.stringify(item.conditional) === JSON.stringify(detail.conditional),
+      )
+    )
+      edge.details.push(detail);
   };
 
-  const effectiveSources: Array<{ key: string; extension: string; provider: ReferenceProvider; entry: ReferenceEnvironment["providers"][number]["pack"]["entries"][number] }> = [];
+  const effectiveSources: Array<{
+    key: string;
+    extension: string;
+    provider: ReferenceProvider;
+    entry: ReferenceEnvironment["providers"][number]["pack"]["entries"][number];
+  }> = [];
   for (const [key, candidates] of environment.assetCandidates) {
     const extension = pathExtension(key);
     if (!extension || !sourceExtensions.has(extension) || !supportedSourceExtensions.has(extension)) continue;
     const highestOrder = candidates[candidates.length - 1]?.provider.order;
     const top = candidates.filter((candidate) => candidate.provider.order === highestOrder);
     if (top.length !== 1) {
-      noteIncomplete("INCOMING_REFERENCE_SOURCE_AMBIGUOUS", "An effective visual source path is duplicated in its winning pack", top[0]?.entry.name);
+      noteIncomplete(
+        "INCOMING_REFERENCE_SOURCE_AMBIGUOUS",
+        "An effective visual source path is duplicated in its winning pack",
+        top[0]?.entry.name,
+      );
       continue;
     }
     effectiveSources.push({ key, extension, provider: top[0].provider, entry: top[0].entry });
   }
   // Target and supporting mod sources are scanned before the much larger vanilla set. The
   // array is limited to supported active source paths, not copied pack payloads or parse trees.
-  effectiveSources.sort((left, right) => right.provider.order - left.provider.order || left.key.localeCompare(right.key));
+  effectiveSources.sort(
+    (left, right) => right.provider.order - left.provider.order || left.key.localeCompare(right.key),
+  );
   totalCandidatePaths = effectiveSources.length;
   let sourceIndex = 0;
   let stop = false;
@@ -173,7 +206,10 @@ export const createIncomingVisualReferenceIndex = async (
         throwIfAborted(environment.context.signal);
         if ((scannedGroups++ & 127) === 0) await yieldToEventLoop(environment.context.signal);
         if (scannedSources >= limits.maxSources) {
-          noteIncomplete("INCOMING_REFERENCE_SOURCE_LIMIT", `Incoming visual indexing reached maxSources (${limits.maxSources})`);
+          noteIncomplete(
+            "INCOMING_REFERENCE_SOURCE_LIMIT",
+            `Incoming visual indexing reached maxSources (${limits.maxSources})`,
+          );
           stop = true;
           break;
         }
@@ -181,38 +217,62 @@ export const createIncomingVisualReferenceIndex = async (
         try {
           if (extension === "rigid_model_v2") {
             const model = await loadRigidReferenceModel(environment, provider, entry, false, session);
-            for (const lod of model.lods) for (const part of lod.parts) {
-              if (!part.complete || !part.textures) {
-                noteIncomplete("INCOMING_REFERENCE_RMV2_PART_INCOMPLETE", `LOD ${part.lodIndex} part ${part.partIndex} has unsupported texture coverage`, entry.name);
-                continue;
+            for (const lod of model.lods)
+              for (const part of lod.parts) {
+                if (!part.complete || !part.textures) {
+                  noteIncomplete(
+                    "INCOMING_REFERENCE_RMV2_PART_INCOMPLETE",
+                    `LOD ${part.lodIndex} part ${part.partIndex} has unsupported texture coverage`,
+                    entry.name,
+                  );
+                  continue;
+                }
+                for (let textureSlotIndex = 0; textureSlotIndex < part.textures.length; textureSlotIndex++) {
+                  const texture = part.textures[textureSlotIndex];
+                  if (!texture.path.trim()) continue;
+                  addReference(
+                    { provider, entry },
+                    {
+                      path: texture.path,
+                      extension: "dds",
+                      relationship: "texture",
+                      sourceField: texture.typeName ?? "texturePath",
+                      location: `lod[${lod.lodIndex}]/part[${part.partIndex}]/texture[${textureSlotIndex}]`,
+                    },
+                  );
+                }
               }
-              for (let textureSlotIndex = 0; textureSlotIndex < part.textures.length; textureSlotIndex++) {
-                const texture = part.textures[textureSlotIndex];
-                if (!texture.path.trim()) continue;
-                addReference({ provider, entry }, {
-                  path: texture.path,
-                  extension: "dds",
-                  relationship: "texture",
-                  sourceField: texture.typeName ?? "texturePath",
-                  location: `lod[${lod.lodIndex}]/part[${part.partIndex}]/texture[${textureSlotIndex}]`,
-                });
-              }
-            }
           } else {
             const extraction = await loadVisualReferenceExtraction(environment, provider, entry, false, session);
             if (!extraction.valid) {
-              noteIncomplete("INCOMING_REFERENCE_XML_UNREADABLE", extraction.error ?? "Visual XML is malformed", entry.name);
+              noteIncomplete(
+                "INCOMING_REFERENCE_XML_UNREADABLE",
+                extraction.error ?? "Visual XML is malformed",
+                entry.name,
+              );
               continue;
             }
             for (const detail of extraction.references) addReference({ provider, entry }, detail);
           }
         } catch (error) {
-          if (error && typeof error === "object" && "code" in error && ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(String(error.code))) throw error;
-          noteIncomplete(extension === "rigid_model_v2" ? "INCOMING_REFERENCE_RMV2_UNREADABLE" : "INCOMING_REFERENCE_XML_UNREADABLE",
-            error instanceof Error ? error.message : String(error), entry.name);
+          if (
+            error &&
+            typeof error === "object" &&
+            "code" in error &&
+            ["CANCELLED", "CONFLICT", "IO_ACCESS"].includes(String(error.code))
+          )
+            throw error;
+          noteIncomplete(
+            extension === "rigid_model_v2" ? "INCOMING_REFERENCE_RMV2_UNREADABLE" : "INCOMING_REFERENCE_XML_UNREADABLE",
+            error instanceof Error ? error.message : String(error),
+            entry.name,
+          );
         }
         if (edgeLimitHit) {
-          noteIncomplete("INCOMING_REFERENCE_EDGE_LIMIT", `Incoming visual indexing reached maxIndexEdges (${limits.maxIndexEdges})`);
+          noteIncomplete(
+            "INCOMING_REFERENCE_EDGE_LIMIT",
+            `Incoming visual indexing reached maxIndexEdges (${limits.maxIndexEdges})`,
+          );
           stop = true;
           break;
         }
@@ -230,7 +290,10 @@ export const createIncomingVisualReferenceIndex = async (
     diagnostics,
     async findMany(paths, roots, walkLimits) {
       const matches = new Map<string, VisualRootChain[]>();
-      const coverageByPath = new Map<string, { complete: boolean; walks: number; status?: "unsupported"; limitReason?: string }>();
+      const coverageByPath = new Map<
+        string,
+        { complete: boolean; walks: number; status?: "unsupported"; limitReason?: string }
+      >();
       const rootsByPath = new Map<string, UnitVisualRoot[]>();
       for (const root of roots) {
         const key = normalizePackFilePathKey(root.path);
@@ -297,7 +360,14 @@ export const createIncomingVisualReferenceIndex = async (
               references: edge.details,
             };
           });
-          const signature = JSON.stringify([root.path, root.unitKey, root.landUnitKey, root.rootKind, root.reason, chain]);
+          const signature = JSON.stringify([
+            root.path,
+            root.unitKey,
+            root.landUnitKey,
+            root.rootKind,
+            root.reason,
+            chain,
+          ]);
           const signatures = resultSignatures.get(state.seed) ?? new Set<string>();
           resultSignatures.set(state.seed, signatures);
           if (!signatures.has(signature)) {
@@ -347,19 +417,34 @@ export const createIncomingVisualReferenceIndex = async (
         coverageByPath.set(seed, {
           complete: !unsupported && complete && !reason && (seedCounts.get(seed) ?? 0) === 0,
           walks: seedWalks.get(seed) ?? 0,
-          ...(unsupported ? { status: "unsupported", limitReason: "unsupported target extension" as const } :
-            reason ? { limitReason: reason } : complete ? {} : { limitReason: "incoming index incomplete" }),
+          ...(unsupported
+            ? { status: "unsupported", limitReason: "unsupported target extension" as const }
+            : reason
+              ? { limitReason: reason }
+              : complete
+                ? {}
+                : { limitReason: "incoming index incomplete" }),
         });
       }
-      environment.context.progress?.({ stage: "traversal", completed: uniqueSeeds.length, total: uniqueSeeds.length, paths: uniqueSeeds.length,
-        edges: workEdges, message: `Traversed ${uniqueSeeds.length} changed paths` });
+      environment.context.progress?.({
+        stage: "traversal",
+        completed: uniqueSeeds.length,
+        total: uniqueSeeds.length,
+        paths: uniqueSeeds.length,
+        edges: workEdges,
+        message: `Traversed ${uniqueSeeds.length} changed paths`,
+      });
       return { matches, coverageByPath, walks: workEdges };
     },
   };
 };
 
 /** Reverse index shared by asset users and affected-unit diff queries. */
-export const createGraphUserIndex = async (graph: ReferenceGraphResult, roots: readonly UnitVisualRoot[], signal?: AbortSignal) => {
+export const createGraphUserIndex = async (
+  graph: ReferenceGraphResult,
+  roots: readonly UnitVisualRoot[],
+  signal?: AbortSignal,
+) => {
   const nodes = new Map<string, ReferenceGraphResult["nodes"][number]>();
   const assetsByPath = new Map<string, ReferenceGraphResult["nodes"]>();
   let scanned = 0;
@@ -406,7 +491,10 @@ export const createGraphUserIndex = async (graph: ReferenceGraphResult, roots: r
   };
 
   return {
-    async find(targetPath: string, maxWalks: number): Promise<{ matches: VisualRootChain[]; walked: number; limitHit: boolean }> {
+    async find(
+      targetPath: string,
+      maxWalks: number,
+    ): Promise<{ matches: VisualRootChain[]; walked: number; limitHit: boolean }> {
       const targetKey = normalizePackFilePathKey(targetPath);
       const targets = assetsByPath.get(targetKey) ?? [];
       const matches: VisualRootChain[] = [];
@@ -435,7 +523,14 @@ export const createGraphUserIndex = async (graph: ReferenceGraphResult, roots: r
                 location: edge.location,
                 conditional: edge.conditional,
               }));
-              const signature = JSON.stringify([root.path, root.unitKey, root.landUnitKey, root.rootKind, root.reason, chain]);
+              const signature = JSON.stringify([
+                root.path,
+                root.unitKey,
+                root.landUnitKey,
+                root.rootKind,
+                root.reason,
+                chain,
+              ]);
               if (!signatures.has(signature)) {
                 signatures.add(signature);
                 matches.push({ root, chain });
@@ -444,7 +539,11 @@ export const createGraphUserIndex = async (graph: ReferenceGraphResult, roots: r
           }
           for (const edge of incoming.get(current.id) ?? []) {
             if ((edge.status && edge.status !== "found") || current.pathIds.has(edge.source)) continue;
-            queue.push({ id: edge.source, reversed: [...current.reversed, edge], pathIds: new Set([...current.pathIds, edge.source]) });
+            queue.push({
+              id: edge.source,
+              reversed: [...current.reversed, edge],
+              pathIds: new Set([...current.pathIds, edge.source]),
+            });
           }
         }
       }

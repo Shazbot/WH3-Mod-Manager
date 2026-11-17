@@ -192,13 +192,26 @@ function collect(buffer: Buffer, header: { recordNamesOffset: number }, tables: 
   let provinceIndex = -1;
   let caiFactionIndex = -1;
   const cai: CaiInfo = {
-    factionOwners: [], settlementRegions: [], settlementOwners: [], mobiles: [], mobileBdi: [], mobileOwners: [], characterIds: [],
-    characterOwners: [], factionLists: new Map(), regionBdi: [], regionOfRegion: [], factionProvinces: [],
+    factionOwners: [],
+    settlementRegions: [],
+    settlementOwners: [],
+    mobiles: [],
+    mobileBdi: [],
+    mobileOwners: [],
+    characterIds: [],
+    characterOwners: [],
+    factionLists: new Map(),
+    regionBdi: [],
+    regionOfRegion: [],
+    factionProvinces: [],
   };
   let diploIndex = 0;
   let queueIndex = 0;
   let queueBuildingCounter: (Span & { value: number }) | null = null;
-  const span = (v: { startOffset?: number; endOffset?: number }): Span => ({ start: v.startOffset ?? -1, end: v.endOffset ?? -1 });
+  const span = (v: { startOffset?: number; endOffset?: number }): Span => ({
+    start: v.startOffset ?? -1,
+    end: v.endOffset ?? -1,
+  });
 
   walkCaabNodes(buffer, header, tables, {
     onRecordStart(record, stack) {
@@ -208,8 +221,10 @@ function collect(buffer: Buffer, header: { recordNamesOffset: number }, tables: 
       if (record.name === "FACTION_PROVINCE_MANAGER" && parent === "FACTION_PROVINCE_MANAGER_ARRAY")
         provinceManagers.push({ province: provinceIndex, id: -1, faction: -1, regions: null });
       if (record.name === "CAI_FACTION" && parent === "CAI_WORLD_FACTIONS") caiFactionIndex += 1;
-      if (record.name === "CAI_FACTION_PROVINCE" && parent === "CAI_FACTION_PROVINCES") cai.factionProvinces.push({ fpm: -1, regions: null });
-      if (record.name === "CAI_RESOURCE_MOBILE" && parent === "CAI_WORLD_RESOURCE_MOBILES") cai.mobiles.push({ id: -1, force: -1 });
+      if (record.name === "CAI_FACTION_PROVINCE" && parent === "CAI_FACTION_PROVINCES")
+        cai.factionProvinces.push({ fpm: -1, regions: null });
+      if (record.name === "CAI_RESOURCE_MOBILE" && parent === "CAI_WORLD_RESOURCE_MOBILES")
+        cai.mobiles.push({ id: -1, force: -1 });
       switch (record.name) {
         case "FACTION":
           if (parent === "FACTION_ARRAY" && stack[stack.length - 2] === "WORLD") {
@@ -238,7 +253,8 @@ function collect(buffer: Buffer, header: { recordNamesOffset: number }, tables: 
           queueIndex = 0;
           break;
         case "REGION_SLOT":
-          if (region && parent === "REGION_SLOT_ARRAY") slot = { strings: [], building: null, baseId: null, baseFloats: [] };
+          if (region && parent === "REGION_SLOT_ARRAY")
+            slot = { strings: [], building: null, baseId: null, baseFloats: [] };
           break;
         default:
           break;
@@ -304,9 +320,21 @@ function collect(buffer: Buffer, header: { recordNamesOffset: number }, tables: 
       const list = (): IdList | null => {
         const width = value.kind === "array" ? ID_LIST_WIDTHS[value.marker] : undefined;
         if (value.kind !== "array" || !width || value.value.payloadByteLength % width) return null;
-        const payload = buffer.subarray(value.value.payloadOffset, value.value.payloadOffset + value.value.payloadByteLength);
+        const payload = buffer.subarray(
+          value.value.payloadOffset,
+          value.value.payloadOffset + value.value.payloadByteLength,
+        );
         const values: number[] = [];
-        for (let at = 0; at < payload.length; at += width) values.push(width === 3 ? payload.readUIntBE(at, 3) : width === 1 ? payload[at] : width === 2 ? payload.readUInt16LE(at) : payload.readUInt32LE(at));
+        for (let at = 0; at < payload.length; at += width)
+          values.push(
+            width === 3
+              ? payload.readUIntBE(at, 3)
+              : width === 1
+                ? payload[at]
+                : width === 2
+                  ? payload.readUInt16LE(at)
+                  : payload.readUInt32LE(at),
+          );
         return { ...span(value), marker: value.marker, values };
       };
       if (parent === "FACTION_PROVINCE_MANAGER" && grand === "FACTION_PROVINCE_MANAGER_ARRAY") {
@@ -318,8 +346,10 @@ function collect(buffer: Buffer, header: { recordNamesOffset: number }, tables: 
         if (grand === "CAI_WORLD_FACTIONS") cai.factionOwners.push(num);
         else if (grand === "CAI_WORLD_SETTLEMENTS") cai.settlementOwners.push({ ...span(value), value: num });
         else if (grand === "CAI_WORLD_RESOURCE_MOBILES") cai.mobileOwners.push(span(value));
-      } else if (parent === "OWNED_INDIRECT" && grand === "CAI_WORLD_CHARACTERS" && k === 0) cai.characterOwners.push(span(value));
-      else if (parent === "CAI_SETTLEMENT" && grand === "CAI_WORLD_SETTLEMENTS" && k === 2 && num !== null) cai.settlementRegions.push(num);
+      } else if (parent === "OWNED_INDIRECT" && grand === "CAI_WORLD_CHARACTERS" && k === 0)
+        cai.characterOwners.push(span(value));
+      else if (parent === "CAI_SETTLEMENT" && grand === "CAI_WORLD_SETTLEMENTS" && k === 2 && num !== null)
+        cai.settlementRegions.push(num);
       else if (parent === "CAI_RESOURCE_MOBILE" && grand === "CAI_WORLD_RESOURCE_MOBILES" && num !== null) {
         const m = cai.mobiles[cai.mobiles.length - 1];
         if (k === 0) m.id = num;
@@ -327,8 +357,10 @@ function collect(buffer: Buffer, header: { recordNamesOffset: number }, tables: 
       } else if (parent === "CAI_BDI_COMPONENT" && k === 0 && num !== null) {
         if (grand === "CAI_WORLD_RESOURCE_MOBILES") cai.mobileBdi.push(num);
         else if (grand === "CAI_WORLD_REGIONS") cai.regionBdi.push(num);
-      } else if (parent === "CAI_CHARACTER" && grand === "CAI_WORLD_CHARACTERS" && k === 3 && num !== null) cai.characterIds.push(num);
-      else if (parent === "CAI_REGION" && grand === "CAI_WORLD_REGIONS" && k === 10 && num !== null) cai.regionOfRegion.push(num);
+      } else if (parent === "CAI_CHARACTER" && grand === "CAI_WORLD_CHARACTERS" && k === 3 && num !== null)
+        cai.characterIds.push(num);
+      else if (parent === "CAI_REGION" && grand === "CAI_WORLD_REGIONS" && k === 10 && num !== null)
+        cai.regionOfRegion.push(num);
       else if (parent === "CAI_FACTION" && grand === "CAI_WORLD_FACTIONS" && (k === 0 || k === 3 || k === 4)) {
         const l = list();
         if (l) {
@@ -344,18 +376,34 @@ function collect(buffer: Buffer, header: { recordNamesOffset: number }, tables: 
       if (parent === "OLD_DIPLOMACY_RELATIONSHIP" && faction && stack[stack.length - 2] === "OLD_DIPLOMACY_MANAGER") {
         const at = diploIndex % DIPLO_GROUP_SIZE;
         diploIndex += 1;
-        if (at === 0) faction.diplo.push({ other: value.kind === "value" ? Number(value.value) : -1, stance: null, access: null, vassalSince: null, masterSince: null, codes: null });
+        if (at === 0)
+          faction.diplo.push({
+            other: value.kind === "value" ? Number(value.value) : -1,
+            stance: null,
+            access: null,
+            vassalSince: null,
+            masterSince: null,
+            codes: null,
+          });
         const block = faction.diplo[faction.diplo.length - 1];
-        if (at === 2 && value.kind === "value" && value.type === "ascii") block.stance = { ...span(value), text: text(value.value) };
+        if (at === 2 && value.kind === "value" && value.type === "ascii")
+          block.stance = { ...span(value), text: text(value.value) };
         else if ((at === 6 || at === 7) && value.kind === "value" && value.type === "i32") {
           const entry = { ...span(value), value: Number(value.value) };
           if (at === 6) block.vassalSince = entry;
           else block.masterSince = entry;
-        } else if (at === 12 && value.kind === "value" && value.type === "i32") block.access = { ...span(value), value: Number(value.value) };
+        } else if (at === 12 && value.kind === "value" && value.type === "i32")
+          block.access = { ...span(value), value: Number(value.value) };
         else if (at === 14 && value.kind === "array") {
-          const payload = buffer.subarray(value.value.payloadOffset, value.value.payloadOffset + value.value.payloadByteLength);
+          const payload = buffer.subarray(
+            value.value.payloadOffset,
+            value.value.payloadOffset + value.value.payloadByteLength,
+          );
           if (payload.length % 4 === 0 && value.marker === DIPLO_CODES_MARKER) {
-            block.codes = { ...span(value), values: Array.from({ length: payload.length / 4 }, (_, i) => payload.readUInt32LE(i * 4)) };
+            block.codes = {
+              ...span(value),
+              values: Array.from({ length: payload.length / 4 }, (_, i) => payload.readUInt32LE(i * 4)),
+            };
           }
         }
         return;
@@ -386,7 +434,12 @@ function collect(buffer: Buffer, header: { recordNamesOffset: number }, tables: 
           }
           break;
         case "LINE_OF_SIGHT":
-          if (character && stack[stack.length - 2] === "CHARACTER" && value.type === "coord2d" && character.los.length < 2) {
+          if (
+            character &&
+            stack[stack.length - 2] === "CHARACTER" &&
+            value.type === "coord2d" &&
+            character.los.length < 2
+          ) {
             const c = value.value as { x: number; y: number };
             character.los.push({ ...span(value), x: c.x, y: c.y });
           }
@@ -400,7 +453,8 @@ function collect(buffer: Buffer, header: { recordNamesOffset: number }, tables: 
             if (value.type === "u32" && unit.u32s.length < 5) {
               unit.u32s.push(Number(value.value));
               unit.u32Spans.push(span(value));
-            } else if (value.type === "u8" && unit.rank === null) unit.rank = { ...span(value), value: Number(value.value) };
+            } else if (value.type === "u8" && unit.rank === null)
+              unit.rank = { ...span(value), value: Number(value.value) };
           }
           break;
         case "FAMILY_MEMBER":
@@ -413,7 +467,8 @@ function collect(buffer: Buffer, header: { recordNamesOffset: number }, tables: 
           }
           break;
         case "REGION":
-          if (region && value.type === "u32" && region.u32s.length < 5) region.u32s.push({ ...span(value), value: Number(value.value) });
+          if (region && value.type === "u32" && region.u32s.length < 5)
+            region.u32s.push({ ...span(value), value: Number(value.value) });
           if (region && value.type === "ascii") region.strings.push(text(value.value));
           else if (region && value.type === "bool") region.bools.push(Boolean(value.value));
           break;
@@ -424,11 +479,13 @@ function collect(buffer: Buffer, header: { recordNamesOffset: number }, tables: 
           if (slot && slot.building === null) {
             if (value.type === "ascii") slot.building = { ...span(value), text: text(value.value) };
             else if (value.type === "u32" && !slot.baseId) slot.baseId = { ...span(value), value: Number(value.value) };
-          } else if (slot && value.type === "f32" && slot.baseFloats.length < 2) slot.baseFloats.push({ ...span(value), value: Number(value.value) });
+          } else if (slot && value.type === "f32" && slot.baseFloats.length < 2)
+            slot.baseFloats.push({ ...span(value), value: Number(value.value) });
           break;
         case "CAMPAIGN_COMMAND_QUEUE_INDEX_TABLES":
           if (stack[stack.length - 2] === "CAMPAIGN_MODEL") {
-            if (queueIndex === QUEUE_BUILDING_ID_INDEX && value.type === "u32") queueBuildingCounter = { ...span(value), value: Number(value.value) };
+            if (queueIndex === QUEUE_BUILDING_ID_INDEX && value.type === "u32")
+              queueBuildingCounter = { ...span(value), value: Number(value.value) };
             queueIndex += 1;
           }
           break;
@@ -437,7 +494,14 @@ function collect(buffer: Buffer, header: { recordNamesOffset: number }, tables: 
       }
     },
   });
-  return { factions, families, regions, queueBuildingCounter: queueBuildingCounter as (Span & { value: number }) | null, provinceManagers, cai };
+  return {
+    factions,
+    families,
+    regions,
+    queueBuildingCounter: queueBuildingCounter as (Span & { value: number }) | null,
+    provinceManagers,
+    cai,
+  };
 }
 
 /**
@@ -446,13 +510,22 @@ function collect(buffer: Buffer, header: { recordNamesOffset: number }, tables: 
  * UNIT_HISTORY first u32 (owner faction id). The in-game copy of a transferred garrison differs from the old one only there
  * (plus fresh ids and names), verified on `grunburg` -> `grunburg given`.
  */
-function collectGarrisonReferences(buffer: Buffer, header: { recordNamesOffset: number }, tables: CaabStringTables, forceIds: Set<number>, familyIds: Set<number>) {
+function collectGarrisonReferences(
+  buffer: Buffer,
+  header: { recordNamesOffset: number },
+  tables: CaabStringTables,
+  forceIds: Set<number>,
+  familyIds: Set<number>,
+) {
   const ascii: (Span & { text: string; owner: number })[] = [];
   const history: (Span & { value: number; owner: number })[] = [];
   const frames: { name: string; direct: number; keep: boolean }[] = [];
   let forceDepth = -1;
   let familyDepth = -1;
-  const span = (v: { startOffset?: number; endOffset?: number }): Span => ({ start: v.startOffset ?? -1, end: v.endOffset ?? -1 });
+  const span = (v: { startOffset?: number; endOffset?: number }): Span => ({
+    start: v.startOffset ?? -1,
+    end: v.endOffset ?? -1,
+  });
   let currentForce = -1;
   let currentFamily = -1;
   walkCaabNodes(buffer, header, tables, {
@@ -465,20 +538,30 @@ function collectGarrisonReferences(buffer: Buffer, header: { recordNamesOffset: 
     onRecordEnd() {
       const f = frames.pop()!;
       void f;
-      if (forceDepth === frames.length) { forceDepth = -1; currentForce = -1; }
-      if (familyDepth === frames.length) { familyDepth = -1; currentFamily = -1; }
+      if (forceDepth === frames.length) {
+        forceDepth = -1;
+        currentForce = -1;
+      }
+      if (familyDepth === frames.length) {
+        familyDepth = -1;
+        currentFamily = -1;
+      }
     },
     onValue(value, stack) {
       const frame = frames[frames.length - 1];
       const k = frame.direct++;
       if (value.kind !== "value") return;
-      if (forceDepth >= 0 && frames.length - 1 === forceDepth && k === 0 && value.type === "u32") currentForce = forceIds.has(Number(value.value)) ? Number(value.value) : -1;
-      if (familyDepth >= 0 && frames.length - 1 === familyDepth && k === 0 && value.type === "u32") currentFamily = familyIds.has(Number(value.value)) ? Number(value.value) : -1;
+      if (forceDepth >= 0 && frames.length - 1 === forceDepth && k === 0 && value.type === "u32")
+        currentForce = forceIds.has(Number(value.value)) ? Number(value.value) : -1;
+      if (familyDepth >= 0 && frames.length - 1 === familyDepth && k === 0 && value.type === "u32")
+        currentFamily = familyIds.has(Number(value.value)) ? Number(value.value) : -1;
       if (forceDepth >= 0 && currentForce >= 0) {
         if (value.type === "ascii") ascii.push({ ...span(value), text: text(value.value), owner: currentForce });
-        else if (value.type === "u32" && stack[stack.length - 1] === "UNIT_HISTORY" && k === 0) history.push({ ...span(value), value: Number(value.value), owner: currentForce });
+        else if (value.type === "u32" && stack[stack.length - 1] === "UNIT_HISTORY" && k === 0)
+          history.push({ ...span(value), value: Number(value.value), owner: currentForce });
       }
-      if (familyDepth >= 0 && currentFamily >= 0 && value.type === "ascii") ascii.push({ ...span(value), text: text(value.value), owner: -currentFamily });
+      if (familyDepth >= 0 && currentFamily >= 0 && value.type === "ascii")
+        ascii.push({ ...span(value), text: text(value.value), owner: -currentFamily });
     },
   });
   return { ascii, history };
@@ -505,11 +588,15 @@ function encodeIdList(values: number[]): Buffer {
 
 type TreeRecord = ReturnType<typeof buildCaabTree>;
 const childRecord = (node: TreeRecord, name: string): TreeRecord | undefined => {
-  for (const group of node.groups) for (const item of group) if (item.kind === "record" && item.name === name) return item;
+  for (const group of node.groups)
+    for (const item of group) if (item.kind === "record" && item.name === name) return item;
   return undefined;
 };
 /** Moves whole array elements between factions' CHARACTER_ARRAY / ARMY_ARRAY records (one group per element). */
-function moveGarrisons(root: TreeRecord, moves: { from: number; to: number; kind: "CHARACTER_ARRAY" | "ARMY_ARRAY"; index: number }[]) {
+function moveGarrisons(
+  root: TreeRecord,
+  moves: { from: number; to: number; kind: "CHARACTER_ARRAY" | "ARMY_ARRAY"; index: number }[],
+) {
   const world = childRecord(childRecord(childRecord(root, "CAMPAIGN_ENV")!, "CAMPAIGN_MODEL")!, "WORLD")!;
   const factionArray = childRecord(world, "FACTION_ARRAY")!;
   const factionNode = (i: number) => factionArray.groups[i].find((x) => x.kind === "record") as TreeRecord;
@@ -581,12 +668,20 @@ const encodeCoord2d = (x: number, y: number): Buffer => {
   return out;
 };
 
-const healthPercent = (current: number, max: number): number => (max > 0 ? Math.min(100, Math.max(0, (current / max) * 100)) : 100);
+const healthPercent = (current: number, max: number): number =>
+  max > 0 ? Math.min(100, Math.max(0, (current / max) * 100)) : 100;
 
 /** Synchronous core on a decompressed CAAB/CBAB buffer. Verifies by re-extracting the output. */
-export function applyCampaignEditsToEsf(source: Buffer, edits: CampaignEdits, options: ApplyCampaignEditsOptions = {}): ApplyCampaignEditsResult {
+export function applyCampaignEditsToEsf(
+  source: Buffer,
+  edits: CampaignEdits,
+  options: ApplyCampaignEditsOptions = {},
+): ApplyCampaignEditsResult {
   const header = readCaabHeader(source);
-  const tables = (header.codecId === 0xabcb ? parseCbabStringTables : parseCaabStringTables)(source, header.recordNamesOffset);
+  const tables = (header.codecId === 0xabcb ? parseCbabStringTables : parseCaabStringTables)(
+    source,
+    header.recordNamesOffset,
+  );
   const baseline = extractCampaignState(source, parseEsfDocument(source));
   const { factions, families, regions, queueBuildingCounter, provinceManagers, cai } = collect(source, header, tables);
 
@@ -594,7 +689,10 @@ export function applyCampaignEditsToEsf(source: Buffer, edits: CampaignEdits, op
   const skipped: string[] = [];
 
   // Logical -> world fit over every on-map character.
-  const fitX: number[] = [], fitY: number[] = [], worldX: number[] = [], worldY: number[] = [];
+  const fitX: number[] = [],
+    fitY: number[] = [],
+    worldX: number[] = [],
+    worldY: number[] = [];
   for (const f of factions)
     for (const c of f.chars)
       if (c.locoCoord && c.locoU16s.length === 2 && c.locoU16s.every((u) => u.value !== OFF_MAP)) {
@@ -620,7 +718,8 @@ export function applyCampaignEditsToEsf(source: Buffer, edits: CampaignEdits, op
         if (!member || member.charId !== charId || member.type !== c.type || c.type === "colonel") return undefined;
         if (c.u32s[c.u32s.length - 1] !== 0) return undefined;
         const army =
-          (forceId ? f.forces.find((x) => x.u32s[0] === forceId) : undefined) ?? f.forces.find((x) => x.u32s[1] === charId);
+          (forceId ? f.forces.find((x) => x.u32s[0] === forceId) : undefined) ??
+          f.forces.find((x) => x.u32s[1] === charId);
         return { character: c, army };
       }
     }
@@ -688,8 +787,23 @@ export function applyCampaignEditsToEsf(source: Buffer, edits: CampaignEdits, op
   // Region ownership transfers. See the header comment for the evidence and the approach (the garrison is moved, not recreated).
   const listsToWrite = new Set<IdList>();
   const moves: { from: number; to: number; kind: "CHARACTER_ARRAY" | "ARMY_ARRAY"; index: number }[] = [];
-  const garrisonJobs: { forceId: number; familyId: number; oldKey: string; newKey: string; oldId: number; newId: number }[] = [];
-  const transfers: { regionId: number; targetId: number; forceId: number; charId: number; fromIndex: number; toIndex: number; pm: ProvinceManager | null }[] = [];
+  const garrisonJobs: {
+    forceId: number;
+    familyId: number;
+    oldKey: string;
+    newKey: string;
+    oldId: number;
+    newId: number;
+  }[] = [];
+  const transfers: {
+    regionId: number;
+    targetId: number;
+    forceId: number;
+    charId: number;
+    fromIndex: number;
+    toIndex: number;
+    pm: ProvinceManager | null;
+  }[] = [];
   const factionIndexById = new Map<number, number>();
   factions.forEach((f, i) => {
     if (f.id !== null && !factionIndexById.has(f.id)) factionIndexById.set(f.id, i);
@@ -741,13 +855,17 @@ export function applyCampaignEditsToEsf(source: Buffer, edits: CampaignEdits, op
     }
     const from = factions[fromIndex];
     const ownerPm = provinceManagers.find((pm) => pm.faction === ownerId && pm.regions?.values.includes(regionId));
-    const targetPm = ownerPm ? provinceManagers.find((pm) => pm.province === ownerPm.province && pm.faction === toFaction.id) : undefined;
+    const targetPm = ownerPm
+      ? provinceManagers.find((pm) => pm.province === ownerPm.province && pm.faction === toFaction.id)
+      : undefined;
     if (!ownerPm?.regions) {
       skipped.push(`${label}: no province record of ${from.key} lists the region.`);
       continue;
     }
     if (ownerPm.regions.values.length < 2) {
-      skipped.push(`${label}: it is ${from.key}'s only region in its province; the game would delete that province record.`);
+      skipped.push(
+        `${label}: it is ${from.key}'s only region in its province; the game would delete that province record.`,
+      );
       continue;
     }
     if (!targetPm?.regions && !options.allowMissingProvinceManager) {
@@ -762,7 +880,9 @@ export function applyCampaignEditsToEsf(source: Buffer, edits: CampaignEdits, op
     const charIndex = force ? from.chars.findIndex((c) => c.u32s[0] === force.u32s[1]) : -1;
     const colonel = charIndex >= 0 ? from.chars[charIndex] : undefined;
     if (region.garrisonForce && (!force || !colonel || colonel.type !== "colonel" || !families.has(colonel.u32s[1]))) {
-      skipped.push(`${label}: the region's garrison force ${region.garrisonForce} was not found among ${from.key}'s armies.`);
+      skipped.push(
+        `${label}: the region's garrison force ${region.garrisonForce} was not found among ${from.key}'s armies.`,
+      );
       continue;
     }
 
@@ -775,7 +895,8 @@ export function applyCampaignEditsToEsf(source: Buffer, edits: CampaignEdits, op
     const toCai = cai.factionOwners[toIndex];
     const fromCai = cai.factionOwners[fromIndex];
     const settlementAt = cai.settlementRegions.indexOf(regionId);
-    if (toCai !== undefined && settlementAt >= 0 && cai.settlementOwners[settlementAt]?.value === fromCai) put(cai.settlementOwners[settlementAt], encodeU32(toCai));
+    if (toCai !== undefined && settlementAt >= 0 && cai.settlementOwners[settlementAt]?.value === fromCai)
+      put(cai.settlementOwners[settlementAt], encodeU32(toCai));
     else notes.push("AI settlement owner left unchanged");
     const fromLists = cai.factionLists.get(fromIndex);
     const toLists = cai.factionLists.get(toIndex);
@@ -793,11 +914,19 @@ export function applyCampaignEditsToEsf(source: Buffer, edits: CampaignEdits, op
     if (force && colonel) {
       const mobileAt = cai.mobiles.findIndex((m) => m.force === force.u32s[0]);
       const charAt = cai.characterIds.indexOf(colonel.u32s[0]);
-      if (toCai !== undefined && mobileAt >= 0 && cai.mobileOwners[mobileAt]) put(cai.mobileOwners[mobileAt], encodeU32(toCai));
+      if (toCai !== undefined && mobileAt >= 0 && cai.mobileOwners[mobileAt])
+        put(cai.mobileOwners[mobileAt], encodeU32(toCai));
       else notes.push("AI garrison force owner left unchanged");
-      if (toCai !== undefined && charAt >= 0 && cai.characterOwners[charAt]) put(cai.characterOwners[charAt], encodeU32(toCai));
+      if (toCai !== undefined && charAt >= 0 && cai.characterOwners[charAt])
+        put(cai.characterOwners[charAt], encodeU32(toCai));
       else notes.push("AI garrison character owner left unchanged");
-      if (mobileAt >= 0 && fromLists?.get(3)?.values.includes(cai.mobileBdi[mobileAt]) && fromLists.get(4)?.values.includes(cai.mobiles[mobileAt].id) && toLists?.get(3) && toLists.get(4)) {
+      if (
+        mobileAt >= 0 &&
+        fromLists?.get(3)?.values.includes(cai.mobileBdi[mobileAt]) &&
+        fromLists.get(4)?.values.includes(cai.mobiles[mobileAt].id) &&
+        toLists?.get(3) &&
+        toLists.get(4)
+      ) {
         removeFrom(fromLists.get(3), cai.mobileBdi[mobileAt]);
         removeFrom(fromLists.get(4), cai.mobiles[mobileAt].id);
         addTo(toLists.get(3), cai.mobileBdi[mobileAt], true);
@@ -805,13 +934,36 @@ export function applyCampaignEditsToEsf(source: Buffer, edits: CampaignEdits, op
       } else notes.push("AI faction component lists left unchanged");
       moves.push({ from: fromIndex, to: toIndex, kind: "CHARACTER_ARRAY", index: charIndex });
       moves.push({ from: fromIndex, to: toIndex, kind: "ARMY_ARRAY", index: forceIndex });
-      garrisonJobs.push({ forceId: force.u32s[0], familyId: colonel.u32s[1], oldKey: from.key, newKey: toFaction.key, oldId: ownerId, newId: toFaction.id });
+      garrisonJobs.push({
+        forceId: force.u32s[0],
+        familyId: colonel.u32s[1],
+        oldKey: from.key,
+        newKey: toFaction.key,
+        oldId: ownerId,
+        newId: toFaction.id,
+      });
     }
-    transfers.push({ regionId, targetId: toFaction.id, forceId: force?.u32s[0] ?? 0, charId: colonel?.u32s[0] ?? 0, fromIndex, toIndex, pm: targetPm ?? null });
-    applied.push(`${label}: owner ${from.key} -> ${toFaction.key}${force ? ", garrison moved" : ""}${targetPm ? "" : ", province record not created (diagnostic mode)"}${notes.length ? ` (${notes.join("; ")})` : ""}.`);
+    transfers.push({
+      regionId,
+      targetId: toFaction.id,
+      forceId: force?.u32s[0] ?? 0,
+      charId: colonel?.u32s[0] ?? 0,
+      fromIndex,
+      toIndex,
+      pm: targetPm ?? null,
+    });
+    applied.push(
+      `${label}: owner ${from.key} -> ${toFaction.key}${force ? ", garrison moved" : ""}${targetPm ? "" : ", province record not created (diagnostic mode)"}${notes.length ? ` (${notes.join("; ")})` : ""}.`,
+    );
   }
   if (garrisonJobs.length) {
-    const refs = collectGarrisonReferences(source, header, tables, new Set(garrisonJobs.map((j) => j.forceId)), new Set(garrisonJobs.map((j) => j.familyId)));
+    const refs = collectGarrisonReferences(
+      source,
+      header,
+      tables,
+      new Set(garrisonJobs.map((j) => j.forceId)),
+      new Set(garrisonJobs.map((j) => j.familyId)),
+    );
     for (const a of refs.ascii) {
       const job = garrisonJobs.find((j) => (a.owner >= 0 ? j.forceId === a.owner : j.familyId === -a.owner));
       if (job && a.text === job.oldKey) put(a, encodeAscii(stringId(job.newKey)));
@@ -827,7 +979,8 @@ export function applyCampaignEditsToEsf(source: Buffer, edits: CampaignEdits, op
   const signingTurn = (): number => {
     if (turnCache === null) {
       let highest = 1;
-      for (const f of factions) for (const d of f.diplo) highest = Math.max(highest, d.vassalSince?.value ?? 0, d.masterSince?.value ?? 0);
+      for (const f of factions)
+        for (const d of f.diplo) highest = Math.max(highest, d.vassalSince?.value ?? 0, d.masterSince?.value ?? 0);
       turnCache = edits.turn !== undefined && Number.isInteger(edits.turn) && edits.turn > 0 ? edits.turn : highest;
     }
     return turnCache;
@@ -836,10 +989,14 @@ export function applyCampaignEditsToEsf(source: Buffer, edits: CampaignEdits, op
   for (const action of edits.actions) {
     const label = (() => {
       switch (action.type) {
-        case "update_character": return `Character ${action.characterId} (${action.faction})`;
-        case "update_unit": return `Unit ${action.unitId} of character ${action.characterId} (${action.faction})`;
-        case "set_building": return `Building ${action.region} slot ${action.slotIndex}`;
-        default: return action.type;
+        case "update_character":
+          return `Character ${action.characterId} (${action.faction})`;
+        case "update_unit":
+          return `Unit ${action.unitId} of character ${action.characterId} (${action.faction})`;
+        case "set_building":
+          return `Building ${action.region} slot ${action.slotIndex}`;
+        default:
+          return action.type;
       }
     })();
 
@@ -855,8 +1012,10 @@ export function applyCampaignEditsToEsf(source: Buffer, edits: CampaignEdits, op
         const x = Number(changes.x?.after ?? expectedChar?.x);
         const y = Number(changes.y?.after ?? expectedChar?.y);
         if (!found || !expectedChar) skipped.push(`${label}: character not found in the save.`);
-        else if (expectedChar.x === OFF_MAP || x === OFF_MAP || y === OFF_MAP) skipped.push(`${label}: off-map characters cannot be moved.`);
-        else if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x > 0xfffe || y > 0xfffe) skipped.push(`${label}: position (${x}, ${y}) is out of range.`);
+        else if (expectedChar.x === OFF_MAP || x === OFF_MAP || y === OFF_MAP)
+          skipped.push(`${label}: off-map characters cannot be moved.`);
+        else if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x > 0xfffe || y > 0xfffe)
+          skipped.push(`${label}: position (${x}, ${y}) is out of range.`);
         else {
           const reason = moveSpans(found.character, x, y);
           if (reason) skipped.push(`${label}: ${reason}.`);
@@ -901,8 +1060,13 @@ export function applyCampaignEditsToEsf(source: Buffer, edits: CampaignEdits, op
           const currentXp = unit.u32s[4];
           if (!unit.rank || !Number.isInteger(rank) || rank < 0 || rank >= LAND_RANK_XP_THRESHOLDS.length) {
             skipped.push(`${label}: rank ${changes.xp.after} has no known experience threshold.`);
-          } else if (currentXp !== LAND_RANK_XP_THRESHOLDS[currentRank] && !(currentRank === 0 && currentXp < LAND_RANK_XP_THRESHOLDS[1])) {
-            skipped.push(`${label}: the unit uses a non-standard experience threshold (${currentXp} points at rank ${currentRank}).`);
+          } else if (
+            currentXp !== LAND_RANK_XP_THRESHOLDS[currentRank] &&
+            !(currentRank === 0 && currentXp < LAND_RANK_XP_THRESHOLDS[1])
+          ) {
+            skipped.push(
+              `${label}: the unit uses a non-standard experience threshold (${currentXp} points at rank ${currentRank}).`,
+            );
           } else {
             put(unit.rank, Buffer.from([0x06, rank]));
             put(unit.u32Spans[4], encodeU32(LAND_RANK_XP_THRESHOLDS[rank]));
@@ -926,11 +1090,20 @@ export function applyCampaignEditsToEsf(source: Buffer, edits: CampaignEdits, op
       const slots = region.slots.filter((s) => s.strings[1] && s.strings[2]);
       const slot = slots[action.slotIndex];
       if (!slot || !after || !before) skipped.push(`${label}: slot not found.`);
-      else if (!before.building || !after.building) skipped.push(`${label}: ${!before.building && after.building ? "starting a building in an empty slot queues a construction item, costs and a treasury transaction, which cannot be reproduced" : "clearing a slot cannot be written to saves"}.`);
-      else if (!slot.building || slot.building.text !== before.building) skipped.push(`${label}: the save holds "${slot.building?.text ?? ""}", not "${before.building}".`);
-      else if (after.type !== slot.strings[2] || after.template !== slot.strings[1]) skipped.push(`${label}: changing the slot type or template is not supported.`);
-      else if (slot.strings[2] === "primary") skipped.push(`${label}: a primary building change also opens or closes settlement slots, which cannot be reproduced reliably.`);
-      else if (!slot.baseId || slot.baseFloats.length < 2 || !queueBuildingCounter) skipped.push(`${label}: the slot's building record has an unexpected layout.`);
+      else if (!before.building || !after.building)
+        skipped.push(
+          `${label}: ${!before.building && after.building ? "starting a building in an empty slot queues a construction item, costs and a treasury transaction, which cannot be reproduced" : "clearing a slot cannot be written to saves"}.`,
+        );
+      else if (!slot.building || slot.building.text !== before.building)
+        skipped.push(`${label}: the save holds "${slot.building?.text ?? ""}", not "${before.building}".`);
+      else if (after.type !== slot.strings[2] || after.template !== slot.strings[1])
+        skipped.push(`${label}: changing the slot type or template is not supported.`);
+      else if (slot.strings[2] === "primary")
+        skipped.push(
+          `${label}: a primary building change also opens or closes settlement slots, which cannot be reproduced reliably.`,
+        );
+      else if (!slot.baseId || slot.baseFloats.length < 2 || !queueBuildingCounter)
+        skipped.push(`${label}: the slot's building record has an unexpected layout.`);
       else {
         const level = buildingLevelValue(after.building);
         if (level === null) {
@@ -980,7 +1153,9 @@ export function applyCampaignEditsToEsf(source: Buffer, edits: CampaignEdits, op
         wanted.delete("war");
       } else {
         const known = (list: unknown): DiploField[] | null =>
-          Array.isArray(list) && list.every((f) => (DIPLO_FIELDS as readonly string[]).includes(f)) ? (list as DiploField[]) : null;
+          Array.isArray(list) && list.every((f) => (DIPLO_FIELDS as readonly string[]).includes(f))
+            ? (list as DiploField[])
+            : null;
         const before = known(action.before);
         const after = known(action.after);
         if (!before || !after) {
@@ -1015,17 +1190,29 @@ export function applyCampaignEditsToEsf(source: Buffer, edits: CampaignEdits, op
         skipped.push(`${pair}: the pair's relationship record has an unexpected layout.`);
         continue;
       }
-      const stanceBase = wanted.has("war") ? "war" : wanted.has("mil_ally") ? "military_allies" : wanted.has("def_ally") ? "defensive_allies" : "neutral";
+      const stanceBase = wanted.has("war")
+        ? "war"
+        : wanted.has("mil_ally")
+          ? "military_allies"
+          : wanted.has("def_ally")
+            ? "defensive_allies"
+            : "neutral";
       const isMaster = wanted.has("vassals");
       let changed = false;
-      for (const [blk, role] of [[blockAB, "master"], [blockBA, "vassal"]] as const) {
+      for (const [blk, role] of [
+        [blockAB, "master"],
+        [blockBA, "vassal"],
+      ] as const) {
         const stance = isMaster ? role : stanceBase;
         if (blk.stance!.text !== stance) {
           put(blk.stance!, encodeAscii(stringId(stance)));
           changed = true;
         }
         // The signing turn is kept on both sides: [7] on the master's block, [6] on the vassal's.
-        const stamps = [[blk.masterSince, isMaster && role === "master"], [blk.vassalSince, isMaster && role === "vassal"]] as const;
+        const stamps = [
+          [blk.masterSince, isMaster && role === "master"],
+          [blk.vassalSince, isMaster && role === "vassal"],
+        ] as const;
         for (const [stamp, set] of stamps) {
           if (!stamp) continue;
           const target = set ? (stamp.value > 0 ? stamp.value : signingTurn()) : 0;
@@ -1040,7 +1227,9 @@ export function applyCampaignEditsToEsf(source: Buffer, edits: CampaignEdits, op
         }
         let codes = blk.codes!.values;
         if (codes.includes(DIPLO_CODE_NON_AGGRESSION) !== wanted.has("non_aggression"))
-          codes = wanted.has("non_aggression") ? [...codes, DIPLO_CODE_NON_AGGRESSION] : codes.filter((c) => c !== DIPLO_CODE_NON_AGGRESSION);
+          codes = wanted.has("non_aggression")
+            ? [...codes, DIPLO_CODE_NON_AGGRESSION]
+            : codes.filter((c) => c !== DIPLO_CODE_NON_AGGRESSION);
         if (codes.includes(DIPLO_CODE_TRADE) !== wanted.has("trade"))
           codes = wanted.has("trade") ? [DIPLO_CODE_TRADE, ...codes] : codes.filter((c) => c !== DIPLO_CODE_TRADE);
         if (codes !== blk.codes!.values) {
@@ -1052,7 +1241,10 @@ export function applyCampaignEditsToEsf(source: Buffer, edits: CampaignEdits, op
         applied.push(`${pair}: already in the requested state.`);
         continue;
       }
-      for (const [group, other] of [[expectedA, b.key], [expectedB, a.key]] as const) {
+      for (const [group, other] of [
+        [expectedA, b.key],
+        [expectedB, a.key],
+      ] as const) {
         if (!group) continue;
         const lists: Record<string, string[]> = group.diplo as unknown as Record<string, string[]>;
         for (const f of ["war", "mil_ally", "def_ally", "mil_access", "non_aggression", "trade", "vassals"] as const) {
@@ -1078,10 +1270,13 @@ export function applyCampaignEditsToEsf(source: Buffer, edits: CampaignEdits, op
       make_peace: "peace needs faction and targetFaction.",
       confederate: "confederation cannot be written to saves.",
     };
-    skipped.push(`${action.type}${action.faction ? ` (${action.faction}${action.targetFaction ? ` / ${action.targetFaction}` : ""})` : ""}: ${why[action.type] ?? "unsupported action."}`);
+    skipped.push(
+      `${action.type}${action.faction ? ` (${action.faction}${action.targetFaction ? ` / ${action.targetFaction}` : ""})` : ""}: ${why[action.type] ?? "unsupported action."}`,
+    );
   }
 
-  if (buildingIds && queueBuildingCounter) put(queueBuildingCounter, encodeU32(queueBuildingCounter.value + buildingIds));
+  if (buildingIds && queueBuildingCounter)
+    put(queueBuildingCounter, encodeU32(queueBuildingCounter.value + buildingIds));
   if (!replacements.size && !options.alwaysRewrite) return { buffer: source, applied, skipped };
 
   const root = buildCaabTree(source, header, tables);
@@ -1092,9 +1287,11 @@ export function applyCampaignEditsToEsf(source: Buffer, edits: CampaignEdits, op
   // Re-read the output: exactly the applied edits may differ from the source.
   const actual = extractCampaignState(buffer, parseEsfDocument(buffer));
   const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-  if (!same(actual.regions, expected.regions)) throw new Error("Verification failed: re-extracted regions differ from the expected edit result.");
+  if (!same(actual.regions, expected.regions))
+    throw new Error("Verification failed: re-extracted regions differ from the expected edit result.");
   const noDiplo = (state: CampaignState) => state.faction_to_chars.map(({ diplo: _diplo, ...rest }) => rest);
-  if (!same(noDiplo(actual), noDiplo(expected))) throw new Error("Verification failed: re-extracted characters differ from the expected edit result.");
+  if (!same(noDiplo(actual), noDiplo(expected)))
+    throw new Error("Verification failed: re-extracted characters differ from the expected edit result.");
   if (transfers.length) {
     const h2 = readCaabHeader(buffer);
     const t2 = (h2.codecId === 0xabcb ? parseCbabStringTables : parseCaabStringTables)(buffer, h2.recordNamesOffset);
@@ -1105,24 +1302,42 @@ export function applyCampaignEditsToEsf(source: Buffer, edits: CampaignEdits, op
         throw new Error(`Verification failed: ${what} (region id ${t.regionId}).`);
       };
       if (r?.u32s[3]?.value !== t.targetId) fail("the region owner was not updated");
-      if (out.provinceManagers.some((pm) => pm.faction !== t.targetId && pm.regions?.values.includes(t.regionId))) fail("a province record of another faction still lists the region");
-      if (t.pm && !out.provinceManagers.find((pm) => pm.id === t.pm!.id)?.regions?.values.includes(t.regionId)) fail("the new owner's province record does not list the region");
+      if (out.provinceManagers.some((pm) => pm.faction !== t.targetId && pm.regions?.values.includes(t.regionId)))
+        fail("a province record of another faction still lists the region");
+      if (t.pm && !out.provinceManagers.find((pm) => pm.id === t.pm!.id)?.regions?.values.includes(t.regionId))
+        fail("the new owner's province record does not list the region");
       if (t.forceId) {
-        if (!out.factions[t.toIndex].forces.some((f) => f.u32s[0] === t.forceId) || out.factions[t.fromIndex].forces.some((f) => f.u32s[0] === t.forceId)) fail("the garrison force was not moved");
-        if (!out.factions[t.toIndex].chars.some((c) => c.u32s[0] === t.charId) || out.factions[t.fromIndex].chars.some((c) => c.u32s[0] === t.charId)) fail("the garrison character was not moved");
+        if (
+          !out.factions[t.toIndex].forces.some((f) => f.u32s[0] === t.forceId) ||
+          out.factions[t.fromIndex].forces.some((f) => f.u32s[0] === t.forceId)
+        )
+          fail("the garrison force was not moved");
+        if (
+          !out.factions[t.toIndex].chars.some((c) => c.u32s[0] === t.charId) ||
+          out.factions[t.fromIndex].chars.some((c) => c.u32s[0] === t.charId)
+        )
+          fail("the garrison character was not moved");
       }
     }
   }
   const sortDiplo = (state: CampaignState) =>
     JSON.stringify(
-      state.faction_to_chars.map((f) => [f.faction, Object.entries(f.diplo).map(([k, v]) => [k, [...(v as string[])].sort()])]),
+      state.faction_to_chars.map((f) => [
+        f.faction,
+        Object.entries(f.diplo).map(([k, v]) => [k, [...(v as string[])].sort()]),
+      ]),
     );
-  if (sortDiplo(actual) !== sortDiplo(expected)) throw new Error("Verification failed: re-extracted diplomacy differs from the expected edit result.");
+  if (sortDiplo(actual) !== sortDiplo(expected))
+    throw new Error("Verification failed: re-extracted diplomacy differs from the expected edit result.");
   return { buffer, applied, skipped };
 }
 
 /** Full pipeline on a (possibly compressed) save: apply, verify by re-extraction, repack and verify the stream. */
-export async function applyCampaignEdits(outer: Buffer, edits: CampaignEdits, options: ApplyCampaignEditsOptions = {}): Promise<ApplyCampaignEditsResult> {
+export async function applyCampaignEdits(
+  outer: Buffer,
+  edits: CampaignEdits,
+  options: ApplyCampaignEditsOptions = {},
+): Promise<ApplyCampaignEditsResult> {
   const opened = openEsfBuffer(outer);
   const result = applyCampaignEditsToEsf(opened.buffer, edits, options);
   if (result.buffer === opened.buffer) return { ...result, buffer: outer };

@@ -174,9 +174,7 @@ const GameLogTab = memo(({ isActive = true }: GameLogTabProps) => {
   const tagCounts = useMemo(() => countTags(lines), [lines]);
   const sortedTags = useMemo(
     () =>
-      [...tagCounts.entries()].sort(([a], [b]) =>
-        a === OTHER_TAG ? 1 : b === OTHER_TAG ? -1 : a.localeCompare(b),
-      ),
+      [...tagCounts.entries()].sort(([a], [b]) => (a === OTHER_TAG ? 1 : b === OTHER_TAG ? -1 : a.localeCompare(b))),
     [tagCounts],
   );
   const errorPositions = useMemo(() => {
@@ -295,10 +293,20 @@ const GameLogTab = memo(({ isActive = true }: GameLogTabProps) => {
             </select>
             <span className="flex items-center gap-1 text-xs text-gray-300">
               {errorPositions.length} {errorPositions.length === 1 ? "error" : "errors"}
-              <button type="button" className={buttonClass} disabled={errorPositions.length === 0} onClick={() => goToError(-1)}>
+              <button
+                type="button"
+                className={buttonClass}
+                disabled={errorPositions.length === 0}
+                onClick={() => goToError(-1)}
+              >
                 Prev error
               </button>
-              <button type="button" className={buttonClass} disabled={errorPositions.length === 0} onClick={() => goToError(1)}>
+              <button
+                type="button"
+                className={buttonClass}
+                disabled={errorPositions.length === 0}
+                onClick={() => goToError(1)}
+              >
                 Next error
               </button>
             </span>

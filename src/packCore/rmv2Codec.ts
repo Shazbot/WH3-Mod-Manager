@@ -840,7 +840,8 @@ const parsePart = (
 ): Rmv2Part => {
   const common = span(bytes, partOffset, COMMON_HEADER_SIZE, "common part header");
   const header = readCommonPartHeader(common.bytes, partOffset);
-  const { materialTypeId, renderFlags, sectionSize, vertexOffset, vertexCount, indexOffset, indexCount, min, max } = header;
+  const { materialTypeId, renderFlags, sectionSize, vertexOffset, vertexCount, indexOffset, indexCount, min, max } =
+    header;
   ensureRange(bytes, partOffset, sectionSize, "mesh section");
   const metadata = readPartMaterialAndValidateGeometry(
     bytes,
@@ -1064,11 +1065,13 @@ const readRangeMaterialBytes = async (
     return readPartRange(materialOffset + relativeOffset, length, label);
   };
   if (materialTypeName === "custom_terrain") {
-    if (availableLength < 256) malformed("custom terrain material exceeds the material span", { partOffset, availableLength });
+    if (availableLength < 256)
+      malformed("custom terrain material exceeds the material span", { partOffset, availableLength });
     return readMaterialRange(0, 256, "custom terrain material");
   }
   if (materialTypeName === "TerrainTiles") {
-    if (availableLength < 88) malformed("terrain tile material exceeds the material span", { partOffset, availableLength });
+    if (availableLength < 88)
+      malformed("terrain tile material exceeds the material span", { partOffset, availableLength });
     return readMaterialRange(0, 88, "terrain tile material");
   }
   if (!materialTypeName || !WEIGHTED_MATERIAL_NAMES.has(materialTypeName)) return Buffer.alloc(0);
@@ -1096,7 +1099,11 @@ const readRangeMaterialBytes = async (
     rangeRecordBytes(counts.vec4s, 20, "vec4 parameters");
   const fixedRecordBytes = attachmentBytes + textureBytes;
   const minimumLength = fixedSize + fixedRecordBytes + stringHeaderBytes + numericBytes;
-  if (!Number.isSafeInteger(fixedRecordBytes) || !Number.isSafeInteger(numericBytes) || !Number.isSafeInteger(minimumLength))
+  if (
+    !Number.isSafeInteger(fixedRecordBytes) ||
+    !Number.isSafeInteger(numericBytes) ||
+    !Number.isSafeInteger(minimumLength)
+  )
     malformed("Material records exceed the supported integer range", { partOffset });
   if (minimumLength > availableLength)
     malformed("Material records exceed the material span", { partOffset, minimumLength, availableLength });
@@ -1168,7 +1175,11 @@ export const parseRmv2TextureMetadata = async (
       });
     const bytes = await source.readRange(offset, length);
     if (!Buffer.isBuffer(bytes) || bytes.length !== length)
-      malformed(`Short read for ${label}`, { offset, requestedBytes: length, actualBytes: Buffer.isBuffer(bytes) ? bytes.length : null });
+      malformed(`Short read for ${label}`, {
+        offset,
+        requestedBytes: length,
+        actualBytes: Buffer.isBuffer(bytes) ? bytes.length : null,
+      });
     metadataBytesRead = nextTotal;
     if (block) block.blockBytes = nextBlock;
     return bytes;
@@ -1190,15 +1201,33 @@ export const parseRmv2TextureMetadata = async (
   const lodHeadersEnd = FILE_HEADER_SIZE + lodHeaderBytes;
   if (!Number.isSafeInteger(lodHeadersEnd)) malformed("LOD header span is too large", { lodCount, lodHeaderSize });
   const lodHeaderBuffer = await readExact(FILE_HEADER_SIZE, lodHeaderBytes, "LOD headers");
-  const lods: Array<{ lodIndex: number; meshCount: number; totalVertexBytes: number; totalIndexBytes: number; firstMeshOffset: number;
-    parts: Rmv2TextureMetadataPart[] }> = [];
+  const lods: Array<{
+    lodIndex: number;
+    meshCount: number;
+    totalVertexBytes: number;
+    totalIndexBytes: number;
+    firstMeshOffset: number;
+    parts: Rmv2TextureMetadataPart[];
+  }> = [];
   let totalParts = 0;
   for (let lodIndex = 0; lodIndex < lodCount; lodIndex++) {
     const offset = lodIndex * lodHeaderSize;
     const meshCount = asSafeLength(lodHeaderBuffer.readUInt32LE(offset), "LOD mesh count", FILE_HEADER_SIZE + offset);
-    const totalVertexBytes = asSafeLength(lodHeaderBuffer.readUInt32LE(offset + 4), "LOD vertex bytes", FILE_HEADER_SIZE + offset + 4);
-    const totalIndexBytes = asSafeLength(lodHeaderBuffer.readUInt32LE(offset + 8), "LOD index bytes", FILE_HEADER_SIZE + offset + 8);
-    const firstMeshOffset = asSafeLength(lodHeaderBuffer.readUInt32LE(offset + 12), "LOD first mesh offset", FILE_HEADER_SIZE + offset + 12);
+    const totalVertexBytes = asSafeLength(
+      lodHeaderBuffer.readUInt32LE(offset + 4),
+      "LOD vertex bytes",
+      FILE_HEADER_SIZE + offset + 4,
+    );
+    const totalIndexBytes = asSafeLength(
+      lodHeaderBuffer.readUInt32LE(offset + 8),
+      "LOD index bytes",
+      FILE_HEADER_SIZE + offset + 8,
+    );
+    const firstMeshOffset = asSafeLength(
+      lodHeaderBuffer.readUInt32LE(offset + 12),
+      "LOD first mesh offset",
+      FILE_HEADER_SIZE + offset + 12,
+    );
     finite(lodHeaderBuffer.readFloatLE(offset + 16), "LOD distance", FILE_HEADER_SIZE + offset + 16);
     totalParts += meshCount;
     if (totalParts > MAX_PART_COUNT)

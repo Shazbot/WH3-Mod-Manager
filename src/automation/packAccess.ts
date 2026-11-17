@@ -87,8 +87,8 @@ export const withAutomationPackReadSession = async <T>(
   const canonicalPath = await context.policy.assertReadPath(pack.path);
   const raw = await openRawPackReadSession({ path: canonicalPath });
   const expected = fs.fstatSync(raw.descriptor, { bigint: true });
-  const same = (next: fs.BigIntStats) => (["size", "mtimeNs", "ctimeNs", "dev", "ino"] as const)
-    .every((key) => expected[key] === next[key]);
+  const same = (next: fs.BigIntStats) =>
+    (["size", "mtimeNs", "ctimeNs", "dev", "ino"] as const).every((key) => expected[key] === next[key]);
   const checkDescriptor = async () => {
     throwIfAborted(context.signal);
     if (context.cacheRequest) await context.cacheRequest.assertPackSnapshot(pack, raw.descriptor);
@@ -100,7 +100,12 @@ export const withAutomationPackReadSession = async <T>(
     let result: R | undefined;
     let failure: unknown;
     let failed = false;
-    try { result = await read(); } catch (error) { failed = true; failure = error; }
+    try {
+      result = await read();
+    } catch (error) {
+      failed = true;
+      failure = error;
+    }
     await checkDescriptor();
     if (failed) throw failure;
     return result as R;
@@ -115,13 +120,22 @@ export const withAutomationPackReadSession = async <T>(
     try {
       value = await scan({
         pack,
-        readPayload: (entry) => checked(() => raw.readPayload(entry, context.maxLogicalPayloadBytes ?? DEFAULT_MAX_LOGICAL_PAYLOAD_BYTES)),
-        withRangeReader: (entry, read) => checked(async () => {
-          const reader = raw.rangeReader(entry);
-          try { return await read(reader); } finally { await reader.close(); }
-        }),
+        readPayload: (entry) =>
+          checked(() => raw.readPayload(entry, context.maxLogicalPayloadBytes ?? DEFAULT_MAX_LOGICAL_PAYLOAD_BYTES)),
+        withRangeReader: (entry, read) =>
+          checked(async () => {
+            const reader = raw.rangeReader(entry);
+            try {
+              return await read(reader);
+            } finally {
+              await reader.close();
+            }
+          }),
       });
-    } catch (error) { failed = true; failure = error; }
+    } catch (error) {
+      failed = true;
+      failure = error;
+    }
     await checkDescriptor();
     const finalPath = await context.policy.assertReadPath(pack.path);
     if (finalPath !== canonicalPath || !same(fs.statSync(finalPath, { bigint: true })))
@@ -143,7 +157,9 @@ export const withAutomationPayloadRangeReader = async <T>(
   read: (reader: RawPayloadRangeReader) => Promise<T>,
 ): Promise<T> => {
   if (entry.is_compressed)
-    throw new AutomationError("INVALID_ARGUMENT", "A range reader requires an uncompressed entry", { filePath: entry.name });
+    throw new AutomationError("INVALID_ARGUMENT", "A range reader requires an uncompressed entry", {
+      filePath: entry.name,
+    });
   let reader: RawPayloadRangeReader;
   try {
     await context.cacheRequest?.assertPackSnapshot(pack);
@@ -151,7 +167,9 @@ export const withAutomationPayloadRangeReader = async <T>(
     reader = await openRawPayloadRangeReader({ path: canonicalPath }, entry);
   } catch (error) {
     if (error instanceof AutomationError) throw error;
-    throw new AutomationError("IO_ACCESS", error instanceof Error ? error.message : String(error), { filePath: entry.name });
+    throw new AutomationError("IO_ACCESS", error instanceof Error ? error.message : String(error), {
+      filePath: entry.name,
+    });
   }
 
   try {
@@ -182,7 +200,8 @@ export const readAutomationPayloadPrefix = async (
   maxBytes: number,
   context: AutomationContext,
 ): Promise<Buffer> => {
-  if (entry.is_compressed) throw new AutomationError("INVALID_ARGUMENT", "A raw payload prefix requires an uncompressed entry");
+  if (entry.is_compressed)
+    throw new AutomationError("INVALID_ARGUMENT", "A raw payload prefix requires an uncompressed entry");
   try {
     await context.cacheRequest?.assertPackSnapshot(pack);
     const canonicalPath = await context.policy.assertReadPath(pack.path);
@@ -191,7 +210,9 @@ export const readAutomationPayloadPrefix = async (
     return prefix;
   } catch (error) {
     if (error instanceof AutomationError) throw error;
-    throw new AutomationError("IO_ACCESS", error instanceof Error ? error.message : String(error), { filePath: entry.name });
+    throw new AutomationError("IO_ACCESS", error instanceof Error ? error.message : String(error), {
+      filePath: entry.name,
+    });
   }
 };
 

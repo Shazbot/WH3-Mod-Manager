@@ -5,9 +5,19 @@ import { decodeU32, encodeU32 } from "./addFaction";
 import { removeCaiFactionInfluenceMap } from "./removeFaction";
 
 function record(name: string, groups: CaabItem[][]): CaabRecordNode {
-  return { kind: "record", name, nameIndex: 0, version: 0, flags: 0x80,
-    isRoot: false, hasNestedBlocks: false, groups, blockSizeWidth: 1,
-    groupCountWidth: 1, groupSizeWidths: [] };
+  return {
+    kind: "record",
+    name,
+    nameIndex: 0,
+    version: 0,
+    flags: 0x80,
+    isRoot: false,
+    hasNestedBlocks: false,
+    groups,
+    blockSizeWidth: 1,
+    groupCountWidth: 1,
+    groupSizeWidths: [],
+  };
 }
 function fixture(keys: number[], count = keys.length) {
   const chunks: Buffer[] = [];
@@ -15,7 +25,8 @@ function fixture(keys: number[], count = keys.length) {
   function raw(...values: number[]): CaabItem {
     const data = Buffer.concat(values.map(encodeU32));
     const span: CaabItem = { kind: "raw", start: offset, end: offset + data.length };
-    chunks.push(data); offset += data.length;
+    chunks.push(data);
+    offset += data.length;
     return span;
   }
   const group: CaabItem[] = [raw(1, 999), record("CAI_EXTENDED_RESOURCE_INFLUENCE_MAP", [[]])];
@@ -32,7 +43,9 @@ function directValues(f: ReturnType<typeof fixture>): number[] {
     if (item.kind === "record") continue;
     const data = item.kind === "raw" ? f.source.subarray(item.start, item.end) : item.data;
     for (let offset = 0; offset < data.length;) {
-      const value = decodeU32(data, offset); out.push(value.value); offset += value.width;
+      const value = decodeU32(data, offset);
+      out.push(value.value);
+      offset += value.width;
     }
   }
   return out;
@@ -41,7 +54,10 @@ test("deleting a historical map updates the explicit count and preserves other k
   const f = fixture([11, 22, 33]);
   assert.equal(removeCaiFactionInfluenceMap(f.root, f.source, 22), 1);
   assert.deepEqual(directValues(f), [1, 999, 2, 11, 33]);
-  assert.equal(f.manager.groups[0].filter(n => n.kind === "record" && n.name === "CAI_HISTORICAL_INFLUENCE_MAP").length, 2);
+  assert.equal(
+    f.manager.groups[0].filter((n) => n.kind === "record" && n.name === "CAI_HISTORICAL_INFLUENCE_MAP").length,
+    2,
+  );
 });
 test("deleting the first historical map preserves its shared count prefix", () => {
   const f = fixture([11, 22, 33]);
@@ -62,5 +78,5 @@ test("count encoding can shrink at the 256-map boundary", () => {
   const keys = Array.from({ length: 256 }, (_, i) => 1000 + i);
   const f = fixture(keys);
   removeCaiFactionInfluenceMap(f.root, f.source, 1100);
-  assert.deepEqual(directValues(f), [1, 999, 255, ...keys.filter(key => key !== 1100)]);
+  assert.deepEqual(directValues(f), [1, 999, 255, ...keys.filter((key) => key !== 1100)]);
 });

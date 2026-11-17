@@ -37,7 +37,13 @@ describe("readFactionKeys", () => {
     ] as never;
     try {
       const row = (key: string) => [
-        { type: "StringU8", fields: [{ type: "Int16", val: key.length }, { type: "String", val: key }] },
+        {
+          type: "StringU8",
+          fields: [
+            { type: "Int16", val: key.length },
+            { type: "String", val: key },
+          ],
+        },
         { type: "Boolean", fields: [{ type: "UInt8", val: 0 }] },
       ];
       const pack = {

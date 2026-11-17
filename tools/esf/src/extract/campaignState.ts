@@ -207,7 +207,8 @@ export function extractCampaignState(
             if (parent === "FAMILY_TREE") family = { familyId: null, detailU32: null, detailAscii: [], scaling: null };
             break;
           case "REGION":
-            if (parent === "REGIONS_ARRAY") region = { u32s: [], strings: [], bools: [], slots: [], settlementStrings: [] };
+            if (parent === "REGIONS_ARRAY")
+              region = { u32s: [], strings: [], bools: [], slots: [], settlementStrings: [] };
             break;
           case "REGION_SLOT":
             if (region && parent === "REGION_SLOT_ARRAY") slot = { strings: [], building: null };
@@ -408,7 +409,6 @@ export function extractCampaignState(
     });
   }
 
-
   const characterIds = new Set<number>();
   const unitIds = new Set<number>();
   const factionKeys = new Set<string>();
@@ -430,7 +430,16 @@ export function extractCampaignState(
     for (const c of f.chars) {
       const [charId, familyId, forceId] = c.u32s;
       const member = familyId === undefined ? undefined : families.get(familyId);
-      if (charId === undefined || !member || member.charId !== charId || member.type !== c.type || c.x === null || c.y === null || characterIds.has(charId)) continue;
+      if (
+        charId === undefined ||
+        !member ||
+        member.charId !== charId ||
+        member.type !== c.type ||
+        c.x === null ||
+        c.y === null ||
+        characterIds.has(charId)
+      )
+        continue;
       if (c.type === "colonel" || c.u32s[c.u32s.length - 1] !== 0) continue;
       characterIds.add(charId);
       const army = (forceId ? forcesById.get(forceId) : undefined) ?? forceByCommander.get(charId);

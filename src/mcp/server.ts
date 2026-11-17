@@ -22,7 +22,8 @@ const MIN_MAX_RESPONSE_BYTES = 1024;
 const MAX_MAX_RESPONSE_BYTES = 1024 * 1024;
 
 const descriptions: Record<OperationName, string> = {
-  pack_extract: "Extract selected folders from ordered packs or vanilla game data, exporting supported DB/LOC tables as RPFM TSV or raw payloads. Skips unreadable or malformed payloads and reports failures while continuing.",
+  pack_extract:
+    "Extract selected folders from ordered packs or vanilla game data, exporting supported DB/LOC tables as RPFM TSV or raw payloads. Skips unreadable or malformed payloads and reports failures while continuing.",
   pack_info: "Read WH3 pack header, dependencies, index, and trailer metadata.",
   pack_list_files: "List internal paths in a WH3 pack with bounded pagination and optional path filters.",
   pack_read_file: "Read or explicitly extract one raw or decompressed pack payload.",
@@ -39,7 +40,8 @@ const descriptions: Record<OperationName, string> = {
     "Compare two packs by logical file hashes, exact-content moves, DDS mip pixels, and supported DB, LOC, XML-reference, and RMV2 semantics; optionally report affected units from both states.",
   asset_resolve_references: "Resolve asset and DB row roots into a bounded forward reference graph.",
   asset_find_references: "Scan explicit packs for reverse references to an asset or DB table.",
-  asset_users: "Find unit, mount, engine, character-uniform, and dependent visual users of one asset with evidence. Supports exact unit-key and normalized root-path filters, bounded graph budgets, and separate usage and metadata coverage.",
+  asset_users:
+    "Find unit, mount, engine, character-uniform, and dependent visual users of one asset with evidence. Supports exact unit-key and normalized root-path filters, bounded graph budgets, and separate usage and metadata coverage.",
   pack_subset: "Create a subset pack from selected files or DB rows and a declared dependency closure.",
   localization_lookup: "Look up translated text, localization keys, and schema-verified DB keys in explicit packs.",
   unit_resolve:
@@ -360,32 +362,61 @@ export const createMcpServer = (options: McpServerOptions): McpServer => {
           let previousTime = -Infinity;
           let previousSignature = "";
           let lastProgress = 0;
-          const progress = progressToken === undefined ? undefined : (update: AutomationProgress) => {
-            const phase = `${update.state ?? ""}:${update.stage}`;
-            const signature = JSON.stringify(update);
-            if (signature === previousSignature) return;
-            const now = Date.now();
-            const finished = update.total !== undefined && update.completed !== undefined && update.completed >= update.total;
-            if (phase === previousPhase && now - previousTime < 500 && !finished) return;
-            const orderedPhases = ["reading", "hashing", "semantic", "roots:before", "roots", "roots:after",
-              "indexing:before", "indexing", "indexing:after", "traversal", "hydration"];
-            const statePhase = `${update.stage}:${update.state ?? ""}`;
-            const phaseIndex = Math.max(0, orderedPhases.indexOf(statePhase) >= 0
-              ? orderedPhases.indexOf(statePhase)
-              : orderedPhases.indexOf(update.stage) >= 0 ? orderedPhases.indexOf(update.stage) : orderedPhases.length - 1);
-            const fraction = update.total && update.total > 0 && update.completed !== undefined
-              ? Math.min(0.999, Math.max(0, update.completed / update.total))
-              : 0;
-            const nextProgress = Math.max(lastProgress, Math.floor((phaseIndex + fraction) * 1000));
-            lastProgress = nextProgress;
-            previousPhase = phase;
-            previousTime = now;
-            previousSignature = signature;
-            const message = `${phase}${update.message ? `: ${update.message}` : ""}`.replace(/[\r\n\t]+/g, " ");
-            void extra.mcpReq.notify({ method: "notifications/progress", params: {
-              progressToken, progress: nextProgress, total: orderedPhases.length * 1000, message,
-            } }).catch(() => undefined);
-          };
+          const progress =
+            progressToken === undefined
+              ? undefined
+              : (update: AutomationProgress) => {
+                  const phase = `${update.state ?? ""}:${update.stage}`;
+                  const signature = JSON.stringify(update);
+                  if (signature === previousSignature) return;
+                  const now = Date.now();
+                  const finished =
+                    update.total !== undefined && update.completed !== undefined && update.completed >= update.total;
+                  if (phase === previousPhase && now - previousTime < 500 && !finished) return;
+                  const orderedPhases = [
+                    "reading",
+                    "hashing",
+                    "semantic",
+                    "roots:before",
+                    "roots",
+                    "roots:after",
+                    "indexing:before",
+                    "indexing",
+                    "indexing:after",
+                    "traversal",
+                    "hydration",
+                  ];
+                  const statePhase = `${update.stage}:${update.state ?? ""}`;
+                  const phaseIndex = Math.max(
+                    0,
+                    orderedPhases.indexOf(statePhase) >= 0
+                      ? orderedPhases.indexOf(statePhase)
+                      : orderedPhases.indexOf(update.stage) >= 0
+                        ? orderedPhases.indexOf(update.stage)
+                        : orderedPhases.length - 1,
+                  );
+                  const fraction =
+                    update.total && update.total > 0 && update.completed !== undefined
+                      ? Math.min(0.999, Math.max(0, update.completed / update.total))
+                      : 0;
+                  const nextProgress = Math.max(lastProgress, Math.floor((phaseIndex + fraction) * 1000));
+                  lastProgress = nextProgress;
+                  previousPhase = phase;
+                  previousTime = now;
+                  previousSignature = signature;
+                  const message = `${phase}${update.message ? `: ${update.message}` : ""}`.replace(/[\r\n\t]+/g, " ");
+                  void extra.mcpReq
+                    .notify({
+                      method: "notifications/progress",
+                      params: {
+                        progressToken,
+                        progress: nextProgress,
+                        total: orderedPhases.length * 1000,
+                        message,
+                      },
+                    })
+                    .catch(() => undefined);
+                };
           const context: AutomationContext = createAutomationContext({
             readRoots: options.readRoots,
             writeRoots: options.writeRoots,

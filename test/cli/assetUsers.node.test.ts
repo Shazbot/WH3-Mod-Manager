@@ -30,32 +30,63 @@ describe("asset users CLI options", () => {
     const packPath = path.join(root, "empty.pack");
     const inputPath = path.join(root, "asset-users.json");
     await writeRawPack(packPath, [], metadata);
-    fs.writeFileSync(inputPath, JSON.stringify({
-      maxDepth: 10,
-      maxNodes: 20,
-      maxEdges: 30,
-      maxRoots: 40,
-      maxWorkNodes: 50,
-      maxWorkEdges: 60,
-      unitKeys: ["from_json"],
-      rootGlob: "json/**/*.vmd",
-    }));
+    fs.writeFileSync(
+      inputPath,
+      JSON.stringify({
+        maxDepth: 10,
+        maxNodes: 20,
+        maxEdges: 30,
+        maxRoots: 40,
+        maxWorkNodes: 50,
+        maxWorkEdges: 60,
+        unitKeys: ["from_json"],
+        rootGlob: "json/**/*.vmd",
+      }),
+    );
     const stdout: string[] = [];
-    const exitCode = await main([
-      "asset", "users", packPath, "textures/example.dds", "--input", inputPath, "--format", "json",
-      "--max-depth", "0", "--max-nodes", "2", "--max-edges", "3", "--max-roots", "4",
-      "--max-work-nodes", "5", "--max-work-edges", "6", "--unit", "Unit_A", "--unit", "LAND_A",
-      "--root-glob", "**/VISUAL*.VMD",
-    ], { stdout: (value) => stdout.push(value), stderr: () => undefined });
+    const exitCode = await main(
+      [
+        "asset",
+        "users",
+        packPath,
+        "textures/example.dds",
+        "--input",
+        inputPath,
+        "--format",
+        "json",
+        "--max-depth",
+        "0",
+        "--max-nodes",
+        "2",
+        "--max-edges",
+        "3",
+        "--max-roots",
+        "4",
+        "--max-work-nodes",
+        "5",
+        "--max-work-edges",
+        "6",
+        "--unit",
+        "Unit_A",
+        "--unit",
+        "LAND_A",
+        "--root-glob",
+        "**/VISUAL*.VMD",
+      ],
+      { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    );
 
     expect(exitCode).toBe(0);
     const result = JSON.parse(stdout.join(""));
-    expect(result).toMatchObject({ ok: true, data: {
-      coverage: {
-        scope: { unitKeys: ["land_a", "unit_a"], rootGlob: "**/visual*.vmd" },
-        budgets: { maxDepth: 0, maxNodes: 2, maxEdges: 3, maxRoots: 4, maxWorkNodes: 5, maxWorkEdges: 6 },
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        coverage: {
+          scope: { unitKeys: ["land_a", "unit_a"], rootGlob: "**/visual*.vmd" },
+          budgets: { maxDepth: 0, maxNodes: 2, maxEdges: 3, maxRoots: 4, maxWorkNodes: 5, maxWorkEdges: 6 },
+        },
       },
-    } });
+    });
   });
 
   it.each([
@@ -71,7 +102,8 @@ describe("asset users CLI options", () => {
     await writeRawPack(packPath, [], metadata);
     const stdout: string[] = [];
     const exitCode = await main(["asset", "users", packPath, "textures/example.dds", "--format", "json", flag, value], {
-      stdout: (chunk) => stdout.push(chunk), stderr: () => undefined,
+      stdout: (chunk) => stdout.push(chunk),
+      stderr: () => undefined,
     });
     expect(exitCode).not.toBe(0);
     expect(JSON.parse(stdout.join(""))).toMatchObject({ ok: false });

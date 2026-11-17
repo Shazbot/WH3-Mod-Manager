@@ -1,7 +1,6 @@
 import { CaabStringTables, walkCaabNodes } from "../esf/codecs/caabBinary";
 import { CaabItem, CaabRecordNode } from "../esf/codecs/caabTree";
 
-
 /**
  * Per-faction rows in the AI world model carry ids of their own, and cloning a
  * row copies them. CAI_FACTION is the clearest case: its numeric slots are
@@ -40,7 +39,7 @@ export interface CaiFactionIdSpan {
 export function collectCaiFactionIdSpans(
   source: Buffer,
   header: { recordNamesOffset: number },
-  tables: Pick<CaabStringTables, "recordNames" | "utf8ById" | "utf16ById">
+  tables: Pick<CaabStringTables, "recordNames" | "utf8ById" | "utf16ById">,
 ): CaiFactionIdSpan[] {
   const rows: CaiFactionIdSpan[] = [];
   let current: { rowIndex: number; u32Count: number; idSpan?: CaiFactionIdSpan } | null = null;
@@ -54,11 +53,7 @@ export function collectCaiFactionIdSpans(
     onValue(value, stack) {
       if (!current || !stack.includes("CAI_FACTION") || value.kind !== "value" || value.type !== "u32") return;
       if (current.u32Count === CAI_FACTION_SLOTS.factionIdSlot) {
-        if (
-          typeof value.value !== "number" ||
-          value.startOffset === undefined ||
-          value.endOffset === undefined
-        ) {
+        if (typeof value.value !== "number" || value.startOffset === undefined || value.endOffset === undefined) {
           throw new Error(`Could not locate the faction ID span in CAI_FACTION row ${current.rowIndex}.`);
         }
         current.idSpan = {
@@ -86,8 +81,16 @@ export function collectCaiFactionIdSpans(
  * 0x19 (i32 zero) rather than 0x14 (u32 zero) -- so both have to be decoded, and
  * a rewritten value keeps the family it replaced.
  */
-const U32_ZERO = 0x14, U32_ONE = 0x15, U32_BYTE = 0x16, U32_16 = 0x17, U32_24 = 0x18, U32_FULL = 0x08;
-const I32_ZERO = 0x19, I32_BYTE = 0x1a, I32_16 = 0x1b, I32_24 = 0x1c;
+const U32_ZERO = 0x14,
+  U32_ONE = 0x15,
+  U32_BYTE = 0x16,
+  U32_16 = 0x17,
+  U32_24 = 0x18,
+  U32_FULL = 0x08;
+const I32_ZERO = 0x19,
+  I32_BYTE = 0x1a,
+  I32_16 = 0x1b,
+  I32_24 = 0x1c;
 
 interface DecodedInt {
   value: number;
@@ -97,21 +100,31 @@ interface DecodedInt {
 
 function decodeInt(buffer: Buffer, offset: number): DecodedInt | null {
   switch (buffer[offset]) {
-    case U32_ZERO: return { value: 0, width: 1, signed: false };
-    case U32_ONE: return { value: 1, width: 1, signed: false };
-    case U32_BYTE: return { value: buffer[offset + 1], width: 2, signed: false };
-    case U32_16: return { value: buffer.readUInt16LE(offset + 1), width: 3, signed: false };
-    case U32_24: return { value: buffer.readUIntBE(offset + 1, 3), width: 4, signed: false };
-    case U32_FULL: return { value: buffer.readUInt32LE(offset + 1), width: 5, signed: false };
-    case I32_ZERO: return { value: 0, width: 1, signed: true };
-    case I32_BYTE: return { value: buffer.readInt8(offset + 1), width: 2, signed: true };
-    case I32_16: return { value: buffer.readInt16LE(offset + 1), width: 3, signed: true };
+    case U32_ZERO:
+      return { value: 0, width: 1, signed: false };
+    case U32_ONE:
+      return { value: 1, width: 1, signed: false };
+    case U32_BYTE:
+      return { value: buffer[offset + 1], width: 2, signed: false };
+    case U32_16:
+      return { value: buffer.readUInt16LE(offset + 1), width: 3, signed: false };
+    case U32_24:
+      return { value: buffer.readUIntBE(offset + 1, 3), width: 4, signed: false };
+    case U32_FULL:
+      return { value: buffer.readUInt32LE(offset + 1), width: 5, signed: false };
+    case I32_ZERO:
+      return { value: 0, width: 1, signed: true };
+    case I32_BYTE:
+      return { value: buffer.readInt8(offset + 1), width: 2, signed: true };
+    case I32_16:
+      return { value: buffer.readInt16LE(offset + 1), width: 3, signed: true };
     case I32_24: {
       let v = buffer[offset + 1] | (buffer[offset + 2] << 8) | (buffer[offset + 3] << 16);
       if (v & 0x800000) v |= 0xff000000;
       return { value: v | 0, width: 4, signed: true };
     }
-    default: return null;
+    default:
+      return null;
   }
 }
 
@@ -120,13 +133,31 @@ function encodeInt(value: number, signed: boolean): Buffer {
     if (value === 0) return Buffer.from([U32_ZERO]);
     if (value === 1) return Buffer.from([U32_ONE]);
     if (value <= 0xff) return Buffer.from([U32_BYTE, value]);
-    if (value <= 0xffff) { const b = Buffer.allocUnsafe(3); b[0] = U32_16; b.writeUInt16LE(value, 1); return b; }
+    if (value <= 0xffff) {
+      const b = Buffer.allocUnsafe(3);
+      b[0] = U32_16;
+      b.writeUInt16LE(value, 1);
+      return b;
+    }
     if (value <= 0xffffff) return Buffer.from([U32_24, (value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff]);
-    const b = Buffer.allocUnsafe(5); b[0] = U32_FULL; b.writeUInt32LE(value, 1); return b;
+    const b = Buffer.allocUnsafe(5);
+    b[0] = U32_FULL;
+    b.writeUInt32LE(value, 1);
+    return b;
   }
   if (value === 0) return Buffer.from([I32_ZERO]);
-  if (value >= -128 && value <= 127) { const b = Buffer.allocUnsafe(2); b[0] = I32_BYTE; b.writeInt8(value, 1); return b; }
-  if (value >= -32768 && value <= 32767) { const b = Buffer.allocUnsafe(3); b[0] = I32_16; b.writeInt16LE(value, 1); return b; }
+  if (value >= -128 && value <= 127) {
+    const b = Buffer.allocUnsafe(2);
+    b[0] = I32_BYTE;
+    b.writeInt8(value, 1);
+    return b;
+  }
+  if (value >= -32768 && value <= 32767) {
+    const b = Buffer.allocUnsafe(3);
+    b[0] = I32_16;
+    b.writeInt16LE(value, 1);
+    return b;
+  }
   return Buffer.from([I32_24, value & 0xff, (value >> 8) & 0xff, (value >> 16) & 0xff]);
 }
 
@@ -214,7 +245,7 @@ export function fixClonedCaiFaction(
   clonedRow: CaabItem[],
   source: Buffer,
   newFactionId: number,
-  nextId: (slot: number, current: number) => number
+  nextId: (slot: number, current: number) => number,
 ): CaiFactionFixReport | null {
   // CAI_FACTION is not necessarily a direct child of the row; the BDI wrapper
   // records sit between, so search the subtree.

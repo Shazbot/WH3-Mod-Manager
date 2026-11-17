@@ -151,7 +151,10 @@ export interface UnitVisualIndex {
 }
 
 /** Shared effective-DB joins used by unit resolution and asset-user indexing. */
-export const collectUnitVisualIndex = async (environment: ReferenceEnvironment, unitKeys?: ReadonlySet<string>): Promise<UnitVisualIndex> => {
+export const collectUnitVisualIndex = async (
+  environment: ReferenceEnvironment,
+  unitKeys?: ReadonlySet<string>,
+): Promise<UnitVisualIndex> => {
   const resolved = await resolveUnitRecords(environment, undefined, unitKeys);
   for (const table of resolved.missingTables) {
     const entry = {
@@ -160,16 +163,19 @@ export const collectUnitVisualIndex = async (environment: ReferenceEnvironment, 
       severity: "warning" as const,
       path: `db\\${table}_tables`,
     };
-    if (!environment.diagnostics.some((item) => item.code === entry.code && item.path === entry.path)) environment.diagnostics.push(entry);
+    if (!environment.diagnostics.some((item) => item.code === entry.code && item.path === entry.path))
+      environment.diagnostics.push(entry);
   }
   for (const item of resolved.items as Array<Record<string, unknown>>) {
-    const optimization = item.optimization && typeof item.optimization === "object" ? item.optimization as Record<string, unknown> : {};
-    const issues = Array.isArray(optimization.issues) ? optimization.issues as Array<Record<string, unknown>> : [];
+    const optimization =
+      item.optimization && typeof item.optimization === "object" ? (item.optimization as Record<string, unknown>) : {};
+    const issues = Array.isArray(optimization.issues) ? (optimization.issues as Array<Record<string, unknown>>) : [];
     for (const issue of issues) {
       const code = typeof issue.code === "string" ? issue.code : "UNIT_VISUAL_JOIN_INCOMPLETE";
       const message = typeof issue.message === "string" ? issue.message : "A unit visual join could not be resolved";
       const diagnostic = { code, message, severity: "warning" as const };
-      if (!environment.diagnostics.some((current) => current.code === code && current.message === message)) environment.diagnostics.push(diagnostic);
+      if (!environment.diagnostics.some((current) => current.code === code && current.message === message))
+        environment.diagnostics.push(diagnostic);
     }
   }
   const units: UnitVisualRecord[] = [];
@@ -185,20 +191,53 @@ export const collectUnitVisualIndex = async (environment: ReferenceEnvironment, 
   const add = (item: Record<string, unknown>, rootKind: UnitVisualRoot["rootKind"], reason: string, value: unknown) => {
     if (!value || typeof value !== "object") return;
     const visual = value as Record<string, unknown>;
-    const assetPath = typeof visual.path === "string" ? visual.path : typeof visual.modelPath === "string" ? visual.modelPath : undefined;
+    const assetPath =
+      typeof visual.path === "string"
+        ? visual.path
+        : typeof visual.modelPath === "string"
+          ? visual.modelPath
+          : undefined;
     if (!assetPath) return;
     const unitKey = String(item.mainUnitKey ?? "");
     const landUnitKey = String(item.landUnitKey ?? "");
     const identity = JSON.stringify([normalizeRootPath(assetPath), unitKey, landUnitKey, rootKind, reason]);
     if (rootSeen.has(identity)) return;
     rootSeen.add(identity);
-    const roster = item.roster && typeof item.roster === "object" ? item.roster as Record<string, unknown> : {};
-    const permissions = roster.permissions && typeof roster.permissions === "object" ? (roster.permissions as { items?: unknown[] }).items ?? [] : [];
-    const campaign = item.campaignRecruitment && typeof item.campaignRecruitment === "object" ? item.campaignRecruitment as Record<string, unknown> : {};
-    const characters = item.characters && typeof item.characters === "object" ? item.characters as Record<string, unknown> : {};
-    const campaignRules = [campaign.buildings, campaign.exclusiveFactionPermissions, campaign.mercenaryGroups, campaign.unitSets];
-    const characterArtCandidates = [characters.subtypes, characters.subcultureOverrides, characters.factionPermissions, characters.artSets, characters.arts, characters.uniforms];
-    const rootEvidence = [item.mainUnit, item.landUnit, roster.factions, permissions, campaignRules, characterArtCandidates, visual.evidence, visual];
+    const roster = item.roster && typeof item.roster === "object" ? (item.roster as Record<string, unknown>) : {};
+    const permissions =
+      roster.permissions && typeof roster.permissions === "object"
+        ? ((roster.permissions as { items?: unknown[] }).items ?? [])
+        : [];
+    const campaign =
+      item.campaignRecruitment && typeof item.campaignRecruitment === "object"
+        ? (item.campaignRecruitment as Record<string, unknown>)
+        : {};
+    const characters =
+      item.characters && typeof item.characters === "object" ? (item.characters as Record<string, unknown>) : {};
+    const campaignRules = [
+      campaign.buildings,
+      campaign.exclusiveFactionPermissions,
+      campaign.mercenaryGroups,
+      campaign.unitSets,
+    ];
+    const characterArtCandidates = [
+      characters.subtypes,
+      characters.subcultureOverrides,
+      characters.factionPermissions,
+      characters.artSets,
+      characters.arts,
+      characters.uniforms,
+    ];
+    const rootEvidence = [
+      item.mainUnit,
+      item.landUnit,
+      roster.factions,
+      permissions,
+      campaignRules,
+      characterArtCandidates,
+      visual.evidence,
+      visual,
+    ];
     roots.push({
       path: assetPath,
       unitKey,
@@ -209,9 +248,12 @@ export const collectUnitVisualIndex = async (environment: ReferenceEnvironment, 
       reason,
       scopeSource: roster.scopeSource === "customBattlePermissions" ? "customBattlePermissions" : "visualFallback",
       unscoped: Boolean(roster.unscoped),
-      factions: roster.factions && typeof roster.factions === "object" && Array.isArray((roster.factions as { items?: unknown[] }).items)
-        ? (roster.factions as { items: UnitVisualRoot["factions"] }).items
-        : [],
+      factions:
+        roster.factions &&
+        typeof roster.factions === "object" &&
+        Array.isArray((roster.factions as { items?: unknown[] }).items)
+          ? (roster.factions as { items: UnitVisualRoot["factions"] }).items
+          : [],
       customBattlePermissions: permissions,
       campaignRules,
       characterArtCandidates,
@@ -219,81 +261,148 @@ export const collectUnitVisualIndex = async (environment: ReferenceEnvironment, 
     });
   };
   const resolvedUnits = resolved.items as Array<Record<string, unknown>>;
-  environment.context.progress?.({ stage: "hydration", completed: 0, total: resolvedUnits.length, units: 0,
-    message: "Hydrating unit evidence" });
+  environment.context.progress?.({
+    stage: "hydration",
+    completed: 0,
+    total: resolvedUnits.length,
+    units: 0,
+    message: "Hydrating unit evidence",
+  });
   let hydratedUnits = 0;
   for (const value of resolvedUnits) {
     throwIfAborted(environment.context.signal);
     if ((hydratedUnits++ & 127) === 0) await yieldToEventLoop(environment.context.signal);
-    if ((hydratedUnits & 255) === 0 || hydratedUnits === resolvedUnits.length) environment.context.progress?.({
-      stage: "hydration", completed: hydratedUnits, total: resolvedUnits.length, units: hydratedUnits,
-      message: `Hydrated ${hydratedUnits} of ${resolvedUnits.length} units`,
-    });
+    if ((hydratedUnits & 255) === 0 || hydratedUnits === resolvedUnits.length)
+      environment.context.progress?.({
+        stage: "hydration",
+        completed: hydratedUnits,
+        total: resolvedUnits.length,
+        units: hydratedUnits,
+        message: `Hydrated ${hydratedUnits} of ${resolvedUnits.length} units`,
+      });
     const unitKey = String(value.mainUnitKey ?? "");
     const landUnitKey = String(value.landUnitKey ?? "");
-    const roster = value.roster && typeof value.roster === "object" ? value.roster as Record<string, unknown> : {};
-    const permissions = roster.permissions && typeof roster.permissions === "object" ? (roster.permissions as { items?: unknown[] }).items ?? [] : [];
-    const campaign = value.campaignRecruitment && typeof value.campaignRecruitment === "object" ? value.campaignRecruitment as Record<string, unknown> : {};
-    const characters = value.characters && typeof value.characters === "object" ? value.characters as Record<string, unknown> : {};
-    const campaignRules = [campaign.buildings, campaign.exclusiveFactionPermissions, campaign.mercenaryGroups, campaign.unitSets].flatMap(evidenceFrom);
-    const characterArtCandidates = [characters.subtypes, characters.subcultureOverrides, characters.factionPermissions, characters.artSets, characters.arts, characters.uniforms].flatMap(evidenceFrom);
-    const baseEvidence = [value.mainUnit, value.landUnit, roster.factions, permissions, campaignRules, characterArtCandidates, value.visuals].flatMap(evidenceFrom);
+    const roster = value.roster && typeof value.roster === "object" ? (value.roster as Record<string, unknown>) : {};
+    const permissions =
+      roster.permissions && typeof roster.permissions === "object"
+        ? ((roster.permissions as { items?: unknown[] }).items ?? [])
+        : [];
+    const campaign =
+      value.campaignRecruitment && typeof value.campaignRecruitment === "object"
+        ? (value.campaignRecruitment as Record<string, unknown>)
+        : {};
+    const characters =
+      value.characters && typeof value.characters === "object" ? (value.characters as Record<string, unknown>) : {};
+    const campaignRules = [
+      campaign.buildings,
+      campaign.exclusiveFactionPermissions,
+      campaign.mercenaryGroups,
+      campaign.unitSets,
+    ].flatMap(evidenceFrom);
+    const characterArtCandidates = [
+      characters.subtypes,
+      characters.subcultureOverrides,
+      characters.factionPermissions,
+      characters.artSets,
+      characters.arts,
+      characters.uniforms,
+    ].flatMap(evidenceFrom);
+    const baseEvidence = [
+      value.mainUnit,
+      value.landUnit,
+      roster.factions,
+      permissions,
+      campaignRules,
+      characterArtCandidates,
+      value.visuals,
+    ].flatMap(evidenceFrom);
     units.push({
       unitKey,
       landUnitKey,
       localizedName: typeof value.localizedName === "string" ? value.localizedName : undefined,
       locKey: String(value.locKey ?? ""),
-      ...(value.locEvidence && typeof value.locEvidence === "object" ? { locEvidence: value.locEvidence as UnitVisualRecord["locEvidence"] } : {}),
+      ...(value.locEvidence && typeof value.locEvidence === "object"
+        ? { locEvidence: value.locEvidence as UnitVisualRecord["locEvidence"] }
+        : {}),
       scopeSource: roster.scopeSource === "customBattlePermissions" ? "customBattlePermissions" : "visualFallback",
       unscoped: Boolean(roster.unscoped),
-      factions: roster.factions && typeof roster.factions === "object" && Array.isArray((roster.factions as { items?: unknown[] }).items)
-        ? (roster.factions as { items: UnitVisualRoot["factions"] }).items
-        : [],
+      factions:
+        roster.factions &&
+        typeof roster.factions === "object" &&
+        Array.isArray((roster.factions as { items?: unknown[] }).items)
+          ? (roster.factions as { items: UnitVisualRoot["factions"] }).items
+          : [],
       customBattlePermissions: permissions,
       campaignRules,
       characterArtCandidates,
       evidence: baseEvidence,
     });
-    const visuals = value.visuals && typeof value.visuals === "object" ? value.visuals as Record<string, unknown> : {};
-    const variants = visuals.variants && typeof visuals.variants === "object" ? (visuals.variants as { items?: unknown[] }).items ?? [] : [];
+    const visuals =
+      value.visuals && typeof value.visuals === "object" ? (value.visuals as Record<string, unknown>) : {};
+    const variants =
+      visuals.variants && typeof visuals.variants === "object"
+        ? ((visuals.variants as { items?: unknown[] }).items ?? [])
+        : [];
     for (const visual of variants) add(value, "variant", "unit variant", visual);
-    const mount = visuals.mount && typeof visuals.mount === "object" ? visuals.mount as Record<string, unknown> : undefined;
+    const mount =
+      visuals.mount && typeof visuals.mount === "object" ? (visuals.mount as Record<string, unknown>) : undefined;
     if (mount?.variant) add(value, "mount", "land unit mount", mount.variant);
-    const engine = visuals.engine && typeof visuals.engine === "object" ? visuals.engine as Record<string, unknown> : undefined;
+    const engine =
+      visuals.engine && typeof visuals.engine === "object" ? (visuals.engine as Record<string, unknown>) : undefined;
     if (engine?.variant) add(value, "engine", "land unit engine variant", engine.variant);
     if (engine?.model && typeof engine.model === "object") {
       const model = engine.model as Record<string, unknown>;
       add(value, "engine", "land unit engine model", model);
       for (const lod of (model.lods as unknown[] | undefined) ?? []) add(value, "engine", "land unit engine LOD", lod);
     }
-    const extras = visuals.extraEngines && typeof visuals.extraEngines === "object" ? (visuals.extraEngines as { items?: unknown[] }).items ?? [] : [];
+    const extras =
+      visuals.extraEngines && typeof visuals.extraEngines === "object"
+        ? ((visuals.extraEngines as { items?: unknown[] }).items ?? [])
+        : [];
     for (const extra of extras) {
       if (!extra || typeof extra !== "object") continue;
       const item = extra as Record<string, unknown>;
-      const model = item.model && typeof item.model === "object" ? item.model as Record<string, unknown> : undefined;
+      const model = item.model && typeof item.model === "object" ? (item.model as Record<string, unknown>) : undefined;
       if (model) {
         add(value, "extraEngine", "extra engine model", model);
-        for (const lod of (model.lods as unknown[] | undefined) ?? []) add(value, "extraEngine", "extra engine LOD", lod);
+        for (const lod of (model.lods as unknown[] | undefined) ?? [])
+          add(value, "extraEngine", "extra engine LOD", lod);
       }
       const variant = item.variant;
       if (variant) add(value, "extraEngine", "extra engine variant", variant);
     }
-    const uniforms = characters.uniforms && typeof characters.uniforms === "object" ? (characters.uniforms as { items?: unknown[] }).items ?? [] : [];
+    const uniforms =
+      characters.uniforms && typeof characters.uniforms === "object"
+        ? ((characters.uniforms as { items?: unknown[] }).items ?? [])
+        : [];
     for (const uniform of uniforms) {
-      if (uniform && typeof uniform === "object") add(value, "characterUniform", "character uniform candidate", (uniform as Record<string, unknown>).battleVariant);
+      if (uniform && typeof uniform === "object")
+        add(
+          value,
+          "characterUniform",
+          "character uniform candidate",
+          (uniform as Record<string, unknown>).battleVariant,
+        );
     }
   }
-  if (hydratedUnits !== resolvedUnits.length) environment.context.progress?.({
-    stage: "hydration", completed: hydratedUnits, total: resolvedUnits.length, units: hydratedUnits,
-    message: `Hydrated ${hydratedUnits} of ${resolvedUnits.length} units`,
-  });
+  if (hydratedUnits !== resolvedUnits.length)
+    environment.context.progress?.({
+      stage: "hydration",
+      completed: hydratedUnits,
+      total: resolvedUnits.length,
+      units: hydratedUnits,
+      message: `Hydrated ${hydratedUnits} of ${resolvedUnits.length} units`,
+    });
   return { roots, units, missingTables: resolved.missingTables };
 };
 const normalizeRootPath = (value: string) => value.replace(/\\/g, "/").toLowerCase();
 
 const resolveUnitRecords = async (
   environment: ReferenceEnvironment,
-  request?: Pick<z.output<typeof unitResolveSchema>, "query" | "queries" | "searchBy" | "match" | "caseSensitive" | "detailLimit">,
+  request?: Pick<
+    z.output<typeof unitResolveSchema>,
+    "query" | "queries" | "searchBy" | "match" | "caseSensitive" | "detailLimit"
+  >,
   unitKeys?: ReadonlySet<string>,
 ) => {
   const context = environment.context;
@@ -348,7 +457,9 @@ const resolveUnitRecords = async (
   const name = (key: string) => locs.get(key)?.text;
   const localizationEvidence = (key: string) => {
     const entry = locs.get(key);
-    return entry ? { packPath: entry.packPath, filePath: entry.filePath, rowIndex: entry.rowIndex, key: entry.locKey } : undefined;
+    return entry
+      ? { packPath: entry.packPath, filePath: entry.filePath, rowIndex: entry.rowIndex, key: entry.locKey }
+      : undefined;
   };
   const bounded = <T>(items: T[]) => ({ total: items.length, items, truncated: false });
   const previewDetails = (value: unknown): unknown => {
@@ -358,8 +469,8 @@ const resolveUnitRecords = async (
     if (typeof record.total === "number" && Array.isArray(record.items)) {
       return {
         ...record,
-          items: record.items.slice(0, request?.detailLimit ?? 100).map(previewDetails),
-          truncated: record.total > (request?.detailLimit ?? 100),
+        items: record.items.slice(0, request?.detailLimit ?? 100).map(previewDetails),
+        truncated: record.total > (request?.detailLimit ?? 100),
       };
     }
     return Object.fromEntries(Object.entries(record).map(([key, item]) => [key, previewDetails(item)]));
@@ -489,10 +600,16 @@ const resolveUnitRecords = async (
           : searchBy === "mesh"
             ? meshPaths.map(normalizeRootPath)
             : [mainKey, landKey];
-    const matchedQueryIndexes = request ? queryValues.flatMap((query, index) => {
-      const normalizedQuery = searchBy === "mesh" ? normalizeRootPath(query) : query;
-      return searchCandidates.some((candidate) => matchesLookup(candidate, normalizedQuery, request.match, request.caseSensitive)) ? [index] : [];
-    }) : [];
+    const matchedQueryIndexes = request
+      ? queryValues.flatMap((query, index) => {
+          const normalizedQuery = searchBy === "mesh" ? normalizeRootPath(query) : query;
+          return searchCandidates.some((candidate) =>
+            matchesLookup(candidate, normalizedQuery, request.match, request.caseSensitive),
+          )
+            ? [index]
+            : [];
+        })
+      : [];
     if (request && !matchedQueryIndexes.length) continue;
     const issues: Array<{ code: string; message: string }> = [];
     if (!land) issues.push({ code: "MISSING_LAND_UNIT", message: `Land unit ${landKey} was not resolved` });
@@ -545,7 +662,10 @@ const resolveUnitRecords = async (
       ["unit_category", landCategory],
       ["unit_class", text(land, "class")],
     ];
-    const unitSets = matchingRows("unit_set_to_unit_junctions", criteria.filter(([, value]) => value)).filter((row) => {
+    const unitSets = matchingRows(
+      "unit_set_to_unit_junctions",
+      criteria.filter(([, value]) => value),
+    ).filter((row) => {
       return (
         criteria.some(([field]) => text(row, field)) &&
         criteria.every(([field, value]) => !text(row, field) || same(text(row, field), value))
@@ -557,8 +677,14 @@ const resolveUnitRecords = async (
       ...subtypeRows.map((row) => text(row, "key")),
       ...overrides.map((row) => text(row, "subtype")),
     ]);
-    const artSets = matchingRows("campaign_character_art_sets", subtypes.map((key) => ["agent_subtype", key]));
-    const arts = matchingRows("campaign_character_arts", artSets.map((set) => ["art_set_id", text(set, "art_set_id")]));
+    const artSets = matchingRows(
+      "campaign_character_art_sets",
+      subtypes.map((key) => ["agent_subtype", key]),
+    );
+    const arts = matchingRows(
+      "campaign_character_arts",
+      artSets.map((set) => ["art_set_id", text(set, "art_set_id")]),
+    );
     const uniformNames = unique([
       ...permissions.map((row) => text(row, "general_uniform")),
       ...arts.flatMap((row) => [text(row, "uniform"), text(row, "sea_uniform"), text(row, "navy_uniform")]),
@@ -569,7 +695,10 @@ const resolveUnitRecords = async (
       if (!row) issues.push({ code: "MISSING_AGENT_UNIFORM", message: `Agent uniform ${key} was not resolved` });
       const battleVariant = row ? variantsFor(battle && battle !== "." ? battle : text(row, "filename")) : undefined;
       if (battleVariant && battleVariant.status !== "found") {
-        issues.push({ code: "UNRESOLVED_CHARACTER_UNIFORM", message: `Agent uniform ${key} variant has status ${battleVariant.status}` });
+        issues.push({
+          code: "UNRESOLVED_CHARACTER_UNIFORM",
+          message: `Agent uniform ${key} variant has status ${battleVariant.status}`,
+        });
       }
       return {
         key,
@@ -584,9 +713,17 @@ const resolveUnitRecords = async (
     const extraEngines = filter("land_units_to_extra_engines", "land_unit", landKey).map((row) => {
       const extra = find("battlefield_engines", "key", text(row, "battle_engine"));
       const model = engineModelFor(extra);
-      if (!extra) issues.push({ code: "MISSING_EXTRA_ENGINE", message: `Extra engine ${text(row, "battle_engine")} was not resolved` });
+      if (!extra)
+        issues.push({
+          code: "MISSING_EXTRA_ENGINE",
+          message: `Extra engine ${text(row, "battle_engine")} was not resolved`,
+        });
       const variant = extra ? variantsFor(text(extra, "variant")) : undefined;
-      if (variant && variant.status !== "found") issues.push({ code: "UNRESOLVED_EXTRA_ENGINE_VARIANT", message: `Extra engine ${text(row, "battle_engine")} variant has status ${variant.status}` });
+      if (variant && variant.status !== "found")
+        issues.push({
+          code: "UNRESOLVED_EXTRA_ENGINE_VARIANT",
+          message: `Extra engine ${text(row, "battle_engine")} variant has status ${variant.status}`,
+        });
       if (model && model.status !== "found")
         issues.push({
           code: "UNRESOLVED_EXTRA_ENGINE_MODEL",
@@ -594,15 +731,19 @@ const resolveUnitRecords = async (
         });
       return {
         evidence: rowEvidence(row),
-        ...(extra
-          ? { engine: rowEvidence(extra), variant, model }
-          : { missing: true }),
+        ...(extra ? { engine: rowEvidence(extra), variant, model } : { missing: true }),
       };
     });
     if (mountVariant && mountVariant.status !== "found")
-      issues.push({ code: "UNRESOLVED_MOUNT_VARIANT", message: `Mount ${mountKey} variant has status ${mountVariant.status}` });
+      issues.push({
+        code: "UNRESOLVED_MOUNT_VARIANT",
+        message: `Mount ${mountKey} variant has status ${mountVariant.status}`,
+      });
     if (engineVariant && engineVariant.status !== "found")
-      issues.push({ code: "UNRESOLVED_ENGINE_VARIANT", message: `Engine ${engineKey} variant has status ${engineVariant.status}` });
+      issues.push({
+        code: "UNRESOLVED_ENGINE_VARIANT",
+        message: `Engine ${engineKey} variant has status ${engineVariant.status}`,
+      });
     if (issues.length) environment.complete = false;
     const unitItem = {
       mainUnitKey: mainKey,
@@ -630,16 +771,17 @@ const resolveUnitRecords = async (
       visuals: {
         variants: bounded(variants),
         mount: mount ? { ...rowEvidence(mount), variant: mountVariant } : null,
-        engine: engine
-          ? { ...rowEvidence(engine), variant: engineVariant, model: engineModel }
-          : null,
+        engine: engine ? { ...rowEvidence(engine), variant: engineVariant, model: engineModel } : null,
         extraEngines: bounded(extraEngines),
       },
       characters: {
         subtypes: bounded(subtypeRows.map(rowEvidence)),
         subcultureOverrides: bounded(overrides.map(rowEvidence)),
         factionPermissions: bounded(
-          matchingRows("faction_agent_permitted_subtypes", subtypes.map((key) => ["subtype", key]))
+          matchingRows(
+            "faction_agent_permitted_subtypes",
+            subtypes.map((key) => ["subtype", key]),
+          )
             .filter((row) => subtypes.includes(text(row, "subtype")))
             .map(rowEvidence),
         ),
@@ -671,8 +813,18 @@ const resolveUnitRecords = async (
     if (referencedLandKeys.has(key.toLowerCase())) continue;
     const locKey = `land_units_onscreen_name_${key}`;
     const localizedName = name(locKey);
-    const matchedQueryIndexes = request ? queryValues.flatMap((query, index) =>
-      matchesLookup(request.searchBy === "text" ? (localizedName ?? "") : key, query, request.match, request.caseSensitive) ? [index] : []) : [];
+    const matchedQueryIndexes = request
+      ? queryValues.flatMap((query, index) =>
+          matchesLookup(
+            request.searchBy === "text" ? (localizedName ?? "") : key,
+            query,
+            request.match,
+            request.caseSensitive,
+          )
+            ? [index]
+            : [],
+        )
+      : [];
     if (!request || matchedQueryIndexes.length) {
       environment.complete = false;
       const unitItem = {
@@ -720,14 +872,22 @@ export const runUnitResolve = async (request: z.output<typeof unitResolveSchema>
   if (request.searchBy === "mesh") {
     // Mesh queries can name a VMD, WSModel, or rigid model. Resolve matching supported
     // source paths first, then walk the shared incoming index back to source-proven roots.
-    context.progress?.({ stage: "roots", completed: 0, total: queryValues.length, paths: queryValues.length, message: "Discovering unit visual roots" });
+    context.progress?.({
+      stage: "roots",
+      completed: 0,
+      total: queryValues.length,
+      paths: queryValues.length,
+      message: "Discovering unit visual roots",
+    });
     const rootScan = await collectUnitVisualRoots(environment, false);
     const targetPackPath = request.packPaths.at(-1) ?? request.packPaths[0];
-    const rankedRoots = rootScan.roots.map((root, index) => {
-      const provider = resolveReferenceAsset(environment, root.path).winner?.provider;
-      const rank = provider ? provider.pack.path === targetPackPath ? 0 : provider.kind === "mod" ? 1 : 2 : 3;
-      return { root, index, rank };
-    }).sort((left, right) => left.rank - right.rank || left.index - right.index);
+    const rankedRoots = rootScan.roots
+      .map((root, index) => {
+        const provider = resolveReferenceAsset(environment, root.path).winner?.provider;
+        const rank = provider ? (provider.pack.path === targetPackPath ? 0 : provider.kind === "mod" ? 1 : 2) : 3;
+        return { root, index, rank };
+      })
+      .sort((left, right) => left.rank - right.rank || left.index - right.index);
     const selectedRoots = rankedRoots.slice(0, request.maxRoots).map(({ root }) => root);
     const rootLimitHit = rootScan.roots.length > request.maxRoots;
     const normalizedQueries = queryValues.map(normalizeRootPath);
@@ -765,12 +925,21 @@ export const runUnitResolve = async (request: z.output<typeof unitResolveSchema>
       for (const keys of targetsByQuery) for (const key of keys) if (!allowed.has(key)) keys.delete(key);
     }
     const effectiveTargets = targetKeys.map((key) => targetPathsByKey.get(key)!);
-    const incoming = await createIncomingVisualReferenceIndex(environment, selectedRoots.length ? effectiveTargets : [], {
-      maxSources: request.maxScanSources,
-      maxIndexEdges: request.maxIndexEdges,
+    const incoming = await createIncomingVisualReferenceIndex(
+      environment,
+      selectedRoots.length ? effectiveTargets : [],
+      {
+        maxSources: request.maxScanSources,
+        maxIndexEdges: request.maxIndexEdges,
+      },
+    );
+    context.progress?.({
+      stage: "traversal",
+      completed: 0,
+      total: queryValues.length,
+      paths: effectiveTargets.length,
+      message: "Walking incoming visual references",
     });
-    context.progress?.({ stage: "traversal", completed: 0, total: queryValues.length, paths: effectiveTargets.length,
-      message: "Walking incoming visual references" });
     const traversal = await incoming.findMany(effectiveTargets, selectedRoots, {
       maxDepth: request.maxDepth,
       maxNodes: request.maxNodes,
@@ -780,7 +949,13 @@ export const runUnitResolve = async (request: z.output<typeof unitResolveSchema>
       const matches = new Map<string, VisualRootChain & { queryPath: string }>();
       for (const targetKey of targetsByQuery[index]) {
         for (const match of traversal.matches.get(targetKey) ?? []) {
-          const signature = JSON.stringify([match.root.unitKey, match.root.landUnitKey, match.root.path, targetPathsByKey.get(targetKey), match.chain]);
+          const signature = JSON.stringify([
+            match.root.unitKey,
+            match.root.landUnitKey,
+            match.root.path,
+            targetPathsByKey.get(targetKey),
+            match.chain,
+          ]);
           matches.set(signature, { ...match, queryPath: targetPathsByKey.get(targetKey) ?? targetKey });
         }
       }
@@ -794,16 +969,34 @@ export const runUnitResolve = async (request: z.output<typeof unitResolveSchema>
         chain: match.chain,
       }));
     });
-    const matchedKeys = new Set(matchedByQuery.flatMap((matches) => matches.map((match) => match.unitKey)).filter(Boolean));
-    const resolved = matchedKeys.size ? await resolveUnitRecords(environment, undefined, matchedKeys) : {
-      items: [], itemsByQuery: [], missingTables: [], coverage: { tables: {}, campaignRecruitment: "", optimization: "", characterVisuals: "" }, previewDetails: (item: unknown) => item,
-    };
+    const matchedKeys = new Set(
+      matchedByQuery.flatMap((matches) => matches.map((match) => match.unitKey)).filter(Boolean),
+    );
+    const resolved = matchedKeys.size
+      ? await resolveUnitRecords(environment, undefined, matchedKeys)
+      : {
+          items: [],
+          itemsByQuery: [],
+          missingTables: [],
+          coverage: { tables: {}, campaignRecruitment: "", optimization: "", characterVisuals: "" },
+          previewDetails: (item: unknown) => item,
+        };
     const unitIdentity = (item: unknown) => {
-      const record = item && typeof item === "object" ? item as Record<string, unknown> : {};
+      const record = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
       return `${String(record.mainUnitKey ?? "")}\0${String(record.landUnitKey ?? "")}`;
     };
-    if (rootLimitHit) environment.diagnostics.push({ code: "UNIT_MESH_ROOT_LIMIT", message: `Unit mesh lookup reached maxRoots (${request.maxRoots})`, severity: "warning" });
-    if (candidateLimitHit) environment.diagnostics.push({ code: "UNIT_MESH_TARGET_LIMIT", message: `Unit mesh lookup reached maxNodes (${request.maxNodes}) while selecting matching asset paths`, severity: "warning" });
+    if (rootLimitHit)
+      environment.diagnostics.push({
+        code: "UNIT_MESH_ROOT_LIMIT",
+        message: `Unit mesh lookup reached maxRoots (${request.maxRoots})`,
+        severity: "warning",
+      });
+    if (candidateLimitHit)
+      environment.diagnostics.push({
+        code: "UNIT_MESH_TARGET_LIMIT",
+        message: `Unit mesh lookup reached maxNodes (${request.maxNodes}) while selecting matching asset paths`,
+        severity: "warning",
+      });
     environment.diagnostics.push(...incoming.diagnostics);
     const queryRecords = queryValues.map((query, index) => {
       const rootMatches = matchedByQuery[index];
@@ -811,7 +1004,11 @@ export const runUnitResolve = async (request: z.output<typeof unitResolveSchema>
       const items = resolved.items.filter((item) => identities.has(unitIdentity(item)));
       const pathKeys = [...targetsByQuery[index]];
       const pathCoverage = pathKeys.map((key) => traversal.coverageByPath.get(key));
-      const complete = environment.complete && !rootLimitHit && !candidateLimitHit && incoming.complete &&
+      const complete =
+        environment.complete &&
+        !rootLimitHit &&
+        !candidateLimitHit &&
+        incoming.complete &&
         pathCoverage.every((value) => value?.complete);
       return {
         query,
@@ -839,49 +1036,102 @@ export const runUnitResolve = async (request: z.output<typeof unitResolveSchema>
     if (rootLimitHit || candidateLimitHit || !incoming.complete || queryRecords.some((result) => !result.complete))
       environment.complete = false;
     if (queryValues.length === 1 && !request.queries) {
-      return finishLookup(environment, request, resolved.items.filter((item) => {
-        const identity = unitIdentity(item);
-        return new Set(matchedByQuery[0].map((match) => `${match.unitKey}\0${match.landUnitKey}`)).has(identity);
-      }), {
-        query: queryValues[0],
-        searchBy: request.searchBy,
-        missingTables: resolved.missingTables,
-        coverage: resolved.coverage,
-        meshCoverage: queryRecords[0].coverage,
-        matchedMeshes: queryRecords[0].matchedMeshes,
-      }, resolved.previewDetails);
+      return finishLookup(
+        environment,
+        request,
+        resolved.items.filter((item) => {
+          const identity = unitIdentity(item);
+          return new Set(matchedByQuery[0].map((match) => `${match.unitKey}\0${match.landUnitKey}`)).has(identity);
+        }),
+        {
+          query: queryValues[0],
+          searchBy: request.searchBy,
+          missingTables: resolved.missingTables,
+          coverage: resolved.coverage,
+          meshCoverage: queryRecords[0].coverage,
+          matchedMeshes: queryRecords[0].matchedMeshes,
+        },
+        resolved.previewDetails,
+      );
     }
-    const fullResults = queryRecords.map((result, index) => ({ ...result,
-      items: resolved.items.filter((item) => new Set(matchedByQuery[index].map((match) => `${match.unitKey}\0${match.landUnitKey}`)).has(unitIdentity(item))) }));
-    const reportData = { searchBy: request.searchBy, queries: queryValues, results: fullResults,
+    const fullResults = queryRecords.map((result, index) => ({
+      ...result,
+      items: resolved.items.filter((item) =>
+        new Set(matchedByQuery[index].map((match) => `${match.unitKey}\0${match.landUnitKey}`)).has(unitIdentity(item)),
+      ),
+    }));
+    const reportData = {
+      searchBy: request.searchBy,
+      queries: queryValues,
+      results: fullResults,
       complete: environment.complete && queryRecords.every((result) => result.complete),
-      missingTables: resolved.missingTables, coverage: resolved.coverage, diagnostics: environment.diagnostics };
+      missingTables: resolved.missingTables,
+      coverage: resolved.coverage,
+      diagnostics: environment.diagnostics,
+    };
     let reportPath: string | undefined;
-    if (request.reportPath) reportPath = (await context.policy.withAtomicOutput({ outputPath: request.reportPath,
-      sourcePaths: environment.sourcePaths,
-      produce: (temporaryPath) => fs.writeFile(temporaryPath, `${JSON.stringify(reportData, null, 2)}\n`),
-    })).path;
-    return { data: { ...reportData, results: queryRecords, ...(reportPath ? { reportPath } : {}) }, diagnostics: environment.diagnostics };
+    if (request.reportPath)
+      reportPath = (
+        await context.policy.withAtomicOutput({
+          outputPath: request.reportPath,
+          sourcePaths: environment.sourcePaths,
+          produce: (temporaryPath) => fs.writeFile(temporaryPath, `${JSON.stringify(reportData, null, 2)}\n`),
+        })
+      ).path;
+    return {
+      data: { ...reportData, results: queryRecords, ...(reportPath ? { reportPath } : {}) },
+      diagnostics: environment.diagnostics,
+    };
   }
 
   const resolved = await resolveUnitRecords(environment, { ...request, queries: queryValues });
   const metadata = { searchBy: request.searchBy, missingTables: resolved.missingTables, coverage: resolved.coverage };
   if (queryValues.length === 1 && !request.queries)
-    return finishLookup(environment, request, resolved.itemsByQuery[0] ?? [], { ...metadata, query: queryValues[0] }, resolved.previewDetails);
+    return finishLookup(
+      environment,
+      request,
+      resolved.itemsByQuery[0] ?? [],
+      { ...metadata, query: queryValues[0] },
+      resolved.previewDetails,
+    );
   const results = queryValues.map((query, index) => {
     const items = resolved.itemsByQuery[index] ?? [];
     const pageItems = items.slice(request.offset, request.offset + request.limit).map(resolved.previewDetails);
     const hasMore = request.offset + pageItems.length < items.length;
-    return { query, searchBy: request.searchBy, complete: environment.complete, total: items.length,
-      offset: request.offset, limit: request.limit, hasMore, nextOffset: hasMore ? request.offset + pageItems.length : null, items: pageItems };
+    return {
+      query,
+      searchBy: request.searchBy,
+      complete: environment.complete,
+      total: items.length,
+      offset: request.offset,
+      limit: request.limit,
+      hasMore,
+      nextOffset: hasMore ? request.offset + pageItems.length : null,
+      items: pageItems,
+    };
   });
-  const fullResults = queryValues.map((query, index) => ({ ...results[index], items: resolved.itemsByQuery[index] ?? [] }));
-  const reportData = { ...metadata, queries: queryValues, results: fullResults, complete: environment.complete,
-    diagnostics: environment.diagnostics };
+  const fullResults = queryValues.map((query, index) => ({
+    ...results[index],
+    items: resolved.itemsByQuery[index] ?? [],
+  }));
+  const reportData = {
+    ...metadata,
+    queries: queryValues,
+    results: fullResults,
+    complete: environment.complete,
+    diagnostics: environment.diagnostics,
+  };
   let reportPath: string | undefined;
-  if (request.reportPath) reportPath = (await context.policy.withAtomicOutput({ outputPath: request.reportPath,
-    sourcePaths: environment.sourcePaths,
-    produce: (temporaryPath) => fs.writeFile(temporaryPath, `${JSON.stringify(reportData, null, 2)}\n`),
-  })).path;
-  return { data: { ...reportData, results, ...(reportPath ? { reportPath } : {}) }, diagnostics: environment.diagnostics };
+  if (request.reportPath)
+    reportPath = (
+      await context.policy.withAtomicOutput({
+        outputPath: request.reportPath,
+        sourcePaths: environment.sourcePaths,
+        produce: (temporaryPath) => fs.writeFile(temporaryPath, `${JSON.stringify(reportData, null, 2)}\n`),
+      })
+    ).path;
+  return {
+    data: { ...reportData, results, ...(reportPath ? { reportPath } : {}) },
+    diagnostics: environment.diagnostics,
+  };
 };

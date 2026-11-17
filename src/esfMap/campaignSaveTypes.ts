@@ -5,8 +5,7 @@ export interface CampaignSaveWorkerRequest {
 }
 
 export type CampaignSaveWorkerResponse =
-  | { ok: true; campaignKey: string | null; text: string; warnings: string[] }
-  | { ok: false; error: string };
+  { ok: true; campaignKey: string | null; text: string; warnings: string[] } | { ok: false; error: string };
 
 /** Edits to write into a save; mirrors `CampaignEdits` in tools/esf/src/edit/applyCampaignEdits.ts. */
 export type CampaignSaveEdits = import("../../tools/esf/src").CampaignEdits;
@@ -18,5 +17,4 @@ export interface CampaignSaveWriteWorkerRequest {
 }
 
 export type CampaignSaveWriteWorkerResponse =
-  | { ok: true; applied: string[]; skipped: string[] }
-  | { ok: false; error: string };
+  { ok: true; applied: string[]; skipped: string[] } | { ok: false; error: string };

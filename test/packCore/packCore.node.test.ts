@@ -75,16 +75,12 @@ describe("shared pack core", () => {
 
   it("writes dependency counts from the serialized bytes and rejects unterminated overrides", async () => {
     const packPath = path.join(tempRoot, "dependency-override.pack");
-    await writeRawPack(
-      packPath,
-      [{ name: "entry.bin", buffer: Buffer.from([1]) }],
-      {
-        ...defaultMetadata,
-        refFileCount: 0,
-        dependencies: ["list-only-one.pack", "list-only-two.pack"],
-        dependencyBytes: Buffer.from("raw-override.pack\0"),
-      },
-    );
+    await writeRawPack(packPath, [{ name: "entry.bin", buffer: Buffer.from([1]) }], {
+      ...defaultMetadata,
+      refFileCount: 0,
+      dependencies: ["list-only-one.pack", "list-only-two.pack"],
+      dependencyBytes: Buffer.from("raw-override.pack\0"),
+    });
 
     expect(readPfH5IndexByDependencyCount(packPath)).toEqual({
       dependencyCount: 1,
@@ -101,10 +97,14 @@ describe("shared pack core", () => {
 
   it("range-reads only exact uncompressed entry bounds and rejects short reads", async () => {
     const packPath = path.join(tempRoot, "range-reader.pack");
-    await writeRawPack(packPath, [
-      { name: "data\\one.bin", buffer: Buffer.from([1, 2, 3, 4]) },
-      { name: "data\\compressed.bin", buffer: Buffer.from([5, 6]), is_compressed: true },
-    ], defaultMetadata);
+    await writeRawPack(
+      packPath,
+      [
+        { name: "data\\one.bin", buffer: Buffer.from([1, 2, 3, 4]) },
+        { name: "data\\compressed.bin", buffer: Buffer.from([5, 6]), is_compressed: true },
+      ],
+      defaultMetadata,
+    );
     const pack = readPackIndex(packPath, { game: "wh3" });
     const entry = pack.entries[0];
     const reader = await openRawPayloadRangeReader({ path: packPath }, entry);
@@ -117,10 +117,16 @@ describe("shared pack core", () => {
     }
     await expect(reader.readRange(0, 1)).rejects.toThrow(/closed/);
     await expect(openRawPayloadRangeReader({ path: packPath }, pack.entries[1])).rejects.toThrow(/compressed/);
-    await expect(openRawPayloadRangeReader({ path: packPath }, { ...entry, start_pos: pack.fileSize })).rejects.toThrow(/beyond file size/);
+    await expect(openRawPayloadRangeReader({ path: packPath }, { ...entry, start_pos: pack.fileSize })).rejects.toThrow(
+      /beyond file size/,
+    );
 
     const shortReadPath = path.join(tempRoot, "range-reader-short.pack");
-    await writeRawPack(shortReadPath, [{ name: "data\\short.bin", buffer: Buffer.from([1, 2, 3, 4]) }], defaultMetadata);
+    await writeRawPack(
+      shortReadPath,
+      [{ name: "data\\short.bin", buffer: Buffer.from([1, 2, 3, 4]) }],
+      defaultMetadata,
+    );
     const shortPack = readPackIndex(shortReadPath, { game: "wh3" });
     const shortReader = await openRawPayloadRangeReader({ path: shortReadPath }, shortPack.entries[0]);
     try {

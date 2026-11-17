@@ -41,7 +41,13 @@ import {
 } from "@/src/utility/packFileHelpers";
 import { clearPackDataStoreForPack } from "./packDataStore";
 import { clearPreparedTableForPack } from "./tablePrepCache";
-import { getDefaultSaveAsPackName, getDroppedPackPaths, getPackFileInventory, getPreferredTreeTab, hasLoadedDBTable } from "./viewerHelpers";
+import {
+  getDefaultSaveAsPackName,
+  getDroppedPackPaths,
+  getPackFileInventory,
+  getPreferredTreeTab,
+  hasLoadedDBTable,
+} from "./viewerHelpers";
 import GlobalSearchPanel from "./GlobalSearchPanel";
 import LoadOrderRulesView from "./LoadOrderRulesView";
 import OpenPackDialog from "./OpenPackDialog";

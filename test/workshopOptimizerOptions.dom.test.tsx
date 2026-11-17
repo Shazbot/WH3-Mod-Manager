@@ -9,8 +9,15 @@ import initialState from "../src/initialAppState";
 import WorkshopOptimizerOptions from "../src/components/WorkshopOptimizerOptions";
 
 const renderOptions = (stateOverrides: Partial<AppState> = {}) => {
-  const store = configureStore({ reducer: { app: appReducer }, preloadedState: { app: { ...initialState, ...stateOverrides } } });
-  render(<Provider store={store}><WorkshopOptimizerOptions /></Provider>);
+  const store = configureStore({
+    reducer: { app: appReducer },
+    preloadedState: { app: { ...initialState, ...stateOverrides } },
+  });
+  render(
+    <Provider store={store}>
+      <WorkshopOptimizerOptions />
+    </Provider>,
+  );
   fireEvent.click(screen.getByText("Advanced optimization settings"));
   return store;
 };
@@ -54,7 +61,13 @@ describe("advanced optimizer option availability", () => {
 
   it("shows off-by-default switches, atlas building included, only in developer mode", () => {
     const store = renderOptions();
-    for (const label of [/^Build new atlases/, /^Process all variants/, /^Score all game units/, /^Cross-rigid merges only/, /^Detailed report audits/]) {
+    for (const label of [
+      /^Build new atlases/,
+      /^Process all variants/,
+      /^Score all game units/,
+      /^Cross-rigid merges only/,
+      /^Detailed report audits/,
+    ]) {
       expect(screen.queryByRole("checkbox", { name: label })).not.toBeInTheDocument();
     }
 

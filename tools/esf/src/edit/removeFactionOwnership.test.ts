@@ -5,9 +5,19 @@ import { encodeU32 } from "./addFaction";
 import { removeCaiFactionPosts } from "./removeFaction";
 
 function record(name: string, groups: CaabItem[][]): CaabRecordNode {
-  return { kind: "record", name, nameIndex: 0, version: 0, flags: 0xc0,
-    isRoot: false, hasNestedBlocks: true, groups, blockSizeWidth: 1,
-    groupCountWidth: 1, groupSizeWidths: groups.map(() => 1) };
+  return {
+    kind: "record",
+    name,
+    nameIndex: 0,
+    version: 0,
+    flags: 0xc0,
+    isRoot: false,
+    hasNestedBlocks: true,
+    groups,
+    blockSizeWidth: 1,
+    groupCountWidth: 1,
+    groupSizeWidths: groups.map(() => 1),
+  };
 }
 
 function fixture(rows: { owner: number; post: number; component: number; postOwner?: number }[]) {
@@ -16,7 +26,8 @@ function fixture(rows: { owner: number; post: number; component: number; postOwn
   function values(...values: number[]): CaabItem[] {
     const data = Buffer.concat(values.map(encodeU32));
     const span: CaabItem = { kind: "raw", start: offset, end: offset + data.length };
-    chunks.push(data); offset += data.length;
+    chunks.push(data);
+    offset += data.length;
     return [span];
   }
   const groups = rows.map((row) => [
@@ -65,5 +76,8 @@ test("all posts of the removed faction are removed with matching size metadata",
 });
 
 test("missing post table is rejected", () => {
-  assert.throws(() => removeCaiFactionPosts(record("ROOT", [[]]), Buffer.alloc(0), 32345), /CAI_CHARACTER_POSTS not found/);
+  assert.throws(
+    () => removeCaiFactionPosts(record("ROOT", [[]]), Buffer.alloc(0), 32345),
+    /CAI_CHARACTER_POSTS not found/,
+  );
 });

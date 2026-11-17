@@ -85,7 +85,7 @@ function factionRecordForKey(
   root: CaabRecordNode,
   source: Buffer,
   tables: CaabStringTables,
-  key: string
+  key: string,
 ): { index: number; record: CaabRecordNode } | null {
   const factionArray = findFirstRecord(root, "FACTION_ARRAY");
   if (!factionArray) return null;
@@ -139,7 +139,10 @@ export function rewritePairIds(group: CaabItem[], source: Buffer, aValue: number
   const offset = first.kind === "raw" ? first.start : 0;
   const a = decodeU32(buffer, offset);
   const b = decodeU32(buffer, offset + a.width);
-  const tail = first.kind === "raw" ? source.subarray(offset + a.width + b.width, first.end) : first.data.subarray(a.width + b.width);
+  const tail =
+    first.kind === "raw"
+      ? source.subarray(offset + a.width + b.width, first.end)
+      : first.data.subarray(a.width + b.width);
   group[0] = { kind: "bytes", data: Buffer.concat([encodeU32(aValue), encodeU32(bValue), tail]) };
 }
 
@@ -155,7 +158,8 @@ export function itemReferencesKey(item: CaabItem, source: Buffer, ids: Set<numbe
     }
     return false;
   }
-  if (item.kind === "record") return item.groups.some((group) => group.some((child) => itemReferencesKey(child, source, ids)));
+  if (item.kind === "record")
+    return item.groups.some((group) => group.some((child) => itemReferencesKey(child, source, ids)));
   return false;
 }
 
@@ -163,7 +167,7 @@ function regionKeySpans(
   source: Buffer,
   header: { recordNamesOffset: number },
   tables: CaabStringTables,
-  key: string
+  key: string,
 ): { start: number; end: number }[] {
   const spans: { start: number; end: number }[] = [];
   walkCaabNodes(source, header, tables, {
@@ -191,7 +195,7 @@ function collectFactionCharacterIds(
   source: Buffer,
   header: { recordNamesOffset: number },
   tables: CaabStringTables,
-  targetFactionIndex: number
+  targetFactionIndex: number,
 ): Set<number> {
   const ids = new Set<number>();
   let insideTarget = false;
@@ -238,7 +242,7 @@ function collectFactionArmyIds(
   source: Buffer,
   header: { recordNamesOffset: number },
   tables: CaabStringTables,
-  targetFactionIndex: number
+  targetFactionIndex: number,
 ): { militaryForceIds: Set<number>; unitIds: Set<number> } {
   const militaryForceIds = new Set<number>();
   const unitIds = new Set<number>();
@@ -289,7 +293,7 @@ function removeCaiCharacterPostReferences(
   characterIds: Set<number>,
   unitIds: Set<number>,
   resourceMobileIds: Set<number>,
-  removedCaiFactionObjectId: number
+  removedCaiFactionObjectId: number,
 ): {
   caiCharactersRemoved: number;
   caiCharacterPostsRemoved: number;
@@ -300,7 +304,7 @@ function removeCaiCharacterPostReferences(
   let caiCharactersRemoved = 0;
   for (let index = worldCharacters.groups.length - 1; index >= 0; index -= 1) {
     const character = worldCharacters.groups[index].find(
-      (item): item is CaabRecordNode => item.kind === "record" && item.name === "CAI_CHARACTER"
+      (item): item is CaabRecordNode => item.kind === "record" && item.name === "CAI_CHARACTER",
     );
     if (!character) continue;
     const characterId = readLeadingValues(character, source, 4).find((value) => value.slot === 3)?.value;
@@ -355,11 +359,7 @@ function removeCaiCharacterPostReferences(
 }
 
 /** Remove post groups by their CAI faction owner, not by IDs in the post body. */
-export function removeCaiFactionPosts(
-  root: CaabRecordNode,
-  source: Buffer,
-  removedCaiFactionObjectId: number
-): number {
+export function removeCaiFactionPosts(root: CaabRecordNode, source: Buffer, removedCaiFactionObjectId: number): number {
   const posts = findFirstRecord(root, "CAI_CHARACTER_POSTS");
   if (!posts) throw new Error("CAI_CHARACTER_POSTS not found.");
   let removed = 0;
@@ -377,7 +377,7 @@ function collectCaiResourceMobileIds(
   source: Buffer,
   header: { recordNamesOffset: number },
   tables: CaabStringTables,
-  militaryForceIds: Set<number>
+  militaryForceIds: Set<number>,
 ): Set<number> {
   const ids = new Set<number>();
   if (militaryForceIds.size === 0) return ids;
@@ -420,7 +420,7 @@ function removeCaiRows(
   containerName: string,
   rowName: string,
   shouldRemove: (row: CaabRecordNode) => boolean,
-  retainedCaiObjectIds: ReadonlySet<number>
+  retainedCaiObjectIds: ReadonlySet<number>,
 ): number {
   const container = findFirstRecord(root, containerName);
   if (!container) throw new Error(`${containerName} not found.`);
@@ -442,14 +442,14 @@ function removeCaiRows(
 export function groupHasRetainedBdiComponent(
   group: CaabItem[],
   source: Buffer,
-  retainedCaiObjectIds: ReadonlySet<number>
+  retainedCaiObjectIds: ReadonlySet<number>,
 ): boolean {
   if (retainedCaiObjectIds.size === 0) return false;
   return group.some(
     (item) =>
       item.kind === "record" &&
       item.name === "CAI_BDI_COMPONENT" &&
-      readLeadingValues(item, source, 1).some((value) => !value.signed && retainedCaiObjectIds.has(value.value))
+      readLeadingValues(item, source, 1).some((value) => !value.signed && retainedCaiObjectIds.has(value.value)),
   );
 }
 
@@ -457,9 +457,7 @@ export function firstU32InGroup(group: CaabItem[], source: Buffer): number | und
   const first = group.find((item) => item.kind === "raw" || item.kind === "bytes");
   if (!first) return undefined;
   try {
-    return first.kind === "raw"
-      ? decodeU32(source, first.start).value
-      : decodeU32(first.data, 0).value;
+    return first.kind === "raw" ? decodeU32(source, first.start).value : decodeU32(first.data, 0).value;
   } catch {
     return undefined;
   }
@@ -471,11 +469,7 @@ export function firstU32InRecord(group: CaabItem[], recordName: string, source: 
   return readLeadingValues(record, source, 1)[0]?.value;
 }
 
-function removeCaiFactionStanceRows(
-  root: CaabRecordNode,
-  source: Buffer,
-  removedCaiFactionObjectId: number
-): number {
+function removeCaiFactionStanceRows(root: CaabRecordNode, source: Buffer, removedCaiFactionObjectId: number): number {
   let removed = 0;
   for (const node of findRecords(root, "CAI_FACTION_STRATEGIC_STANCE")) {
     let removedFromNode = 0;
@@ -496,7 +490,7 @@ function removeCaiFactionStanceRows(
 function removeCaiFactionInterfaceManager(
   root: CaabRecordNode,
   source: Buffer,
-  removedCaiFactionObjectId: number
+  removedCaiFactionObjectId: number,
 ): number {
   const managers = findFirstRecord(root, "CAI_INTERFACE_MANAGERS");
   if (!managers) throw new Error("CAI_INTERFACE_MANAGERS not found.");
@@ -536,12 +530,18 @@ export function readFactionBeliefValues(record: CaabRecordNode, source: Buffer, 
   for (let index = 0; index < 3; index++) {
     const width = widths[source[at++]];
     if (!width) throw new Error("Invalid basic region-group object array.");
-    let length = 0, finished = false;
+    let length = 0,
+      finished = false;
     for (let count = 0; count < 5 && at < span.end; count++) {
-      const byte = source[at++]; length = length * 128 + (byte & 0x7f);
-      if (!(byte & 0x80)) { finished = true; break; }
+      const byte = source[at++];
+      length = length * 128 + (byte & 0x7f);
+      if (!(byte & 0x80)) {
+        finished = true;
+        break;
+      }
     }
-    if (!finished || length % width || at + length > span.end) throw new Error("Truncated basic region-group object array.");
+    if (!finished || length % width || at + length > span.end)
+      throw new Error("Truncated basic region-group object array.");
     at += length;
   }
   return readLeadingValues({ ...record, groups: [[{ kind: "raw", start: at, end: span.end }]] }, source, limit);
@@ -563,17 +563,19 @@ export function beliefGroupReferencesFactionKey(group: CaabItem[], source: Buffe
 export function validateCaiFactionBeliefReferences(root: CaabRecordNode, source: Buffer): number {
   const world = findFirstRecord(root, "CAI_WORLD_FACTIONS");
   if (!world) throw new Error("CAI_WORLD_FACTIONS missing.");
-  const live = new Set(world.groups.map(group => firstU32InRecord(group, "OWNED_DIRECT", source)));
+  const live = new Set(world.groups.map((group) => firstU32InRecord(group, "OWNED_DIRECT", source)));
   let checked = 0;
   const rowsByName = findRecordsByName(root, new Set(Object.keys(CAI_FACTION_BELIEF_ID_SLOTS)));
-  for (const [name, slots] of Object.entries(CAI_FACTION_BELIEF_ID_SLOTS)) for (const row of rowsByName.get(name)!) {
-    const values = readFactionBeliefValues(row, source, Math.max(...slots) + 1);
-    for (const slot of slots) {
-      const id = values[slot];
-      if (!id || id.signed || (id.value !== 0 && !live.has(id.value))) throw new Error(`${name} references missing AI faction ${id?.value}.`);
-      checked++;
+  for (const [name, slots] of Object.entries(CAI_FACTION_BELIEF_ID_SLOTS))
+    for (const row of rowsByName.get(name)!) {
+      const values = readFactionBeliefValues(row, source, Math.max(...slots) + 1);
+      for (const slot of slots) {
+        const id = values[slot];
+        if (!id || id.signed || (id.value !== 0 && !live.has(id.value)))
+          throw new Error(`${name} references missing AI faction ${id?.value}.`);
+        checked++;
+      }
     }
-  }
   return checked;
 }
 
@@ -581,7 +583,7 @@ function removeCaiFactionBeliefGroups(
   root: CaabRecordNode,
   source: Buffer,
   removedCaiFactionObjectId: number,
-  retainedCaiObjectIds: ReadonlySet<number>
+  retainedCaiObjectIds: ReadonlySet<number>,
 ): number {
   let removed = 0;
   for (const beliefs of findRecords(root, "CAI_BDI_POOL_BELIEFS")) {
@@ -618,7 +620,7 @@ export function collectCaiBdiComponentIds(root: CaabRecordNode, source: Buffer):
 function removeCaiBdiComponentOwnershipReferences(
   root: CaabRecordNode,
   source: Buffer,
-  removedComponentIds: ReadonlySet<number>
+  removedComponentIds: ReadonlySet<number>,
 ): number {
   if (removedComponentIds.size === 0) return 0;
 
@@ -648,7 +650,7 @@ function removeCaiBdiComponentOwnershipReferences(
 export function removeCaiFactionInfluenceMap(
   root: CaabRecordNode,
   source: Buffer,
-  removedCaiFactionObjectId: number
+  removedCaiFactionObjectId: number,
 ): number {
   const influence = findFirstRecord(root, "CAI_INFLUENCE_MAP_MANAGER");
   const mapGroup = influence?.groups[0];
@@ -674,18 +676,22 @@ export function removeCaiFactionInfluenceMap(
   const historical = group.flatMap((item, index) =>
     item.kind === "record" && item.name === "CAI_HISTORICAL_INFLUENCE_MAP"
       ? [{ record: item, values: valuesBefore(index) }]
-      : []
+      : [],
   );
   const prefix = historical[0]?.values;
   const count = prefix?.[prefix.length - 2];
   if (!count) throw new Error("Historical influence-map count is missing.");
   if (count.value !== historical.length) {
-    throw new Error(`CAI_INFLUENCE_MAP_MANAGER declares ${count.value} historical maps but contains ${historical.length}.`);
+    throw new Error(
+      `CAI_INFLUENCE_MAP_MANAGER declares ${count.value} historical maps but contains ${historical.length}.`,
+    );
   }
 
   const matches = historical.filter((row) => row.values[row.values.length - 1]?.value === removedCaiFactionObjectId);
   if (matches.length !== 1) {
-    throw new Error(`Expected one CAI_HISTORICAL_INFLUENCE_MAP paired with CAI faction key ${removedCaiFactionObjectId}, found ${matches.length}.`);
+    throw new Error(
+      `Expected one CAI_HISTORICAL_INFLUENCE_MAP paired with CAI faction key ${removedCaiFactionObjectId}, found ${matches.length}.`,
+    );
   }
   const match = matches[0];
   const key = match.values[match.values.length - 1];
@@ -706,7 +712,7 @@ export function removeFaction(
   header: { recordNamesOffset: number },
   tables: CaabStringTables,
   root: CaabRecordNode,
-  options: RemoveFactionOptions
+  options: RemoveFactionOptions,
 ): RemoveFactionReport {
   const factionArray = findFirstRecord(root, "FACTION_ARRAY");
   if (!factionArray || factionArray.groups.length === 0) throw new Error("FACTION_ARRAY is missing or empty.");
@@ -722,18 +728,16 @@ export function removeFaction(
   const ids = keyIds(tables, removedKey);
   const characterIds = collectFactionCharacterIds(source, header, tables, removedIndex);
   const factionArmyIds = collectFactionArmyIds(source, header, tables, removedIndex);
-  const militaryForceSlots = new Set(findRecords(match.record, "MILITARY_FORCE_SLOT").map(node => readLeadingValues(node, source, 1)[0]!.value));
+  const militaryForceSlots = new Set(
+    findRecords(match.record, "MILITARY_FORCE_SLOT").map((node) => readLeadingValues(node, source, 1)[0]!.value),
+  );
   const caiMobileIds = collectCaiResourceMobileIds(source, header, tables, factionArmyIds.militaryForceIds);
   const worldFactions = findFirstRecord(root, "CAI_WORLD_FACTIONS");
   if (!worldFactions) throw new Error("CAI_WORLD_FACTIONS not found.");
   if (worldFactions.groups.length !== factionsBefore && worldFactions.groups.length !== factionsBefore + 1) {
     throw new Error(`CAI_WORLD_FACTIONS has ${worldFactions.groups.length} rows for ${factionsBefore} factions.`);
   }
-  const removedCaiFactionObjectId = firstU32InRecord(
-    worldFactions.groups[removedIndex] ?? [],
-    "OWNED_DIRECT",
-    source
-  );
+  const removedCaiFactionObjectId = firstU32InRecord(worldFactions.groups[removedIndex] ?? [], "OWNED_DIRECT", source);
   if (removedCaiFactionObjectId === undefined) {
     throw new Error(`CAI_WORLD_FACTIONS row ${removedIndex} has no readable OWNED_DIRECT key.`);
   }
@@ -743,7 +747,7 @@ export function removeFaction(
     characterIds,
     factionArmyIds.unitIds,
     caiMobileIds,
-    removedCaiFactionObjectId
+    removedCaiFactionObjectId,
   );
   const mobileWorld = findFirstRecord(root, "CAI_WORLD_RESOURCE_MOBILES")!;
   const mobileComponentsBefore = collectCaiBdiComponentIds(mobileWorld, source);
@@ -753,18 +757,19 @@ export function removeFaction(
     "CAI_WORLD_RESOURCE_MOBILES",
     "CAI_RESOURCE_MOBILE",
     (row) => readLeadingValues(row, source, 1).some((value) => value.slot === 0 && caiMobileIds.has(value.value)),
-    caiPostCleanup.retainedCaiObjectIds
+    caiPostCleanup.retainedCaiObjectIds,
   );
   const mobileComponentsAfter = collectCaiBdiComponentIds(mobileWorld, source);
-  const removedMobileComponents = new Set([...mobileComponentsBefore].filter(id => !mobileComponentsAfter.has(id)));
+  const removedMobileComponents = new Set([...mobileComponentsBefore].filter((id) => !mobileComponentsAfter.has(id)));
   const mobileDependents = removeCaiMobileDependents(root, source, removedMobileComponents);
   const caiUnitsRemoved = removeCaiRows(
     root,
     source,
     "CAI_WORLD_UNITS",
     "CAI_UNIT",
-    (row) => readLeadingValues(row, source, 2).some((value) => value.slot === 1 && factionArmyIds.unitIds.has(value.value)),
-    caiPostCleanup.retainedCaiObjectIds
+    (row) =>
+      readLeadingValues(row, source, 2).some((value) => value.slot === 1 && factionArmyIds.unitIds.has(value.value)),
+    caiPostCleanup.retainedCaiObjectIds,
   );
   const explicitFactionIds = [
     ...collectFactionArrayIdSpans(source, header, tables, factionsBefore),
@@ -777,7 +782,7 @@ export function removeFaction(
   if (regionRefs.length > 0) {
     if (!options.transferTo) {
       throw new Error(
-        `"${removedKey}" appears ${regionRefs.length} time(s) under REGIONS_ARRAY. Supply --transfer-to <existing-faction-key> so the output has no region reference to the removed faction.`
+        `"${removedKey}" appears ${regionRefs.length} time(s) under REGIONS_ARRAY. Supply --transfer-to <existing-faction-key> so the output has no region reference to the removed faction.`,
       );
     }
     const transfer = factionRecordForKey(root, source, tables, options.transferTo);
@@ -786,7 +791,8 @@ export function removeFaction(
     }
     transferKey = factionKeyOf(transfer.record, source, tables) ?? undefined;
     transferId = [...tables.utf8ById].find(([, text]) => text === transferKey)?.[0];
-    if (transferId === undefined) throw new Error(`No UTF-8 string-table entry for transfer faction "${options.transferTo}".`);
+    if (transferId === undefined)
+      throw new Error(`No UTF-8 string-table entry for transfer faction "${options.transferTo}".`);
     for (const span of regionRefs.sort((a, b) => b.start - a.start)) {
       if (!replaceByteRange(root, span.start, span.end, encodeAscii(transferId))) {
         throw new Error(`Could not rewrite a REGIONS_ARRAY reference to "${removedKey}" at ${span.start}.`);
@@ -809,8 +815,22 @@ export function removeFaction(
     if (recipientCaiOwner === undefined) throw new Error("AI transfer recipient missing.");
     caiOwnerTransfers.set(removedCaiFactionObjectId, recipientCaiOwner);
   }
-  const regionOwnerIdsRemapped = remapRegionFactionOwners(root, source, header, tables, regionIdRemapping, ownerTransfers);
-  const provinceOwnerIdsRemapped = remapProvinceFactionOwners(root, source, header, tables, regionIdRemapping, ownerTransfers);
+  const regionOwnerIdsRemapped = remapRegionFactionOwners(
+    root,
+    source,
+    header,
+    tables,
+    regionIdRemapping,
+    ownerTransfers,
+  );
+  const provinceOwnerIdsRemapped = remapProvinceFactionOwners(
+    root,
+    source,
+    header,
+    tables,
+    regionIdRemapping,
+    ownerTransfers,
+  );
   const factionKeyedRows = remapFactionKeyedRows(root, source, regionIdRemapping, new Set([removedId]));
 
   // Remove the target relationship and decrement every surviving ID above it.
@@ -834,7 +854,8 @@ export function removeFaction(
         rewriteLeadingU32(group, source, id - 1);
       }
     }
-    if (!foundRemovedId) throw new Error(`Faction at index ${index} has no relationship to removed faction id ${removedId}.`);
+    if (!foundRemovedId)
+      throw new Error(`Faction at index ${index} has no relationship to removed faction id ${removedId}.`);
   }
 
   // The pairwise matrix carries explicit faction IDs, so remove the target's
@@ -867,9 +888,7 @@ export function removeFaction(
   }
   const idsToRemap: typeof caiFactionIds = [];
   for (const factionId of caiFactionIds) {
-    const expectedId = factionId.rowIndex < factionsBefore
-      ? factionId.rowIndex + FACTION_ID_BASE
-      : 1;
+    const expectedId = factionId.rowIndex < factionsBefore ? factionId.rowIndex + FACTION_ID_BASE : 1;
     if (factionId.value !== expectedId) {
       throw new Error(`CAI_FACTION row ${factionId.rowIndex} has id ${factionId.value}; expected ${expectedId}.`);
     }
@@ -897,16 +916,15 @@ export function removeFaction(
   const listsTrimmed: RemoveFactionReport["listsTrimmed"] = [];
   for (const name of FACTION_INDEXED_RECORDS) {
     // This matrix is keyed by CAI object IDs, not FACTION_ARRAY position.
-      // Block ownership rows are keyed by CAI_BDI_COMPONENT IDs, not faction order.
-      if (name === "CAI_FACTION_STRATEGIC_STANCE" || name === "CAI_BDI_COMPONENT_BLOCK_OWNS") continue;
+    // Block ownership rows are keyed by CAI_BDI_COMPONENT IDs, not faction order.
+    if (name === "CAI_FACTION_STRATEGIC_STANCE" || name === "CAI_BDI_COMPONENT_BLOCK_OWNS") continue;
     const instances = findRecords(root, name).filter(
-      (node) => node.groups.length === factionsBefore || node.groups.length === factionsBefore + 1
+      (node) => node.groups.length === factionsBefore || node.groups.length === factionsBefore + 1,
     );
     for (const node of instances) {
       const extraRowOrder = FACTION_INDEXED_EXTRA_ROW_ORDER[name];
-      const factionPosition = removedIndex + (
-        node.groups.length === factionsBefore + 1 && extraRowOrder === "leading" ? 1 : 0
-      );
+      const factionPosition =
+        removedIndex + (node.groups.length === factionsBefore + 1 && extraRowOrder === "leading" ? 1 : 0);
       node.groups.splice(factionPosition, 1);
       node.groupSizeWidths.splice(factionPosition, 1);
     }
@@ -915,11 +933,7 @@ export function removeFaction(
     }
   }
 
-  const caiStrategicStanceRowsRemoved = removeCaiFactionStanceRows(
-    root,
-    source,
-    removedCaiFactionObjectId
-  );
+  const caiStrategicStanceRowsRemoved = removeCaiFactionStanceRows(root, source, removedCaiFactionObjectId);
   if (caiStrategicStanceRowsRemoved === 0) {
     throw new Error(`No CAI_FACTION_STRATEGIC_STANCE row references CAI faction key ${removedCaiFactionObjectId}.`);
   }
@@ -930,14 +944,10 @@ export function removeFaction(
     to: factionsBefore - 1,
   });
 
-  const caiFactionManagersRemoved = removeCaiFactionInterfaceManager(
-    root,
-    source,
-    removedCaiFactionObjectId
-  );
+  const caiFactionManagersRemoved = removeCaiFactionInterfaceManager(root, source, removedCaiFactionObjectId);
   if (caiFactionManagersRemoved !== 1) {
     throw new Error(
-      `Expected one CAI_INTERFACE_MANAGERS group for CAI faction key ${removedCaiFactionObjectId}, found ${caiFactionManagersRemoved}.`
+      `Expected one CAI_INTERFACE_MANAGERS group for CAI faction key ${removedCaiFactionObjectId}, found ${caiFactionManagersRemoved}.`,
     );
   }
 
@@ -949,7 +959,7 @@ export function removeFaction(
       tradeRoutes.groups,
       source,
       "INTERNATIONAL_TRADE_ROUTES",
-      factionsBefore
+      factionsBefore,
     );
     let tradeRouteRowsRemoved = 0;
     let tradeRouteIdsRemapped = 0;
@@ -966,7 +976,11 @@ export function removeFaction(
     }
     if (tradeRouteRowsRemoved !== 1) {
       throw new Error(
-        "Expected one INTERNATIONAL_TRADE_ROUTES row for faction id " + removedId + ", found " + tradeRouteRowsRemoved + "."
+        "Expected one INTERNATIONAL_TRADE_ROUTES row for faction id " +
+          removedId +
+          ", found " +
+          tradeRouteRowsRemoved +
+          ".",
       );
     }
     if (tradeRouteIdsRemapped > 0) {
@@ -986,25 +1000,34 @@ export function removeFaction(
     root,
     source,
     removedCaiFactionObjectId,
-    caiPostCleanup.retainedCaiObjectIds
+    caiPostCleanup.retainedCaiObjectIds,
   );
   const caiMilitaryForceBuildingSlotsRemoved = removeCaiMilitaryForceSlots(root, source, militaryForceSlots);
   const caiTechnologiesRemoved = removeOrphanCaiTechnologies(root, source);
   const caiBdiComponentIdsAfter = collectCaiBdiComponentIds(root, source);
   const removedCaiBdiComponentIds = new Set(
-    [...caiBdiComponentIdsBefore].filter((id) => !caiBdiComponentIdsAfter.has(id))
+    [...caiBdiComponentIdsBefore].filter((id) => !caiBdiComponentIdsAfter.has(id)),
   );
-  const caiSettlementReferences = remapCaiSettlementReferences(root, source, header, tables, caiOwnerTransfers, removedCaiBdiComponentIds);
-  const caiMobileReferencesRemoved = removeCaiMobileReferences(
-    root, source, header, tables, removedCaiBdiComponentIds
+  const caiSettlementReferences = remapCaiSettlementReferences(
+    root,
+    source,
+    header,
+    tables,
+    caiOwnerTransfers,
+    removedCaiBdiComponentIds,
   );
+  const caiMobileReferencesRemoved = removeCaiMobileReferences(root, source, header, tables, removedCaiBdiComponentIds);
   const caiDependentReferencesRemoved = removeCaiDependentReferenceArrays(
-    root, source, header, tables, removedCaiBdiComponentIds
+    root,
+    source,
+    header,
+    tables,
+    removedCaiBdiComponentIds,
   );
   const caiBdiBlockOwnershipRowsRemoved = removeCaiBdiComponentOwnershipReferences(
     root,
     source,
-    removedCaiBdiComponentIds
+    removedCaiBdiComponentIds,
   );
 
   // Remove faction-keyed family and name-manager records.
@@ -1013,12 +1036,10 @@ export function removeFaction(
   if (familyTree?.groups[0]) {
     const group = familyTree.groups[0];
     const declaredMemberCount = readLeadingValues(familyTree, source, 1)[0]?.value;
-    const actualMemberCount = group.filter(
-      (item) => item.kind === "record" && item.name === "FAMILY_MEMBER"
-    ).length;
+    const actualMemberCount = group.filter((item) => item.kind === "record" && item.name === "FAMILY_MEMBER").length;
     if (declaredMemberCount !== actualMemberCount) {
       throw new Error(
-        `FAMILY_TREE declares ${declaredMemberCount} FAMILY_MEMBER rows, but contains ${actualMemberCount}.`
+        `FAMILY_TREE declares ${declaredMemberCount} FAMILY_MEMBER rows, but contains ${actualMemberCount}.`,
       );
     }
     for (let index = group.length - 1; index >= 0; index -= 1) {
@@ -1037,7 +1058,9 @@ export function removeFaction(
   const nameManager = findFirstRecord(root, "CHARACTER_NAME_MANAGER");
   const nameFactions = nameManager ? findFirstRecord(nameManager, "FACTIONS") : null;
   if (nameFactions) {
-    const position = nameFactions.groups.findIndex((group) => group.some((item) => itemReferencesKey(item, source, ids)));
+    const position = nameFactions.groups.findIndex((group) =>
+      group.some((item) => itemReferencesKey(item, source, ids)),
+    );
     if (position >= 0) {
       nameFactions.groups.splice(position, 1);
       nameFactions.groupSizeWidths.splice(position, 1);
@@ -1092,7 +1115,7 @@ export function findFactionKeyReferences(
   buffer: Buffer,
   header: { recordNamesOffset: number },
   tables: CaabStringTables,
-  key: string
+  key: string,
 ): string[] {
   const contexts = new Set<string>();
   walkCaabNodes(buffer, header, tables, {

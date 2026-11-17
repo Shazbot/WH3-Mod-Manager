@@ -233,7 +233,7 @@ export function validateFactionIdPermutation(
   groups: CaabItem[][],
   source: Buffer,
   recordName: string,
-  factionCount: number
+  factionCount: number,
 ): number[] {
   const ids = groups.map((group) => relationshipGroupId(group, source));
   const expected = new Set(Array.from({ length: factionCount }, (_, index) => index + FACTION_ID_BASE));

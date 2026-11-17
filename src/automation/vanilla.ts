@@ -58,11 +58,23 @@ export const discoverGameFolders = async (
   const platform = options.platform ?? process.platform;
   const home = options.homeDirectory ?? os.homedir();
   const isWsl = platform === "linux" && Boolean(env.WSL_DISTRO_NAME || env.WSL_INTEROP);
-  const run = options.runCommand ?? ((command: string, args: string[]) => new Promise<string>((resolve, reject) => {
-    execFile(command, args, {
-      encoding: "utf8", timeout: 5000, maxBuffer: 65536, windowsHide: true, signal: context.signal,
-    }, (error, stdout) => error ? reject(error) : resolve(stdout));
-  }));
+  const run =
+    options.runCommand ??
+    ((command: string, args: string[]) =>
+      new Promise<string>((resolve, reject) => {
+        execFile(
+          command,
+          args,
+          {
+            encoding: "utf8",
+            timeout: 5000,
+            maxBuffer: 65536,
+            windowsHide: true,
+            signal: context.signal,
+          },
+          (error, stdout) => (error ? reject(error) : resolve(stdout)),
+        );
+      }));
   const localPath = async (value: string): Promise<string> => {
     throwIfAborted(context.signal);
     if (isWsl && /^(?:[a-z]:[\\/]|\\\\)/i.test(value)) {
@@ -126,15 +138,25 @@ export const discoverGameFolders = async (
     // WSL does not normally inherit APPDATA or Windows' Steam registry location.
     // Fixed commands return metadata only: no config, manifest or pack is read here.
     try {
-      windows = JSON.parse((await run("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
-        "$ErrorActionPreference='SilentlyContinue'; " +
-        "$steam=(Get-ItemProperty -LiteralPath 'HKCU:\\Software\\Valve\\Steam').SteamPath; " +
-        "if (!$steam) { $steam=(Get-ItemProperty -LiteralPath 'HKLM:\\SOFTWARE\\WOW6432Node\\Valve\\Steam').InstallPath }; " +
-        "if (!$steam) { $steam=(Get-ItemProperty -LiteralPath 'HKLM:\\SOFTWARE\\Valve\\Steam').InstallPath }; " +
-        "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); " +
-        "@{appData=[Environment]::GetFolderPath('ApplicationData'); steamPath=$steam; " +
-        "programFiles=$env:ProgramFiles; programFilesX86=${env:ProgramFiles(x86)}} | ConvertTo-Json -Compress",
-      ])).replace(/^\uFEFF/, "").trim());
+      windows = JSON.parse(
+        (
+          await run("powershell.exe", [
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "$ErrorActionPreference='SilentlyContinue'; " +
+              "$steam=(Get-ItemProperty -LiteralPath 'HKCU:\\Software\\Valve\\Steam').SteamPath; " +
+              "if (!$steam) { $steam=(Get-ItemProperty -LiteralPath 'HKLM:\\SOFTWARE\\WOW6432Node\\Valve\\Steam').InstallPath }; " +
+              "if (!$steam) { $steam=(Get-ItemProperty -LiteralPath 'HKLM:\\SOFTWARE\\Valve\\Steam').InstallPath }; " +
+              "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); " +
+              "@{appData=[Environment]::GetFolderPath('ApplicationData'); steamPath=$steam; " +
+              "programFiles=$env:ProgramFiles; programFilesX86=${env:ProgramFiles(x86)}} | ConvertTo-Json -Compress",
+          ])
+        )
+          .replace(/^\uFEFF/, "")
+          .trim(),
+      );
     } catch {
       throwIfAborted(context.signal);
     }
@@ -146,7 +168,12 @@ export const discoverGameFolders = async (
 
   const steamRoots = getSteamInstallCandidates(platform, home);
   const windowsSteamPaths = [windows.steamPath];
-  for (const programFiles of [env["ProgramFiles(x86)"], windows.programFilesX86, env.ProgramFiles, windows.programFiles]) {
+  for (const programFiles of [
+    env["ProgramFiles(x86)"],
+    windows.programFilesX86,
+    env.ProgramFiles,
+    windows.programFiles,
+  ]) {
     if (programFiles) windowsSteamPaths.push(path.win32.join(programFiles, "Steam"));
   }
   for (const candidate of windowsSteamPaths) {
@@ -177,8 +204,15 @@ export const discoverGameFolders = async (
           AppState?: { installdir?: string; appid?: string | number };
         };
         const installDirectory = parsed.AppState?.installdir;
-        if (String(parsed.AppState?.appid) !== "1142710" || typeof installDirectory !== "string" ||
-            !installDirectory || installDirectory === "." || installDirectory === ".." || /[\\/\0]/.test(installDirectory)) continue;
+        if (
+          String(parsed.AppState?.appid) !== "1142710" ||
+          typeof installDirectory !== "string" ||
+          !installDirectory ||
+          installDirectory === "." ||
+          installDirectory === ".." ||
+          /[\\/\0]/.test(installDirectory)
+        )
+          continue;
         const data = await availableData(path.join(localLibrary, "steamapps", "common", installDirectory, "data"));
         if (data) return { dataPath: data };
       } catch {

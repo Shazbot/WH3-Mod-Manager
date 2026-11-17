@@ -10,7 +10,8 @@ export interface DdsRgbaImage {
 const DDS_HEADER_BYTES = 128;
 
 const readU32LE = (buffer: Uint8Array, offset: number): number => {
-  if (offset < 0 || offset + 4 > buffer.length) throw new Error(`Unexpected EOF while reading DDS header at ${offset}.`);
+  if (offset < 0 || offset + 4 > buffer.length)
+    throw new Error(`Unexpected EOF while reading DDS header at ${offset}.`);
   return (buffer[offset] | (buffer[offset + 1] << 8) | (buffer[offset + 2] << 16) | (buffer[offset + 3] << 24)) >>> 0;
 };
 

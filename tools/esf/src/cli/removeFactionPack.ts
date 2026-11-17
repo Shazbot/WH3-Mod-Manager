@@ -28,12 +28,22 @@ function parseArgs(argv: string[]): Options {
 
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
-    if (flag === "--pack") { packPath = requireValue(flag, argv[index + 1]); index += 1; }
-    else if (flag === "--campaign") { campaign = requireValue(flag, argv[index + 1]); index += 1; }
-    else if (flag === "--faction") { faction = requireValue(flag, argv[index + 1]); index += 1; }
-    else if (flag === "--out-pack") { outputPackPath = requireValue(flag, argv[index + 1]); index += 1; }
-    else if (flag === "--transfer-to") { transferTo = requireValue(flag, argv[index + 1]); index += 1; }
-    else if (flag === "--overwrite") overwrite = true;
+    if (flag === "--pack") {
+      packPath = requireValue(flag, argv[index + 1]);
+      index += 1;
+    } else if (flag === "--campaign") {
+      campaign = requireValue(flag, argv[index + 1]);
+      index += 1;
+    } else if (flag === "--faction") {
+      faction = requireValue(flag, argv[index + 1]);
+      index += 1;
+    } else if (flag === "--out-pack") {
+      outputPackPath = requireValue(flag, argv[index + 1]);
+      index += 1;
+    } else if (flag === "--transfer-to") {
+      transferTo = requireValue(flag, argv[index + 1]);
+      index += 1;
+    } else if (flag === "--overwrite") overwrite = true;
     else throw new Error(`Unknown argument: ${flag}`);
   }
 
@@ -124,9 +134,12 @@ async function main(): Promise<void> {
     }
 
     runFactionEditor(repoRoot, factionEditorPath, [
-      "--file", sourceEsfPath,
-      "--out", editedEsfPath,
-      "--faction", options.faction,
+      "--file",
+      sourceEsfPath,
+      "--out",
+      editedEsfPath,
+      "--faction",
+      options.faction,
       ...(options.transferTo ? ["--transfer-to", options.transferTo] : []),
     ]);
 
@@ -134,12 +147,19 @@ async function main(): Promise<void> {
       repoRoot,
       whmmCliPath,
       [
-        "pack", "subset", options.packPath,
-        "--include", internalGlob,
-        "--closure", "none",
-        "--mode", "external",
-        "--output", baseSubsetPath,
-        "--format", "json",
+        "pack",
+        "subset",
+        options.packPath,
+        "--include",
+        internalGlob,
+        "--closure",
+        "none",
+        "--mode",
+        "external",
+        "--output",
+        baseSubsetPath,
+        "--format",
+        "json",
       ],
       "Creating one-file source-pack subset",
     );
@@ -147,18 +167,30 @@ async function main(): Promise<void> {
       throw new Error(`Expected one complete startpos entry in the base subset; received ${String(subset.fileCount)}.`);
     }
 
-    fs.writeFileSync(writeInputPath, JSON.stringify({
-      files: [{ op: "replace", path: internalPath, sourcePath: editedEsfPath }],
-    }, null, 2));
+    fs.writeFileSync(
+      writeInputPath,
+      JSON.stringify(
+        {
+          files: [{ op: "replace", path: internalPath, sourcePath: editedEsfPath }],
+        },
+        null,
+        2,
+      ),
+    );
     runWhmmCli(
       repoRoot,
       whmmCliPath,
       [
-        "pack", "write", baseSubsetPath,
-        "--output", options.outputPackPath,
-        "--input", writeInputPath,
+        "pack",
+        "write",
+        baseSubsetPath,
+        "--output",
+        options.outputPackPath,
+        "--input",
+        writeInputPath,
         ...(options.overwrite ? ["--overwrite"] : []),
-        "--format", "json",
+        "--format",
+        "json",
       ],
       "Writing edited startpos override",
     );

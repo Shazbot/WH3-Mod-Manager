@@ -73,7 +73,8 @@ export const executeAutomationRequest = async (
     throwIfAborted(context.signal);
     const resolvedDiagnostics = await resolvePackInputs(parsed.data as Record<string, unknown>, context);
     const bypassCache = bypassAutomationCaches.has(operationName);
-    const affectedDiff = operationName === "pack_diff" && Boolean((parsed.data as { affectedUnits?: boolean }).affectedUnits);
+    const affectedDiff =
+      operationName === "pack_diff" && Boolean((parsed.data as { affectedUnits?: boolean }).affectedUnits);
     if (context.cache && (!bypassCache || affectedDiff)) {
       cacheRequest = context.cache.beginRequest({
         policy: context.policy,
@@ -85,9 +86,10 @@ export const executeAutomationRequest = async (
         useVisualsCache: !bypassCache || affectedDiff,
       });
     }
-    const requestContext: AutomationContext = bypassCache && !affectedDiff
-      ? { ...context, cache: undefined, cacheRequest: undefined }
-      : { ...context, ...(cacheRequest ? { cacheRequest } : {}) };
+    const requestContext: AutomationContext =
+      bypassCache && !affectedDiff
+        ? { ...context, cache: undefined, cacheRequest: undefined }
+        : { ...context, ...(cacheRequest ? { cacheRequest } : {}) };
     const data = parsed.data as Record<string, unknown>;
     const outputs = [data.outputPath, data.extractTo, data.reportPath, data.manifestPath].filter(
       (value): value is string => typeof value === "string",

@@ -58,11 +58,18 @@ describe("game log parsing", () => {
     expect(indexes(filterLines(lines, { include: /match/ }))).toEqual([1, "|", 6, "|", 8]);
     expect(indexes(filterLines(lines, { include: /match/, context: 1 }))).toEqual([0, 1, 2, "|", 5, 6, 7, 8, 9]);
     expect(indexes(filterLines(lines, { include: /match/, exclude: /^h$/, context: 1 }))).toEqual([
-      0, 1, 2, "|", 5, 6, 8, 9,
+      0,
+      1,
+      2,
+      "|",
+      5,
+      6,
+      8,
+      9,
     ]);
-    expect(filterLines(["[ui] <1s>    a", "[out] <1s>    b", "c"], { hiddenTags: new Set(["ui", OTHER_TAG]) })).toEqual([
-      { kind: "line", index: 1 },
-    ]);
+    expect(filterLines(["[ui] <1s>    a", "[out] <1s>    b", "c"], { hiddenTags: new Set(["ui", OTHER_TAG]) })).toEqual(
+      [{ kind: "line", index: 1 }],
+    );
   });
 
   it("parses the timestamp in script log file names", () => {

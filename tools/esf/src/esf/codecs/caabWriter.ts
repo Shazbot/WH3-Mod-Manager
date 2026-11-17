@@ -45,9 +45,7 @@ function fieldWidth(value: number, originalWidth: number): number {
 
 function recordHeaderLength(node: CaabRecordNode): number {
   const nameAndVersion = recordUsesNonOptimizedHeader(node) ? 3 : 1;
-  const groupCountBytes = node.hasNestedBlocks
-    ? fieldWidth(node.groups.length, node.groupCountWidth)
-    : 0;
+  const groupCountBytes = node.hasNestedBlocks ? fieldWidth(node.groups.length, node.groupCountWidth) : 0;
   // The marker byte, name/version, the block size, then the group count.
   return 1 + nameAndVersion + fieldWidth(node.blockSize ?? 0, node.blockSizeWidth) + groupCountBytes;
 }

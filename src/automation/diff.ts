@@ -23,7 +23,12 @@ import { decodePackedTextBuffer } from "../utility/packFileViewing";
 import { decodeDds } from "../esfMap/dds";
 import { DDS_MAX_PIXELS, inspectDdsLayout, type DdsLayout } from "../utility/ddsLayout";
 import { AutomationError, throwIfAborted, yieldToEventLoop, type AutomationDiagnostic } from "./errors";
-import { getAutomationSchemaProvider, readAutomationPack, readAutomationPayload, readAutomationReadonlyTable } from "./packAccess";
+import {
+  getAutomationSchemaProvider,
+  readAutomationPack,
+  readAutomationPayload,
+  readAutomationReadonlyTable,
+} from "./packAccess";
 import { loadPackedTable, tableRowsToJson, type TableRow } from "./tables";
 import { vanillaInputs } from "./vanilla";
 import { prepareReferenceEnvironment, resolveReferenceAsset, type ReferenceEnvironment } from "./references";
@@ -1089,13 +1094,21 @@ const prioritizeAffectedRoots = (
   environment: ReferenceEnvironment,
   roots: readonly import("./units").UnitVisualRoot[],
   targetPackPath: string,
-) => roots.map((root, index) => {
-  const provider = resolveReferenceAsset(environment, root.path).winner?.provider;
-  const rank = provider
-    ? samePhysicalPath(provider.pack.path, targetPackPath) ? 0 : provider.kind === "mod" ? 1 : 2
-    : 3;
-  return { root, index, rank };
-}).sort((left, right) => left.rank - right.rank || left.index - right.index).map(({ root }) => root);
+) =>
+  roots
+    .map((root, index) => {
+      const provider = resolveReferenceAsset(environment, root.path).winner?.provider;
+      const rank = provider
+        ? samePhysicalPath(provider.pack.path, targetPackPath)
+          ? 0
+          : provider.kind === "mod"
+            ? 1
+            : 2
+        : 3;
+      return { root, index, rank };
+    })
+    .sort((left, right) => left.rank - right.rank || left.index - right.index)
+    .map(({ root }) => root);
 
 type SemanticRowDelta = {
   table: string;
@@ -1112,9 +1125,17 @@ type SemanticRowDelta = {
 
 const rowIdentity = (loaded: Awaited<ReturnType<typeof readAutomationReadonlyTable>>, row: TableRow, index: number) => {
   const fields = loaded.isLoc ? [{ name: "key" }] : loaded.schema.fields.filter((field) => field.is_key);
-  const usable = fields.length > 0 && fields.every((field) => row[field.name] !== null && row[field.name] !== undefined);
-  const identity = usable ? Object.fromEntries(fields.map((field) => [field.name, row[field.name]])) : { rowIndex: index };
-  return { key: JSON.stringify(identity), identity, keyFields: usable ? fields.map((field) => field.name) : [], rowIndex: index };
+  const usable =
+    fields.length > 0 && fields.every((field) => row[field.name] !== null && row[field.name] !== undefined);
+  const identity = usable
+    ? Object.fromEntries(fields.map((field) => [field.name, row[field.name]]))
+    : { rowIndex: index };
+  return {
+    key: JSON.stringify(identity),
+    identity,
+    keyFields: usable ? fields.map((field) => field.name) : [],
+    rowIndex: index,
+  };
 };
 
 const semanticRowsForPair = async (
@@ -1138,7 +1159,10 @@ const semanticRowsForPair = async (
     const beforeRows = beforeLoaded?.rows ?? [];
     const afterRows = afterLoaded?.rows ?? [];
     const mapRows = async (loaded: NonNullable<typeof beforeLoaded>, rows: readonly TableRow[]) => {
-      const map = new Map<string, { row: TableRow; identity: Record<string, unknown>; keyFields: string[]; rowIndex: number }[]>();
+      const map = new Map<
+        string,
+        { row: TableRow; identity: Record<string, unknown>; keyFields: string[]; rowIndex: number }[]
+      >();
       for (let index = 0; index < rows.length; index++) {
         throwIfAborted(context.signal);
         if ((index & 255) === 0) await yieldToEventLoop(context.signal);
@@ -1161,15 +1185,40 @@ const semanticRowsForPair = async (
       const newRows = afterMap.get(key) ?? [];
       const identitySource = newRows[0] ?? oldRows[0];
       if (oldRows.length > 1 || newRows.length > 1) {
-        diagnostics.push(diagnostic("AFFECTED_UNITS_DUPLICATE_ROW_KEY", `Duplicate row identity in ${table}; unit correlation may be incomplete`, "warning", afterEntry?.name ?? beforeEntry?.name));
+        diagnostics.push(
+          diagnostic(
+            "AFFECTED_UNITS_DUPLICATE_ROW_KEY",
+            `Duplicate row identity in ${table}; unit correlation may be incomplete`,
+            "warning",
+            afterEntry?.name ?? beforeEntry?.name,
+          ),
+        );
         continue;
       }
       const oldRow = oldRows[0]?.row;
       const newRow = newRows[0]?.row;
       if (!oldRow && newRow) {
-        deltas.push({ table, status: "added", identity: identitySource.identity, keyFields: identitySource.keyFields, afterFilePath: afterEntry?.name, afterPackPath: afterPack.path, rowIndex: identitySource.rowIndex, changedFields: Object.keys(newRow) });
+        deltas.push({
+          table,
+          status: "added",
+          identity: identitySource.identity,
+          keyFields: identitySource.keyFields,
+          afterFilePath: afterEntry?.name,
+          afterPackPath: afterPack.path,
+          rowIndex: identitySource.rowIndex,
+          changedFields: Object.keys(newRow),
+        });
       } else if (oldRow && !newRow) {
-        deltas.push({ table, status: "removed", identity: identitySource.identity, keyFields: identitySource.keyFields, beforeFilePath: beforeEntry?.name, beforePackPath: beforePack.path, rowIndex: identitySource.rowIndex, changedFields: Object.keys(oldRow) });
+        deltas.push({
+          table,
+          status: "removed",
+          identity: identitySource.identity,
+          keyFields: identitySource.keyFields,
+          beforeFilePath: beforeEntry?.name,
+          beforePackPath: beforePack.path,
+          rowIndex: identitySource.rowIndex,
+          changedFields: Object.keys(oldRow),
+        });
       } else if (oldRow && newRow && JSON.stringify(oldRow) !== JSON.stringify(newRow)) {
         deltas.push({
           table,
@@ -1181,14 +1230,23 @@ const semanticRowsForPair = async (
           beforePackPath: beforePack.path,
           afterPackPath: afterPack.path,
           rowIndex: identitySource.rowIndex,
-          changedFields: [...new Set([...Object.keys(oldRow), ...Object.keys(newRow)])].filter((field) => JSON.stringify(oldRow[field]) !== JSON.stringify(newRow[field])),
+          changedFields: [...new Set([...Object.keys(oldRow), ...Object.keys(newRow)])].filter(
+            (field) => JSON.stringify(oldRow[field]) !== JSON.stringify(newRow[field]),
+          ),
         });
       }
     }
     return deltas;
   } catch (error) {
     if (error instanceof AutomationError && ["CANCELLED", "IO_ACCESS"].includes(error.code)) throw error;
-    diagnostics.push(diagnostic("AFFECTED_UNITS_TABLE_DELTA_UNAVAILABLE", error instanceof Error ? error.message : String(error), "warning", afterEntry?.name ?? beforeEntry?.name));
+    diagnostics.push(
+      diagnostic(
+        "AFFECTED_UNITS_TABLE_DELTA_UNAVAILABLE",
+        error instanceof Error ? error.message : String(error),
+        "warning",
+        afterEntry?.name ?? beforeEntry?.name,
+      ),
+    );
     return [];
   }
 };
@@ -1198,15 +1256,26 @@ const evidenceMatchesDelta = (evidence: unknown, delta: SemanticRowDelta, state:
   const record = evidence as Record<string, unknown>;
   const filePath = state === "before" ? delta.beforeFilePath : delta.afterFilePath;
   const packPath = state === "before" ? delta.beforePackPath : delta.afterPackPath;
-  if (!filePath || typeof record.filePath !== "string" || normalizePackFilePathKey(record.filePath) !== normalizePackFilePathKey(filePath)) return false;
+  if (
+    !filePath ||
+    typeof record.filePath !== "string" ||
+    normalizePackFilePathKey(record.filePath) !== normalizePackFilePathKey(filePath)
+  )
+    return false;
   if (packPath && (typeof record.packPath !== "string" || !samePhysicalPath(record.packPath, packPath))) return false;
   if (delta.table.startsWith("loc:")) {
     return (delta.identity.key ?? "") === (record.row as Record<string, unknown> | undefined)?.key;
   }
-  if (typeof record.table !== "string" || normalizePackFilePathKey(record.table) !== normalizePackFilePathKey(delta.table)) return false;
+  if (
+    typeof record.table !== "string" ||
+    normalizePackFilePathKey(record.table) !== normalizePackFilePathKey(delta.table)
+  )
+    return false;
   if (!delta.keyFields.length) return record.rowIndex === delta.rowIndex;
   const row = record.row as Record<string, unknown> | undefined;
-  return Boolean(row && delta.keyFields.every((field) => JSON.stringify(row[field]) === JSON.stringify(delta.identity[field])));
+  return Boolean(
+    row && delta.keyFields.every((field) => JSON.stringify(row[field]) === JSON.stringify(delta.identity[field])),
+  );
 };
 
 const runAffectedUnitAnalysis = async (
@@ -1227,40 +1296,54 @@ const runAffectedUnitAnalysis = async (
     indexedEdges: 0,
     reversePathWalks: 0,
   };
-  if (!records.some((record) => record.status !== "identical")) return {
-    complete: true,
-    total: 0,
-    offset: request.semanticOffset,
-    limit: request.semanticLimit,
-    nextOffset: null,
-    hasMore: false,
-    items: [],
-    reportItems: [],
-    checklist: { units: [], campaignReviewAssets: [], byteMetric: "unique changed internal paths; each path uses max(before logical size, after logical size)" },
-    changedPathCoverage: [],
-    unresolvedPaths: [],
-    limitReasons: [],
-    analysis: {
-      before: { complete: true, graph: emptyCoverage, roots: 0 },
-      after: { complete: true, graph: emptyCoverage, roots: 0 },
-      changedPaths: 0,
-      unsupportedChangedFiles: [],
-      diagnostics: [],
-    },
-    sourcePaths: [],
-  };
+  if (!records.some((record) => record.status !== "identical"))
+    return {
+      complete: true,
+      total: 0,
+      offset: request.semanticOffset,
+      limit: request.semanticLimit,
+      nextOffset: null,
+      hasMore: false,
+      items: [],
+      reportItems: [],
+      checklist: {
+        units: [],
+        campaignReviewAssets: [],
+        byteMetric: "unique changed internal paths; each path uses max(before logical size, after logical size)",
+      },
+      changedPathCoverage: [],
+      unresolvedPaths: [],
+      limitReasons: [],
+      analysis: {
+        before: { complete: true, graph: emptyCoverage, roots: 0 },
+        after: { complete: true, graph: emptyCoverage, roots: 0 },
+        changedPaths: 0,
+        unsupportedChangedFiles: [],
+        diagnostics: [],
+      },
+      sourcePaths: [],
+    };
   const supportPacks = request.packPaths.filter((packPath) => {
-    const canonical = (value: string) => process.platform === "win32" ? path.resolve(value).toLowerCase() : path.resolve(value);
+    const canonical = (value: string) =>
+      process.platform === "win32" ? path.resolve(value).toLowerCase() : path.resolve(value);
     return canonical(packPath) !== canonical(beforePack.path) && canonical(packPath) !== canonical(afterPack.path);
   });
   const changedPathBytes = new Map<string, { path: string; bytes: number; status: string }>();
   for (const record of records) {
     if (record.status === "identical") continue;
     const paths = [
-      ...(record.beforeEntry ? [{ path: record.beforeEntry.name, bytes: record.beforeHash?.logicalSize ?? record.beforeEntry.file_size }] : []),
-      ...(record.afterEntry ? [{ path: record.afterEntry.name, bytes: record.afterHash?.logicalSize ?? record.afterEntry.file_size }] : []),
-      ...(record.from ? [{ path: record.from, bytes: record.beforeHash?.logicalSize ?? record.beforeEntry?.file_size ?? 0 }] : []),
-      ...(record.to ? [{ path: record.to, bytes: record.afterHash?.logicalSize ?? record.afterEntry?.file_size ?? 0 }] : []),
+      ...(record.beforeEntry
+        ? [{ path: record.beforeEntry.name, bytes: record.beforeHash?.logicalSize ?? record.beforeEntry.file_size }]
+        : []),
+      ...(record.afterEntry
+        ? [{ path: record.afterEntry.name, bytes: record.afterHash?.logicalSize ?? record.afterEntry.file_size }]
+        : []),
+      ...(record.from
+        ? [{ path: record.from, bytes: record.beforeHash?.logicalSize ?? record.beforeEntry?.file_size ?? 0 }]
+        : []),
+      ...(record.to
+        ? [{ path: record.to, bytes: record.afterHash?.logicalSize ?? record.afterEntry?.file_size ?? 0 }]
+        : []),
     ];
     for (const item of paths) {
       const key = normalizePackFilePathKey(item.path);
@@ -1274,36 +1357,82 @@ const runAffectedUnitAnalysis = async (
   }
   const changedPaths = [...changedPathBytes.entries()].map(([key, item]) => ({ key, ...item }));
   const assetPaths = changedPaths.filter(({ path: changedPath }) =>
-    /\.(?:dds|variantmeshdefinition|wsmodel|rigid_model_v2|xml\.material)$/i.test(changedPath));
+    /\.(?:dds|variantmeshdefinition|wsmodel|rigid_model_v2|xml\.material)$/i.test(changedPath),
+  );
   const unsupportedChangedFiles: Array<{ path: string; status: string; extension: string }> = [];
   for (const item of changedPaths) {
     const supportedAsset = assetPaths.some(({ key }) => key === item.key);
     const supportedTable = item.key.endsWith(".loc") || Boolean(parseDBTablePath(item.key));
-    if (!supportedAsset && !supportedTable) unsupportedChangedFiles.push({
-      path: item.path,
-      status: item.status,
-      extension: path.extname(item.path).slice(1).toLowerCase() || "(none)",
-    });
+    if (!supportedAsset && !supportedTable)
+      unsupportedChangedFiles.push({
+        path: item.path,
+        status: item.status,
+        extension: path.extname(item.path).slice(1).toLowerCase() || "(none)",
+      });
   }
 
-  context.progress?.({ stage: "roots", state: "before", completed: 0, total: 2, paths: changedPaths.length, message: "Discovering before-state unit roots" });
-  const beforeEnvironment = await prepareReferenceEnvironment(context, [...supportPacks, beforePack.path], request.vanillaPackPaths, request.gameDataPath, request.withVanilla, true);
+  context.progress?.({
+    stage: "roots",
+    state: "before",
+    completed: 0,
+    total: 2,
+    paths: changedPaths.length,
+    message: "Discovering before-state unit roots",
+  });
+  const beforeEnvironment = await prepareReferenceEnvironment(
+    context,
+    [...supportPacks, beforePack.path],
+    request.vanillaPackPaths,
+    request.gameDataPath,
+    request.withVanilla,
+    true,
+  );
   let beforeRootScan = await collectUnitVisualRoots(beforeEnvironment);
-  let beforeUnitRoots = prioritizeAffectedRoots(beforeEnvironment, beforeRootScan.roots, beforePack.path).slice(0, request.affectedMaxRoots);
+  let beforeUnitRoots = prioritizeAffectedRoots(beforeEnvironment, beforeRootScan.roots, beforePack.path).slice(
+    0,
+    request.affectedMaxRoots,
+  );
   let beforeRootLimit = beforeRootScan.roots.length > request.affectedMaxRoots;
   if (beforeRootLimit) {
     beforeEnvironment.complete = false;
-    beforeEnvironment.diagnostics.push(diagnostic("AFFECTED_UNITS_ROOT_LIMIT", `Before-state unit roots exceed affectedMaxRoots (${request.affectedMaxRoots})`));
+    beforeEnvironment.diagnostics.push(
+      diagnostic(
+        "AFFECTED_UNITS_ROOT_LIMIT",
+        `Before-state unit roots exceed affectedMaxRoots (${request.affectedMaxRoots})`,
+      ),
+    );
   }
   let beforeRootScanComplete = beforeEnvironment.complete && !beforeRootLimit;
-  context.progress?.({ stage: "roots", state: "after", completed: 1, total: 2, units: beforeUnitRoots.length, message: "Discovering after-state unit roots" });
-  const afterEnvironment = await prepareReferenceEnvironment(context, [...supportPacks, afterPack.path], request.vanillaPackPaths, request.gameDataPath, request.withVanilla, true);
+  context.progress?.({
+    stage: "roots",
+    state: "after",
+    completed: 1,
+    total: 2,
+    units: beforeUnitRoots.length,
+    message: "Discovering after-state unit roots",
+  });
+  const afterEnvironment = await prepareReferenceEnvironment(
+    context,
+    [...supportPacks, afterPack.path],
+    request.vanillaPackPaths,
+    request.gameDataPath,
+    request.withVanilla,
+    true,
+  );
   let afterRootScan = await collectUnitVisualRoots(afterEnvironment);
-  let afterUnitRoots = prioritizeAffectedRoots(afterEnvironment, afterRootScan.roots, afterPack.path).slice(0, request.affectedMaxRoots);
+  let afterUnitRoots = prioritizeAffectedRoots(afterEnvironment, afterRootScan.roots, afterPack.path).slice(
+    0,
+    request.affectedMaxRoots,
+  );
   let afterRootLimit = afterRootScan.roots.length > request.affectedMaxRoots;
   if (afterRootLimit) {
     afterEnvironment.complete = false;
-    afterEnvironment.diagnostics.push(diagnostic("AFFECTED_UNITS_ROOT_LIMIT", `After-state unit roots exceed affectedMaxRoots (${request.affectedMaxRoots})`));
+    afterEnvironment.diagnostics.push(
+      diagnostic(
+        "AFFECTED_UNITS_ROOT_LIMIT",
+        `After-state unit roots exceed affectedMaxRoots (${request.affectedMaxRoots})`,
+      ),
+    );
   }
   let afterRootScanComplete = afterEnvironment.complete && !afterRootLimit;
   const affected = new Map<string, { unitKey: string; landUnitKey: string; states: Array<Record<string, unknown>> }>();
@@ -1324,36 +1453,78 @@ const runAffectedUnitAnalysis = async (
     }
   };
   const beforeIncoming = assetPaths.length
-    ? await createIncomingVisualReferenceIndex(beforeEnvironment, assetPaths.map((item) => item.path), {
-        maxSources: request.affectedMaxScanSources,
-        maxIndexEdges: request.affectedMaxIndexEdges,
-      })
-    : { complete: true, edges: 0, scannedSources: 0, diagnostics: [], findMany: async () => ({ matches: new Map(), coverageByPath: new Map(), walks: 0 }) };
-  let beforeTraversal = await beforeIncoming.findMany(assetPaths.map((item) => item.path), beforeUnitRoots, {
-    maxDepth: request.affectedMaxDepth,
-    maxNodes: request.affectedMaxNodes,
-    maxEdges: request.affectedMaxEdges,
-  });
+    ? await createIncomingVisualReferenceIndex(
+        beforeEnvironment,
+        assetPaths.map((item) => item.path),
+        {
+          maxSources: request.affectedMaxScanSources,
+          maxIndexEdges: request.affectedMaxIndexEdges,
+        },
+      )
+    : {
+        complete: true,
+        edges: 0,
+        scannedSources: 0,
+        diagnostics: [],
+        findMany: async () => ({ matches: new Map(), coverageByPath: new Map(), walks: 0 }),
+      };
+  let beforeTraversal = await beforeIncoming.findMany(
+    assetPaths.map((item) => item.path),
+    beforeUnitRoots,
+    {
+      maxDepth: request.affectedMaxDepth,
+      maxNodes: request.affectedMaxNodes,
+      maxEdges: request.affectedMaxEdges,
+    },
+  );
   for (const item of assetPaths) addVisualMatches("before", item.path, beforeTraversal.matches.get(item.key) ?? []);
-  context.progress?.({ stage: "indexing", state: "after", completed: 0, total: 2, paths: assetPaths.length, message: "Indexing after-state visual references" });
-  const afterIncoming = assetPaths.length
-    ? await createIncomingVisualReferenceIndex(afterEnvironment, assetPaths.map((item) => item.path), {
-        maxSources: request.affectedMaxScanSources,
-        maxIndexEdges: request.affectedMaxIndexEdges,
-      })
-    : { complete: true, edges: 0, scannedSources: 0, diagnostics: [], findMany: async () => ({ matches: new Map(), coverageByPath: new Map(), walks: 0 }) };
-  let afterTraversal = await afterIncoming.findMany(assetPaths.map((item) => item.path), afterUnitRoots, {
-    maxDepth: request.affectedMaxDepth,
-    maxNodes: request.affectedMaxNodes,
-    maxEdges: request.affectedMaxEdges,
+  context.progress?.({
+    stage: "indexing",
+    state: "after",
+    completed: 0,
+    total: 2,
+    paths: assetPaths.length,
+    message: "Indexing after-state visual references",
   });
+  const afterIncoming = assetPaths.length
+    ? await createIncomingVisualReferenceIndex(
+        afterEnvironment,
+        assetPaths.map((item) => item.path),
+        {
+          maxSources: request.affectedMaxScanSources,
+          maxIndexEdges: request.affectedMaxIndexEdges,
+        },
+      )
+    : {
+        complete: true,
+        edges: 0,
+        scannedSources: 0,
+        diagnostics: [],
+        findMany: async () => ({ matches: new Map(), coverageByPath: new Map(), walks: 0 }),
+      };
+  let afterTraversal = await afterIncoming.findMany(
+    assetPaths.map((item) => item.path),
+    afterUnitRoots,
+    {
+      maxDepth: request.affectedMaxDepth,
+      maxNodes: request.affectedMaxNodes,
+      maxEdges: request.affectedMaxEdges,
+    },
+  );
   for (const item of assetPaths) addVisualMatches("after", item.path, afterTraversal.matches.get(item.key) ?? []);
 
   const semanticDeltas: SemanticRowDelta[] = [];
   for (const record of records) {
     throwIfAborted(context.signal);
     if (record.status === "identical") continue;
-    const deltas = await semanticRowsForPair(beforePack, record.beforeEntry, afterPack, record.afterEntry, context, diagnostics);
+    const deltas = await semanticRowsForPair(
+      beforePack,
+      record.beforeEntry,
+      afterPack,
+      record.afterEntry,
+      context,
+      diagnostics,
+    );
     semanticDeltas.push(...deltas);
   }
   let beforeSemanticIndex: Awaited<ReturnType<typeof collectUnitVisualIndex>> | undefined;
@@ -1364,7 +1535,10 @@ const runAffectedUnitAnalysis = async (
     beforeSemanticIndex = await collectUnitVisualIndex(beforeEnvironment);
     afterSemanticIndex = await collectUnitVisualIndex(afterEnvironment);
     for (const delta of semanticDeltas) {
-      const sideEntries = delta.status === "changed" ? ["before", "after"] as const : [delta.status === "added" ? "after" : "before"] as const;
+      const sideEntries =
+        delta.status === "changed"
+          ? (["before", "after"] as const)
+          : ([delta.status === "added" ? "after" : "before"] as const);
       for (const state of sideEntries) {
         const index = state === "before" ? beforeSemanticIndex : afterSemanticIndex;
         let unitIndex = 0;
@@ -1374,11 +1548,17 @@ const runAffectedUnitAnalysis = async (
           const evidence = unit.evidence ?? [];
           const sourceFilePath = state === "before" ? delta.beforeFilePath : delta.afterFilePath;
           const sourcePackPath = state === "before" ? delta.beforePackPath : delta.afterPackPath;
-          const locMatch = delta.table.startsWith("loc:") &&
+          const locMatch =
+            delta.table.startsWith("loc:") &&
             String(delta.identity.key ?? "") === unit.locKey &&
-            Boolean(sourceFilePath && sourcePackPath && unit.locEvidence?.filePath && unit.locEvidence.packPath &&
+            Boolean(
+              sourceFilePath &&
+              sourcePackPath &&
+              unit.locEvidence?.filePath &&
+              unit.locEvidence.packPath &&
               normalizePackFilePathKey(sourceFilePath) === normalizePackFilePathKey(unit.locEvidence.filePath) &&
-              samePhysicalPath(sourcePackPath, unit.locEvidence.packPath));
+              samePhysicalPath(sourcePackPath, unit.locEvidence.packPath),
+            );
           const rowMatch = evidence.some((item) => evidenceMatchesDelta(item, delta, state));
           if (!locMatch && !rowMatch) continue;
           const identity = `${unit.unitKey}\0${unit.landUnitKey}`;
@@ -1407,7 +1587,11 @@ const runAffectedUnitAnalysis = async (
 
   let metadataComplete = true;
   const metadataDiagnostics: AutomationDiagnostic[] = [];
-  const loadMatchedDetail = async (environment: ReferenceEnvironment, keys: ReadonlySet<string>, exhaustive?: Awaited<ReturnType<typeof collectUnitVisualIndex>>) => {
+  const loadMatchedDetail = async (
+    environment: ReferenceEnvironment,
+    keys: ReadonlySet<string>,
+    exhaustive?: Awaited<ReturnType<typeof collectUnitVisualIndex>>,
+  ) => {
     if (exhaustive) return exhaustive;
     if (!keys.size) return { roots: [], units: [], missingTables: [] };
     const scope = { ...environment, complete: true, diagnostics: [] as AutomationDiagnostic[] };
@@ -1416,28 +1600,60 @@ const runAffectedUnitAnalysis = async (
     metadataDiagnostics.push(...scope.diagnostics);
     return result;
   };
-  const keysForState = (stateName: "before" | "after") => new Set([...affected.values()]
-    .filter((item) => item.states.some((state) => state.state === stateName)).map((item) => item.unitKey).filter(Boolean));
-  context.progress?.({ stage: "hydration", state: "before", completed: 0, total: 2,
-    units: keysForState("before").size, message: "Loading before-state evidence for matched units" });
+  const keysForState = (stateName: "before" | "after") =>
+    new Set(
+      [...affected.values()]
+        .filter((item) => item.states.some((state) => state.state === stateName))
+        .map((item) => item.unitKey)
+        .filter(Boolean),
+    );
+  context.progress?.({
+    stage: "hydration",
+    state: "before",
+    completed: 0,
+    total: 2,
+    units: keysForState("before").size,
+    message: "Loading before-state evidence for matched units",
+  });
   let beforeDetailIndex = await loadMatchedDetail(beforeEnvironment, keysForState("before"), beforeSemanticIndex);
-  context.progress?.({ stage: "hydration", state: "after", completed: 1, total: 2,
-    units: keysForState("after").size, message: "Loading after-state evidence for matched units" });
+  context.progress?.({
+    stage: "hydration",
+    state: "after",
+    completed: 1,
+    total: 2,
+    units: keysForState("after").size,
+    message: "Loading after-state evidence for matched units",
+  });
   let afterDetailIndex = await loadMatchedDetail(afterEnvironment, keysForState("after"), afterSemanticIndex);
   context.progress?.({ stage: "hydration", completed: 2, total: 2, message: "Matched-unit evidence loaded" });
   const rootSignature = (unitKey: string, landUnitKey: string, rootPath: string, rootKind: string, reason: string) =>
     JSON.stringify([unitKey, landUnitKey, normalizePackFilePathKey(rootPath), rootKind, reason]);
-  const unmatchedVisualRoots = (stateName: "before" | "after", detail: Awaited<ReturnType<typeof collectUnitVisualIndex>>) => {
-    const roots = new Set(detail.roots.map((root) => rootSignature(root.unitKey, root.landUnitKey, root.path, root.rootKind, root.reason)));
+  const unmatchedVisualRoots = (
+    stateName: "before" | "after",
+    detail: Awaited<ReturnType<typeof collectUnitVisualIndex>>,
+  ) => {
+    const roots = new Set(
+      detail.roots.map((root) => rootSignature(root.unitKey, root.landUnitKey, root.path, root.rootKind, root.reason)),
+    );
     const mismatches: Array<{ key: string; path: string; rootPath: string }> = [];
-    for (const [key, unit] of affected) for (const state of unit.states) {
-      if (state.state !== stateName || !Array.isArray(state.paths)) continue;
-      for (const candidate of state.paths as Array<Record<string, unknown>>) {
-        if (typeof candidate.rootPath !== "string" || typeof candidate.rootKind !== "string" || typeof candidate.reason !== "string") continue;
-        if (!roots.has(rootSignature(unit.unitKey, unit.landUnitKey, candidate.rootPath, candidate.rootKind, candidate.reason)))
-          mismatches.push({ key, path: String(candidate.path ?? candidate.rootPath), rootPath: candidate.rootPath });
+    for (const [key, unit] of affected)
+      for (const state of unit.states) {
+        if (state.state !== stateName || !Array.isArray(state.paths)) continue;
+        for (const candidate of state.paths as Array<Record<string, unknown>>) {
+          if (
+            typeof candidate.rootPath !== "string" ||
+            typeof candidate.rootKind !== "string" ||
+            typeof candidate.reason !== "string"
+          )
+            continue;
+          if (
+            !roots.has(
+              rootSignature(unit.unitKey, unit.landUnitKey, candidate.rootPath, candidate.rootKind, candidate.reason),
+            )
+          )
+            mismatches.push({ key, path: String(candidate.path ?? candidate.rootPath), rootPath: candidate.rootPath });
+        }
       }
-    }
     return mismatches;
   };
   const clearVisualMatches = (stateName: "before" | "after") => {
@@ -1445,7 +1661,9 @@ const runAffectedUnitAnalysis = async (
       for (let index = unit.states.length - 1; index >= 0; index--) {
         const state = unit.states[index];
         if (state.state !== stateName || !Array.isArray(state.paths)) continue;
-        state.paths = (state.paths as Array<Record<string, unknown>>).filter((item) => typeof item.rootPath !== "string");
+        state.paths = (state.paths as Array<Record<string, unknown>>).filter(
+          (item) => typeof item.rootPath !== "string",
+        );
         if (!(state.paths as unknown[]).length) unit.states.splice(index, 1);
       }
       if (!unit.states.length) affected.delete(key);
@@ -1456,26 +1674,41 @@ const runAffectedUnitAnalysis = async (
     const incomingIndex = stateName === "before" ? beforeIncoming : afterIncoming;
     if (stateName === "before") {
       beforeRootScan = await collectUnitVisualRoots(environment, false);
-      beforeUnitRoots = prioritizeAffectedRoots(environment, beforeRootScan.roots, beforePack.path).slice(0, request.affectedMaxRoots);
+      beforeUnitRoots = prioritizeAffectedRoots(environment, beforeRootScan.roots, beforePack.path).slice(
+        0,
+        request.affectedMaxRoots,
+      );
       beforeRootLimit = beforeRootScan.roots.length > request.affectedMaxRoots;
       beforeRootScanComplete = environment.complete && !beforeRootLimit;
     } else {
       afterRootScan = await collectUnitVisualRoots(environment, false);
-      afterUnitRoots = prioritizeAffectedRoots(environment, afterRootScan.roots, afterPack.path).slice(0, request.affectedMaxRoots);
+      afterUnitRoots = prioritizeAffectedRoots(environment, afterRootScan.roots, afterPack.path).slice(
+        0,
+        request.affectedMaxRoots,
+      );
       afterRootLimit = afterRootScan.roots.length > request.affectedMaxRoots;
       afterRootScanComplete = environment.complete && !afterRootLimit;
     }
     environment.diagnostics = environment.diagnostics.filter((item) => item.code !== "AFFECTED_UNITS_ROOT_LIMIT");
     const rootLimit = stateName === "before" ? beforeRootLimit : afterRootLimit;
-    if (rootLimit) environment.diagnostics.push(diagnostic("AFFECTED_UNITS_ROOT_LIMIT",
-      `${stateName === "before" ? "Before" : "After"}-state unit roots exceed affectedMaxRoots (${request.affectedMaxRoots})`));
+    if (rootLimit)
+      environment.diagnostics.push(
+        diagnostic(
+          "AFFECTED_UNITS_ROOT_LIMIT",
+          `${stateName === "before" ? "Before" : "After"}-state unit roots exceed affectedMaxRoots (${request.affectedMaxRoots})`,
+        ),
+      );
     clearVisualMatches(stateName);
     const roots = stateName === "before" ? beforeUnitRoots : afterUnitRoots;
-    const traversal = await incomingIndex.findMany(assetPaths.map((item) => item.path), roots, {
-      maxDepth: request.affectedMaxDepth,
-      maxNodes: request.affectedMaxNodes,
-      maxEdges: request.affectedMaxEdges,
-    });
+    const traversal = await incomingIndex.findMany(
+      assetPaths.map((item) => item.path),
+      roots,
+      {
+        maxDepth: request.affectedMaxDepth,
+        maxNodes: request.affectedMaxNodes,
+        maxEdges: request.affectedMaxEdges,
+      },
+    );
     if (stateName === "before") beforeTraversal = traversal;
     else afterTraversal = traversal;
     for (const item of assetPaths) addVisualMatches(stateName, item.path, traversal.matches.get(item.key) ?? []);
@@ -1491,51 +1724,83 @@ const runAffectedUnitAnalysis = async (
     afterDetailIndex = await loadMatchedDetail(afterEnvironment, keysForState("after"), afterSemanticIndex);
   }
   const unconfirmedPaths = new Set<string>();
-  for (const [stateName, detail] of [["before", beforeDetailIndex], ["after", afterDetailIndex]] as const) {
+  for (const [stateName, detail] of [
+    ["before", beforeDetailIndex],
+    ["after", afterDetailIndex],
+  ] as const) {
     const mismatches = unmatchedVisualRoots(stateName, detail);
     if (!mismatches.length) continue;
     metadataComplete = false;
     for (const item of mismatches) unconfirmedPaths.add(normalizePackFilePathKey(item.path));
-    diagnostics.push(diagnostic("AFFECTED_UNITS_VISUAL_EVIDENCE_MISSING",
-      `Source root evidence did not confirm ${mismatches.length} visual match(es) in ${stateName}`, "warning"));
+    diagnostics.push(
+      diagnostic(
+        "AFFECTED_UNITS_VISUAL_EVIDENCE_MISSING",
+        `Source root evidence did not confirm ${mismatches.length} visual match(es) in ${stateName}`,
+        "warning",
+      ),
+    );
     for (const mismatch of mismatches) {
       const unit = affected.get(mismatch.key);
-      for (const state of unit?.states ?? []) if (state.state === stateName && Array.isArray(state.paths))
-        state.paths = (state.paths as Array<Record<string, unknown>>).filter((item) => item.rootPath !== mismatch.rootPath);
-      if (unit && !unit.states.some((state) => Array.isArray(state.paths) && (state.paths as unknown[]).length)) affected.delete(mismatch.key);
+      for (const state of unit?.states ?? [])
+        if (state.state === stateName && Array.isArray(state.paths))
+          state.paths = (state.paths as Array<Record<string, unknown>>).filter(
+            (item) => item.rootPath !== mismatch.rootPath,
+          );
+      if (unit && !unit.states.some((state) => Array.isArray(state.paths) && (state.paths as unknown[]).length))
+        affected.delete(mismatch.key);
     }
   }
   const detailByState = {
     before: new Map(beforeDetailIndex.units.map((unit) => [`${unit.unitKey}\0${unit.landUnitKey}`, unit])),
     after: new Map(afterDetailIndex.units.map((unit) => [`${unit.unitKey}\0${unit.landUnitKey}`, unit])),
   };
-  for (const [identity, item] of affected) for (const state of item.states) {
-    const detail = detailByState[state.state as "before" | "after"].get(identity);
-    if (!detail) {
-      metadataComplete = false;
-      diagnostics.push(diagnostic("AFFECTED_UNITS_METADATA_MISSING", `Source detail could not be confirmed for ${item.unitKey}/${item.landUnitKey}`, "warning"));
-      continue;
+  for (const [identity, item] of affected)
+    for (const state of item.states) {
+      const detail = detailByState[state.state as "before" | "after"].get(identity);
+      if (!detail) {
+        metadataComplete = false;
+        diagnostics.push(
+          diagnostic(
+            "AFFECTED_UNITS_METADATA_MISSING",
+            `Source detail could not be confirmed for ${item.unitKey}/${item.landUnitKey}`,
+            "warning",
+          ),
+        );
+        continue;
+      }
+      state.localizedName = detail.localizedName;
+      state.locKey = detail.locKey;
+      state.scopeSource = detail.scopeSource;
+      state.unscoped = detail.unscoped;
+      state.factions = detail.factions;
+      state.customBattlePermissionEvidence = detail.customBattlePermissions;
     }
-    state.localizedName = detail.localizedName;
-    state.locKey = detail.locKey;
-    state.scopeSource = detail.scopeSource;
-    state.unscoped = detail.unscoped;
-    state.factions = detail.factions;
-    state.customBattlePermissionEvidence = detail.customBattlePermissions;
-  }
   diagnostics.push(...metadataDiagnostics);
-  if (unsupportedChangedFiles.length) diagnostics.push(diagnostic("AFFECTED_UNITS_UNSUPPORTED_CHANGED_TYPES", "Some changed files are outside supported visual, DB, and LOC analysis", "warning"));
+  if (unsupportedChangedFiles.length)
+    diagnostics.push(
+      diagnostic(
+        "AFFECTED_UNITS_UNSUPPORTED_CHANGED_TYPES",
+        "Some changed files are outside supported visual, DB, and LOC analysis",
+        "warning",
+      ),
+    );
 
   const semanticUnitsForPath = (key: string, stateName: "before" | "after") => {
     const units = new Set<string>();
-    for (const unit of affected.values()) for (const state of unit.states) {
-      if (state.state !== stateName || !Array.isArray(state.paths)) continue;
-      if ((state.paths as Array<Record<string, unknown>>).some((item) =>
-        typeof item.filePath === "string" && normalizePackFilePathKey(item.filePath) === key)) units.add(`${unit.unitKey}\0${unit.landUnitKey}`);
-    }
+    for (const unit of affected.values())
+      for (const state of unit.states) {
+        if (state.state !== stateName || !Array.isArray(state.paths)) continue;
+        if (
+          (state.paths as Array<Record<string, unknown>>).some(
+            (item) => typeof item.filePath === "string" && normalizePackFilePathKey(item.filePath) === key,
+          )
+        )
+          units.add(`${unit.unitKey}\0${unit.landUnitKey}`);
+      }
     return units.size;
   };
-  const semanticCoverageComplete = !diagnostics.some((entry) => entry.code === "AFFECTED_UNITS_TABLE_DELTA_UNAVAILABLE") &&
+  const semanticCoverageComplete =
+    !diagnostics.some((entry) => entry.code === "AFFECTED_UNITS_TABLE_DELTA_UNAVAILABLE") &&
     (!beforeSemanticIndex || beforeSemanticIndex.missingTables.length === 0) &&
     (!afterSemanticIndex || afterSemanticIndex.missingTables.length === 0);
   const pathCoverage = changedPaths.map((item) => {
@@ -1560,12 +1825,16 @@ const runAffectedUnitAnalysis = async (
       const key = item.key;
       const coverage = traversal.coverageByPath.get(key);
       const confirmedUnitKeys = new Set<string>();
-      for (const unit of affected.values()) for (const stateEntry of unit.states) {
-        if (stateEntry.state !== state || !Array.isArray(stateEntry.paths)) continue;
-        if ((stateEntry.paths as Array<Record<string, unknown>>).some((candidate) =>
-          typeof candidate.path === "string" && normalizePackFilePathKey(candidate.path) === key))
-          confirmedUnitKeys.add(`${unit.unitKey}\0${unit.landUnitKey}`);
-      }
+      for (const unit of affected.values())
+        for (const stateEntry of unit.states) {
+          if (stateEntry.state !== state || !Array.isArray(stateEntry.paths)) continue;
+          if (
+            (stateEntry.paths as Array<Record<string, unknown>>).some(
+              (candidate) => typeof candidate.path === "string" && normalizePackFilePathKey(candidate.path) === key,
+            )
+          )
+            confirmedUnitKeys.add(`${unit.unitKey}\0${unit.landUnitKey}`);
+        }
       const complete = Boolean(stateComplete && coverage?.complete && !unconfirmedPaths.has(key));
       return {
         state,
@@ -1573,7 +1842,13 @@ const runAffectedUnitAnalysis = async (
         complete,
         units: confirmedUnitKeys.size,
         walks: coverage?.walks ?? 0,
-        ...(!complete ? { limitReason: coverage?.limitReason ?? (!stateComplete ? "incoming index or roots incomplete" : "traversal incomplete") } : {}),
+        ...(!complete
+          ? {
+              limitReason:
+                coverage?.limitReason ??
+                (!stateComplete ? "incoming index or roots incomplete" : "traversal incomplete"),
+            }
+          : {}),
       };
     });
     const supported = supportedAsset || supportedTable;
@@ -1582,137 +1857,209 @@ const runAffectedUnitAnalysis = async (
     const status = !supported ? "unsupported" : matched ? "matched" : complete ? "noMatch" : "incomplete";
     return { path: item.path, bytes: item.bytes, status, complete, states: sides };
   });
-  const unresolvedPaths = pathCoverage.filter((item) => item.status !== "unsupported" && !item.complete)
+  const unresolvedPaths = pathCoverage
+    .filter((item) => item.status !== "unsupported" && !item.complete)
     .map((item) => item.path);
-  const limitReasons = [...new Set(pathCoverage.flatMap((item) => item.states.flatMap((state) => "limitReason" in state ? [state.limitReason] : [])))];
+  const limitReasons = [
+    ...new Set(
+      pathCoverage.flatMap((item) =>
+        item.states.flatMap((state) => ("limitReason" in state ? [state.limitReason] : [])),
+      ),
+    ),
+  ];
   for (const [state, incomingIndex, rootLimit, traversal] of [
     ["before", beforeIncoming, beforeRootLimit, beforeTraversal] as const,
     ["after", afterIncoming, afterRootLimit, afterTraversal] as const,
   ]) {
-    diagnostics.push(...incomingIndex.diagnostics.map((item) => diagnostic(item.code, item.message, item.severity, item.path)));
+    diagnostics.push(
+      ...incomingIndex.diagnostics.map((item) => diagnostic(item.code, item.message, item.severity, item.path)),
+    );
     if (!incomingIndex.complete || rootLimit || [...traversal.coverageByPath.values()].some((item) => !item.complete)) {
       const environment = state === "before" ? beforeEnvironment : afterEnvironment;
       environment.complete = false;
     }
   }
 
-  const affectedItems = [...affected.values()].sort((left, right) => left.unitKey.localeCompare(right.unitKey) || left.landUnitKey.localeCompare(right.landUnitKey));
+  const affectedItems = [...affected.values()].sort(
+    (left, right) => left.unitKey.localeCompare(right.unitKey) || left.landUnitKey.localeCompare(right.landUnitKey),
+  );
   const factionGroups = new Map<string, { key: string; name?: string; evidence: string; units: string[] }>();
   const unscoped = new Map<string, { unitKey: string; landUnitKey: string; classification: string }>();
   const unknown: Array<{ unitKey: string; landUnitKey: string }> = [];
   for (const unit of affectedItems) {
     let recognized = false;
     for (const state of unit.states) {
-      const factions = Array.isArray(state.factions) ? state.factions as Array<Record<string, unknown>> : [];
-      const source = state.scopeSource === "customBattlePermissions" ? "customBattlePermission" : state.scopeSource === "visualFallback" ? "visualFallback" : "unknown";
+      const factions = Array.isArray(state.factions) ? (state.factions as Array<Record<string, unknown>>) : [];
+      const source =
+        state.scopeSource === "customBattlePermissions"
+          ? "customBattlePermission"
+          : state.scopeSource === "visualFallback"
+            ? "visualFallback"
+            : "unknown";
       for (const faction of factions) {
         const key = String(faction.key ?? "");
         if (!key) continue;
         recognized = true;
-        const group = factionGroups.get(`${source}:${key}`) ?? { key, name: typeof faction.name === "string" ? faction.name : undefined, evidence: source, units: [] };
+        const group = factionGroups.get(`${source}:${key}`) ?? {
+          key,
+          name: typeof faction.name === "string" ? faction.name : undefined,
+          evidence: source,
+          units: [],
+        };
         const unitId = `${unit.unitKey || "(land-only)"}/${unit.landUnitKey}`;
         if (!group.units.includes(unitId)) group.units.push(unitId);
         factionGroups.set(`${source}:${key}`, group);
       }
-      if (state.unscoped) unscoped.set(JSON.stringify([unit.unitKey, unit.landUnitKey, source]), {
-        unitKey: unit.unitKey, landUnitKey: unit.landUnitKey, classification: source,
-      });
+      if (state.unscoped)
+        unscoped.set(JSON.stringify([unit.unitKey, unit.landUnitKey, source]), {
+          unitKey: unit.unitKey,
+          landUnitKey: unit.landUnitKey,
+          classification: source,
+        });
     }
-    if (!recognized && !unit.states.some((state) => state.unscoped)) unknown.push({ unitKey: unit.unitKey, landUnitKey: unit.landUnitKey });
+    if (!recognized && !unit.states.some((state) => state.unscoped))
+      unknown.push({ unitKey: unit.unitKey, landUnitKey: unit.landUnitKey });
   }
   const allDiagnostics = new Map<string, AutomationDiagnostic>();
   for (const item of [...diagnostics, ...beforeEnvironment.diagnostics, ...afterEnvironment.diagnostics]) {
     allDiagnostics.set(`${item.code}\0${item.path ?? ""}\0${item.message}`, item);
   }
   const changedBytes = new Map(changedPaths.map((item) => [item.key, item.bytes]));
-  const checklistUnits = affectedItems.map((unit) => {
-    const changedFiles = new Map<string, { path: string; bytes: number }>();
-    const casteValues: string[] = [];
-    const customBattleFactions = new Map<string, { key: string; name?: string }>();
-    const rootKinds = new Set<string>();
-    for (const state of unit.states) {
-      if (state.scopeSource === "customBattlePermissions" && Array.isArray(state.factions)) for (const raw of state.factions) {
-        if (!raw || typeof raw !== "object") continue;
-        const faction = raw as Record<string, unknown>;
-        const key = String(faction.key ?? "");
-        if (key) customBattleFactions.set(key, { key, ...(typeof faction.name === "string" ? { name: faction.name } : {}) });
+  const checklistUnits = affectedItems
+    .map((unit) => {
+      const changedFiles = new Map<string, { path: string; bytes: number }>();
+      const casteValues: string[] = [];
+      const customBattleFactions = new Map<string, { key: string; name?: string }>();
+      const rootKinds = new Set<string>();
+      for (const state of unit.states) {
+        if (state.scopeSource === "customBattlePermissions" && Array.isArray(state.factions))
+          for (const raw of state.factions) {
+            if (!raw || typeof raw !== "object") continue;
+            const faction = raw as Record<string, unknown>;
+            const key = String(faction.key ?? "");
+            if (key)
+              customBattleFactions.set(key, {
+                key,
+                ...(typeof faction.name === "string" ? { name: faction.name } : {}),
+              });
+          }
+        const paths = Array.isArray(state.paths) ? (state.paths as Array<Record<string, unknown>>) : [];
+        for (const changed of paths) {
+          const changedPath =
+            typeof changed.path === "string"
+              ? changed.path
+              : typeof changed.filePath === "string"
+                ? changed.filePath
+                : "";
+          if (!changedPath) continue;
+          const key = normalizePackFilePathKey(changedPath);
+          changedFiles.set(key, { path: changedPath, bytes: changedBytes.get(key) ?? 0 });
+          if (typeof changed.rootKind === "string") rootKinds.add(changed.rootKind);
+        }
       }
-      const paths = Array.isArray(state.paths) ? state.paths as Array<Record<string, unknown>> : [];
-      for (const changed of paths) {
-        const changedPath = typeof changed.path === "string" ? changed.path : typeof changed.filePath === "string" ? changed.filePath : "";
-        if (!changedPath) continue;
-        const key = normalizePackFilePathKey(changedPath);
-        changedFiles.set(key, { path: changedPath, bytes: changedBytes.get(key) ?? 0 });
-        if (typeof changed.rootKind === "string") rootKinds.add(changed.rootKind);
+      for (const detail of [
+        detailByState.before.get(`${unit.unitKey}\0${unit.landUnitKey}`),
+        detailByState.after.get(`${unit.unitKey}\0${unit.landUnitKey}`),
+      ]) {
+        for (const evidence of detail?.evidence ?? []) {
+          if (!evidence || typeof evidence !== "object") continue;
+          const record = evidence as Record<string, unknown>;
+          if (typeof record.table !== "string" || !normalizePackFilePathKey(record.table).endsWith("main_units_tables"))
+            continue;
+          const row = record.row && typeof record.row === "object" ? (record.row as Record<string, unknown>) : {};
+          if (typeof row.caste === "string" && row.caste) casteValues.push(row.caste.toLowerCase());
+        }
       }
-    }
-    for (const detail of [detailByState.before.get(`${unit.unitKey}\0${unit.landUnitKey}`), detailByState.after.get(`${unit.unitKey}\0${unit.landUnitKey}`)]) {
-      for (const evidence of detail?.evidence ?? []) {
-        if (!evidence || typeof evidence !== "object") continue;
-        const record = evidence as Record<string, unknown>;
-        if (typeof record.table !== "string" || !normalizePackFilePathKey(record.table).endsWith("main_units_tables")) continue;
-        const row = record.row && typeof record.row === "object" ? record.row as Record<string, unknown> : {};
-        if (typeof row.caste === "string" && row.caste) casteValues.push(row.caste.toLowerCase());
-      }
-    }
-    const caste = casteValues[0];
-    const role = rootKinds.has("mount") ? "mount" : caste
-      ? /lord/.test(caste) ? "lord" : /hero/.test(caste) ? "hero" : "unit"
-      : "unknown";
-    const files = [...changedFiles.values()].sort((left, right) => left.path.localeCompare(right.path));
-    return {
-      key: unit.unitKey || unit.landUnitKey,
-      unitKey: unit.unitKey || null,
-      landUnitKey: unit.landUnitKey,
-      name: unit.states.find((state) => typeof state.localizedName === "string")?.localizedName ?? null,
-      role,
-      customBattleFactions: [...customBattleFactions.values()].sort((left, right) => left.key.localeCompare(right.key)),
-      factionStatus: customBattleFactions.size ? "explicit" : "unknown",
-      changedFiles: files,
-      changedBytes: files.reduce((sum, file) => sum + file.bytes, 0),
-    };
-  }).sort((left, right) => right.changedBytes - left.changedBytes || left.key.localeCompare(right.key));
-  const matchedChangedPathKeys = new Set(checklistUnits.flatMap((unit) => unit.changedFiles.map((item) => normalizePackFilePathKey(item.path))));
+      const caste = casteValues[0];
+      const role = rootKinds.has("mount")
+        ? "mount"
+        : caste
+          ? /lord/.test(caste)
+            ? "lord"
+            : /hero/.test(caste)
+              ? "hero"
+              : "unit"
+          : "unknown";
+      const files = [...changedFiles.values()].sort((left, right) => left.path.localeCompare(right.path));
+      return {
+        key: unit.unitKey || unit.landUnitKey,
+        unitKey: unit.unitKey || null,
+        landUnitKey: unit.landUnitKey,
+        name: unit.states.find((state) => typeof state.localizedName === "string")?.localizedName ?? null,
+        role,
+        customBattleFactions: [...customBattleFactions.values()].sort((left, right) =>
+          left.key.localeCompare(right.key),
+        ),
+        factionStatus: customBattleFactions.size ? "explicit" : "unknown",
+        changedFiles: files,
+        changedBytes: files.reduce((sum, file) => sum + file.bytes, 0),
+      };
+    })
+    .sort((left, right) => right.changedBytes - left.changedBytes || left.key.localeCompare(right.key));
+  const matchedChangedPathKeys = new Set(
+    checklistUnits.flatMap((unit) => unit.changedFiles.map((item) => normalizePackFilePathKey(item.path))),
+  );
   const coverageByKey = new Map(pathCoverage.map((item) => [normalizePackFilePathKey(item.path), item]));
-  const campaignPathHint = (filePath: string) => filePath.split("\\").some((segment) => ["campaign", "campaign_map", "campaignmap"].includes(segment.toLowerCase()));
-  const campaignReviewAssets = assetPaths.filter((item) => campaignPathHint(item.path)).map((item) => {
-    const coverage = coverageByKey.get(item.key);
-    const status = coverage?.status ?? "incomplete";
-    const complete = coverage?.complete ?? false;
-    const mappedUnits = checklistUnits.filter((unit) => unit.changedFiles.some((file) =>
-      normalizePackFilePathKey(file.path) === item.key)).map((unit) => ({
-        key: unit.key, unitKey: unit.unitKey, landUnitKey: unit.landUnitKey, name: unit.name,
-      }));
-    return {
+  const campaignPathHint = (filePath: string) =>
+    filePath.split("\\").some((segment) => ["campaign", "campaign_map", "campaignmap"].includes(segment.toLowerCase()));
+  const campaignReviewAssets = assetPaths
+    .filter((item) => campaignPathHint(item.path))
+    .map((item) => {
+      const coverage = coverageByKey.get(item.key);
+      const status = coverage?.status ?? "incomplete";
+      const complete = coverage?.complete ?? false;
+      const mappedUnits = checklistUnits
+        .filter((unit) => unit.changedFiles.some((file) => normalizePackFilePathKey(file.path) === item.key))
+        .map((unit) => ({
+          key: unit.key,
+          unitKey: unit.unitKey,
+          landUnitKey: unit.landUnitKey,
+          name: unit.name,
+        }));
+      return {
+        path: item.path,
+        bytes: item.bytes,
+        classification: "campaign-review-candidate",
+        campaignOnly: false,
+        status,
+        complete,
+        mappedUnits,
+        reason: mappedUnits.length
+          ? "Path suggests campaign use and also maps to battle unit(s); the campaign role still needs review."
+          : status === "noMatch" && complete
+            ? "No custom-battle unit visual mapping was found; review campaign-map or other non-battle use."
+            : status === "matched"
+              ? "Incoming visual references were found, but no unit mapping was confirmed; review campaign use and source evidence."
+              : "Path suggests campaign use; battle use is unconfirmed because visual coverage is incomplete.",
+      };
+    })
+    .sort((left, right) => right.bytes - left.bytes || left.path.localeCompare(right.path));
+  const unmappedAssets = assetPaths
+    .filter((item) => !matchedChangedPathKeys.has(item.key) && !campaignPathHint(item.path))
+    .map((item) => ({
       path: item.path,
       bytes: item.bytes,
-      classification: "campaign-review-candidate",
-      campaignOnly: false,
-      status,
-      complete,
-      mappedUnits,
-      reason: mappedUnits.length
-        ? "Path suggests campaign use and also maps to battle unit(s); the campaign role still needs review."
-        : status === "noMatch" && complete
-          ? "No custom-battle unit visual mapping was found; review campaign-map or other non-battle use."
-          : status === "matched"
-            ? "Incoming visual references were found, but no unit mapping was confirmed; review campaign use and source evidence."
-            : "Path suggests campaign use; battle use is unconfirmed because visual coverage is incomplete.",
-    };
-  }).sort((left, right) => right.bytes - left.bytes || left.path.localeCompare(right.path));
-  const unmappedAssets = assetPaths.filter((item) => !matchedChangedPathKeys.has(item.key) && !campaignPathHint(item.path)).map((item) => ({
-    path: item.path,
-    bytes: item.bytes,
-    status: coverageByKey.get(item.key)?.status ?? "incomplete",
-  }));
-  const complete = beforeIncoming.complete && afterIncoming.complete && !beforeRootLimit && !afterRootLimit &&
-    beforeEnvironment.complete && afterEnvironment.complete && metadataComplete && pathCoverage.every((item) => item.complete) && diagnostics.length === 0;
+      status: coverageByKey.get(item.key)?.status ?? "incomplete",
+    }));
+  const complete =
+    beforeIncoming.complete &&
+    afterIncoming.complete &&
+    !beforeRootLimit &&
+    !afterRootLimit &&
+    beforeEnvironment.complete &&
+    afterEnvironment.complete &&
+    metadataComplete &&
+    pathCoverage.every((item) => item.complete) &&
+    diagnostics.length === 0;
   return {
     complete,
     total: affectedItems.length,
     offset: request.semanticOffset,
     limit: request.semanticLimit,
-    nextOffset: request.semanticOffset + request.semanticLimit < affectedItems.length ? request.semanticOffset + request.semanticLimit : null,
+    nextOffset:
+      request.semanticOffset + request.semanticLimit < affectedItems.length
+        ? request.semanticOffset + request.semanticLimit
+        : null,
     hasMore: request.semanticOffset + request.semanticLimit < affectedItems.length,
     items: affectedItems.slice(request.semanticOffset, request.semanticOffset + request.semanticLimit),
     reportItems: affectedItems,
@@ -1722,7 +2069,9 @@ const runAffectedUnitAnalysis = async (
       unmappedAssets,
       metadataCoverage: { complete: metadataComplete, diagnostics: metadataDiagnostics },
       byteMetric: "unique changed internal paths; each path uses max(before logical size, after logical size)",
-      factions: [...factionGroups.values()].sort((left, right) => left.key.localeCompare(right.key) || left.evidence.localeCompare(right.evidence)),
+      factions: [...factionGroups.values()].sort(
+        (left, right) => left.key.localeCompare(right.key) || left.evidence.localeCompare(right.evidence),
+      ),
       unscoped: [...unscoped.values()],
       unknown,
     },
@@ -1730,20 +2079,44 @@ const runAffectedUnitAnalysis = async (
     unresolvedPaths,
     limitReasons,
     analysis: {
-      before: { complete: beforeIncoming.complete && !beforeRootLimit && beforeEnvironment.complete,
-        graph: { ...emptyCoverage, edges: beforeIncoming.edges, nodes: beforeUnitRoots.length, scannedSources: beforeIncoming.scannedSources,
-          indexedEdges: beforeIncoming.edges, reversePathWalks: beforeTraversal.walks,
-          hitLimit: beforeRootLimit || beforeIncoming.diagnostics.some((item) =>
-            item.code === "INCOMING_REFERENCE_SOURCE_LIMIT" || item.code === "INCOMING_REFERENCE_EDGE_LIMIT") ||
-            [...beforeTraversal.coverageByPath.values()].some((item) => item.limitReason?.startsWith("max")) },
-        roots: beforeRootScan.roots.length },
-      after: { complete: afterIncoming.complete && !afterRootLimit && afterEnvironment.complete,
-        graph: { ...emptyCoverage, edges: afterIncoming.edges, nodes: afterUnitRoots.length, scannedSources: afterIncoming.scannedSources,
-          indexedEdges: afterIncoming.edges, reversePathWalks: afterTraversal.walks,
-          hitLimit: afterRootLimit || afterIncoming.diagnostics.some((item) =>
-            item.code === "INCOMING_REFERENCE_SOURCE_LIMIT" || item.code === "INCOMING_REFERENCE_EDGE_LIMIT") ||
-            [...afterTraversal.coverageByPath.values()].some((item) => item.limitReason?.startsWith("max")) },
-        roots: afterRootScan.roots.length },
+      before: {
+        complete: beforeIncoming.complete && !beforeRootLimit && beforeEnvironment.complete,
+        graph: {
+          ...emptyCoverage,
+          edges: beforeIncoming.edges,
+          nodes: beforeUnitRoots.length,
+          scannedSources: beforeIncoming.scannedSources,
+          indexedEdges: beforeIncoming.edges,
+          reversePathWalks: beforeTraversal.walks,
+          hitLimit:
+            beforeRootLimit ||
+            beforeIncoming.diagnostics.some(
+              (item) =>
+                item.code === "INCOMING_REFERENCE_SOURCE_LIMIT" || item.code === "INCOMING_REFERENCE_EDGE_LIMIT",
+            ) ||
+            [...beforeTraversal.coverageByPath.values()].some((item) => item.limitReason?.startsWith("max")),
+        },
+        roots: beforeRootScan.roots.length,
+      },
+      after: {
+        complete: afterIncoming.complete && !afterRootLimit && afterEnvironment.complete,
+        graph: {
+          ...emptyCoverage,
+          edges: afterIncoming.edges,
+          nodes: afterUnitRoots.length,
+          scannedSources: afterIncoming.scannedSources,
+          indexedEdges: afterIncoming.edges,
+          reversePathWalks: afterTraversal.walks,
+          hitLimit:
+            afterRootLimit ||
+            afterIncoming.diagnostics.some(
+              (item) =>
+                item.code === "INCOMING_REFERENCE_SOURCE_LIMIT" || item.code === "INCOMING_REFERENCE_EDGE_LIMIT",
+            ) ||
+            [...afterTraversal.coverageByPath.values()].some((item) => item.limitReason?.startsWith("max")),
+        },
+        roots: afterRootScan.roots.length,
+      },
       changedPaths: changedPaths.length,
       unsupportedChangedFiles,
       budgets: {
@@ -1771,8 +2144,13 @@ export const runPackDiff = async (request: DiffRequest, context: AutomationConte
   const allKeys = [...new Set([...beforeEntries.keys(), ...afterEntries.keys()])]
     .filter((key) => pathMatches((afterEntries.get(key) ?? beforeEntries.get(key))!.name, request))
     .sort();
-  context.progress?.({ stage: "hashing", completed: 0, total: allKeys.length, paths: allKeys.length,
-    message: `Hashing ${allKeys.length} candidate paths` });
+  context.progress?.({
+    stage: "hashing",
+    completed: 0,
+    total: allKeys.length,
+    paths: allKeys.length,
+    message: `Hashing ${allKeys.length} candidate paths`,
+  });
   const diagnostics: AutomationDiagnostic[] = [];
   const files: Array<Record<string, unknown>> = [];
   const reportFiles: Array<Record<string, unknown>> = [];
@@ -1793,10 +2171,14 @@ export const runPackDiff = async (request: DiffRequest, context: AutomationConte
     const afterEntry = afterEntries.get(key);
     const beforeHash = beforeEntry ? await hashEntry(beforePack, beforeEntry, context) : undefined;
     const afterHash = afterEntry ? await hashEntry(afterPack, afterEntry, context) : undefined;
-    if ((comparedEntries & 127) === 0 || comparedEntries === allKeys.length) context.progress?.({
-      stage: "hashing", completed: comparedEntries, total: allKeys.length, paths: allKeys.length,
-      message: `Hashed ${comparedEntries} of ${allKeys.length} candidate paths`,
-    });
+    if ((comparedEntries & 127) === 0 || comparedEntries === allKeys.length)
+      context.progress?.({
+        stage: "hashing",
+        completed: comparedEntries,
+        total: allKeys.length,
+        paths: allKeys.length,
+        message: `Hashed ${comparedEntries} of ${allKeys.length} candidate paths`,
+      });
     const status = !beforeEntry
       ? "added"
       : !afterEntry
@@ -1845,8 +2227,13 @@ export const runPackDiff = async (request: DiffRequest, context: AutomationConte
     );
 
   let emittedCount = 0;
-  context.progress?.({ stage: "semantic", completed: 0, total: emittedRecords.length, paths: emittedRecords.length,
-    message: `Comparing semantics for ${emittedRecords.length} changed paths` });
+  context.progress?.({
+    stage: "semantic",
+    completed: 0,
+    total: emittedRecords.length,
+    paths: emittedRecords.length,
+    message: `Comparing semantics for ${emittedRecords.length} changed paths`,
+  });
   for (const record of emittedRecords) {
     throwIfAborted(context.signal);
     if ((emittedCount++ & 127) === 0) await yieldToEventLoop(context.signal);
@@ -1905,10 +2292,14 @@ export const runPackDiff = async (request: DiffRequest, context: AutomationConte
       reportFiles.push(item);
     }
     files.push(item);
-    if ((emittedCount & 127) === 0 || emittedCount === emittedRecords.length) context.progress?.({
-      stage: "semantic", completed: emittedCount, total: emittedRecords.length, paths: emittedRecords.length,
-      message: `Processed ${emittedCount} of ${emittedRecords.length} changed paths`,
-    });
+    if ((emittedCount & 127) === 0 || emittedCount === emittedRecords.length)
+      context.progress?.({
+        stage: "semantic",
+        completed: emittedCount,
+        total: emittedRecords.length,
+        paths: emittedRecords.length,
+        message: `Processed ${emittedCount} of ${emittedRecords.length} changed paths`,
+      });
   }
 
   let affectedData: Record<string, unknown> | undefined;
@@ -1958,15 +2349,22 @@ export const runPackDiff = async (request: DiffRequest, context: AutomationConte
     const output = await context.policy.withAtomicOutput({
       outputPath: request.reportPath,
       sourcePaths: [beforePack.path, afterPack.path, ...affectedSourcePaths],
-      produce: async (temporaryPath) => fs.promises.writeFile(
-        temporaryPath,
-        `${JSON.stringify({
-          ...data,
-          files: reportFiles,
-          preview,
-          ...(affectedData && affectedReportItems ? { affectedUnits: { ...affectedData, items: affectedReportItems } } : {}),
-        }, null, 2)}\n`,
-      ),
+      produce: async (temporaryPath) =>
+        fs.promises.writeFile(
+          temporaryPath,
+          `${JSON.stringify(
+            {
+              ...data,
+              files: reportFiles,
+              preview,
+              ...(affectedData && affectedReportItems
+                ? { affectedUnits: { ...affectedData, items: affectedReportItems } }
+                : {}),
+            },
+            null,
+            2,
+          )}\n`,
+        ),
     });
     reportPath = output.path;
   }

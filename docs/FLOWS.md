@@ -90,7 +90,7 @@ There are 47 node types, grouped as they appear in the editor sidebar (`nodeRegi
 |                      | `mathceil`                | Math Ceil                   | Rounds changed values up                                                             |
 |                      | `mathmax`                 | Math Max                    | `Math.max(value, input)` on changed values                                           |
 |                      | `mergechanges`            | Merge Changes               | Merges several ChangedColumnSelection inputs into one                                |
-|                      | `onnx`                    | ONNX Prediction             | Runs packed bundle or standalone ONNX inference and writes enabled table outputs    |
+|                      | `onnx`                    | ONNX Prediction             | Runs packed bundle or standalone ONNX inference and writes enabled table outputs     |
 |                      | `savechanges`             | Save Changes                | Writes the result to a pack (see Outputs below)                                      |
 | Text                 | `appendtext`              | Append Text                 | Adds text before and after                                                           |
 |                      | `groupbycolumns`          | Group By Columns (For Text) | TableSelection + two columns → GroupedText                                           |

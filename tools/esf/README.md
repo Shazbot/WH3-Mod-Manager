@@ -185,7 +185,6 @@ Optional:
 - `--class-limit <n>` controls how many top classes are shown when not writing `--out`.
 - omit `--with-grid` to write metadata only (smaller JSON).
 
-
 ## Startpos edit prototype: remove a faction
 
 The mutation prototype removes a faction by key and compacts explicit faction IDs in the
@@ -243,7 +242,6 @@ not been established. After `yarn esf:build`, regression tests are available as
 `node tools/esf/dist/edit/caiMobileDependents.test.js`. The editor UI is not part of this
 prototype.
 
-
 ### Batch removal
 
 To remove many keys in one parse/edit/write cycle, put the requested keys in a JSON
@@ -275,7 +273,6 @@ batch ID compaction and row-metadata cases. The existing reference-array tests
 also check skipped edits in a deleted parent. These tests and structural checks
 do not establish game behavior for arbitrary larger removal sets.
 
-
 Numeric ownership: REGION v3 direct scalar4 is a faction ID and must be compacted
 for all surviving owners, with removed owners transferred to the recipient's
 compacted ID. The single and batch commands share this remapping and reject
@@ -284,14 +281,12 @@ unsupported region layouts. Output validation checks the owner-ID range.
 The two-faction byte-parity result above predates this correction; earlier map
 loads alone did not validate territory ownership.
 
-
 Province and sea references also carry campaign faction IDs: the second scalar
 of FACTION_PROVINCE_MANAGER v1 and FACTION_SEA_REGION_MANAGER v0, plus owner keys
 in the supported province-level recruitment/persistent-resource rows. Their
 manager UIDs are preserved. `provinceFactionIds.ts` shares this remapping between
 single and batch removal and rejects duplicate transferred manager owners.
 Run `node tools/esf/dist/edit/provinceFactionIds.test.js` for those regressions.
-
 
 Sparse faction tables use an explicit name/version allowlist in
 `factionKeyedRows.ts`. Removed owner rows are deleted; surviving first direct

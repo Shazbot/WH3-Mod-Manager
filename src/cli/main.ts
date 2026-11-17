@@ -285,8 +285,22 @@ const buildAppControlRequest = (
     mods_list: ["enabled-only"],
     mods_set: ["preset", "only", "enable", "disable", "order", "dry-run"],
     game_launch: [
-      "preset", "only", "enable", "disable", "order", "temporary", "continue", "save", "skip-intros", "script-logging",
-      "auto-start-battle", "auto-start-campaign", "game", "launch-timeout", "restart", "stop-timeout",
+      "preset",
+      "only",
+      "enable",
+      "disable",
+      "order",
+      "temporary",
+      "continue",
+      "save",
+      "skip-intros",
+      "script-logging",
+      "auto-start-battle",
+      "auto-start-campaign",
+      "game",
+      "launch-timeout",
+      "restart",
+      "stop-timeout",
     ],
     game_stop: ["stop-timeout"],
   };
@@ -336,15 +350,34 @@ const buildRequest = async (
   const [group, action, first, second, third] = command;
   if (group === "app" || group === "mods" || group === "game") return buildAppControlRequest(command, values, common);
   const appControlFlags = [
-    "preset", "only", "enable", "disable", "order", "dry-run", "enabled-only", "temporary", "continue", "save", "skip-intros",
-    "script-logging", "auto-start-battle", "auto-start-campaign", "game", "launch-timeout", "restart", "stop-timeout", "no-start-app",
-    "start-timeout", "app-path",
+    "preset",
+    "only",
+    "enable",
+    "disable",
+    "order",
+    "dry-run",
+    "enabled-only",
+    "temporary",
+    "continue",
+    "save",
+    "skip-intros",
+    "script-logging",
+    "auto-start-battle",
+    "auto-start-campaign",
+    "game",
+    "launch-timeout",
+    "restart",
+    "stop-timeout",
+    "no-start-app",
+    "start-timeout",
+    "app-path",
   ] as const;
   const misplaced = appControlFlags.filter((flag) => values[flag] !== undefined);
   if (misplaced.length)
     throw new AutomationError("INVALID_ARGUMENT", `--${misplaced[0]} requires an app, mods, or game command`);
   const assetUsers = group === "asset" && action === "users";
-  const affectedDiff = group === "pack" && action === "diff" && Boolean(values["affected-units"] || extra.affectedUnits);
+  const affectedDiff =
+    group === "pack" && action === "diff" && Boolean(values["affected-units"] || extra.affectedUnits);
   const assetUserFlags = [
     values.unit !== undefined,
     values["root-glob"] !== undefined,
@@ -363,13 +396,28 @@ const buildRequest = async (
   }
   const traversalFlags = ["max-depth", "max-nodes", "max-edges", "max-roots"] as const;
   if (traversalFlags.some((flag) => values[flag] !== undefined) && !assetUsers && !affectedDiff)
-    throw new AutomationError("INVALID_ARGUMENT", "Traversal budgets require asset users or pack diff --affected-units");
-  const scanFlags = [["max-scan-sources", "maxScanSources"], ["max-index-edges", "maxIndexEdges"]] as const;
-  if (scanFlags.some(([flag]) => values[flag] !== undefined) && !assetUsers && !affectedDiff && !(group === "unit" && action === "resolve"))
-    throw new AutomationError("INVALID_ARGUMENT", "Incoming-reference budgets require asset users, unit resolve, or affected diff");
+    throw new AutomationError(
+      "INVALID_ARGUMENT",
+      "Traversal budgets require asset users or pack diff --affected-units",
+    );
+  const scanFlags = [
+    ["max-scan-sources", "maxScanSources"],
+    ["max-index-edges", "maxIndexEdges"],
+  ] as const;
+  if (
+    scanFlags.some(([flag]) => values[flag] !== undefined) &&
+    !assetUsers &&
+    !affectedDiff &&
+    !(group === "unit" && action === "resolve")
+  )
+    throw new AutomationError(
+      "INVALID_ARGUMENT",
+      "Incoming-reference budgets require asset users, unit resolve, or affected diff",
+    );
   for (const [flag, field] of scanFlags) {
     const value = numericOption(values[flag], flag);
-    if (value !== undefined) common[affectedDiff ? `affected${field[0].toUpperCase()}${field.slice(1)}` : field] = value;
+    if (value !== undefined)
+      common[affectedDiff ? `affected${field[0].toUpperCase()}${field.slice(1)}` : field] = value;
   }
   let pathsFrom: string[] | undefined;
   if (values["paths-from"] !== undefined) {
@@ -382,7 +430,11 @@ const buildRequest = async (
     if (input.bytes.length > 1024 * 1024)
       throw new AutomationError("INVALID_ARGUMENT", "--paths-from file exceeds 1 MiB");
     try {
-      pathsFrom = new TextDecoder("utf-8", { fatal: true }).decode(input.bytes).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      pathsFrom = new TextDecoder("utf-8", { fatal: true })
+        .decode(input.bytes)
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
     } catch {
       throw new AutomationError("INVALID_ARGUMENT", "--paths-from must contain UTF-8 text");
     }
@@ -571,7 +623,11 @@ const buildRequest = async (
       for (const flag of traversalFlags) {
         const value = numericOption(values[flag], flag);
         if (value !== undefined) {
-          const suffix = flag.slice(4).split("-").map((part) => part[0].toUpperCase() + part.slice(1)).join("");
+          const suffix = flag
+            .slice(4)
+            .split("-")
+            .map((part) => part[0].toUpperCase() + part.slice(1))
+            .join("");
           common[`affectedMax${suffix}`] = value;
         }
       }
@@ -628,8 +684,12 @@ const buildRequest = async (
   if (group === "asset") {
     if (action === "users") {
       ensurePositionals(command, 3, 4);
-      const request: Record<string, unknown> = { ...common, operation: "asset_users", packPath: first,
-        ...(pathsFrom ? { targetPaths: pathsFrom } : second === undefined ? {} : { targetPath: second }) };
+      const request: Record<string, unknown> = {
+        ...common,
+        operation: "asset_users",
+        packPath: first,
+        ...(pathsFrom ? { targetPaths: pathsFrom } : second === undefined ? {} : { targetPath: second }),
+      };
       const budgetFlags = [
         ["max-depth", "maxDepth"],
         ["max-nodes", "maxNodes"],
@@ -661,8 +721,12 @@ const buildRequest = async (
       const support = Array.isArray(extra.packPaths)
         ? extra.packPaths.filter((item): item is string => typeof item === "string" && item !== first)
         : [];
-      return { ...common, operation: "unit_resolve", packPaths: [...support, first],
-        ...(pathsFrom ? { queries: pathsFrom } : second === undefined ? {} : { query: second }) };
+      return {
+        ...common,
+        operation: "unit_resolve",
+        packPaths: [...support, first],
+        ...(pathsFrom ? { queries: pathsFrom } : second === undefined ? {} : { query: second }),
+      };
     }
     ensurePositionals(command, 2);
     if (!values.input) throw new AutomationError("INVALID_ARGUMENT", `${group} ${action} requires --input <jsonFile>`);
@@ -718,7 +782,8 @@ export const main = async (argv = process.argv.slice(2), io: CliIo = defaultIo):
       throw new AutomationError("INVALID_ARGUMENT", `Unsupported output format: ${format}`);
     if (parsed.values.progress && parsed.values["no-progress"])
       throw new AutomationError("INVALID_ARGUMENT", "Use only one of --progress and --no-progress");
-    const progressEnabled = !parsed.values["no-progress"] && (parsed.values.progress || (io === defaultIo && process.stderr.isTTY));
+    const progressEnabled =
+      !parsed.values["no-progress"] && (parsed.values.progress || (io === defaultIo && process.stderr.isTTY));
     if (!noCache) {
       let memoryMiB = 128;
       if (parsed.values["cache-memory-mib"] !== undefined) {
@@ -744,7 +809,8 @@ export const main = async (argv = process.argv.slice(2), io: CliIo = defaultIo):
       try {
         await cacheService.validateConfiguredPaths(context.policy);
       } catch (error) {
-        if (parsed.values["cache-dir"] !== undefined || automationErrorFromUnknown(error).code !== "IO_ACCESS") throw error;
+        if (parsed.values["cache-dir"] !== undefined || automationErrorFromUnknown(error).code !== "IO_ACCESS")
+          throw error;
         await cacheService.close();
         io.stderr("[info] Default disk cache unavailable; using memory cache.\n");
         cacheService = createAutomationCacheService({

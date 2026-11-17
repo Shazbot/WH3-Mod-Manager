@@ -14,6 +14,9 @@ test("preview ownerships by theatre are region references", () => {
 test("other ascii values, non-ascii values and empty text are not region references", () => {
   assert.equal(regionReferencedFactionKey(ascii("d"), ["ROOT", "FACTION_ARRAY", "REGION"]), undefined);
   assert.equal(regionReferencedFactionKey(ascii("e"), ["REGIONS_ARRAY", "OTHER"]), undefined);
-  assert.equal(regionReferencedFactionKey({ kind: "value", type: "u32", value: 1 }, ["REGIONS_ARRAY", "REGION"]), undefined);
+  assert.equal(
+    regionReferencedFactionKey({ kind: "value", type: "u32", value: 1 }, ["REGIONS_ARRAY", "REGION"]),
+    undefined,
+  );
   assert.equal(regionReferencedFactionKey(ascii(""), ["REGIONS_ARRAY", "REGION"]), undefined);
 });

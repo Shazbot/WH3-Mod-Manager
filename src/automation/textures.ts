@@ -6,7 +6,12 @@ import { DDS_MAX_PIXELS, inspectDdsLayout } from "../utility/ddsLayout";
 import { normalizePackFilePathKey } from "../utility/packFilePathUtils";
 import { AutomationError, throwIfAborted, yieldToEventLoop, type AutomationDiagnostic } from "./errors";
 import { vanillaInputs } from "./vanilla";
-import { findAutomationPackEntry, readAutomationPack, readAutomationPayload, readAutomationPayloadPrefix } from "./packAccess";
+import {
+  findAutomationPackEntry,
+  readAutomationPack,
+  readAutomationPayload,
+  readAutomationPayloadPrefix,
+} from "./packAccess";
 import { prepareReferenceEnvironment } from "./references";
 import type { AutomationContext } from "./operations";
 
@@ -38,7 +43,12 @@ const samePhysicalPath = (left: string, right: string) => {
 
 export const runPackTextures = async (request: z.output<typeof packTexturesSchema>, context: AutomationContext) => {
   const target = await readAutomationPack(request.packPath, context);
-  const useEffective = request.effective || request.withVanilla || request.gameDataPath !== undefined || (request.vanillaPackPaths?.length ?? 0) > 0 || request.packPaths.length > 0;
+  const useEffective =
+    request.effective ||
+    request.withVanilla ||
+    request.gameDataPath !== undefined ||
+    (request.vanillaPackPaths?.length ?? 0) > 0 ||
+    request.packPaths.length > 0;
   const environment = useEffective
     ? await prepareReferenceEnvironment(
         context,
@@ -48,25 +58,47 @@ export const runPackTextures = async (request: z.output<typeof packTexturesSchem
         request.withVanilla,
       )
     : undefined;
-  const selected = new Map<string, { entry: (typeof target.entries)[number]; pack: typeof target; role: string; kind: string; status: string }>();
+  const selected = new Map<
+    string,
+    { entry: (typeof target.entries)[number]; pack: typeof target; role: string; kind: string; status: string }
+  >();
   let selectionComplete = true;
   const diagnostics: AutomationDiagnostic[] = environment?.diagnostics.slice() ?? [];
   if (!environment) {
     for (const entry of target.entries) {
       if (!textureExtension(entry.name)) continue;
-      if (request.glob && !path.posix.matchesGlob(entry.name.replace(/\\/g, "/").toLowerCase(), request.glob.replace(/\\/g, "/").toLowerCase())) continue;
+      if (
+        request.glob &&
+        !path.posix.matchesGlob(
+          entry.name.replace(/\\/g, "/").toLowerCase(),
+          request.glob.replace(/\\/g, "/").toLowerCase(),
+        )
+      )
+        continue;
       const key = normalizePackFilePathKey(entry.name);
       if (selected.has(key)) {
         selected.get(key)!.status = "ambiguous";
         selectionComplete = false;
-        diagnostics.push({ code: "AMBIGUOUS_TEXTURE_PROVIDER", message: "Target pack contains duplicate normalized DDS paths", severity: "warning", path: entry.name });
+        diagnostics.push({
+          code: "AMBIGUOUS_TEXTURE_PROVIDER",
+          message: "Target pack contains duplicate normalized DDS paths",
+          severity: "warning",
+          path: entry.name,
+        });
       } else selected.set(key, { entry, pack: target, role: "target", kind: "mod", status: "effective" });
     }
   } else {
     for (const [key, candidates] of environment.assetCandidates) {
       throwIfAborted(context.signal);
       if (!textureExtension(candidates[0]?.entry.name ?? "")) continue;
-      if (request.glob && !path.posix.matchesGlob(candidates[0].entry.name.replace(/\\/g, "/").toLowerCase(), request.glob.replace(/\\/g, "/").toLowerCase())) continue;
+      if (
+        request.glob &&
+        !path.posix.matchesGlob(
+          candidates[0].entry.name.replace(/\\/g, "/").toLowerCase(),
+          request.glob.replace(/\\/g, "/").toLowerCase(),
+        )
+      )
+        continue;
       const highest = candidates[candidates.length - 1].provider.order;
       const top = candidates.filter((candidate) => candidate.provider.order === highest);
       if (top.length !== 1) {
@@ -91,7 +123,10 @@ export const runPackTextures = async (request: z.output<typeof packTexturesSchem
   }
 
   const records: Array<Record<string, unknown>> = [];
-  const formatTotals = new Map<string, { files: number; logicalBytes: number; estimatedPayloadBytes: number; unknownEstimates: number }>();
+  const formatTotals = new Map<
+    string,
+    { files: number; logicalBytes: number; estimatedPayloadBytes: number; unknownEstimates: number }
+  >();
   const dimensions = new Map<string, number>();
   let storedBytes = 0;
   let logicalBytes = 0;
@@ -122,21 +157,33 @@ export const runPackTextures = async (request: z.output<typeof packTexturesSchem
       if (estimate === null) unknownEstimates += 1;
       else estimatedPayloadBytes += estimate;
       const format = layout.format;
-      const totals = formatTotals.get(format) ?? { files: 0, logicalBytes: 0, estimatedPayloadBytes: 0, unknownEstimates: 0 };
+      const totals = formatTotals.get(format) ?? {
+        files: 0,
+        logicalBytes: 0,
+        estimatedPayloadBytes: 0,
+        unknownEstimates: 0,
+      };
       totals.files += 1;
       totals.logicalBytes += logicalLength!;
       if (estimate === null) totals.unknownEstimates += 1;
       else totals.estimatedPayloadBytes += estimate;
       formatTotals.set(format, totals);
-      const sizeKey = layout.resourceDimension === "3D"
-        ? `${layout.width}x${layout.height}x${layout.depth}`
-        : `${layout.width}x${layout.height}`;
-      const powerOfTwoDimensions = isPowerOfTwo(layout.width) && isPowerOfTwo(layout.height) && isPowerOfTwo(layout.depth);
+      const sizeKey =
+        layout.resourceDimension === "3D"
+          ? `${layout.width}x${layout.height}x${layout.depth}`
+          : `${layout.width}x${layout.height}`;
+      const powerOfTwoDimensions =
+        isPowerOfTwo(layout.width) && isPowerOfTwo(layout.height) && isPowerOfTwo(layout.depth);
       dimensions.set(sizeKey, (dimensions.get(sizeKey) ?? 0) + 1);
       if (powerOfTwoDimensions) powerOfTwo += 1;
       else nonPowerOfTwo += 1;
       if (status === "ambiguous") {
-        diagnostics.push({ code: "AMBIGUOUS_TEXTURE_PROVIDER", message: "Multiple entries share the highest provider priority", severity: "warning", path: entry.name });
+        diagnostics.push({
+          code: "AMBIGUOUS_TEXTURE_PROVIDER",
+          message: "Multiple entries share the highest provider priority",
+          severity: "warning",
+          path: entry.name,
+        });
       }
       records.push({
         filePath: entry.name,
@@ -163,26 +210,46 @@ export const runPackTextures = async (request: z.output<typeof packTexturesSchem
         complete: layout.complete,
         layoutSupported: layout.layoutSupported,
       });
-      if (layout.complete === false || !layout.layoutSupported) diagnostics.push({
-        code: layout.complete === false ? "TRUNCATED_DDS_CHAIN" : "UNSUPPORTED_DDS_LAYOUT",
-        message: layout.complete === false ? "DDS payload is shorter than its declared mip/surface chain" : "DDS format has no supported payload size estimate",
-        severity: "warning",
-        path: entry.name,
-      });
+      if (layout.complete === false || !layout.layoutSupported)
+        diagnostics.push({
+          code: layout.complete === false ? "TRUNCATED_DDS_CHAIN" : "UNSUPPORTED_DDS_LAYOUT",
+          message:
+            layout.complete === false
+              ? "DDS payload is shorter than its declared mip/surface chain"
+              : "DDS format has no supported payload size estimate",
+          severity: "warning",
+          path: entry.name,
+        });
     } catch (error) {
       if (error instanceof AutomationError && ["CANCELLED", "IO_ACCESS"].includes(error.code)) throw error;
       unknownEstimates += 1;
       if (logicalLength === undefined) unknownLogicalSizes += 1;
       else logicalBytes += logicalLength;
-      diagnostics.push({ code: "INVALID_DDS", message: error instanceof Error ? error.message : String(error), severity: "warning", path: entry.name });
-      records.push({ filePath: entry.name, packPath: pack.path, providerKind: kind, role, status: "invalid", storedSize: entry.file_size, logicalSize: logicalLength ?? null, compressed: entry.is_compressed, estimatedDdsPayloadBytes: null });
+      diagnostics.push({
+        code: "INVALID_DDS",
+        message: error instanceof Error ? error.message : String(error),
+        severity: "warning",
+        path: entry.name,
+      });
+      records.push({
+        filePath: entry.name,
+        packPath: pack.path,
+        providerKind: kind,
+        role,
+        status: "invalid",
+        storedSize: entry.file_size,
+        logicalSize: logicalLength ?? null,
+        compressed: entry.is_compressed,
+        estimatedDdsPayloadBytes: null,
+      });
     }
   }
   const files = [...records].sort((left, right) => String(left.filePath).localeCompare(String(right.filePath)));
   const full = {
     packPath: target.path,
     scope: useEffective ? "effective" : "target",
-    complete: selectionComplete && (environment?.complete ?? true) && !diagnostics.some((item) => item.severity === "warning"),
+    complete:
+      selectionComplete && (environment?.complete ?? true) && !diagnostics.some((item) => item.severity === "warning"),
     total: files.length,
     totals: {
       files: files.length,

@@ -428,7 +428,9 @@ const withSchemaContext = (nodes: Node[], context: SchemaContext) => {
       const tableName = String(node.data.rootTableName || "main_units_tables").replace(/^db[\\/]/i, "");
       dataPatch.connectedTableName = tableName;
       const versions = DBNameToDBVersions?.[tableName];
-      dataPatch.columnNames = versions ? getTableVersion(tableName, versions, context.defaultTableVersions)?.fields.map(field => field.name) ?? [] : [];
+      dataPatch.columnNames = versions
+        ? (getTableVersion(tableName, versions, context.defaultTableVersions)?.fields.map((field) => field.name) ?? [])
+        : [];
     }
 
     if (node.data.type === "tableselectiondropdown" || node.data.type === "getcountercolumn") {
@@ -529,8 +531,8 @@ export const isConnectionAllowed = (state: GraphState, params: Connection): bool
     targetNode.type === "edittextfile" && (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
   const isEditXmlFileCompatible =
     targetNode.type === "editxmlfile" && (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
-  const isOnnxCompatible = targetNode.type === "onnx" &&
-    (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
+  const isOnnxCompatible =
+    targetNode.type === "onnx" && (sourceOutputType === "PackFiles" || sourceOutputType === "TableSelection");
 
   const isSaveChangesCompatible =
     targetNode.type === "savechanges" &&

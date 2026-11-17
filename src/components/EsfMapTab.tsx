@@ -1,7 +1,13 @@
 import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { Modal } from "../flowbite";
-import { addToast, clearMapRegionSelection, clearPendingMapSaveImport, selectMapRegion, setMapCampaignName } from "../appSlice";
+import {
+  addToast,
+  clearMapRegionSelection,
+  clearPendingMapSaveImport,
+  selectMapRegion,
+  setMapCampaignName,
+} from "../appSlice";
 import { formatDistance } from "date-fns";
 import { unitAssetUrl } from "../assetUrls";
 import { useLocalizations } from "../localizationContext";
@@ -198,7 +204,8 @@ const findCharacterForUi = (
 
 const associatedUnitForSubculture = (
   option: Pick<UnitViewerLordOption, "associatedUnit" | "associatedUnitBySubculture">,
-  subculture: string | undefined) => {
+  subculture: string | undefined,
+) => {
   if (subculture) {
     const override = Object.entries(option.associatedUnitBySubculture ?? {}).find(
       ([key]) => key.toLowerCase() === subculture.toLowerCase(),
@@ -1384,7 +1391,9 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           ...skipped.slice(0, 5),
         ];
         if (skipped.length > 5) {
-          messages.push(mapMessage("mapSaveExportMoreSkipped", "…and {{count}} more skipped.", { count: skipped.length - 5 }));
+          messages.push(
+            mapMessage("mapSaveExportMoreSkipped", "…and {{count}} more skipped.", { count: skipped.length - 5 }),
+          );
         }
         showOwnershipToast(skipped.length > 0 ? "warning" : "success", messages);
       },
@@ -1446,8 +1455,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
             ? "Imported ownership and {{count}} extended action(s); action data is applied by the campaign importer."
             : "Imported ownership for {{count}} region(s).",
         {
-          count:
-            detected.format === "extended-export" ? detected.document.actions.length : Object.keys(edits).length,
+          count: detected.format === "extended-export" ? detected.document.actions.length : Object.keys(edits).length,
         },
       ),
     ];
@@ -1596,7 +1604,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
           showOwnershipToast("warning", [response.error ?? "Could not load the unit roster."]);
           setUnitCatalog([]);
           setLordOptions([]);
-      setAgentSubtypeUnits({});
+          setAgentSubtypeUnits({});
           setCharacterExperience(undefined);
           return;
         }
@@ -1612,7 +1620,7 @@ const EsfMapTab = memo(({ isActive = true }: EsfMapTabProps) => {
         if (current) {
           setUnitCatalog([]);
           setLordOptions([]);
-      setAgentSubtypeUnits({});
+          setAgentSubtypeUnits({});
           setCharacterExperience(undefined);
           setUnitViewerSessionId(undefined);
           setResolvedCharacterThumbnailPaths([]);

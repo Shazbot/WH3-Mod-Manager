@@ -1294,7 +1294,8 @@ const appSlice = createSlice({
       state.isShowingSkillsRankPanel = fromConfigAppState.isShowingSkillsRankPanel ?? state.isShowingSkillsRankPanel;
       state.isShowingSkillDbKeys = fromConfigAppState.isShowingSkillDbKeys ?? state.isShowingSkillDbKeys;
       state.hideRepeatedKeyPrefixes = fromConfigAppState.hideRepeatedKeyPrefixes ?? state.hideRepeatedKeyPrefixes;
-      state.isGroupingSkillSetsByCulture = fromConfigAppState.isGroupingSkillSetsByCulture ?? state.isGroupingSkillSetsByCulture;
+      state.isGroupingSkillSetsByCulture =
+        fromConfigAppState.isGroupingSkillSetsByCulture ?? state.isGroupingSkillSetsByCulture;
       state.isShowingHiddenSkills = fromConfigAppState.isShowingHiddenSkills ?? state.isShowingHiddenSkills;
       state.isShowingHiddenModifiersInsideSkills =
         fromConfigAppState.isShowingHiddenModifiersInsideSkills ?? state.isShowingHiddenModifiersInsideSkills;

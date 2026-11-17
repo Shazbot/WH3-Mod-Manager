@@ -27,9 +27,17 @@ export const assetUsersSchema = z
     maxWorkEdges: z.number().int().min(1).max(5000000).default(500000),
     maxScanSources: z.number().int().min(1).max(5000000).default(1000000),
     maxIndexEdges: z.number().int().min(1).max(5000000).default(1000000),
-    unitKeys: z.array(z.string().min(1).max(256)).min(1).max(256).optional()
+    unitKeys: z
+      .array(z.string().min(1).max(256))
+      .min(1)
+      .max(256)
+      .optional()
       .describe("Exact main-unit or land-unit keys to scan, matched case-insensitively."),
-    rootGlob: z.string().min(1).max(512).optional()
+    rootGlob: z
+      .string()
+      .min(1)
+      .max(512)
+      .optional()
       .describe("Case-insensitive glob matched against each normalized full internal visual-root path."),
     offset: z.number().int().min(0).default(0),
     limit: z.number().int().min(1).max(1000).default(100),
@@ -42,7 +50,10 @@ type Request = z.output<typeof assetUsersSchema>;
 const pathKey = (value: string) => normalizePackFilePathKey(normalizeInternalPackPath(value));
 const normalizeRootGlob = (value: string): string => {
   if (
-    !value || value.includes("\0") || path.posix.isAbsolute(value) || path.win32.isAbsolute(value) ||
+    !value ||
+    value.includes("\0") ||
+    path.posix.isAbsolute(value) ||
+    path.win32.isAbsolute(value) ||
     /^[a-zA-Z]:/.test(value)
   ) {
     throw new AutomationError("INVALID_ARGUMENT", `Invalid visual root glob: ${JSON.stringify(value)}`);
@@ -59,8 +70,13 @@ const samePhysicalPath = (left: string, right: string) => {
   return process.platform === "win32" ? leftPath.toLowerCase() === rightPath.toLowerCase() : leftPath === rightPath;
 };
 
-export const runAssetUsers = async (request: Request, context: AutomationContext, useCatalog = true): Promise<{
-  data: Record<string, unknown>; diagnostics: AutomationDiagnostic[];
+export const runAssetUsers = async (
+  request: Request,
+  context: AutomationContext,
+  useCatalog = true,
+): Promise<{
+  data: Record<string, unknown>;
+  diagnostics: AutomationDiagnostic[];
 }> => {
   if (Boolean(request.targetPath) === Boolean(request.targetPaths))
     throw new AutomationError("INVALID_ARGUMENT", "asset users requires exactly one of targetPath or targetPaths");
@@ -107,7 +123,7 @@ export const runAssetUsers = async (request: Request, context: AutomationContext
   let rootScan = await collectUnitVisualRoots(environment, useCatalog, unitKeyFilter);
   addUsageDiagnostics(environment.diagnostics);
   const discoveredUnitRoots = rootScan.roots;
-  const groupRootsByPath = (roots: readonly typeof discoveredUnitRoots[number][]) => {
+  const groupRootsByPath = (roots: readonly (typeof discoveredUnitRoots)[number][]) => {
     const groups = new Map<string, typeof discoveredUnitRoots>();
     for (const root of roots) {
       const key = pathKey(root.path);
@@ -130,21 +146,32 @@ export const runAssetUsers = async (request: Request, context: AutomationContext
   }
   const filteredRootGroups = groupRootsByPath(filteredUnitRoots);
   const targetRootPaths = new Set(targetPaths.map(pathKey));
-  const rankedRoots = [...filteredRootGroups].map(([key, roots], index) => {
-    const provider = resolveReferenceAsset(environment, roots[0].path).winner?.provider;
-    const rank = targetRootPaths.has(key) ? 0 : provider
-      ? samePhysicalPath(provider.pack.path, targetPackPath) ? 1 : provider.kind === "mod" ? 2 : 3
-      : 4;
-    return { key, roots, index, rank };
-  }).sort((left, right) => left.rank - right.rank || left.index - right.index);
+  const rankedRoots = [...filteredRootGroups]
+    .map(([key, roots], index) => {
+      const provider = resolveReferenceAsset(environment, roots[0].path).winner?.provider;
+      const rank = targetRootPaths.has(key)
+        ? 0
+        : provider
+          ? samePhysicalPath(provider.pack.path, targetPackPath)
+            ? 1
+            : provider.kind === "mod"
+              ? 2
+              : 3
+          : 4;
+      return { key, roots, index, rank };
+    })
+    .sort((left, right) => left.rank - right.rank || left.index - right.index);
   const selectedRootGroups = rankedRoots.slice(0, request.maxRoots);
   const selectedUnitRoots = selectedRootGroups.flatMap((item) => item.roots);
   const rootLimitHit = rankedRoots.length > request.maxRoots;
-  if (rootLimitHit) addUsageDiagnostics([{
-    code: "ASSET_USER_ROOT_LIMIT",
-    message: `Unit visual root scan reached maxRoots (${request.maxRoots})`,
-    severity: "warning",
-  }]);
+  if (rootLimitHit)
+    addUsageDiagnostics([
+      {
+        code: "ASSET_USER_ROOT_LIMIT",
+        message: `Unit visual root scan reached maxRoots (${request.maxRoots})`,
+        severity: "warning",
+      },
+    ]);
   const index = await createIncomingVisualReferenceIndex(environment, selectedUnitRoots.length ? targetPaths : [], {
     maxSources: request.maxScanSources,
     maxIndexEdges: request.maxIndexEdges,
@@ -157,7 +184,10 @@ export const runAssetUsers = async (request: Request, context: AutomationContext
     maxWorkNodes: request.maxWorkNodes,
     maxWorkEdges: request.maxWorkEdges,
   });
-  let usageComplete = environment.complete && !rootLimitHit && index.complete &&
+  let usageComplete =
+    environment.complete &&
+    !rootLimitHit &&
+    index.complete &&
     [...traversal.coverageByPath.values()].every((coverage) => coverage.complete);
   let metadataComplete = true;
   let metadataRequested = false;
@@ -176,17 +206,30 @@ export const runAssetUsers = async (request: Request, context: AutomationContext
         landUnitKey: root.landUnitKey,
         localizedName: root.localizedName,
         locKey: root.locKey,
-        roster: { scopeSource: root.scopeSource, unscoped: root.unscoped, factions: root.factions,
-          customBattlePermissions: root.customBattlePermissions },
+        roster: {
+          scopeSource: root.scopeSource,
+          unscoped: root.unscoped,
+          factions: root.factions,
+          customBattlePermissions: root.customBattlePermissions,
+        },
         campaignRules: root.campaignRules,
         conditionalCharacterArtCandidates: root.characterArtCandidates,
         roots: [],
       };
       const signatures = rootSignatures.get(`${key}\0${identity}`) ?? new Set<string>();
       rootSignatures.set(`${key}\0${identity}`, signatures);
-      const evidence = { path: root.path, rootKind: root.rootKind, reason: root.reason, evidence: root.evidence, chain };
+      const evidence = {
+        path: root.path,
+        rootKind: root.rootKind,
+        reason: root.reason,
+        evidence: root.evidence,
+        chain,
+      };
       const signature = JSON.stringify(evidence);
-      if (!signatures.has(signature)) { signatures.add(signature); user.roots.push(evidence); }
+      if (!signatures.has(signature)) {
+        signatures.add(signature);
+        user.roots.push(evidence);
+      }
       users.set(identity, user);
     }
   }
@@ -204,45 +247,72 @@ export const runAssetUsers = async (request: Request, context: AutomationContext
       JSON.stringify([unit, land, pathKey(root.path), root.rootKind, root.reason]);
     const detailedRoots = new Map(detailed.roots.map((root) => [rootKey(root.unitKey, root.landUnitKey, root), root]));
     let sourceMismatch = false;
-    for (const users of usersByTarget.values()) for (const [identity, user] of users) {
-      const detail = detailed.units.find((item) => item.unitKey === user.unitKey && item.landUnitKey === user.landUnitKey);
-      if (!detail) {
-        sourceMismatch = true;
-        metadataComplete = false;
-        addMetadataDiagnostics([{ code: "UNIT_VISUAL_EVIDENCE_MISSING", message: `Source evidence could not confirm unit ${user.unitKey}`, severity: "warning" }]);
-        users.delete(identity);
-        continue;
-      }
-      user.localizedName = detail.localizedName;
-      user.locKey = detail.locKey;
-      user.roster = { scopeSource: detail.scopeSource, unscoped: detail.unscoped, factions: detail.factions,
-        customBattlePermissions: detail.customBattlePermissions };
-      user.campaignRules = detail.campaignRules;
-      user.conditionalCharacterArtCandidates = detail.characterArtCandidates;
-      const confirmed: unknown[] = [];
-      for (const raw of user.roots) {
-        const root = raw as { path: string; rootKind: string; reason: string; evidence: unknown[] };
-        const exact = detailedRoots.get(rootKey(String(user.unitKey), String(user.landUnitKey), root));
-        if (!exact) {
+    for (const users of usersByTarget.values())
+      for (const [identity, user] of users) {
+        const detail = detailed.units.find(
+          (item) => item.unitKey === user.unitKey && item.landUnitKey === user.landUnitKey,
+        );
+        if (!detail) {
           sourceMismatch = true;
           metadataComplete = false;
-          addMetadataDiagnostics([{ code: "UNIT_VISUAL_EVIDENCE_MISSING", message: `Source evidence could not confirm ${root.path} for unit ${user.unitKey}`, severity: "warning" }]);
+          addMetadataDiagnostics([
+            {
+              code: "UNIT_VISUAL_EVIDENCE_MISSING",
+              message: `Source evidence could not confirm unit ${user.unitKey}`,
+              severity: "warning",
+            },
+          ]);
+          users.delete(identity);
           continue;
         }
-        root.evidence = exact.evidence;
-        confirmed.push(root);
+        user.localizedName = detail.localizedName;
+        user.locKey = detail.locKey;
+        user.roster = {
+          scopeSource: detail.scopeSource,
+          unscoped: detail.unscoped,
+          factions: detail.factions,
+          customBattlePermissions: detail.customBattlePermissions,
+        };
+        user.campaignRules = detail.campaignRules;
+        user.conditionalCharacterArtCandidates = detail.characterArtCandidates;
+        const confirmed: unknown[] = [];
+        for (const raw of user.roots) {
+          const root = raw as { path: string; rootKind: string; reason: string; evidence: unknown[] };
+          const exact = detailedRoots.get(rootKey(String(user.unitKey), String(user.landUnitKey), root));
+          if (!exact) {
+            sourceMismatch = true;
+            metadataComplete = false;
+            addMetadataDiagnostics([
+              {
+                code: "UNIT_VISUAL_EVIDENCE_MISSING",
+                message: `Source evidence could not confirm ${root.path} for unit ${user.unitKey}`,
+                severity: "warning",
+              },
+            ]);
+            continue;
+          }
+          root.evidence = exact.evidence;
+          confirmed.push(root);
+        }
+        user.roots = confirmed;
+        if (!confirmed.length) users.delete(identity);
       }
-      user.roots = confirmed;
-      if (!confirmed.length) users.delete(identity);
-    }
     if (sourceMismatch && useCatalog && (environment.usedVisualCatalog || metadataEnvironment.usedVisualCatalog))
       return runAssetUsers(request, context, false);
   }
   addUsageDiagnostics(environment.diagnostics);
   usageComplete = usageComplete && environment.complete;
   const complete = usageComplete && metadataComplete;
-  const modPackPaths = [...new Set(environment.providers.filter((provider) => provider.kind === "mod").map((provider) => provider.pack.path))];
-  const vanillaPackPaths = [...new Set(environment.providers.filter((provider) => provider.kind === "vanilla").map((provider) => provider.pack.path))];
+  const modPackPaths = [
+    ...new Set(
+      environment.providers.filter((provider) => provider.kind === "mod").map((provider) => provider.pack.path),
+    ),
+  ];
+  const vanillaPackPaths = [
+    ...new Set(
+      environment.providers.filter((provider) => provider.kind === "vanilla").map((provider) => provider.pack.path),
+    ),
+  ];
   const targetResults = targetPaths.map((targetPath) => {
     const key = pathKey(targetPath);
     const resolution = resolveReferenceAsset(environment, targetPath, false);
@@ -252,14 +322,27 @@ export const runAssetUsers = async (request: Request, context: AutomationContext
       providerKind: candidate.provider.kind,
       role: samePhysicalPath(candidate.provider.pack.path, targetPackPath) ? "target" : "support",
       order: candidate.provider.order,
-      status: resolution.status === "ambiguous" && candidate.provider.order === candidateProvidersOrder(resolution.candidates)
-        ? "ambiguous" : candidate === resolution.winner ? "effective" : "shadowed",
+      status:
+        resolution.status === "ambiguous" && candidate.provider.order === candidateProvidersOrder(resolution.candidates)
+          ? "ambiguous"
+          : candidate === resolution.winner
+            ? "effective"
+            : "shadowed",
     }));
-    const users = [...(usersByTarget.get(key)?.values() ?? [])].sort((a, b) => String(a.unitKey).localeCompare(String(b.unitKey)));
+    const users = [...(usersByTarget.get(key)?.values() ?? [])].sort((a, b) =>
+      String(a.unitKey).localeCompare(String(b.unitKey)),
+    );
     const pathCoverage = traversal.coverageByPath.get(key);
     const unsupported = pathCoverage?.status === "unsupported";
-    const targetUsageComplete = !unsupported && environment.complete && !rootLimitHit && index.complete && Boolean(pathCoverage?.complete);
-    const status = unsupported ? "unsupported" : users.length ? "matched" : targetUsageComplete ? "noMatch" : "incomplete";
+    const targetUsageComplete =
+      !unsupported && environment.complete && !rootLimitHit && index.complete && Boolean(pathCoverage?.complete);
+    const status = unsupported
+      ? "unsupported"
+      : users.length
+        ? "matched"
+        : targetUsageComplete
+          ? "noMatch"
+          : "incomplete";
     return {
       targetPath,
       resolution: resolution.status,
@@ -267,8 +350,12 @@ export const runAssetUsers = async (request: Request, context: AutomationContext
       complete: targetUsageComplete && metadataComplete,
       usageComplete: targetUsageComplete,
       metadataComplete,
-      changedPathCoverage: { status, complete: targetUsageComplete, walks: pathCoverage?.walks ?? 0,
-        ...(pathCoverage?.limitReason ? { limitReason: pathCoverage.limitReason } : {}) },
+      changedPathCoverage: {
+        status,
+        complete: targetUsageComplete,
+        walks: pathCoverage?.walks ?? 0,
+        ...(pathCoverage?.limitReason ? { limitReason: pathCoverage.limitReason } : {}),
+      },
       total: users.length,
       offset: request.offset,
       limit: request.limit,
@@ -277,8 +364,10 @@ export const runAssetUsers = async (request: Request, context: AutomationContext
       users,
     };
   });
-  const totalMatchedRoots = [...usersByTarget.values()].reduce((sum, users) =>
-    sum + [...users.values()].reduce((userCount, user) => userCount + user.roots.length, 0), 0);
+  const totalMatchedRoots = [...usersByTarget.values()].reduce(
+    (sum, users) => sum + [...users.values()].reduce((userCount, user) => userCount + user.roots.length, 0),
+    0,
+  );
   const metadataCoverage = {
     requested: metadataRequested,
     complete: metadataComplete,
@@ -292,12 +381,23 @@ export const runAssetUsers = async (request: Request, context: AutomationContext
       packScope: { targetPack: targetPackPath, modPackPaths, vanillaPackPaths },
     },
     units: { total: rootScan.totalUnits, selected: rootScan.selectedUnits, scanned: rootScan.scannedUnits },
-    roots: { discovered: discoveredRootGroups.size, filtered: filteredRootGroups.size, unique: filteredRootGroups.size,
-      selected: selectedRootGroups.length, scanned: selectedRootGroups.length, indexedSources: index.scannedSources },
+    roots: {
+      discovered: discoveredRootGroups.size,
+      filtered: filteredRootGroups.size,
+      unique: filteredRootGroups.size,
+      selected: selectedRootGroups.length,
+      scanned: selectedRootGroups.length,
+      indexedSources: index.scannedSources,
+    },
     budgets: {
-      maxDepth: request.maxDepth, maxNodes: request.maxNodes, maxEdges: request.maxEdges, maxRoots: request.maxRoots,
-      maxWorkNodes: request.maxWorkNodes, maxWorkEdges: request.maxWorkEdges,
-      maxScanSources: request.maxScanSources, maxIndexEdges: request.maxIndexEdges,
+      maxDepth: request.maxDepth,
+      maxNodes: request.maxNodes,
+      maxEdges: request.maxEdges,
+      maxRoots: request.maxRoots,
+      maxWorkNodes: request.maxWorkNodes,
+      maxWorkEdges: request.maxWorkEdges,
+      maxScanSources: request.maxScanSources,
+      maxIndexEdges: request.maxIndexEdges,
     },
     unitVisualRoots: filteredRootGroups.size,
     uniqueRoots: filteredRootGroups.size,
@@ -310,42 +410,57 @@ export const runAssetUsers = async (request: Request, context: AutomationContext
     maxWorkEdges: request.maxWorkEdges,
   };
   const batch = targetPaths.length > 1 || Boolean(request.targetPaths);
-  const pageTargets = targetResults.map((target) => ({ ...target, users: target.users.slice(request.offset, request.offset + request.limit) }));
-  const full: Record<string, unknown> = batch ? {
-    packPath: targetPackPath,
-    targetPaths,
-    complete,
-    usageComplete,
-    metadataComplete,
-    metadataCoverage,
-    coverage,
-    usageDiagnostics,
-    diagnostics,
-    totalTargets: targetPaths.length,
-    targets: pageTargets,
-  } : {
-    packPath: targetPackPath,
-    ...pageTargets[0],
-    complete,
-    usageComplete,
-    metadataComplete,
-    metadataCoverage,
-    coverage: {
-      ...coverage,
-      budgets: { ...coverage.budgets, maxWorkNodes: request.maxWorkNodes, maxWorkEdges: request.maxWorkEdges },
-    },
-    usageDiagnostics,
-    diagnostics,
-  };
+  const pageTargets = targetResults.map((target) => ({
+    ...target,
+    users: target.users.slice(request.offset, request.offset + request.limit),
+  }));
+  const full: Record<string, unknown> = batch
+    ? {
+        packPath: targetPackPath,
+        targetPaths,
+        complete,
+        usageComplete,
+        metadataComplete,
+        metadataCoverage,
+        coverage,
+        usageDiagnostics,
+        diagnostics,
+        totalTargets: targetPaths.length,
+        targets: pageTargets,
+      }
+    : {
+        packPath: targetPackPath,
+        ...pageTargets[0],
+        complete,
+        usageComplete,
+        metadataComplete,
+        metadataCoverage,
+        coverage: {
+          ...coverage,
+          budgets: { ...coverage.budgets, maxWorkNodes: request.maxWorkNodes, maxWorkEdges: request.maxWorkEdges },
+        },
+        usageDiagnostics,
+        diagnostics,
+      };
   let reportPath: string | undefined;
   if (request.reportPath) {
     const report = await context.policy.withAtomicOutput({
       outputPath: request.reportPath,
       sourcePaths: environment.sourcePaths,
-      produce: async (temporaryPath) => fs.writeFile(temporaryPath, `${JSON.stringify(batch ? {
-        ...full,
-        targets: targetResults,
-      } : { ...full, users: targetResults[0].users }, null, 2)}\n`),
+      produce: async (temporaryPath) =>
+        fs.writeFile(
+          temporaryPath,
+          `${JSON.stringify(
+            batch
+              ? {
+                  ...full,
+                  targets: targetResults,
+                }
+              : { ...full, users: targetResults[0].users },
+            null,
+            2,
+          )}\n`,
+        ),
     });
     reportPath = report.path;
   }

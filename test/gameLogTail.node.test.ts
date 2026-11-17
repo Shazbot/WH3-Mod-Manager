@@ -10,11 +10,14 @@ const tails: GameLogTail[] = [];
 
 afterEach(async () => {
   tails.splice(0).forEach((tail) => tail.close());
-  await Promise.all(directories.splice(0).map((directory) => fs.promises.rm(directory, { recursive: true, force: true })));
+  await Promise.all(
+    directories.splice(0).map((directory) => fs.promises.rm(directory, { recursive: true, force: true })),
+  );
 });
 
 const waitFor = async (predicate: () => boolean) => {
-  for (let attempt = 0; attempt < 100 && !predicate(); attempt++) await new Promise((resolve) => setTimeout(resolve, 20));
+  for (let attempt = 0; attempt < 100 && !predicate(); attempt++)
+    await new Promise((resolve) => setTimeout(resolve, 20));
   expect(predicate()).toBe(true);
 };
 

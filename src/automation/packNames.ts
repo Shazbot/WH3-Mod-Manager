@@ -10,7 +10,10 @@ const multiPackFields = ["packPaths", "vanillaPackPaths", "sourcePackPaths"] as 
 const WORKSHOP_STAT_CONCURRENCY = 32;
 
 export const isBarePackName = (value: string): boolean =>
-  !/[\\/]/.test(value) && !path.isAbsolute(value) && !/^[a-z]:/i.test(value) && /\.pack$/i.test(value) &&
+  !/[\\/]/.test(value) &&
+  !path.isAbsolute(value) &&
+  !/^[a-z]:/i.test(value) &&
+  /\.pack$/i.test(value) &&
   value !== ".pack";
 
 interface Folders {
@@ -58,7 +61,10 @@ export const resolvePackInputs = async (
           return { dataPath, contentFolder: deriveWorkshopContentFolder(dataPath) };
         }
         const found = await discoverGameFolders(context);
-        return { dataPath: found.dataPath, contentFolder: found.contentFolder ?? deriveWorkshopContentFolder(found.dataPath) };
+        return {
+          dataPath: found.dataPath,
+          contentFolder: found.contentFolder ?? deriveWorkshopContentFolder(found.dataPath),
+        };
       } catch (error) {
         throwIfAborted(context.signal);
         return { error: error instanceof Error ? error.message : String(error) };

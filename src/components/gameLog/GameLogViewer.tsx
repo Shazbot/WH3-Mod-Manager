@@ -38,9 +38,7 @@ type ItemData = Pick<GameLogViewerProps, "lines" | "rows" | "prefixMode" | "flas
 
 // The inner element is widened to the longest line so the list itself scrolls horizontally.
 const InnerElement = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement> & { style?: CSSProperties }>(
-  ({ style, ...rest }, ref) => (
-    <div ref={ref} style={{ ...style, width: "max(100%, var(--log-width))" }} {...rest} />
-  ),
+  ({ style, ...rest }, ref) => <div ref={ref} style={{ ...style, width: "max(100%, var(--log-width))" }} {...rest} />,
 );
 InnerElement.displayName = "GameLogInnerElement";
 
@@ -116,10 +114,7 @@ const GameLogViewer = memo((props: GameLogViewerProps) => {
   const containerStyle = { "--log-width": `calc(${maxChars}ch + 4.5rem)` } as CSSProperties;
 
   return (
-    <div
-      className="relative flex-1 min-h-0 font-mono text-[13px] text-gray-200 bg-gray-900"
-      style={containerStyle}
-    >
+    <div className="relative flex-1 min-h-0 font-mono text-[13px] text-gray-200 bg-gray-900" style={containerStyle}>
       <AutoSizer onResize={({ height }) => (heightRef.current = height)}>
         {({ height, width }) => (
           <FixedSizeList

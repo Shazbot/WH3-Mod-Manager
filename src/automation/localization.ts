@@ -75,8 +75,10 @@ export const loadLocalization = async (environment: ReferenceEnvironment): Promi
   const modOverlay = new Map<string, RawLocalizationEntry>();
   // Empty packs do not affect LOC precedence. Avoid reopening every model/texture pack
   // when proving or loading the shared localization cache for a handful of matched units.
-  const vanillaProviders = environment.providers.filter((provider) => provider.kind === "vanilla" &&
-    provider.pack.entries.some((entry) => entry.name.toLowerCase().endsWith(".loc")));
+  const vanillaProviders = environment.providers.filter(
+    (provider) =>
+      provider.kind === "vanilla" && provider.pack.entries.some((entry) => entry.name.toLowerCase().endsWith(".loc")),
+  );
   let vanillaLease: RawLocalizationLookupLease | undefined;
   if (environment.context.cacheRequest && vanillaProviders.length) {
     vanillaLease = await environment.context.cacheRequest.getVanillaRawLoc(
