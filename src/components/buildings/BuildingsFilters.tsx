@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useMemo, useRef, useState } from "react";
+import React, { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import VirtualizedSelect from "../VirtualizedSelect";
 import { FaMapMarkedAlt } from "react-icons/fa";
 import { useLocalizations } from "../../localizationContext";
@@ -301,9 +301,11 @@ const BuildingsFilters = memo(
     const optionsMenuRef = useRef<HTMLDivElement | null>(null);
     const zoomSliderRef = useRef<HTMLInputElement | null>(null);
     const zoomRef = useRef(zoom);
-    zoomRef.current = zoom;
     const onZoomChangeRef = useRef(onZoomChange);
-    onZoomChangeRef.current = onZoomChange;
+    useLayoutEffect(() => {
+      zoomRef.current = zoom;
+      onZoomChangeRef.current = onZoomChange;
+    });
 
     // Native listener: React's onWheel is passive and could not stop the page scrolling underneath.
     useEffect(() => {

@@ -36,6 +36,7 @@ Each of these makes the compiler skip the **whole** component or hook, not just 
 | `throw` inside `try`                                                     | the same, or move the parsing or validation into a module-level helper that returns a result                      |
 | Optional chaining, `? :`, `&&` or `??` inside `try`                      | the same: the work runs in a callback, where these are fine                                                       |
 | `counter++` on a module-level variable                                   | a module function, e.g. `const takeNextTabId = () => nextTabId++;`                                                |
+| `x++` inside a callback on a `let` from the enclosing function           | a plain assignment: `x += 1`                                                                                      |
 | `i++` on a loop variable that a closure captures                         | copy it per iteration: `for (let row = 0; ...; row++) { const i = row; ... }`                                     |
 | `a[key]                                                                  |                                                                                                                   | = []` | `if (!a[key]) a[key] = [];` |
 | Computed keys from a template literal or `as`: ``{ [`${x}--open`]: v }`` | a plain string key, or compute the key into a `const` first. CSS variables: `{ "--x": v } as React.CSSProperties` |

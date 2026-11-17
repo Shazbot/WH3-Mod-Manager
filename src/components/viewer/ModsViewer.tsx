@@ -1928,7 +1928,7 @@ const ModsViewer = memo(() => {
     const onDragEnter = (e: DragEvent) => {
       if (!hasFiles(e)) return;
       e.preventDefault();
-      depth++;
+      depth += 1;
       setIsFileDragOver(true);
     };
     const onDragOver = (e: DragEvent) => {
