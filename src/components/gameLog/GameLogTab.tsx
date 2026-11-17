@@ -8,10 +8,13 @@ import {
   filterLines,
   isCompileError,
   errorStartLines,
+  ALL_TAGS,
+  type TagFilter,
   type PrefixMode,
 } from "../../gameLog/parse";
 import type { GameLogInfo } from "../../utility/logPaths";
 import GameLogList from "./GameLogList";
+import GameLogTagBar from "./GameLogTagBar";
 import GameLogViewer from "./GameLogViewer";
 import GameLogSearchPanel from "./GameLogSearchPanel";
 
@@ -85,7 +88,7 @@ const GameLogTab = memo(({ isActive = true }: GameLogTabProps) => {
   const [exclude, setExclude] = useState<PatternState>(emptyPattern);
   const [context, setContext] = useState(0);
   const [prefixMode, setPrefixMode] = useState<PrefixMode>("full");
-  const [hiddenTags, setHiddenTags] = useState<ReadonlySet<string>>(new Set());
+  const [tagFilter, setTagFilter] = useState<TagFilter>(ALL_TAGS);
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [scrollRequest, setScrollRequest] = useState<{ position: number; nonce: number }>();
@@ -169,8 +172,8 @@ const GameLogTab = memo(({ isActive = true }: GameLogTabProps) => {
   }, [exclude]);
 
   const rows = useMemo(
-    () => filterLines(lines, { include: activeInclude, exclude: activeExclude, hiddenTags, context }),
-    [lines, activeInclude, activeExclude, hiddenTags, context],
+    () => filterLines(lines, { include: activeInclude, exclude: activeExclude, tagFilter, context }),
+    [lines, activeInclude, activeExclude, tagFilter, context],
   );
   const tagCounts = useMemo(() => countTags(lines), [lines]);
   const sortedTags = useMemo(
@@ -246,14 +249,6 @@ const GameLogTab = memo(({ isActive = true }: GameLogTabProps) => {
     selectLog(path);
     setPendingFirstError(path);
   };
-
-  const toggleTag = (tag: string) =>
-    setHiddenTags((previous) => {
-      const next = new Set(previous);
-      if (next.has(tag)) next.delete(tag);
-      else next.add(tag);
-      return next;
-    });
 
   const openFolder = () => {
     const path = logs[0]?.path;
@@ -339,26 +334,7 @@ const GameLogTab = memo(({ isActive = true }: GameLogTabProps) => {
             </button>
           </div>
           {sortedTags.length > 0 && (
-            <div className="flex flex-wrap gap-1 px-2 py-1 bg-gray-800 border-b border-gray-600">
-              {sortedTags.map(([tag, count]) => {
-                const isHidden = hiddenTags.has(tag);
-                return (
-                  <button
-                    type="button"
-                    key={tag}
-                    aria-pressed={!isHidden}
-                    onClick={() => toggleTag(tag)}
-                    className={`px-2 py-0.5 text-xs rounded-full border ${
-                      isHidden
-                        ? "bg-gray-800 border-gray-600 text-gray-500 line-through"
-                        : "bg-blue-600 border-blue-500 text-white"
-                    }`}
-                  >
-                    {tag} {count}
-                  </button>
-                );
-              })}
-            </div>
+            <GameLogTagBar tags={sortedTags} filter={tagFilter} onFilterChange={setTagFilter} />
           )}
           <GameLogViewer
             logPath={loaded?.path}

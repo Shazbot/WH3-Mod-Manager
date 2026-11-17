@@ -88,10 +88,40 @@ export const isCompileError = (value: ReturnType<typeof compileQuery>): value is
 
 export type VisibleRow = { kind: "line"; index: number } | { kind: "separator" };
 
+/**
+ * Which tags are shown. "hide" lists hidden tags, so a tag that appears later shows up; "only" lists the
+ * shown tags, so after "show only" a new tag stays hidden.
+ */
+export type TagFilter = { mode: "hide" | "only"; tags: ReadonlySet<string> };
+
+export const ALL_TAGS: TagFilter = { mode: "hide", tags: new Set() };
+
+export const isTagShown = (filter: TagFilter, tag: string) =>
+  filter.mode === "only" ? filter.tags.has(tag) : !filter.tags.has(tag);
+
+export const isTagFilterActive = (filter: TagFilter) => filter.mode === "only" || filter.tags.size > 0;
+
+/** Shows or hides one tag, leaving the others as they are. */
+export const setTagShown = (filter: TagFilter, tag: string, isShown: boolean): TagFilter => {
+  if (isTagShown(filter, tag) === isShown) return filter;
+  const tags = new Set(filter.tags);
+  if (tags.has(tag)) tags.delete(tag);
+  else tags.add(tag);
+  return { mode: filter.mode, tags };
+};
+
+export const toggleTag = (filter: TagFilter, tag: string) => setTagShown(filter, tag, !isTagShown(filter, tag));
+
+/** Shows only this tag; doing it again on the only shown tag shows every tag. */
+export const soloTag = (filter: TagFilter, tag: string): TagFilter =>
+  filter.mode === "only" && filter.tags.size === 1 && filter.tags.has(tag)
+    ? ALL_TAGS
+    : { mode: "only", tags: new Set([tag]) };
+
 export type FilterOptions = {
   include?: RegExp;
   exclude?: RegExp;
-  hiddenTags?: ReadonlySet<string>;
+  tagFilter?: TagFilter;
   context?: number;
 };
 
@@ -111,11 +141,12 @@ export const countTags = (lines: readonly string[]): Map<string, number> => {
  * merge, a separator marks each gap). Context never resurrects a hidden or excluded line.
  */
 export const filterLines = (lines: readonly string[], options: FilterOptions): VisibleRow[] => {
-  const { include, exclude, hiddenTags, context = 0 } = options;
+  const { include, exclude, tagFilter, context = 0 } = options;
+  const filtersTags = !!tagFilter && isTagFilterActive(tagFilter);
   const visible: number[] = [];
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index];
-    if (hiddenTags && hiddenTags.size > 0 && hiddenTags.has(tagOf(line))) continue;
+    if (filtersTags && !isTagShown(tagFilter, tagOf(line))) continue;
     if (exclude && exclude.test(line)) continue;
     visible.push(index);
   }

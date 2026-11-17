@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ALL_TAGS,
   OTHER_TAG,
   compileQuery,
   countErrors,
@@ -10,8 +11,11 @@ import {
   initialErrorCountState,
   isCompileError,
   isErrorLine,
+  isTagShown,
   parseLine,
+  soloTag,
   stripPrefix,
+  toggleTag,
 } from "../src/gameLog/parse";
 import { parseGameLogEnvironment, parseScriptLogTimestamp } from "../src/utility/logPaths";
 
@@ -68,9 +72,11 @@ describe("game log parsing", () => {
       8,
       9,
     ]);
-    expect(filterLines(["[ui] <1s>    a", "[out] <1s>    b", "c"], { hiddenTags: new Set(["ui", OTHER_TAG]) })).toEqual(
-      [{ kind: "line", index: 1 }],
-    );
+    expect(
+      filterLines(["[ui] <1s>    a", "[out] <1s>    b", "c"], {
+        tagFilter: { mode: "hide", tags: new Set(["ui", OTHER_TAG]) },
+      }),
+    ).toEqual([{ kind: "line", index: 1 }]);
   });
 
   it("parses the timestamp in script log file names", () => {
@@ -125,5 +131,29 @@ describe("countErrors", () => {
 describe("errorStartLines", () => {
   it("marks only the SCRIPT ERROR line of each error", () => {
     expect(errorStartLines(["ok", ...scriptError("a"), ...scriptError("b")])).toEqual([2, 10]);
+  });
+});
+
+describe("tag filter", () => {
+  const shown = (filter: ReturnType<typeof soloTag>) => ["ui", "out", "new"].filter((tag) => isTagShown(filter, tag));
+
+  it("hides toggled tags and shows tags it has not seen", () => {
+    expect(shown(toggleTag(ALL_TAGS, "ui"))).toEqual(["out", "new"]);
+  });
+
+  it("shows only the soloed tag, then adds toggled ones, and keeps new tags hidden", () => {
+    const solo = soloTag(ALL_TAGS, "ui");
+    expect(shown(solo)).toEqual(["ui"]);
+    expect(shown(toggleTag(solo, "out"))).toEqual(["ui", "out"]);
+  });
+
+  it("shows every tag when the only shown tag is soloed again", () => {
+    expect(soloTag(soloTag(ALL_TAGS, "ui"), "ui")).toBe(ALL_TAGS);
+    expect(shown(soloTag(toggleTag(soloTag(ALL_TAGS, "ui"), "out"), "ui"))).toEqual(["ui"]);
+  });
+
+  it("filters lines by the only-shown tags", () => {
+    const lines = ["[ui] <1s>    a", "[out] <1s>    b", "c"];
+    expect(filterLines(lines, { tagFilter: soloTag(ALL_TAGS, "out") })).toEqual([{ kind: "line", index: 1 }]);
   });
 });
