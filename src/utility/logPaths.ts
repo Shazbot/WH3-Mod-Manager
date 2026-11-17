@@ -32,6 +32,34 @@ export type GameLogInfo = {
   /** Local time parsed from a script_log_DDMMYY_HHMM filename, as epoch ms. */
   parsedDate?: number;
   isScriptLog: boolean;
+  /** Script environment the log was written in, from its lib_header line; undefined until the game writes it. */
+  environment?: GameLogEnvironment;
+};
+
+export type GameLogEnvironment = "frontend" | "campaign" | "battle";
+
+const ENVIRONMENT_HEAD_BYTES = 8 * 1024;
+const ENVIRONMENT_PATTERN = /script libraries reloaded in (frontend|campaign|battle) configuration/;
+
+/** Pure: the environment named in the start of a script log, if any. */
+export const parseGameLogEnvironment = (head: string): GameLogEnvironment | undefined =>
+  ENVIRONMENT_PATTERN.exec(head)?.[1] as GameLogEnvironment | undefined;
+
+// path -> environment. Only settled results are kept: a found marker, or a head already full without one.
+const environmentCache = new Map<string, GameLogEnvironment | undefined>();
+
+const readGameLogEnvironment = async (filePath: string, size: number) => {
+  if (environmentCache.has(filePath)) return environmentCache.get(filePath);
+  const handle = await fs.promises.open(filePath, "r");
+  try {
+    const buffer = Buffer.alloc(Math.min(size, ENVIRONMENT_HEAD_BYTES));
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    const environment = parseGameLogEnvironment(buffer.toString("latin1", 0, bytesRead));
+    if (environment || bytesRead >= ENVIRONMENT_HEAD_BYTES) environmentCache.set(filePath, environment);
+    return environment;
+  } finally {
+    await handle.close();
+  }
 };
 
 /** script_log_DDMMYY_HHMM.txt -> local epoch ms, or undefined when the name does not match or is not a real date. */
@@ -58,13 +86,15 @@ export const listGameLogs = async (gamePath: string): Promise<GameLogInfo[]> => 
         const filePath = nodePath.join(gamePath, entry.name);
         try {
           const stats = await fs.promises.stat(filePath);
+          const isScriptLog = entry.name !== LUA_MOD_LOG_NAME;
           return {
             name: entry.name,
             path: filePath,
             size: stats.size,
             mtimeMs: stats.mtimeMs,
             parsedDate: parseScriptLogTimestamp(entry.name),
-            isScriptLog: entry.name !== LUA_MOD_LOG_NAME,
+            isScriptLog,
+            environment: isScriptLog ? await readGameLogEnvironment(filePath, stats.size).catch(() => undefined) : undefined,
           };
         } catch {
           return undefined;

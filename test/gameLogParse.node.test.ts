@@ -10,7 +10,7 @@ import {
   parseLine,
   stripPrefix,
 } from "../src/gameLog/parse";
-import { parseScriptLogTimestamp } from "../src/utility/logPaths";
+import { parseGameLogEnvironment, parseScriptLogTimestamp } from "../src/utility/logPaths";
 
 const prefixed = "[out] <150.8s>     \t\tdoing a thing";
 
@@ -68,5 +68,14 @@ describe("game log parsing", () => {
     expect(parsed).toBe(new Date(2026, 10, 17, 22, 8).getTime());
     expect(parseScriptLogTimestamp("lua_mod_log.txt")).toBeUndefined();
     expect(parseScriptLogTimestamp("script_log_991399_2599.txt")).toBeUndefined();
+  });
+
+  it("reads the script environment from a log's lib_header line", () => {
+    const line = (environment: string) =>
+      `[out] <0.6s>     lib_header.lua :: script libraries reloaded in ${environment} configuration\n`;
+    expect(parseGameLogEnvironment(line("frontend"))).toBe("frontend");
+    expect(parseGameLogEnvironment("\n\n" + line("campaign"))).toBe("campaign");
+    expect(parseGameLogEnvironment(line("battle"))).toBe("battle");
+    expect(parseGameLogEnvironment("creating logfile script_log_171126_2217.txt")).toBeUndefined();
   });
 });

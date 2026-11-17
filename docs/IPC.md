@@ -179,7 +179,7 @@ See `docs/FLOWS.md`.
 
 ### Game log
 
-Modder-only Game Log tab (`src/components/gameLog/`). Tail logic is in `src/gameLogTail.ts` (polls file size every 500 ms; the game holds the log open on Windows), pure parsing in `src/gameLog/parse.ts`, file listing in `src/utility/logPaths.ts`. Main only accepts `script_log_*.txt` / `lua_mod_log.txt` directly inside the current game folder.
+Modder-only Game Log tab (`src/components/gameLog/`). Tail logic is in `src/gameLogTail.ts` (polls file size every 500 ms; the game holds the log open on Windows), pure parsing in `src/gameLog/parse.ts`, file listing (including each script log's frontend/campaign/battle environment, read from its head) in `src/utility/logPaths.ts`. Main only accepts `script_log_*.txt` / `lua_mod_log.txt` directly inside the current game folder.
 
 - **I** `gameLogList`∥ (also starts the list watcher), `gameLogOpen`∥ (returns the whole file, then tails it; replaces any previous tail), `gameLogClose`∥ (stops tail and list watcher), `gameLogSearch`∥ (all logs; max 200 matches per file, 2000 total)
 - **E** `gameLogAppend` `{path, lines, isReset}` (`isReset` after truncation: replace, don't append), `gameLogListChanged` (debounced; a log was added, removed or grew)

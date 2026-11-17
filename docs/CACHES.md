@@ -125,6 +125,7 @@ These live for one session and are not listed above:
 - ONNX binding inspection indexes schema names and forward/reverse references once per immutable schema snapshot (`src/nodeGraph/onnxFlow.ts`). A WeakMap keys the index by schema-object identity, and path results by root, target, depth and shortest-path search mode. A new selected schema gets a fresh index; old snapshots and their indexes can be garbage-collected. Nothing is persisted;
 - the in-memory startpos region template cache and pending-build coalescing in `esfMap/loader.ts`;
 - the renderer's table-prep cache (`PackTablesTableView.tsx`).
+- the Game Log tab's script-log environment (frontend/campaign/battle) per log path, read from the first 8 KB (`src/utility/logPaths.ts`). Only settled results are kept: a found marker, or a full 8 KB head without one.
 
 Incoming-reference scans use one temporary, policy-authorized pack handle at a time. This is not a retained cache reader. Reads verify descriptor identity against the request snapshot, and finishing a pack scan reauthorizes its path and checks that the same source is still present. Completed packs are snapshot-checked and their raw metadata is flushed and released before the next pack; only the budgeted retained cache keeps eligible copies. Final request snapshot checks remain in place; cancellation and errors close the handle. This avoids repeating path resolution and file opens for every visual file without trusting a stale source path.
 

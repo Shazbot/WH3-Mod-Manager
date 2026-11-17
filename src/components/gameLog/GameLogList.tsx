@@ -1,5 +1,5 @@
 import { memo } from "react";
-import type { GameLogInfo } from "../../utility/logPaths";
+import type { GameLogEnvironment, GameLogInfo } from "../../utility/logPaths";
 
 export type GameLogListProps = {
   logs: GameLogInfo[];
@@ -17,6 +17,12 @@ export const SMALL_LOG_BYTES = 5 * 1024;
 
 const formatSize = (bytes: number) =>
   bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
+const environmentLabels: Record<GameLogEnvironment, string> = {
+  frontend: "Frontend",
+  campaign: "Campaign",
+  battle: "Battle",
+};
 
 const formatWhen = (log: GameLogInfo) => new Date(log.parsedDate ?? log.mtimeMs).toLocaleString();
 
@@ -72,7 +78,10 @@ const GameLogList = memo((props: GameLogListProps) => {
                   <span className="text-xs px-1 rounded border border-green-500 text-green-400">LIVE</span>
                 )}
               </div>
-              <div className="text-xs text-gray-400">{formatSize(log.size)}</div>
+              <div className="text-xs text-gray-400">
+                {log.environment && <span className="text-gray-300">{environmentLabels[log.environment]} · </span>}
+                {formatSize(log.size)}
+              </div>
             </button>
           );
         })}
