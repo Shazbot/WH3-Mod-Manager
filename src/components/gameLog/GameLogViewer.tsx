@@ -113,11 +113,12 @@ const GameLogViewer = memo((props: GameLogViewerProps) => {
   );
 
   const itemData: ItemData = { lines, rows, prefixMode, flashIndex };
+  const containerStyle = { "--log-width": `calc(${maxChars}ch + 4.5rem)` } as CSSProperties;
 
   return (
     <div
       className="relative flex-1 min-h-0 font-mono text-[13px] text-gray-200 bg-gray-900"
-      style={{ ["--log-width" as string]: `calc(${maxChars}ch + 4.5rem)` }}
+      style={containerStyle}
     >
       <AutoSizer onResize={({ height }) => (heightRef.current = height)}>
         {({ height, width }) => (
