@@ -1549,6 +1549,7 @@
   "mapCancel": "Cancel",
   "mapDeleteCharacter": "Delete character",
   "nodeEditorTab": "Node Editor",
+  "gameLogTab": "Game Log",
   "modFolders": "Mod Folders",
   "modFoldersHelp": "Add folders containing pack files and order them from highest to lowest priority.",
   "dataFolder": "Data",

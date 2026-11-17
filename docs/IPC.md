@@ -27,7 +27,7 @@ Counts in this document come from the source as of 2026-10-26:
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Renderer API         | `src/preload.ts`: the `api` object, assigned with `window.api = api` (the `contextBridge` call is commented out). Typed as `window.api?: api` in `src/index.d.ts`.                           |
 | Event → Redux wiring | `src/rendererMain.ts` (55 subscriptions), plus `rendererViewer.ts`, `rendererSkills.ts`, `rendererTechTrees.ts`. Components subscribe to their own feature events, e.g. `DBDuplication.tsx`. |
-| Main handlers        | `src/ipcMainListeners.ts` (159 handlers, all inside `registerIpcMainListeners()`), `src/wh3AssetHostIpc.ts` (10), `src/workshopModOptimizer/visualCheckIpc.ts` (6), `src/index.ts` (4)       |
+| Main handlers        | `src/ipcMainListeners.ts` (159 handlers, all inside `registerIpcMainListeners()`), `src/wh3AssetHostIpc.ts` (10), `src/gameLogIpc.ts` (4), `src/workshopModOptimizer/visualCheckIpc.ts` (6), `src/index.ts` (4)       |
 
 ## The three message kinds
 
@@ -74,7 +74,7 @@ Secondary windows send `viewerIsReady`, `skillsAreReady` or `techTreesAreReady` 
 Legend:
 
 - **I** = `invoke`/`handle`, **S** = `send`/`on` (renderer → main), **E** = event (main → window)
-- Unmarked handlers are in `src/ipcMainListeners.ts`; others are marked †`index.ts`, ‡`wh3AssetHostIpc.ts`, §`visualCheckIpc.ts`, ¶`appControl/server.ts`
+- Unmarked handlers are in `src/ipcMainListeners.ts`; others are marked †`index.ts`, ‡`wh3AssetHostIpc.ts`, §`visualCheckIpc.ts`, ¶`appControl/server.ts`, ∥`gameLogIpc.ts`
 
 ### App shell, settings, folders, updates
 
@@ -176,3 +176,10 @@ See `docs/FLOWS.md`.
 - **I** `getVisualsUnitsData`, `getUnitViewerCatalog`, `getUnitViewerDetails`, `getUnitViewerAnimationBinClips`, `getUnitViewerSkeletonAnim`, `getUnitViewerVariantMeshCatalog`, `getVisualsVariantMeshCatalog`, `prewarmUnitViewerAssets`, `readVariantMeshDefinition`, `searchVisualsFiles`, `openInAssetEditor`, `extractVisualsFilesToDirectory`, `startWh3AssetHost`‡, `stopWh3AssetHost`‡, `respondWh3AssetHostDecision`‡
 - The eight direct calls listed under "Calls that skip the preload" (all ‡)
 - **E** `wh3AssetHostDecisionRequest`, `wh3AssetHostReset`
+
+### Game log
+
+Modder-only Game Log tab (`src/components/gameLog/`). Tail logic is in `src/gameLogTail.ts` (polls file size every 500 ms; the game holds the log open on Windows), pure parsing in `src/gameLog/parse.ts`, file listing in `src/utility/logPaths.ts`. Main only accepts `script_log_*.txt` / `lua_mod_log.txt` directly inside the current game folder.
+
+- **I** `gameLogList`∥ (also starts the list watcher), `gameLogOpen`∥ (returns the whole file, then tails it; replaces any previous tail), `gameLogClose`∥ (stops tail and list watcher), `gameLogSearch`∥ (all logs; max 200 matches per file, 2000 total)
+- **E** `gameLogAppend` `{path, lines, isReset}` (`isReset` after truncation: replace, don't append), `gameLogListChanged` (debounced; a log was added, removed or grew)

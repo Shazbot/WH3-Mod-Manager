@@ -3,6 +3,7 @@ import { DBFieldName, DBFileName, DBVersion, Pack, PackCollisions, PackedFile } 
 import { GameFolderPaths } from "./appData";
 import { SupportedGames } from "./supportedGames";
 import debounce from "just-debounce-it";
+import type { GameLogListResult, GameLogOpenResult, GameLogSearchResult } from "./gameLogIpc";
 import "electron-log/preload";
 import type {
   UnitViewerAssetsPrewarmResponse,
@@ -295,6 +296,22 @@ const api = {
   onVisualAssetCheckState: (callback: (event: Electron.IpcRendererEvent, state: VisualAssetCheckState) => void) => {
     ipcRenderer.on("visualAssetCheckState", callback);
     return () => ipcRenderer.removeListener("visualAssetCheckState", callback);
+  },
+  gameLogList: (): Promise<GameLogListResult> => ipcRenderer.invoke("gameLogList"),
+  gameLogOpen: (path: string): Promise<GameLogOpenResult> => ipcRenderer.invoke("gameLogOpen", path),
+  gameLogClose: (): Promise<{ success: boolean }> => ipcRenderer.invoke("gameLogClose"),
+  gameLogSearch: (request: { query: string; isRegex: boolean; caseSensitive: boolean }): Promise<GameLogSearchResult> =>
+    ipcRenderer.invoke("gameLogSearch", request),
+  onGameLogAppend: (callback: (payload: { path: string; lines: string[]; isReset: boolean }) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: { path: string; lines: string[]; isReset: boolean }) =>
+      callback(payload);
+    ipcRenderer.on("gameLogAppend", listener);
+    return () => ipcRenderer.removeListener("gameLogAppend", listener);
+  },
+  onGameLogListChanged: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on("gameLogListChanged", listener);
+    return () => ipcRenderer.removeListener("gameLogListChanged", listener);
   },
   openVisualAssetCheckReport: (): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("openVisualAssetCheckReport"),

@@ -7,6 +7,7 @@ import { FaMapMarkedAlt, FaProjectDiagram } from "react-icons/fa";
 import { BsCollection, BsDiagram3, BsPersonVcard } from "react-icons/bs";
 import { GiCastle, GiClassicalKnowledge, GiCrossedSwords, GiSwapBag } from "react-icons/gi";
 import { TbArrowsSort } from "react-icons/tb";
+import { VscOutput } from "react-icons/vsc";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { setCurrentTab } from "../appSlice";
 import localizationContext from "../localizationContext";
@@ -25,6 +26,7 @@ const LeftSidebar = memo(() => {
   const isHidden = useCallback((tab: MainWindowTab) => hiddenMainWindowTabs.includes(tab), [hiddenMainWindowTabs]);
   const showVisualsTab = isFeaturesForModdersEnabled && isDev && !isHidden("visuals");
   const showNodeEditorTab = isFeaturesForModdersEnabled && !isHidden("nodeEditor");
+  const showGameLogTab = isFeaturesForModdersEnabled && !isHidden("gameLog");
   const isEnabledModsTabVisible = !isHidden("enabledMods");
   const isCategoriesTabVisible = !isHidden("categories");
   const isPresetsTabVisible = !isHidden("presets");
@@ -50,6 +52,7 @@ const LeftSidebar = memo(() => {
     if (isMapTabVisible) tabs.push("map");
     if (showVisualsTab) tabs.push("visuals");
     if (showNodeEditorTab) tabs.push("nodeEditor");
+    if (showGameLogTab) tabs.push("gameLog");
     return tabs;
   }, [
     isAncillariesTabVisible,
@@ -62,6 +65,7 @@ const LeftSidebar = memo(() => {
     isSkillsTabVisible,
     isTechTreesTabVisible,
     isUnitViewerVisible,
+    showGameLogTab,
     showNodeEditorTab,
     showVisualsTab,
   ]);
@@ -298,6 +302,17 @@ const LeftSidebar = memo(() => {
                 <span className="ml-2 mr-2 hidden-child">{localized.nodeEditorTab || "Node Editor"}</span>
                 <span className="text-xs absolute hidden-child right-0 -bottom-2 opacity-60">
                   Ctrl+{tabIndexToTabType.indexOf("nodeEditor") + 1}
+                </span>
+              </div>
+            </Tab>
+          )}
+          {showGameLogTab && (
+            <Tab>
+              <div className="flex items-center h-full parent-unhide-child relative">
+                <VscOutput size="1.5rem" />
+                <span className="ml-2 mr-2 hidden-child">{localized.gameLogTab || "Game Log"}</span>
+                <span className="text-xs absolute hidden-child right-0 -bottom-2 opacity-60">
+                  Ctrl+{tabIndexToTabType.indexOf("gameLog") + 1}
                 </span>
               </div>
             </Tab>

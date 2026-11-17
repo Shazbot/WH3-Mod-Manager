@@ -14,6 +14,7 @@ import { gameToPackWithDBTablesName } from "../supportedGames";
 import UnitViewerTab from "./UnitViewerTab";
 import BuildingsTab from "./buildings/BuildingsTab";
 import AncillariesTab from "./ancillaries/AncillariesTab";
+import GameLogTab from "./gameLog/GameLogTab";
 import EsfMapTab from "./EsfMapTab";
 import LoadOrderRulesTab from "./loadOrderRules/LoadOrderRulesTab";
 
@@ -37,6 +38,7 @@ const Main = (props: MainProps) => {
   const isBuildingsTab = currentTab == "buildings" && currentGame === "wh3";
   const isAncillariesTab = currentTab == "ancillaries" && currentGame === "wh3";
   const isMapTab = currentTab == "map" && currentGame === "wh3";
+  const isGameLogTab = currentTab == "gameLog" && isFeaturesForModdersEnabled;
   const isLoadOrderRulesTab = currentTab == "loadOrderRules";
   // Stateful tabs stay mounted once opened so switching tabs preserves their in-memory work.
   const isNodeEditorMounted = useKeepMountedOnceActive(isNodeEditorTab);
@@ -47,6 +49,7 @@ const Main = (props: MainProps) => {
   const isBuildingsMounted = useKeepMountedOnceActive(isBuildingsTab);
   const isAncillariesMounted = useKeepMountedOnceActive(isAncillariesTab);
   const isMapMounted = useKeepMountedOnceActive(isMapTab);
+  const isGameLogMounted = useKeepMountedOnceActive(isGameLogTab);
   const isAssetHostTabActive = isUnitViewerTab || isVisualsTab;
   const isKeptMountedTab =
     isNodeEditorTab ||
@@ -56,7 +59,8 @@ const Main = (props: MainProps) => {
     isTechTreesTab ||
     isBuildingsTab ||
     isAncillariesTab ||
-    isMapTab;
+    isMapTab ||
+    isGameLogTab;
 
   useLayoutEffect(() => {
     if (!isAssetHostTabActive) return;
@@ -145,6 +149,12 @@ const Main = (props: MainProps) => {
       {isMapMounted && (
         <div className={isMapTab ? undefined : "hidden"}>
           <EsfMapTab isActive={isMapTab} />
+        </div>
+      )}
+
+      {isGameLogMounted && (
+        <div className={isGameLogTab ? undefined : "hidden"}>
+          <GameLogTab isActive={isGameLogTab} />
         </div>
       )}
 

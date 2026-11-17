@@ -24,6 +24,7 @@ export const hideableMainWindowTabs: {
   { tab: "map", labelKey: "mapTab", fallbackLabel: "Map" },
   { tab: "visuals", labelKey: "visualsTab", fallbackLabel: "Visuals", isForModders: true, isDevOnly: true },
   { tab: "nodeEditor", labelKey: "nodeEditorTab", fallbackLabel: "Node Editor", isForModders: true },
+  { tab: "gameLog", labelKey: "gameLogTab", fallbackLabel: "Game Log", isForModders: true },
 ];
 
 const hideableTabs = new Set<MainWindowTab>(hideableMainWindowTabs.map((entry) => entry.tab));

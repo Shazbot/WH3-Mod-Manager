@@ -25,6 +25,7 @@ vi.mock("../src/components/buildings/BuildingsTab", () => ({
 vi.mock("../src/components/ancillaries/AncillariesTab", () => ({
   default: () => <input aria-label="Ancillaries state" defaultValue="" />,
 }));
+vi.mock("../src/components/gameLog/GameLogTab", () => ({ default: () => <div /> }));
 vi.mock("../src/components/PresetsTab", () => ({ default: () => <div /> }));
 vi.mock("../src/components/loadOrderRules/LoadOrderRulesTab", () => ({ default: () => <div /> }));
 vi.mock("../src/components/Categories", () => ({ default: () => <div>Categories tab</div> }));

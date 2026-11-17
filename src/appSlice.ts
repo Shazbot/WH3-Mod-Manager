@@ -86,6 +86,7 @@ const isMainWindowTabAvailable = (state: AppState, tab: MainWindowTab) => {
     case "map":
       return state.currentGame === "wh3";
     case "nodeEditor":
+    case "gameLog":
       return state.isFeaturesForModdersEnabled;
     case "loadOrderRules":
       return true;

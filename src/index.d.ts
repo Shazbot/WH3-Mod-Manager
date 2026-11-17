@@ -1399,6 +1399,7 @@ declare global {
     | "ancillaries"
     | "map"
     | "nodeEditor"
+    | "gameLog"
     | "loadOrderRules"
     | "presets";
 

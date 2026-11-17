@@ -443,6 +443,7 @@ import { makeWorkshopStagingProgressEvent } from "./utility/workshopStagingProgr
 import { WORKSHOP_OPTIMIZER_PROFILE_ID } from "./workshopModOptimizer/hostRunner";
 import { normalizeWorkshopOptimizerOptions } from "./workshopModOptimizer/options";
 import { registerVisualAssetCheckIpc } from "./workshopModOptimizer/visualCheckIpc";
+import { registerGameLogIpc } from "./gameLogIpc";
 import { buildOptimizerLaunchLog } from "./workshopModOptimizer/logFormat";
 import type { WorkshopModOptimizer } from "./workshopModOptimizer/optimizer";
 import { packHasOptimizableVisuals } from "./workshopModOptimizer/packInspection";
@@ -15214,6 +15215,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   });
   // "Check visual assets" (per mod): runs the host's check action; see workshopModOptimizer/visualCheckIpc.ts.
   registerVisualAssetCheckIpc(mainWindow);
+  registerGameLogIpc(mainWindow);
   ipcMain.handle("getWorkshopOptimizerBackgroundStatus", () => getOptimizerBackground()?.getStatus());
   ipcMain.on("cancelWorkshopModStaging", (event, requestedRunId?: string) => {
     const run = activeWorkshopStagingRun;
