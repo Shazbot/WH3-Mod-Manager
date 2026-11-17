@@ -17,7 +17,7 @@ import classNames from "classnames";
 import type { TooltipProps } from "flowbite-react";
 import { tooltipTheme } from "flowbite-react";
 import { useResolveTheme } from "flowbite-react/helpers/resolve-theme";
-import React, { useState } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 
 const getArrowPlacement = (placement: string) => {
