@@ -231,7 +231,7 @@ const GameLogTab = memo(({ isActive = true }: GameLogTabProps) => {
     "px-2 py-1 text-xs rounded-lg bg-gray-700 border border-gray-600 hover:bg-gray-600 text-white disabled:opacity-50 disabled:cursor-not-allowed";
 
   return (
-    <div className="flex flex-col text-white" style={{ height: "calc(100vh - 28px)", paddingLeft: 56, paddingTop: 32 }}>
+    <div className="flex h-[calc(100vh-6rem)] flex-col text-white">
       {!isScriptLoggingEnabled && (
         <div className="flex items-center gap-3 px-3 py-1 text-sm bg-yellow-900/60 border-b border-yellow-700">
           <span>Script logging is off — new logs won&apos;t be written.</span>
