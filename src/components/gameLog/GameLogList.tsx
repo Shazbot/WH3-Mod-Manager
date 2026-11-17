@@ -70,7 +70,7 @@ const GameLogList = memo((props: GameLogListProps) => {
           Open in Explorer
         </button>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {visibleLogs.length === 0 && <div className="p-2 text-gray-400">No game logs found.</div>}
         {visibleLogs.map((log) => {
           const isSelected = log.path === props.selectedPath;

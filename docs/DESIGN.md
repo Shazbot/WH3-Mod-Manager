@@ -41,7 +41,7 @@ The application has a fixed-height title strip followed by a persistent left nav
 - Viewer content uses `32px` horizontal padding, `44px` top padding, and `16px` bottom padding. Its table/viewer root uses `calc(100vh - 3.5rem)` and compensates the outer top spacing with a negative top margin.
 - The regular workspace is a centered twelve-column grid with a maximum width of `100rem` (`1600px`). The mod area occupies ten columns and the right utility sidebar occupies two columns with a small gap.
 - The main feature panels remain mounted after first activation and are hidden when inactive. This keeps tab switching responsive and preserves panel state.
-- Scrollbars are dark and compact. The main mod list uses a gray track and blue thumb; other components may own their own scrollbars when they contain a large list or table.
+- Scrollbars are dark and compact. A global default in `src/index.css` gives every scroll container a gray track and blue thumb, matching the main mod list; components may override it with `scrollbar-*` utilities (for example the darker Buildings board).
 
 ### Layout rules
 

@@ -1240,6 +1240,14 @@ body:not(.disable-row-hover) .row-hover-highlight:hover > div:not(.drop-ghost) {
   bottom: -8px !important;
 }
 
+/* App-wide default scrollbar: blue thumb on a gray track, matching the mod list. `scrollbar-color` is
+ * inherited and Chromium prefers it over ::-webkit-scrollbar, so any `scrollbar-*` utility still overrides it. */
+@layer base {
+  html {
+    scrollbar-color: var(--color-blue-700) var(--color-gray-700);
+  }
+}
+
 /* Bridge Tailwind 4's native color utilities to the scrollbar plugin's pseudo-elements. */
 @layer utilities {
   .scrollbar {

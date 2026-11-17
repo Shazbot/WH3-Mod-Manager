@@ -86,7 +86,7 @@ const GameLogSearchPanel = memo(({ onJump, onClose }: GameLogSearchPanelProps) =
         {isInvalid && <div className="text-xs text-red-400">Invalid regex: {compiled.error}</div>}
         {error && <div className="text-xs text-red-400">{error}</div>}
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto scrollbar scrollbar-track-gray-700 scrollbar-thumb-blue-700">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {matches && matches.length === 0 && <div className="p-2 text-gray-400">No matches.</div>}
         {groups.map((group) => (
           <div key={group.file}>
