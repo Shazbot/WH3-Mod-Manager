@@ -604,9 +604,8 @@ const OptionsDrawer = memo(() => {
     { value: "window", label: localized.window || "Window" },
   ];
 
-  // Tabs that need Features For Modders stay listed, with a badge, so they can be set up ahead of
-  // time. The ones that also need a dev build are dropped, since nothing would come of toggling them.
-  const sidebarTabOptions = useMemo(() => hideableMainWindowTabs.filter((entry) => !entry.isDevOnly || isDev), [isDev]);
+  // Tabs that need Features For Modders stay listed, with a badge, so they can be set up ahead of time.
+  const sidebarTabOptions = hideableMainWindowTabs;
   // Their labels are looked up by key, which the type generated from the English translations cannot index.
   const localizedByKey = localized as Record<string, string | undefined>;
 

@@ -11,8 +11,6 @@ export const hideableMainWindowTabs: {
   fallbackLabel: string;
   /** Only ever shown while Features For Modders is on. */
   isForModders?: boolean;
-  /** On top of Features For Modders, only shown when the app runs from source. */
-  isDevOnly?: boolean;
 }[] = [
   { tab: "enabledMods", labelKey: "enabledModsCapitalized", fallbackLabel: "Enabled Mods" },
   { tab: "categories", labelKey: "categories", fallbackLabel: "Categories" },
@@ -22,7 +20,7 @@ export const hideableMainWindowTabs: {
   { tab: "buildings", labelKey: "buildingsTab", fallbackLabel: "Buildings" },
   { tab: "ancillaries", labelKey: "ancillariesTab", fallbackLabel: "Ancillaries" },
   { tab: "map", labelKey: "mapTab", fallbackLabel: "Map" },
-  { tab: "visuals", labelKey: "visualsTab", fallbackLabel: "Visuals", isForModders: true, isDevOnly: true },
+  { tab: "visuals", labelKey: "visualsTab", fallbackLabel: "Visuals", isForModders: true },
   { tab: "nodeEditor", labelKey: "nodeEditorTab", fallbackLabel: "Node Editor", isForModders: true },
   { tab: "gameLog", labelKey: "gameLogTab", fallbackLabel: "Game Log", isForModders: true },
 ];

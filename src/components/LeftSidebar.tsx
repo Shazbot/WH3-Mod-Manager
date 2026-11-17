@@ -17,14 +17,13 @@ import localizationContext from "../localizationContext";
 const LeftSidebar = memo(() => {
   const dispatch = useAppDispatch();
   const currentTab = useAppSelector((state) => state.app.currentTab);
-  const isDev = useAppSelector((state) => state.app.isDev);
   const currentGame = useAppSelector((state) => state.app.currentGame);
   const isFeaturesForModdersEnabled = useAppSelector((state) => state.app.isFeaturesForModdersEnabled);
   const skillTreesDisplayMode = useAppSelector((state) => state.app.skillTreesDisplayMode);
   const technologyTreesDisplayMode = useAppSelector((state) => state.app.technologyTreesDisplayMode);
   const hiddenMainWindowTabs = useAppSelector((state) => state.app.hiddenMainWindowTabs);
   const isHidden = useCallback((tab: MainWindowTab) => hiddenMainWindowTabs.includes(tab), [hiddenMainWindowTabs]);
-  const showVisualsTab = isFeaturesForModdersEnabled && isDev && !isHidden("visuals");
+  const showVisualsTab = isFeaturesForModdersEnabled && !isHidden("visuals");
   const showNodeEditorTab = isFeaturesForModdersEnabled && !isHidden("nodeEditor");
   const showGameLogTab = isFeaturesForModdersEnabled && !isHidden("gameLog");
   const isEnabledModsTabVisible = !isHidden("enabledMods");
