@@ -36,6 +36,8 @@ type FixedSizeListProps = {
 const { FixedSizeList } = require("react-window") as { FixedSizeList: React.ComponentType<FixedSizeListProps> };
 
 export type GameLogViewerProps = {
+  /** The log the lines belong to; the line selection belongs to one log. */
+  logPath: string | undefined;
   lines: readonly string[];
   rows: readonly VisibleRow[];
   prefixMode: PrefixMode;
@@ -52,7 +54,14 @@ type ItemData = Pick<GameLogViewerProps, "lines" | "rows" | "prefixMode" | "flas
 };
 
 /** Where a line-number drag started, and what it adds to or removes from. */
-type SelectionAnchor = { lineIndex: number; base: ReadonlySet<number>; isRemoving: boolean };
+type SelectionAnchor = {
+  logPath: string | undefined;
+  lineIndex: number;
+  base: ReadonlySet<number>;
+  isRemoving: boolean;
+};
+
+const NO_SELECTION: ReadonlySet<number> = new Set();
 
 const EDGE_SCROLL_PX = 24;
 
@@ -112,13 +121,18 @@ const Row = memo(({ index, style, data }: ListChildComponentProps<ItemData>) => 
 Row.displayName = "GameLogRow";
 
 const GameLogViewer = memo((props: GameLogViewerProps) => {
-  const { lines, rows, prefixMode, flashIndex, isPinned, onPinnedChange, scrollRequest } = props;
+  const { logPath, lines, rows, prefixMode, flashIndex, isPinned, onPinnedChange, scrollRequest } = props;
   const listRef = useRef<FixedSizeListHandle>(null);
   const outerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const anchorRef = useRef<SelectionAnchor>(undefined);
   const stopDragRef = useRef<() => void>(undefined);
-  const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
+  // Kept with its log rather than reset by remounting: a remount scrolls the list before it has a height.
+  const [selection, setSelection] = useState<{ logPath: string | undefined; lines: ReadonlySet<number> }>({
+    logPath: undefined,
+    lines: NO_SELECTION,
+  });
+  const selected = selection.logPath === logPath ? selection.lines : NO_SELECTION;
   const heightRef = useRef(0);
   const isProgrammaticScroll = useRef(false);
 
@@ -167,7 +181,7 @@ const GameLogViewer = memo((props: GameLogViewerProps) => {
       window.getSelection()?.removeAllRanges();
       containerRef.current?.focus();
 
-      const previous = anchorRef.current;
+      const previous = anchorRef.current?.logPath === logPath ? anchorRef.current : undefined;
       const previousPosition =
         event.shiftKey && previous ? rows.findIndex((r) => r.kind === "line" && r.index === previous.lineIndex) : -1;
       let anchor: SelectionAnchor;
@@ -178,6 +192,7 @@ const GameLogViewer = memo((props: GameLogViewerProps) => {
       } else {
         const isToggle = event.ctrlKey || event.metaKey;
         anchor = {
+          logPath,
           lineIndex: row.index,
           base: isToggle ? selected : new Set(),
           isRemoving: isToggle && selected.has(row.index),
@@ -185,7 +200,7 @@ const GameLogViewer = memo((props: GameLogViewerProps) => {
         anchorPosition = position;
         anchorRef.current = anchor;
       }
-      setSelected(applyRange(rows, anchor, anchorPosition, position));
+      setSelection({ logPath, lines: applyRange(rows, anchor, anchorPosition, position) });
 
       // Follow the pointer, scrolling while it is above or below the list.
       stopDragRef.current?.();
@@ -203,7 +218,7 @@ const GameLogViewer = memo((props: GameLogViewerProps) => {
         const current = Math.min(Math.max(Math.floor(y / ROW_HEIGHT), 0), rows.length - 1);
         if (current !== lastPosition) {
           lastPosition = current;
-          setSelected(applyRange(rows, anchor, anchorPosition, current));
+          setSelection({ logPath, lines: applyRange(rows, anchor, anchorPosition, current) });
         }
         // Keep scrolling while the pointer rests at an edge.
         if (edge !== 0) frame = requestAnimationFrame(update);
@@ -222,12 +237,12 @@ const GameLogViewer = memo((props: GameLogViewerProps) => {
       document.addEventListener("mouseup", stop);
       stopDragRef.current = stop;
     },
-    [rows, selected],
+    [rows, selected, logPath],
   );
 
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Escape" && selected.size > 0) {
-      setSelected(new Set());
+      setSelection({ logPath, lines: NO_SELECTION });
       return;
     }
     if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "c" || selected.size === 0) return;
