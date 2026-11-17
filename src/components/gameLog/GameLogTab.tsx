@@ -94,10 +94,8 @@ const GameLogTab = memo(({ isActive = true }: GameLogTabProps) => {
 
   const newestScriptLog = logs.find((log) => log.isScriptLog);
   const selectedPath = followLatest ? (newestScriptLog?.path ?? manualPath) : manualPath;
-  const lines = useMemo(
-    () => (loaded && loaded.path === selectedPath ? loaded.lines : []),
-    [loaded, selectedPath],
-  );
+  // Keep showing the previous log until the newly selected one loads, so switching doesn't blank the panel.
+  const lines = useMemo(() => (loaded && selectedPath ? loaded.lines : []), [loaded, selectedPath]);
 
   const refreshList = useCallback(async () => {
     const result = await window.api?.gameLogList();
