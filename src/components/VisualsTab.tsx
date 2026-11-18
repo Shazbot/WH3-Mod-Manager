@@ -661,7 +661,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
   const loadFileIntoTab = async (
     tabId: string,
     filePath: string,
-    historyPatch?: { history: string[]; historyIndex: number },
+    historyPatch?: Pick<VisualsViewerTab, "history" | "historyIndex" | "originCrumbs">,
   ) => {
     const requestId = takeNextVisualsRequestId();
     setTabs((prev) =>
@@ -711,6 +711,16 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
     const history = [...tab.history.slice(0, tab.historyIndex + 1), filePath];
     logNavigation(tab.id, history.length - 1);
     await loadFileIntoTab(tab.id, filePath, { history, historyIndex: history.length - 1 });
+  };
+
+  /** Replaces a tab's file from the list, starting a fresh history with no breadcrumb. */
+  const replaceTabFile = async (tab: VisualsViewerTab, filePath: string) => {
+    const log = navLogRef.current;
+    const keptBefore = log.entries.slice(0, log.index + 1).filter((entry) => entry.tabId !== tab.id).length;
+    log.entries = log.entries.filter((entry) => entry.tabId !== tab.id);
+    log.index = keptBefore - 1;
+    logNavigation(tab.id, 0);
+    await loadFileIntoTab(tab.id, filePath, { history: [filePath], historyIndex: 0, originCrumbs: undefined });
   };
 
   const jumpToHistoryIndex = async (tab: VisualsViewerTab, historyIndex: number) => {
@@ -764,8 +774,12 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
     setViewerMessage(null);
 
     const currentTab = tabs.find((tab) => tab.id === activeTabId);
-    if ((mode === "current" || mode === "link") && currentTab) {
+    if (mode === "link" && currentTab) {
       await navigateTab(currentTab, filePath);
+      return;
+    }
+    if (mode === "current" && currentTab) {
+      await replaceTabFile(currentTab, filePath);
       return;
     }
 

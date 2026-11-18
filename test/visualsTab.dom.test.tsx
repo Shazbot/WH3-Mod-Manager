@@ -693,4 +693,16 @@ describe("VisualsTab tab navigation", () => {
     fireEvent.mouseLeave(ddsPath);
     await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument());
   });
+
+  it("clears the tab's breadcrumbs when a list click replaces its file", async () => {
+    await renderTab();
+    await openFromList(pathA);
+
+    fireEvent.click(await screen.findByRole("button", { name: pathB }));
+    expect(await screen.findByLabelText("Tab history")).toBeInTheDocument();
+
+    fireEvent.click(listRow(pathC)!);
+    await waitFor(() => expect(tabLabelsPresent()).toEqual(["c.xml.material"]));
+    expect(screen.queryByLabelText("Tab history")).not.toBeInTheDocument();
+  });
 });
