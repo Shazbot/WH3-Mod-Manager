@@ -241,6 +241,26 @@ const GameLogViewer = memo((props: GameLogViewerProps) => {
   );
 
   const onKeyDown = (event: KeyboardEvent) => {
+    // Scroll the list directly so onScroll sees a user scroll and updates the pin (End re-pins, Home unpins).
+    const outer = outerRef.current;
+    if (outer && !event.altKey) {
+      const page = Math.max(heightRef.current - ROW_HEIGHT, ROW_HEIGHT);
+      const target =
+        event.key === "PageDown"
+          ? outer.scrollTop + page
+          : event.key === "PageUp"
+            ? outer.scrollTop - page
+            : event.key === "Home"
+              ? 0
+              : event.key === "End"
+                ? outer.scrollHeight
+                : undefined;
+      if (target !== undefined) {
+        event.preventDefault();
+        outer.scrollTop = target;
+        return;
+      }
+    }
     if (event.key === "Escape" && selected.size > 0) {
       setSelection({ logPath, lines: NO_SELECTION });
       return;
@@ -277,7 +297,8 @@ const GameLogViewer = memo((props: GameLogViewerProps) => {
             itemCount={rows.length}
             itemSize={ROW_HEIGHT}
             itemData={itemData}
-            overscanCount={20}
+            // About two screens ahead: fast (middle-click) scrolling outruns a fixed overscan and shows blank rows.
+            overscanCount={Math.max(20, Math.ceil((height / ROW_HEIGHT) * 2))}
             innerElementType={InnerElement}
             outerRef={outerRef}
             onScroll={onScroll}
