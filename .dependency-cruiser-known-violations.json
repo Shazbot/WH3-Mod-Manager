@@ -7510,23 +7510,5 @@
         ]
       }
     ]
-  },
-  {
-    "type": "module",
-    "from": "src/flowbite/helpers/getImageUrl.ts",
-    "to": "src/flowbite/helpers/getImageUrl.ts",
-    "rule": {
-      "severity": "ignore",
-      "name": "no-orphans"
-    }
-  },
-  {
-    "type": "module",
-    "from": "src/preload.js",
-    "to": "src/preload.js",
-    "rule": {
-      "severity": "ignore",
-      "name": "no-orphans"
-    }
   }
 ]
