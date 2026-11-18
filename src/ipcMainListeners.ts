@@ -277,12 +277,12 @@ import {
 import { serializeSharedModList } from "./sharedModList";
 import { parseUsedMods } from "./usedMods";
 import { readPackHeader } from "./packFileHandler";
+import { executeFlowsForPack } from "./launchFlows";
 import {
   addFakeUpdate,
   amendSchemaField,
   chunkSchemaIntoRows,
   createOverwritePack,
-  executeFlowsForPack,
   getDBVersion,
   getDBVersionByTableName,
   getPacksInSave,

@@ -10,7 +10,7 @@ import appData from "../../src/appData";
 import { executeNodeAction } from "../../src/nodeExecutor";
 import { serializeNodeGraphState } from "../../src/nodeGraph/graphSerialization";
 import { serializeNodeConfigForExecution } from "../../src/nodeGraphExecutor";
-import { prepareNodeConfig } from "../../src/packFileSerializer";
+import { prepareNodeConfig } from "../../src/launchFlows";
 
 const originalGame = appData.currentGame;
 const originalFolder = appData.gamesToGameFolderPaths.wh3.dataFolder;

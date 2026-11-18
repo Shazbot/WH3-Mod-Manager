@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { prepareFlow } from "../../src/packFileSerializer";
+import { prepareFlow } from "../../src/launchFlows";
 import { serializeNodeConfigForExecution } from "../../src/nodeGraphExecutor";
 import { prepareGraphForExecution } from "../../src/nodeGraph/graphSerialization";
 import type { SerializedNodeGraph } from "../../src/nodeGraph/types";

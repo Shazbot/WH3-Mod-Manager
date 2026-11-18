@@ -20,3 +20,4 @@ agentdocs/
 
 # Generated dependency-cruiser report.
 dependency-report/
+.dependency-cruiser-known-violations.json

@@ -22,7 +22,7 @@ import {
   serializeNodeGraphState,
 } from "../../src/nodeGraph/graphSerialization";
 import appData from "../../src/appData";
-import { executeFlowsForPack } from "../../src/packFileSerializer";
+import { executeFlowsForPack } from "../../src/launchFlows";
 
 const packMocks = vi.hoisted(() => ({ readPack: vi.fn() }));
 const vanillaMocks = vi.hoisted(() => ({ readVanillaPackFromCache: vi.fn() }));

@@ -14,7 +14,7 @@ This document covers the saved format, the node catalogue, how options work, bot
 | Saved format             | `src/nodeGraph/types.ts` (`SerializedNodeGraph`), `src/nodeGraph/graphSerialization.ts` (serialize, deserialize, and `prepareGraphForExecution` for manual runs)                                                                             |
 | Packed flows             | `src/nodeGraph/flowPackOperations.ts` (`whmmflows\` naming)                                                                                                                                                                                  |
 | Execution (main process) | `src/nodeGraphExecutor.ts` (`executeNodeGraph`: scheduling and branch pruning), `src/nodeExecutor.ts` (`executeNodeAction`: one `case` per node type, about 9k lines), `src/flowExecutionSupport.ts` (`FlowExecutionContext`, debug logging) |
-| Launch-time runs         | `prepareFlow` and `executeFlowsForPack` in `src/packFileSerializer.ts`, called from the `startGame` handler in `src/ipcMainListeners.ts`                                                                                                     |
+| Launch-time runs         | `prepareFlow` and `executeFlowsForPack` in `src/launchFlows.ts`, called from the `startGame` handler in `src/ipcMainListeners.ts`                                                                                                            |
 | End-user options         | `src/components/UserFlowOptionsModal.tsx` (opened from `ModRows.tsx`), stored as `userFlowOptions` in the app config                                                                                                                         |
 | Native patch node        | `src/nativePatches/flowTemplate.ts`, `src/nodeGraph/nativePatchSchema.ts`; behaviour is specified in `docs/NATIVE_PATCHES.md`                                                                                                                |
 
@@ -226,7 +226,7 @@ The template format, limits, merge rules and examples are in [`NATIVE_PATCHES.md
 3. Add its React component in `nodes/renderers.tsx` and map it in `nodeTypes.tsx`.
 4. Teach `connectionRules.ts` which edge types it accepts and produces.
 5. Add any new data fields to `SerializedNode["data"]` **and** to `serializeReactFlowNodes`. Otherwise they are dropped on save.
-6. If the node needs more than `textValue` at run time, add a case to `prepareNodeConfig` (`packFileSerializer.ts`); the default passes only `textValue`. If it has text fields that should take `{{option}}` values, handle them in **both** `prepareFlow` and `prepareGraphForExecution`.
+6. If the node needs more than `textValue` at run time, add a case to `prepareNodeConfig` (`launchFlows.ts`); the default passes only `textValue`. If it has text fields that should take `{{option}}` values, handle them in **both** `prepareFlow` and `prepareGraphForExecution`.
 7. Add a `case` in `executeNodeAction` (`nodeExecutor.ts`). If it needs the DB schema, add it to `schemaAwareFlowNodeTypes`.
 8. Add targeted tests next to the existing ones in `test/nodeGraph/` (one file per node, e.g. `conditionalBranch.node.test.ts`, `connectionRules.node.test.ts`).
 

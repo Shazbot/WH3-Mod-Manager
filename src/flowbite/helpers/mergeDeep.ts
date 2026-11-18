@@ -1,6 +1,6 @@
 // source: https://stackoverflow.com/questions/27936772/how-to-deep-merge-instead-of-shallow-merge
 
-import { DeepPartial } from "../components";
+import type { DeepPartial } from "../components";
 
 /**
  * Simple object check.

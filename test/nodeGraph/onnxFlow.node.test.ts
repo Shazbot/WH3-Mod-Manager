@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { prepareFlow } from "../../src/packFileSerializer";
+import { prepareFlow } from "../../src/launchFlows";
 import { executeNodeAction } from "../../src/nodeExecutor";
 import { prepareGraphForExecution, serializeReactFlowNodes } from "../../src/nodeGraph/graphSerialization";
 import { serializeNodeConfigForExecution } from "../../src/nodeGraphExecutor";
