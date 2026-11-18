@@ -305,6 +305,7 @@ const api = {
   gameLogList: (): Promise<GameLogListResult> => ipcRenderer.invoke("gameLogList"),
   gameLogOpen: (path: string): Promise<GameLogOpenResult> => ipcRenderer.invoke("gameLogOpen", path),
   gameLogClose: (): Promise<{ success: boolean }> => ipcRenderer.invoke("gameLogClose"),
+  gameLogStopWatching: (): Promise<{ success: boolean }> => ipcRenderer.invoke("gameLogStopWatching"),
   gameLogSearch: (request: { query: string; isRegex: boolean; caseSensitive: boolean }): Promise<GameLogSearchResult> =>
     ipcRenderer.invoke("gameLogSearch", request),
   onGameLogAppend: (callback: (payload: { path: string; lines: string[]; isReset: boolean }) => void) => {

@@ -180,6 +180,11 @@ export const registerGameLogIpc = (mainWindow: BrowserWindow) => {
   ipcMain.removeHandler("gameLogClose");
   ipcMain.handle("gameLogClose", async (): Promise<{ success: boolean }> => {
     stopTail();
+    return { success: true };
+  });
+
+  ipcMain.removeHandler("gameLogStopWatching");
+  ipcMain.handle("gameLogStopWatching", async (): Promise<{ success: boolean }> => {
     stopListWatcher();
     return { success: true };
   });

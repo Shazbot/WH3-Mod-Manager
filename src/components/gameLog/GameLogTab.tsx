@@ -12,7 +12,7 @@ import {
   type TagFilter,
   type PrefixMode,
 } from "../../gameLog/parse";
-import type { GameLogInfo } from "../../utility/logPaths";
+import { useGameLogListing } from "./useGameLogListing";
 import GameLogList from "./GameLogList";
 import GameLogTagBar from "./GameLogTagBar";
 import GameLogViewer from "./GameLogViewer";
@@ -20,7 +20,6 @@ import GameLogSearchPanel from "./GameLogSearchPanel";
 
 export type GameLogTabProps = { isActive?: boolean };
 
-const LIVE_WINDOW_MS = 60_000;
 const FLASH_MS = 1800;
 
 type PatternState = { text: string; isRegex: boolean; caseSensitive: boolean };
@@ -73,10 +72,7 @@ const GameLogTab = memo(({ isActive = true }: GameLogTabProps) => {
   const dispatch = useAppDispatch();
   const isScriptLoggingEnabled = useAppSelector((state) => state.app.isScriptLoggingEnabled);
 
-  const [logs, setLogs] = useState<GameLogInfo[]>([]);
-  const [errorCounts, setErrorCounts] = useState<Record<string, number>>({});
-  const [listError, setListError] = useState<string>();
-  const [livePath, setLivePath] = useState<string>();
+  const { logs, errorCounts, listError, livePath } = useGameLogListing(isActive);
   const [hideSmall, setHideSmall] = useState(true);
   const [followLatest, setFollowLatest] = useState(true);
   const [manualPath, setManualPath] = useState<string>();
@@ -102,42 +98,11 @@ const GameLogTab = memo(({ isActive = true }: GameLogTabProps) => {
   // Keep showing the previous log until the newly selected one loads, so switching doesn't blank the panel.
   const lines = useMemo(() => (loaded && selectedPath ? loaded.lines : []), [loaded, selectedPath]);
 
-  const refreshList = useCallback(async () => {
-    const result = await window.api?.gameLogList();
-    if (!result?.success) {
-      setListError(result?.error ?? "Could not read the game logs.");
-      return;
-    }
-    const nextLogs = result.logs ?? [];
-    setListError(undefined);
-    setLogs(nextLogs);
-    // Keep the last known count of a log that is being recounted, so a growing live log doesn't flicker.
-    setErrorCounts((previous) => {
-      const next: Record<string, number> = {};
-      for (const log of nextLogs) {
-        const count = result.errorCounts?.[log.path] ?? previous[log.path];
-        if (count !== undefined) next[log.path] = count;
-      }
-      return next;
-    });
-    const newest = nextLogs.find((log) => log.isScriptLog);
-    setLivePath(newest && Date.now() - newest.mtimeMs < LIVE_WINDOW_MS ? newest.path : undefined);
-  }, []);
-
-  // The list and its watcher only run while the tab is visible; the tab itself stays mounted.
+  // The tail only runs while the tab is visible; the tab itself stays mounted.
   useEffect(() => {
     if (!isActive) return;
-    void refreshList();
-    const removeListChanged = window.api?.onGameLogListChanged(() => void refreshList());
-    const removeErrorCounts = window.api?.onGameLogErrorCounts((counts) =>
-      setErrorCounts((previous) => ({ ...previous, ...counts })),
-    );
-    return () => {
-      removeListChanged?.();
-      removeErrorCounts?.();
-      void window.api?.gameLogClose();
-    };
-  }, [isActive, refreshList]);
+    return () => void window.api?.gameLogClose();
+  }, [isActive]);
 
   useEffect(() => {
     if (!isActive || !selectedPath) return;

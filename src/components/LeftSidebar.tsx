@@ -10,6 +10,7 @@ import { TbArrowsSort } from "react-icons/tb";
 import { VscOutput } from "react-icons/vsc";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { setCurrentTab } from "../appSlice";
+import { selectLiveErrorCount, useGameLogListing } from "./gameLog/useGameLogListing";
 import localizationContext from "../localizationContext";
 
 // const Tab = () => {}
@@ -26,6 +27,8 @@ const LeftSidebar = memo(() => {
   const showVisualsTab = isFeaturesForModdersEnabled && !isHidden("visuals");
   const showNodeEditorTab = isFeaturesForModdersEnabled && !isHidden("nodeEditor");
   const showGameLogTab = isFeaturesForModdersEnabled && !isHidden("gameLog");
+  const liveErrorCount = selectLiveErrorCount(useGameLogListing(showGameLogTab));
+  const liveErrorLabel = `${liveErrorCount} ${liveErrorCount === 1 ? "error" : "errors"} in the live log`;
   const isEnabledModsTabVisible = !isHidden("enabledMods");
   const isCategoriesTabVisible = !isHidden("categories");
   const isPresetsTabVisible = !isHidden("presets");
@@ -308,7 +311,18 @@ const LeftSidebar = memo(() => {
           {showGameLogTab && (
             <Tab>
               <div className="flex items-center h-full parent-unhide-child relative">
-                <VscOutput size="1.5rem" />
+                <span className="relative inline-flex">
+                  <VscOutput size="1.5rem" />
+                  {liveErrorCount > 0 && (
+                    <span
+                      className="absolute -top-1.5 -right-2 min-w-4 px-1 rounded-full bg-red-600 text-white text-[10px] font-semibold leading-4 text-center"
+                      title={liveErrorLabel}
+                      aria-label={liveErrorLabel}
+                    >
+                      {liveErrorCount > 99 ? "99+" : liveErrorCount}
+                    </span>
+                  )}
+                </span>
                 <span className="ml-2 mr-2 hidden-child">{localized.gameLogTab || "Game Log"}</span>
                 <span className="text-xs absolute hidden-child right-0 -bottom-2 opacity-60">
                   Ctrl+{tabIndexToTabType.indexOf("gameLog") + 1}
