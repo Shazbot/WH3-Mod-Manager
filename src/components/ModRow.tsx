@@ -8,6 +8,7 @@ import { isSubbedTimeSort, SortingType } from "../utility/modRowSorting";
 import localizationContext from "../localizationContext";
 import { Icons } from "./icons";
 import CustomModFolderIcon from "./CustomModFolderIcon";
+import PortalTooltip from "./SidebarTooltip";
 import { BsArrowDownUp } from "react-icons/bs";
 import { ModListLayout } from "../utility/frontend/modListLayout";
 import { getModLastChanged } from "../modSortingHelpers";
@@ -90,17 +91,17 @@ const PackName = ({ mod, isEnabledInMergedMod, customFolderPath }: PackNameProps
       })}
     >
       {mod.isDeleted && (
-        <Tooltip
+        <PortalTooltip
           placement="bottom"
           content="Failed fetching steam workshop page, mod was deleted from the workshop or is hidden."
         >
           <span className="text-red-800">
             <FontAwesomeIconMemo fill="red" icon={faEraser} />
           </span>
-        </Tooltip>
+        </PortalTooltip>
       )}
       {mod.isMovie && (
-        <Tooltip
+        <PortalTooltip
           placement="bottom"
           content={
             <>
@@ -113,10 +114,10 @@ const PackName = ({ mod, isEnabledInMergedMod, customFolderPath }: PackNameProps
           <span className="text-red-800">
             <FontAwesomeIconMemo fill="red" icon={faCamera} />
           </span>
-        </Tooltip>
+        </PortalTooltip>
       )}
       {mod.mergedModsData && (
-        <Tooltip
+        <PortalTooltip
           placement="bottom"
           content={
             <>
@@ -133,10 +134,10 @@ const PackName = ({ mod, isEnabledInMergedMod, customFolderPath }: PackNameProps
           <span className="text-gray-300">
             <FontAwesomeIconMemo icon={faFileArchive} />
           </span>
-        </Tooltip>
+        </PortalTooltip>
       )}
       {isEnabledInMergedMod && (
-        <Tooltip
+        <PortalTooltip
           placement="bottom"
           content={
             <>
@@ -148,7 +149,7 @@ const PackName = ({ mod, isEnabledInMergedMod, customFolderPath }: PackNameProps
           <span className="text-gray-300">
             <Icons.Collection className="inline h-4 overflow-visible" />
           </span>
-        </Tooltip>
+        </PortalTooltip>
       )}
       {mod.name.replace(".pack", "")}
       <CustomModFolderIcon folderPath={customFolderPath} />

@@ -26,8 +26,8 @@ const getArrowPlacement = (placement: string) => {
 };
 
 /**
- * Flowbite's tooltip is positioned inside its parent. The sidebar scrolls, so a large warning tooltip
- * must be portalled to the document body to avoid becoming part of that scroll container.
+ * Flowbite's tooltip is positioned inside its parent, so it gets clipped by the scrolling sidebar and painted under
+ * the next mod list row. This one is portalled to the document body instead.
  */
 const SidebarTooltip = ({
   animation = "duration-300",
