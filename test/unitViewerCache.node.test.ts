@@ -2,7 +2,12 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { clearUnitViewerMemoryCache, loadUnitViewerDiskCache, saveUnitViewerDiskCache } from "../src/unitViewer/cache";
+import {
+  clearUnitViewerMemoryCache,
+  loadUnitViewerDiskCache,
+  saveUnitViewerDiskCache,
+  UNIT_VIEWER_CACHE_VERSION,
+} from "../src/unitViewer/cache";
 import { buildUnitViewerData, type UnitViewerTableRows } from "../src/unitViewer/data";
 import type { UnitViewerAbility, UnitViewerPainterVariantContext } from "../src/unitViewer/types";
 
@@ -159,7 +164,7 @@ describe("Unit Viewer disk cache", () => {
     await saveUnitViewerDiskCache(directory, "current", data);
     expect(toComparableModel(data)).toEqual(originalModel);
     const serialized = await readPayload(directory);
-    expect(serialized.version).toBe(33);
+    expect(serialized.version).toBe(UNIT_VIEWER_CACHE_VERSION);
     expect(serialized.data.factionColourPool).toHaveLength(3);
     expect(
       serialized.data.units.find(([key]: [string]) => key === "with-colours")[1].painterVariantContext.factionColours,
@@ -231,7 +236,7 @@ describe("Unit Viewer disk cache", () => {
 
     await saveUnitViewerDiskCache(directory, "palette-signature", data);
     const serialized = await readPayload(directory);
-    expect(serialized.version).toBe(33);
+    expect(serialized.version).toBe(UNIT_VIEWER_CACHE_VERSION);
     expect(serialized.data.factionColourPool).toEqual([
       commonColour,
       { ...commonColour, subculture: "other_subculture" },
