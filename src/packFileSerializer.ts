@@ -57,7 +57,6 @@ import {
   serializeSchemaFieldToBuffer as serializeSchemaFieldToBufferCore,
   writeRawPack,
 } from "./packCore";
-import { readModsByPath } from "./ipcMainListeners";
 import { executeNodeGraph } from "./nodeGraphExecutor";
 import type { NativePatchFlowRuntimeContribution } from "./nativePatches/flowTemplate";
 import { isNativePatchSchemaConnection } from "./nodeGraph/nativePatchSchema";

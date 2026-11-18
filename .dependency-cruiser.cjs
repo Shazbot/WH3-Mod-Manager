@@ -6,7 +6,13 @@ const { baseOptions } = require("./.dependency-cruiser.shared.cjs");
 
 module.exports = {
   forbidden: [
-    { name: "no-circular", severity: "error", from: {}, to: { circular: true } },
+    {
+      name: "no-circular",
+      severity: "error",
+      from: {},
+      // Type-only imports are erased at compile time, so cycles through them don't exist at runtime.
+      to: { circular: true, viaOnly: { dependencyTypesNot: ["type-only", "type-import"] } },
+    },
     {
       name: "not-to-unresolvable",
       severity: "error",
