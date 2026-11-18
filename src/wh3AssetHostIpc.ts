@@ -18,7 +18,7 @@ import {
   type Wh3AssetHostDecisionAction,
   type Wh3AssetHostDecisionRequest,
 } from "./wh3AssetHostClient";
-import { windows } from "./ipcMainListeners";
+import { windows } from "./mainWindows";
 import { showOpenDialog } from "./openDialog";
 import {
   Wh3AssetHostPackInitializer,

@@ -278,6 +278,7 @@ import { serializeSharedModList } from "./sharedModList";
 import { parseUsedMods } from "./usedMods";
 import { readPackHeader } from "./packFileHandler";
 import { executeFlowsForPack } from "./launchFlows";
+import { windows } from "./mainWindows";
 import {
   addFakeUpdate,
   amendSchemaField,
@@ -582,13 +583,6 @@ export const openModInViewer = (modPath: string) => {
     return;
   }
   openModInViewerFromMainProcess(modPath);
-};
-
-export const windows = {
-  mainWindow: undefined as BrowserWindow | undefined,
-  viewerWindow: undefined as BrowserWindow | undefined,
-  skillsWindow: undefined as BrowserWindow | undefined,
-  techTreesWindow: undefined as BrowserWindow | undefined,
 };
 
 let workshopCleanupInFlight: Promise<void> | undefined;
