@@ -10,7 +10,8 @@ module.exports = {
     {
       name: "not-to-unresolvable",
       severity: "error",
-      from: {},
+      // Vendored steamworks.js requires per-platform binaries; only win64/linux64 are committed.
+      from: { pathNot: "^steamworks/" },
       to: { couldNotResolve: true },
     },
     {

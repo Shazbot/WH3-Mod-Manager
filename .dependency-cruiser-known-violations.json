@@ -7528,31 +7528,5 @@
       "severity": "ignore",
       "name": "no-orphans"
     }
-  },
-  {
-    "type": "dependency",
-    "from": "steamworks/index.js",
-    "to": "./dist/osx/steamworksjs.darwin-arm64.node",
-    "unresolvedTo": "./dist/osx/steamworksjs.darwin-arm64.node",
-    "dependencyTypes": [
-      "unknown"
-    ],
-    "rule": {
-      "severity": "ignore",
-      "name": "not-to-unresolvable"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "steamworks/index.js",
-    "to": "./dist/osx/steamworksjs.darwin-x64.node",
-    "unresolvedTo": "./dist/osx/steamworksjs.darwin-x64.node",
-    "dependencyTypes": [
-      "unknown"
-    ],
-    "rule": {
-      "severity": "ignore",
-      "name": "not-to-unresolvable"
-    }
   }
 ]
