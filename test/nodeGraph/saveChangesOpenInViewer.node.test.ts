@@ -9,7 +9,7 @@ vi.mock("electron-is-dev", () => ({
 
 import { serializeNodeGraphState } from "../../src/nodeGraph/graphSerialization";
 import { serializeNodeConfigForExecution } from "../../src/nodeGraphExecutor";
-import { prepareNodeConfig } from "../../src/packFileSerializer";
+import { prepareNodeConfig } from "../../src/launchFlows";
 
 /**
  * A save node option has to survive four separate hops or it silently does nothing: the graph file,

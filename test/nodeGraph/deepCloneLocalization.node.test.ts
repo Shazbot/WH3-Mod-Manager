@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import appData from "../../src/appData";
-import { getVanillaLocLookup } from "../../src/ipcMainListeners";
+import { getVanillaLocLookup } from "../../src/packsDataLoader";
 import { executeNodeAction } from "../../src/nodeExecutor";
 import type { AmendedSchemaField, DBField, DBVersion, Pack, PackedFile } from "../../src/packFileTypes";
 

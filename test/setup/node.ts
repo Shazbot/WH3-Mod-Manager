@@ -8,7 +8,7 @@ vi.mock("electron", () => ({
   },
 }));
 
-vi.mock("../../src/ipcMainListeners", () => ({
+vi.mock("../../src/packsDataLoader", () => ({
   getDefaultTableVersions: vi.fn(() => ({})),
   getVanillaLocLookup: vi.fn(async () => ({})),
 }));

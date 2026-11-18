@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { executeNodeAction } from "../../src/nodeExecutor";
 import { serializeNodeConfigForExecution } from "../../src/nodeGraphExecutor";
-import { prepareFlow, prepareNodeConfig } from "../../src/packFileSerializer";
+import { prepareFlow, prepareNodeConfig } from "../../src/launchFlows";
 
 vi.mock("@mongodb-js/zstd", () => ({
   decompress: vi.fn(async (input: Uint8Array) => input),

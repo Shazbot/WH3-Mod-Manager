@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createFlowExecutionContext } from "../../src/flowExecutionSupport";
 import { executeNodeAction } from "../../src/nodeExecutor";
 import { serializeNodeConfigForExecution } from "../../src/nodeGraphExecutor";
-import { prepareNodeConfig } from "../../src/packFileSerializer";
+import { prepareNodeConfig } from "../../src/launchFlows";
 
 const packFileSerializerMocks = vi.hoisted(() => ({
   getPacksTableData: vi.fn(),

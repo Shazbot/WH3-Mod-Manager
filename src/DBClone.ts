@@ -1,6 +1,6 @@
 import { findNodeInTree, findParentOfNode } from "./components/viewer/viewerHelpers";
 import appData from "./appData";
-import { getLocsTrie, getVanillaLocLookup, readModsByPath } from "./ipcMainListeners";
+import { getLocsTrie, getVanillaLocLookup, readModsByPath } from "./packsDataLoader";
 import { chunkSchemaIntoRows, getPacksTableData } from "./packFileSerializer";
 import { AmendedSchemaField, DBVersion, LocVersion, PackedFile, LocFields, FIELD_TYPE, Pack } from "./packFileTypes";
 import {

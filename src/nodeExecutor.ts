@@ -25,7 +25,8 @@ import { format } from "date-fns";
 import { gameToPackWithDBTablesName } from "./supportedGames";
 import { shell } from "electron";
 import { cyrb53 } from "./utility/cyrb53";
-import { getDefaultTableVersions, getLocsTrie, getVanillaLocLookup, openModInViewer } from "./ipcMainListeners";
+import { openModInViewer } from "./mainWindows";
+import { getDefaultTableVersions, getLocsTrie, getVanillaLocLookup } from "./packsDataLoader";
 import type { KeyedLookup } from "./utility/trie";
 import { evaluateFormula } from "./utility/formulaEvaluation";
 import {
