@@ -1,0 +1,7881 @@
+[
+  {
+    "type": "cycle",
+    "from": "src/ancillariesData/data.ts",
+    "to": "src/ancillariesData/types.ts",
+    "unresolvedTo": "./types",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/ancillariesData/types.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ancillariesData/validate.ts",
+        "dependencyTypes": [
+          "local",
+          "type-import"
+        ]
+      },
+      {
+        "name": "src/ancillariesData/data.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/ancillariesData/edits.ts",
+    "to": "src/ancillariesData/data.ts",
+    "unresolvedTo": "./data",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/ancillariesData/data.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ancillariesData/types.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ancillariesData/validate.ts",
+        "dependencyTypes": [
+          "local",
+          "type-import"
+        ]
+      },
+      {
+        "name": "src/ancillariesData/edits.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/ancillariesData/edits.ts",
+    "to": "src/ancillariesData/types.ts",
+    "unresolvedTo": "./types",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/ancillariesData/types.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ancillariesData/validate.ts",
+        "dependencyTypes": [
+          "local",
+          "type-import"
+        ]
+      },
+      {
+        "name": "src/ancillariesData/edits.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/ancillariesData/types.ts",
+    "to": "src/ancillariesData/validate.ts",
+    "unresolvedTo": "./validate",
+    "dependencyTypes": [
+      "local",
+      "type-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/ancillariesData/validate.ts",
+        "dependencyTypes": [
+          "local",
+          "type-import"
+        ]
+      },
+      {
+        "name": "src/ancillariesData/types.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/appData.ts",
+    "to": "src/config/migrateAppConfig.ts",
+    "unresolvedTo": "./config/migrateAppConfig",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/config/migrateAppConfig.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/appData.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/appControl.ts",
+    "to": "src/automation/operations.ts",
+    "unresolvedTo": "./operations",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/appControl.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/assetUsers.ts",
+    "to": "src/automation/graphUsers.ts",
+    "unresolvedTo": "./graphUsers",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/graphUsers.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/packAccess.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/assetUsers.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/assetUsers.ts",
+    "to": "src/automation/operations.ts",
+    "unresolvedTo": "./operations",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/assetUsers.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/assetUsers.ts",
+    "to": "src/automation/references.ts",
+    "unresolvedTo": "./references",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/references.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/assetUsers.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/assetUsers.ts",
+    "to": "src/automation/units.ts",
+    "unresolvedTo": "./units",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/units.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/graphUsers.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/packAccess.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/assetUsers.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/assetUsers.ts",
+    "to": "src/automation/vanilla.ts",
+    "unresolvedTo": "./vanilla",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/vanilla.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/assetUsers.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/assetUsers.ts",
+    "to": "src/automation/visualRoots.ts",
+    "unresolvedTo": "./visualRoots",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/visualRoots.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/packAccess.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/assetUsers.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/diff.ts",
+    "to": "src/automation/graphUsers.ts",
+    "unresolvedTo": "./graphUsers",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/graphUsers.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/packAccess.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/diff.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/diff.ts",
+    "to": "src/automation/operations.ts",
+    "unresolvedTo": "./operations",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/diff.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/diff.ts",
+    "to": "src/automation/packAccess.ts",
+    "unresolvedTo": "./packAccess",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/packAccess.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/diff.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/diff.ts",
+    "to": "src/automation/references.ts",
+    "unresolvedTo": "./references",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/references.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/diff.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/diff.ts",
+    "to": "src/automation/units.ts",
+    "unresolvedTo": "./units",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/units.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/graphUsers.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/packAccess.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/diff.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/diff.ts",
+    "to": "src/automation/vanilla.ts",
+    "unresolvedTo": "./vanilla",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/vanilla.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/diff.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/diff.ts",
+    "to": "src/automation/visualRoots.ts",
+    "unresolvedTo": "./visualRoots",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/visualRoots.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/packAccess.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/diff.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/extract.ts",
+    "to": "src/automation/operations.ts",
+    "unresolvedTo": "./operations",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/extract.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/extract.ts",
+    "to": "src/automation/packAccess.ts",
+    "unresolvedTo": "./packAccess",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/packAccess.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/extract.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/extract.ts",
+    "to": "src/automation/vanilla.ts",
+    "unresolvedTo": "./vanilla",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/vanilla.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/extract.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/graphUsers.ts",
+    "to": "src/automation/references.ts",
+    "unresolvedTo": "./references",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/references.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/assetUsers.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/graphUsers.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/graphUsers.ts",
+    "to": "src/automation/units.ts",
+    "unresolvedTo": "./units",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/units.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/graphUsers.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/localization.ts",
+    "to": "src/automation/operations.ts",
+    "unresolvedTo": "./operations",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/localization.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/localization.ts",
+    "to": "src/automation/packAccess.ts",
+    "unresolvedTo": "./packAccess",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/packAccess.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/localization.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/localization.ts",
+    "to": "src/automation/references.ts",
+    "unresolvedTo": "./references",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/references.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/localization.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/localization.ts",
+    "to": "src/automation/vanilla.ts",
+    "unresolvedTo": "./vanilla",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/vanilla.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/localization.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/materials.ts",
+    "to": "src/automation/operations.ts",
+    "unresolvedTo": "./operations",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/materials.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/materials.ts",
+    "to": "src/automation/packAccess.ts",
+    "unresolvedTo": "./packAccess",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/packAccess.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/materials.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/materials.ts",
+    "to": "src/automation/references.ts",
+    "unresolvedTo": "./references",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/references.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/materials.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/materials.ts",
+    "to": "src/automation/units.ts",
+    "unresolvedTo": "./units",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/units.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/graphUsers.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/packAccess.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/materials.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/materials.ts",
+    "to": "src/automation/vanilla.ts",
+    "unresolvedTo": "./vanilla",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/vanilla.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/materials.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/operations.ts",
+    "to": "src/automation/packAccess.ts",
+    "unresolvedTo": "./packAccess",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/packAccess.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/operations.ts",
+    "to": "src/automation/references.ts",
+    "unresolvedTo": "./references",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/references.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/operations.ts",
+    "to": "src/automation/rigid.ts",
+    "unresolvedTo": "./rigid",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/rigid.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/operations.ts",
+    "to": "src/automation/rigidPatch.ts",
+    "unresolvedTo": "./rigidPatch",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/rigidPatch.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/operations.ts",
+    "to": "src/automation/subset.ts",
+    "unresolvedTo": "./subset",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/subset.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/operations.ts",
+    "to": "src/automation/textures.ts",
+    "unresolvedTo": "./textures",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/textures.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/operations.ts",
+    "to": "src/automation/units.ts",
+    "unresolvedTo": "./units",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/units.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/operations.ts",
+    "to": "src/automation/vanilla.ts",
+    "unresolvedTo": "./vanilla",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/vanilla.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/references.ts",
+    "to": "src/automation/packAccess.ts",
+    "unresolvedTo": "./packAccess",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/packAccess.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/references.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/references.ts",
+    "to": "src/automation/vanilla.ts",
+    "unresolvedTo": "./vanilla",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/vanilla.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/references.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/rigid.ts",
+    "to": "src/automation/packAccess.ts",
+    "unresolvedTo": "./packAccess",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/packAccess.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/rigid.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/rigidPatch.ts",
+    "to": "src/automation/packAccess.ts",
+    "unresolvedTo": "./packAccess",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/packAccess.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/rigidPatch.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/subset.ts",
+    "to": "src/automation/packAccess.ts",
+    "unresolvedTo": "./packAccess",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/packAccess.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/subset.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/subset.ts",
+    "to": "src/automation/references.ts",
+    "unresolvedTo": "./references",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/references.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/subset.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/subset.ts",
+    "to": "src/automation/vanilla.ts",
+    "unresolvedTo": "./vanilla",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/vanilla.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/subset.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/textures.ts",
+    "to": "src/automation/packAccess.ts",
+    "unresolvedTo": "./packAccess",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/packAccess.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/textures.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/textures.ts",
+    "to": "src/automation/references.ts",
+    "unresolvedTo": "./references",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/references.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/textures.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/textures.ts",
+    "to": "src/automation/vanilla.ts",
+    "unresolvedTo": "./vanilla",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/vanilla.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/textures.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/units.ts",
+    "to": "src/automation/localization.ts",
+    "unresolvedTo": "./localization",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/localization.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/units.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/units.ts",
+    "to": "src/automation/references.ts",
+    "unresolvedTo": "./references",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/references.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/units.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/units.ts",
+    "to": "src/automation/visualRoots.ts",
+    "unresolvedTo": "./visualRoots",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/visualRoots.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/units.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/automation/visualRoots.ts",
+    "to": "src/automation/references.ts",
+    "unresolvedTo": "./references",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/automation/references.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/operations.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/assetUsers.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/automation/visualRoots.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/buildingsData/data.ts",
+    "to": "src/buildingsData/types.ts",
+    "unresolvedTo": "./types",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/buildingsData/types.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/buildingsData/validate.ts",
+        "dependencyTypes": [
+          "local",
+          "type-import"
+        ]
+      },
+      {
+        "name": "src/buildingsData/data.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/buildingsData/edits.ts",
+    "to": "src/buildingsData/data.ts",
+    "unresolvedTo": "./data",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/buildingsData/data.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/buildingsData/types.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/buildingsData/validate.ts",
+        "dependencyTypes": [
+          "local",
+          "type-import"
+        ]
+      },
+      {
+        "name": "src/buildingsData/edits.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/buildingsData/edits.ts",
+    "to": "src/buildingsData/types.ts",
+    "unresolvedTo": "./types",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/buildingsData/types.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/buildingsData/validate.ts",
+        "dependencyTypes": [
+          "local",
+          "type-import"
+        ]
+      },
+      {
+        "name": "src/buildingsData/edits.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/buildingsData/types.ts",
+    "to": "src/buildingsData/validate.ts",
+    "unresolvedTo": "./validate",
+    "dependencyTypes": [
+      "local",
+      "type-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/buildingsData/validate.ts",
+        "dependencyTypes": [
+          "local",
+          "type-import"
+        ]
+      },
+      {
+        "name": "src/buildingsData/types.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/DBClone.ts",
+    "to": "src/ipcMainListeners.ts",
+    "unresolvedTo": "./ipcMainListeners",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/DBClone.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/DBClone.ts",
+    "to": "src/packFileSerializer.ts",
+    "unresolvedTo": "./packFileSerializer",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/DBClone.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/DBClone.ts",
+    "to": "src/vanillaDbCache/store.ts",
+    "unresolvedTo": "./vanillaDbCache/store",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/vanillaDbCache/store.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/DBClone.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/DBClone.ts",
+    "to": "src/vanillaPackIndex/store.ts",
+    "unresolvedTo": "./vanillaPackIndex/store",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/vanillaPackIndex/store.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "dynamic-import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/DBClone.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/esfMap/loader.ts",
+    "to": "src/packFileSerializer.ts",
+    "unresolvedTo": "../packFileSerializer",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/esfMap/loader.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/esfMap/loader.ts",
+    "to": "src/vanillaPackIndex/store.ts",
+    "unresolvedTo": "../vanillaPackIndex/store",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/vanillaPackIndex/store.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "dynamic-import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/esfMap/loader.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Accordion/AccordionContent.tsx",
+    "to": "src/flowbite/components/Accordion/AccordionPanelContext.tsx",
+    "unresolvedTo": "./AccordionPanelContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Accordion/AccordionPanelContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Accordion/AccordionPanel.tsx",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Accordion/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Accordion/AccordionContent.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Accordion/AccordionContent.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Accordion/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Accordion/AccordionContent.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Accordion/AccordionPanel.tsx",
+    "to": "src/flowbite/components/Accordion/AccordionPanelContext.tsx",
+    "unresolvedTo": "./AccordionPanelContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Accordion/AccordionPanelContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Accordion/AccordionPanel.tsx",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Accordion/AccordionPanel.tsx",
+    "to": "src/flowbite/components/Accordion/index.tsx",
+    "unresolvedTo": ".",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Accordion/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Accordion/AccordionPanel.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Accordion/AccordionTitle.tsx",
+    "to": "src/flowbite/components/Accordion/AccordionPanelContext.tsx",
+    "unresolvedTo": "./AccordionPanelContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Accordion/AccordionPanelContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Accordion/AccordionPanel.tsx",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Accordion/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Accordion/AccordionTitle.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Accordion/AccordionTitle.tsx",
+    "to": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+    "unresolvedTo": "../Flowbite/FlowbiteTheme",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Accordion/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Accordion/AccordionTitle.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Accordion/AccordionTitle.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Accordion/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Accordion/AccordionTitle.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Accordion/index.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Accordion/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Alert/index.tsx",
+    "to": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+    "unresolvedTo": "../Flowbite/FlowbiteTheme",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Alert/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Alert/index.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Alert/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Avatar/index.tsx",
+    "to": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+    "unresolvedTo": "../Flowbite/FlowbiteTheme",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Avatar/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Avatar/index.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Avatar/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Badge/index.tsx",
+    "to": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+    "unresolvedTo": "../Flowbite/FlowbiteTheme",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Badge/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Badge/index.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Badge/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Breadcrumb/BreadcrumbItem.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Breadcrumb/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Breadcrumb/BreadcrumbItem.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Breadcrumb/index.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Breadcrumb/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Button/ButtonGroup.tsx",
+    "to": "src/flowbite/components/Button/index.tsx",
+    "unresolvedTo": ".",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Button/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Button/ButtonGroup.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Button/ButtonGroup.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Button/ButtonGroup.tsx",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Button/index.tsx",
+    "to": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+    "unresolvedTo": "../Flowbite/FlowbiteTheme",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Button/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Button/index.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Button/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Card/index.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Card/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Carousel/index.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Carousel/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/DarkThemeToggle/index.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/DarkThemeToggle/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+    "to": "src/flowbite/components/Button/ButtonGroup.tsx",
+    "unresolvedTo": "../Button/ButtonGroup",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Button/ButtonGroup.tsx",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Button/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+    "to": "src/flowbite/components/FormControls/index.ts",
+    "unresolvedTo": "../FormControls",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/FormControls/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/FormControls/Checkbox.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+    "to": "src/flowbite/components/index.ts",
+    "unresolvedTo": "..",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+    "to": "src/flowbite/components/Progress/index.tsx",
+    "unresolvedTo": "../Progress",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Progress/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+    "to": "src/flowbite/components/Rating/index.tsx",
+    "unresolvedTo": "../Rating",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Rating/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+    "to": "src/flowbite/components/Spinner/index.tsx",
+    "unresolvedTo": "../Spinner",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Spinner/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+    "to": "src/flowbite/components/Tab/index.tsx",
+    "unresolvedTo": "../Tab",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Tab/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Flowbite/index.tsx",
+    "to": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+    "unresolvedTo": "./FlowbiteTheme",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Flowbite/index.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "./ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Flowbite/index.tsx",
+    "to": "src/flowbite/components/index.ts",
+    "unresolvedTo": "..",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Flowbite/index.tsx",
+    "to": "src/flowbite/helpers/mergeDeep.ts",
+    "unresolvedTo": "../../helpers/mergeDeep",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/helpers/mergeDeep.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Flowbite/index.tsx",
+    "to": "src/flowbite/theme/default.ts",
+    "unresolvedTo": "../../theme/default",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "to": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+    "unresolvedTo": "./FlowbiteTheme",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Accordion/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Footer/FooterBrand.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Footer/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Footer/FooterBrand.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Footer/FooterCopyright.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Footer/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Footer/FooterCopyright.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Footer/FooterDivider.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Footer/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Footer/FooterDivider.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Footer/FooterIcon.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Footer/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Footer/FooterIcon.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Footer/FooterLink.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Footer/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Footer/FooterLink.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Footer/FooterLinkGroup.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Footer/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Footer/FooterLinkGroup.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Footer/FooterTitle.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Footer/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Footer/FooterTitle.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Footer/index.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Footer/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/FormControls/FileInput.tsx",
+    "to": "src/flowbite/components/FormControls/HelperText.tsx",
+    "unresolvedTo": "./HelperText",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/FormControls/HelperText.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/FormControls/index.ts",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/FormControls/FileInput.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/FormControls/FileInput.tsx",
+    "to": "src/flowbite/components/FormControls/TextInput.tsx",
+    "unresolvedTo": "./TextInput",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/FormControls/TextInput.tsx",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/FormControls/index.ts",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/FormControls/FileInput.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/FormControls/HelperText.tsx",
+    "to": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+    "unresolvedTo": "../Flowbite/FlowbiteTheme",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/FormControls/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/FormControls/HelperText.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/FormControls/index.ts",
+    "to": "src/flowbite/components/FormControls/Checkbox.tsx",
+    "unresolvedTo": "./Checkbox",
+    "dependencyTypes": [
+      "local",
+      "export"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/FormControls/Checkbox.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/FormControls/index.ts",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/FormControls/index.ts",
+    "to": "src/flowbite/components/FormControls/FileInput.tsx",
+    "unresolvedTo": "./FileInput",
+    "dependencyTypes": [
+      "local",
+      "export"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/FormControls/FileInput.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/FormControls/index.ts",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/FormControls/index.ts",
+    "to": "src/flowbite/components/FormControls/Label.tsx",
+    "unresolvedTo": "./Label",
+    "dependencyTypes": [
+      "local",
+      "export"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/FormControls/Label.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/FormControls/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/FormControls/index.ts",
+    "to": "src/flowbite/components/FormControls/Radio.tsx",
+    "unresolvedTo": "./Radio",
+    "dependencyTypes": [
+      "local",
+      "export"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/FormControls/Radio.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/FormControls/index.ts",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/FormControls/index.ts",
+    "to": "src/flowbite/components/FormControls/Select.tsx",
+    "unresolvedTo": "./Select",
+    "dependencyTypes": [
+      "local",
+      "export"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/FormControls/Select.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/FormControls/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/FormControls/index.ts",
+    "to": "src/flowbite/components/FormControls/Textarea.tsx",
+    "unresolvedTo": "./Textarea",
+    "dependencyTypes": [
+      "local",
+      "export"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/FormControls/Textarea.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/FormControls/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/FormControls/index.ts",
+    "to": "src/flowbite/components/FormControls/TextInput.tsx",
+    "unresolvedTo": "./TextInput",
+    "dependencyTypes": [
+      "local",
+      "export"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/FormControls/TextInput.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/FormControls/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/FormControls/index.ts",
+    "to": "src/flowbite/components/FormControls/ToggleSwitch.tsx",
+    "unresolvedTo": "./ToggleSwitch",
+    "dependencyTypes": [
+      "local",
+      "export"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/FormControls/ToggleSwitch.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/FormControls/index.ts",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/FormControls/Select.tsx",
+    "to": "src/flowbite/components/FormControls/HelperText.tsx",
+    "unresolvedTo": "./HelperText",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/FormControls/HelperText.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/FormControls/index.ts",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/FormControls/Select.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/FormControls/Textarea.tsx",
+    "to": "src/flowbite/components/FormControls/HelperText.tsx",
+    "unresolvedTo": "./HelperText",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/FormControls/HelperText.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/FormControls/index.ts",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/FormControls/Textarea.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/FormControls/TextInput.tsx",
+    "to": "src/flowbite/components/FormControls/HelperText.tsx",
+    "unresolvedTo": "./HelperText",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/FormControls/HelperText.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/FormControls/index.ts",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/FormControls/TextInput.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/index.ts",
+    "to": "src/flowbite/components/Alert/index.tsx",
+    "unresolvedTo": "./Alert",
+    "dependencyTypes": [
+      "local",
+      "export"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Alert/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/index.ts",
+    "to": "src/flowbite/components/Avatar/index.tsx",
+    "unresolvedTo": "./Avatar",
+    "dependencyTypes": [
+      "local",
+      "export"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Avatar/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/index.ts",
+    "to": "src/flowbite/components/Badge/index.tsx",
+    "unresolvedTo": "./Badge",
+    "dependencyTypes": [
+      "local",
+      "export"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Badge/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/index.ts",
+    "to": "src/flowbite/components/Button/index.tsx",
+    "unresolvedTo": "./Button",
+    "dependencyTypes": [
+      "local",
+      "export"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Button/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/index.ts",
+    "to": "src/flowbite/components/ListGroup/index.tsx",
+    "unresolvedTo": "./ListGroup",
+    "dependencyTypes": [
+      "local",
+      "export"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/ListGroup/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/index.ts",
+    "to": "src/flowbite/components/Navbar/index.tsx",
+    "unresolvedTo": "./Navbar",
+    "dependencyTypes": [
+      "local",
+      "export"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Navbar/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/index.ts",
+    "to": "src/flowbite/components/Pagination/index.tsx",
+    "unresolvedTo": "./Pagination",
+    "dependencyTypes": [
+      "local",
+      "export"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Pagination/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/index.ts",
+    "to": "src/flowbite/components/Progress/index.tsx",
+    "unresolvedTo": "./Progress",
+    "dependencyTypes": [
+      "local",
+      "export"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Progress/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/index.ts",
+    "to": "src/flowbite/components/Rating/index.tsx",
+    "unresolvedTo": "./Rating",
+    "dependencyTypes": [
+      "local",
+      "export"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Rating/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/index.ts",
+    "to": "src/flowbite/components/Spinner/index.tsx",
+    "unresolvedTo": "./Spinner",
+    "dependencyTypes": [
+      "local",
+      "export"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Spinner/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/index.ts",
+    "to": "src/flowbite/components/Tab/index.tsx",
+    "unresolvedTo": "./Tab",
+    "dependencyTypes": [
+      "local",
+      "export"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Tab/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/index.ts",
+    "to": "src/flowbite/components/Timeline/index.tsx",
+    "unresolvedTo": "./Timeline",
+    "dependencyTypes": [
+      "local",
+      "export"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Timeline/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Timeline/TimelineTitle.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/FlowbiteTheme.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/index.ts",
+    "to": "src/flowbite/components/Toast/index.tsx",
+    "unresolvedTo": "./Toast",
+    "dependencyTypes": [
+      "local",
+      "export"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Toast/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/ListGroup/index.tsx",
+    "to": "src/flowbite/components/ListGroup/ListGroupItem.tsx",
+    "unresolvedTo": "./ListGroupItem",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/ListGroup/ListGroupItem.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/ListGroup/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Navbar/index.tsx",
+    "to": "src/flowbite/components/Navbar/NavbarBrand.tsx",
+    "unresolvedTo": "./NavbarBrand",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Navbar/NavbarBrand.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Navbar/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Navbar/index.tsx",
+    "to": "src/flowbite/components/Navbar/NavbarCollapse.tsx",
+    "unresolvedTo": "./NavbarCollapse",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Navbar/NavbarCollapse.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Navbar/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Navbar/index.tsx",
+    "to": "src/flowbite/components/Navbar/NavbarLink.tsx",
+    "unresolvedTo": "./NavbarLink",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Navbar/NavbarLink.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Navbar/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Navbar/index.tsx",
+    "to": "src/flowbite/components/Navbar/NavbarToggle.tsx",
+    "unresolvedTo": "./NavbarToggle",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Navbar/NavbarToggle.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Navbar/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Progress/index.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Progress/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Rating/index.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Rating/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Rating/index.tsx",
+    "to": "src/flowbite/components/Rating/RatingAdvanced.tsx",
+    "unresolvedTo": "./RatingAdvanced",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Rating/RatingAdvanced.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Rating/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Rating/index.tsx",
+    "to": "src/flowbite/components/Rating/RatingContext.tsx",
+    "unresolvedTo": "./RatingContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Rating/RatingContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Rating/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Rating/index.tsx",
+    "to": "src/flowbite/components/Rating/RatingStar.tsx",
+    "unresolvedTo": "./RatingStar",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Rating/RatingStar.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Rating/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Rating/RatingStar.tsx",
+    "to": "src/flowbite/components/Rating/RatingContext.tsx",
+    "unresolvedTo": "./RatingContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Rating/RatingContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Rating/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Rating/RatingStar.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Spinner/index.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Spinner/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Tab/index.tsx",
+    "to": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+    "unresolvedTo": "../Flowbite/ThemeContext",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Tab/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/flowbite/components/Toast/index.tsx",
+    "to": "src/flowbite/components/Toast/ToastToggle.tsx",
+    "unresolvedTo": "./ToastToggle",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowbite/components/Toast/ToastToggle.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Flowbite/ThemeContext.tsx",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/theme/default.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/index.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowbite/components/Toast/index.tsx",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/ipcMainListeners.ts",
+    "to": "src/mixerStartpos/index.ts",
+    "unresolvedTo": "./mixerStartpos",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/mixerStartpos/index.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/ipcMainListeners.ts",
+    "to": "src/modCompat/packFileCompatManager.ts",
+    "unresolvedTo": "./modCompat/packFileCompatManager",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/modCompat/packFileCompatManager.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/modCompat/missingDBTableReferences.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/ipcMainListeners.ts",
+    "to": "src/modCompat/packTableCollisions.ts",
+    "unresolvedTo": "./modCompat/packTableCollisions",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/modCompat/packTableCollisions.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/ipcMainListeners.ts",
+    "to": "src/nodeExecutor.ts",
+    "unresolvedTo": "./nodeExecutor",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/nodeExecutor.ts",
+        "dependencyTypes": [
+          "local",
+          "dynamic-import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/ipcMainListeners.ts",
+    "to": "src/nodeGraphExecutor.ts",
+    "unresolvedTo": "./nodeGraphExecutor",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/nodeGraphExecutor.ts",
+        "dependencyTypes": [
+          "local",
+          "dynamic-import"
+        ]
+      },
+      {
+        "name": "src/nodeExecutor.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/ipcMainListeners.ts",
+    "to": "src/packFileSerializer.ts",
+    "unresolvedTo": "./packFileSerializer",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/ipcMainListeners.ts",
+    "to": "src/skillsData/cache.ts",
+    "unresolvedTo": "./skillsData/cache",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/skillsData/cache.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/ipcMainListeners.ts",
+    "to": "src/skillsData/overlay.ts",
+    "unresolvedTo": "./skillsData/overlay",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/skillsData/overlay.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/skillsData/cache.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/ipcMainListeners.ts",
+    "to": "src/unitViewer/tableRows.ts",
+    "unresolvedTo": "./unitViewer/tableRows",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/unitViewer/tableRows.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/vanillaDbCache/tableRows.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/vanillaDbCache/store.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/ipcMainListeners.ts",
+    "to": "src/utility/packImportStaging.ts",
+    "unresolvedTo": "./utility/packImportStaging",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/utility/packImportStaging.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/ipcMainListeners.ts",
+    "to": "src/vanillaDbCache/store.ts",
+    "unresolvedTo": "./vanillaDbCache/store",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/vanillaDbCache/store.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/ipcMainListeners.ts",
+    "to": "src/vanillaDbCache/tableRows.ts",
+    "unresolvedTo": "./vanillaDbCache/tableRows",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/vanillaDbCache/tableRows.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/vanillaDbCache/store.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/ipcMainListeners.ts",
+    "to": "src/vanillaPackIndex/store.ts",
+    "unresolvedTo": "./vanillaPackIndex/store",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/vanillaPackIndex/store.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "dynamic-import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/ipcMainListeners.ts",
+    "to": "src/workshopModOptimizer/backgroundRuntime.ts",
+    "unresolvedTo": "./workshopModOptimizer/backgroundRuntime",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/workshopModOptimizer/backgroundRuntime.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/workshopModOptimizer/runtime.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/wh3AssetHostIpc.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/ipcMainListeners.ts",
+    "to": "src/workshopModOptimizer/runtime.ts",
+    "unresolvedTo": "./workshopModOptimizer/runtime",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/workshopModOptimizer/runtime.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/wh3AssetHostIpc.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/ipcMainListeners.ts",
+    "to": "src/workshopModOptimizer/visualCheckIpc.ts",
+    "unresolvedTo": "./workshopModOptimizer/visualCheckIpc",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/workshopModOptimizer/visualCheckIpc.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/wh3AssetHostIpc.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/modCompat/missingDBTableReferences.ts",
+    "to": "src/modCompat/uniqueDBTableIndices.ts",
+    "unresolvedTo": "./uniqueDBTableIndices",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/modCompat/uniqueDBTableIndices.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/modCompat/packFileCompatManager.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/modCompat/missingDBTableReferences.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/modCompat/packFileCompatManager.ts",
+    "to": "src/modCompat/packTableCollisions.ts",
+    "unresolvedTo": "./packTableCollisions",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/modCompat/packTableCollisions.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/modCompat/packFileCompatManager.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/modCompat/packFileCompatManager.ts",
+    "to": "src/modCompat/uniqueDBTableIndices.ts",
+    "unresolvedTo": "./uniqueDBTableIndices",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/modCompat/uniqueDBTableIndices.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/modCompat/packFileCompatManager.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/nodeExecutor.ts",
+    "to": "src/flowDeepClone.ts",
+    "unresolvedTo": "./flowDeepClone",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/flowDeepClone.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/nodeExecutor.ts",
+        "dependencyTypes": [
+          "local",
+          "dynamic-import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/nodeExecutor.ts",
+    "to": "src/packFileSerializer.ts",
+    "unresolvedTo": "./packFileSerializer",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/nodeExecutor.ts",
+        "dependencyTypes": [
+          "local",
+          "dynamic-import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/nodeExecutor.ts",
+    "to": "src/vanillaDbCache/store.ts",
+    "unresolvedTo": "./vanillaDbCache/store",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/vanillaDbCache/store.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/nodeExecutor.ts",
+        "dependencyTypes": [
+          "local",
+          "dynamic-import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/nodeExecutor.ts",
+    "to": "src/vanillaPackIndex/store.ts",
+    "unresolvedTo": "./vanillaPackIndex/store",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/vanillaPackIndex/store.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "dynamic-import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/nodeExecutor.ts",
+        "dependencyTypes": [
+          "local",
+          "dynamic-import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/nodeGraph/nodes/types.ts",
+    "to": "src/nodeGraph/types.ts",
+    "unresolvedTo": "../types",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/nodeGraph/types.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "src/nodeGraph/nodes/types.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/nodeGraphExecutor.ts",
+    "to": "src/nodeExecutor.ts",
+    "unresolvedTo": "./nodeExecutor",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/nodeExecutor.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/flowDeepClone.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/nodeGraphExecutor.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/packFileSerializer.ts",
+    "to": "src/nodeGraphExecutor.ts",
+    "unresolvedTo": "./nodeGraphExecutor",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/nodeGraphExecutor.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/nodeExecutor.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/wh3AssetHostIpc.ts",
+    "to": "src/packFileSerializer.ts",
+    "unresolvedTo": "./packFileSerializer",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/workshopModOptimizer/backgroundRuntime.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/workshopModOptimizer/runtime.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/wh3AssetHostIpc.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/wh3AssetHostIpc.ts",
+    "to": "src/wh3AssetHostVanillaCache.ts",
+    "unresolvedTo": "./wh3AssetHostVanillaCache",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/wh3AssetHostVanillaCache.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/workshopModOptimizer/backgroundRuntime.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/workshopModOptimizer/runtime.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/wh3AssetHostIpc.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/wh3AssetHostVanillaCache.ts",
+    "to": "src/packFileSerializer.ts",
+    "unresolvedTo": "./packFileSerializer",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/workshopModOptimizer/backgroundRuntime.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/workshopModOptimizer/runtime.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/wh3AssetHostVanillaCache.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/workshopModOptimizer/runtime.ts",
+    "to": "src/wh3AssetHostVanillaCache.ts",
+    "unresolvedTo": "../wh3AssetHostVanillaCache",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/wh3AssetHostVanillaCache.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/workshopModOptimizer/runtime.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/workshopModOptimizer/visualCheckIpc.ts",
+    "to": "src/wh3AssetHostVanillaCache.ts",
+    "unresolvedTo": "../wh3AssetHostVanillaCache",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/wh3AssetHostVanillaCache.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/packFileSerializer.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/workshopModOptimizer/visualCheckIpc.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "src/workshopModOptimizer/visualCheckIpc.ts",
+    "to": "src/workshopModOptimizer/runtime.ts",
+    "unresolvedTo": "./runtime",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "src/workshopModOptimizer/runtime.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/wh3AssetHostIpc.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/ipcMainListeners.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "src/workshopModOptimizer/visualCheckIpc.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "dependency",
+    "from": "src/appConfigFunctions.ts",
+    "to": "node_modules/electron/index.js",
+    "unresolvedTo": "electron",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "npm-dev",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "not-to-dev-dep"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/appControl/server.ts",
+    "to": "node_modules/electron/index.js",
+    "unresolvedTo": "electron",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "npm-dev",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "not-to-dev-dep"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/assetProtocol.ts",
+    "to": "node_modules/electron/index.js",
+    "unresolvedTo": "electron",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "npm-dev",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "not-to-dev-dep"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/configs/i18next.config.ts",
+    "to": "node_modules/electron/index.js",
+    "unresolvedTo": "electron",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "npm-dev",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "not-to-dev-dep"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/gameLogErrorCounts.ts",
+    "to": "node_modules/electron/index.js",
+    "unresolvedTo": "electron",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "npm-dev",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "not-to-dev-dep"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/gameLogIpc.ts",
+    "to": "node_modules/electron/index.js",
+    "unresolvedTo": "electron",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "npm-dev",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "not-to-dev-dep"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/gameSaves.ts",
+    "to": "node_modules/electron/index.js",
+    "unresolvedTo": "electron",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "npm-dev",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "not-to-dev-dep"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/index.ts",
+    "to": "node_modules/electron-devtools-installer/dist/index.js",
+    "unresolvedTo": "electron-devtools-installer",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "npm-dev",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "not-to-dev-dep"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/index.ts",
+    "to": "node_modules/electron/index.js",
+    "unresolvedTo": "electron",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "npm-dev",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "not-to-dev-dep"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/ipcMainListeners.ts",
+    "to": "node_modules/electron/index.js",
+    "unresolvedTo": "electron",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "npm-dev",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "not-to-dev-dep"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/nodeExecutor.ts",
+    "to": "node_modules/electron/index.js",
+    "unresolvedTo": "electron",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "npm-dev",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "not-to-dev-dep"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/openDialog.ts",
+    "to": "node_modules/electron/index.js",
+    "unresolvedTo": "electron",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "npm-dev",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "not-to-dev-dep"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/preload.ts",
+    "to": "node_modules/electron/index.js",
+    "unresolvedTo": "electron",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "npm-dev",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "not-to-dev-dep"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/vanillaDbCache/store.ts",
+    "to": "node_modules/electron/index.js",
+    "unresolvedTo": "electron",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "npm-dev",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "not-to-dev-dep"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/vanillaPackFilesCache.ts",
+    "to": "node_modules/electron/index.js",
+    "unresolvedTo": "electron",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "npm-dev",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "not-to-dev-dep"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/vanillaPackIndex/store.ts",
+    "to": "node_modules/electron/index.js",
+    "unresolvedTo": "electron",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "npm-dev",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "not-to-dev-dep"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/wh3AssetHostIpc.ts",
+    "to": "node_modules/electron/index.js",
+    "unresolvedTo": "electron",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "npm-dev",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "not-to-dev-dep"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/workshopModOptimizer/runtime.ts",
+    "to": "node_modules/electron/index.js",
+    "unresolvedTo": "electron",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "npm-dev",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "not-to-dev-dep"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/workshopModOptimizer/visualCheckIpc.ts",
+    "to": "node_modules/electron/index.js",
+    "unresolvedTo": "electron",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "npm-dev",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "not-to-dev-dep"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "steamworks/index.js",
+    "to": "./dist/osx/steamworksjs.darwin-arm64.node",
+    "unresolvedTo": "./dist/osx/steamworksjs.darwin-arm64.node",
+    "dependencyTypes": [
+      "unknown"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "not-to-unresolvable"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "steamworks/index.js",
+    "to": "./dist/osx/steamworksjs.darwin-x64.node",
+    "unresolvedTo": "./dist/osx/steamworksjs.darwin-x64.node",
+    "dependencyTypes": [
+      "unknown"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "not-to-unresolvable"
+    }
+  },
+  {
+    "type": "module",
+    "from": "src/flowbite/helpers/getImageUrl.ts",
+    "to": "src/flowbite/helpers/getImageUrl.ts",
+    "rule": {
+      "severity": "warn",
+      "name": "no-orphans"
+    }
+  },
+  {
+    "type": "module",
+    "from": "src/preload.js",
+    "to": "src/preload.js",
+    "rule": {
+      "severity": "warn",
+      "name": "no-orphans"
+    }
+  }
+]

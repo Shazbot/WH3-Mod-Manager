@@ -114,3 +114,5 @@ temp/*.js
 native-patches
 
 /.codebase-memory/
+# dependency-cruiser HTML report
+/dependency-report/

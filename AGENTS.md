@@ -76,6 +76,7 @@ Use Codebase Memory MCP for architecture discovery and persistent project knowle
 - Avoid unrelated refactors, unnecessary abstractions, and new dependencies.
 - Preserve existing behavior unless the task requires changing it.
 - Run targeted tests or checks appropriate to the change.
+- After changes that touch imports across renderer/main/tools, run `yarn check:deps`; use `yarn deps:baseline` only to intentionally accept a new violation (renderer/tools boundary rules are never baselined).
 - Prefer targeted validation over expensive full-project checks when sufficient.
 
 Use native Windows Git for this repository, ideally from PowerShell or Windows Terminal.

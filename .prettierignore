@@ -17,3 +17,6 @@ schema/
 dumps/
 plans/
 agentdocs/
+
+# Generated dependency-cruiser report.
+dependency-report/
