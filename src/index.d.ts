@@ -585,7 +585,7 @@ declare global {
     | "isRemoveUnusedMixerFactionsEnabled"
   >;
 
-  type StartGameOptions = StartGameSpecificOptions & { isRigidModelV2CompressionEnabled?: boolean } & Pick<
+  type StartGameOptions = StartGameSpecificOptions & { isRigidModelV2CompressionEnabled?: boolean; isLuaSocketEnabled?: boolean } & Pick<
       AppState,
       | "isClosedOnPlay"
       | "workshopModStagingMode"

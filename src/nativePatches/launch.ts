@@ -71,7 +71,7 @@ const ensureHelperInAppData = (appDataPath: string, sourcePath: string): string 
   return targetPath;
 };
 
-const toWinePath = (absolutePath: string) => {
+export const toWinePath = (absolutePath: string) => {
   const resolved = nodePath.resolve(absolutePath);
   if (!nodePath.isAbsolute(resolved)) throw new Error(`Expected an absolute path for Proton: ${absolutePath}`);
   return `Z:${resolved.replace(/\//g, "\\")}`;

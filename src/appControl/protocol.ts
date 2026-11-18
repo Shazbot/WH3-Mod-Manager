@@ -28,6 +28,8 @@ export interface AppControlModSelection {
 export interface AppControlLaunchOptions {
   skipIntroMovies?: boolean;
   scriptLogging?: boolean;
+  /** Load the bundled LuaSocket DLL for this launch (WH3 only). */
+  luaSocket?: boolean;
   autoStartCustomBattle?: boolean;
   autoStartNewCampaign?: boolean;
   makeUnitsGenerals?: boolean;

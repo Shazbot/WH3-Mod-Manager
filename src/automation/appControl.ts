@@ -63,6 +63,7 @@ export const gameLaunchSchema = z
       .object({
         skipIntroMovies: z.boolean().optional(),
         scriptLogging: z.boolean().optional(),
+        luaSocket: z.boolean().optional(),
         autoStartCustomBattle: z.boolean().optional(),
         autoStartNewCampaign: z.boolean().optional(),
         makeUnitsGenerals: z.boolean().optional(),

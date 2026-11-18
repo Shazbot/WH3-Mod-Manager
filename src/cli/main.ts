@@ -42,7 +42,7 @@ const rootHelp = `Usage:
   whmm mods list [--enabled-only]
   whmm mods set [--preset <name>] [--only <mod> ...] [--enable <mod> ...] [--disable <mod> ...] [--order <mod> ...] [--dry-run]
   whmm game launch [--preset <name>] [--only <mod> ...] [--enable <mod> ...] [--disable <mod> ...] [--order <mod> ...] [--temporary]
-    [--continue | --save <name>] [--skip-intros] [--script-logging] [--auto-start-battle | --auto-start-campaign] [--game <game>] [--restart]
+    [--continue | --save <name>] [--skip-intros] [--script-logging] [--lua-socket] [--auto-start-battle | --auto-start-campaign] [--game <game>] [--restart]
   whmm game relaunch [same flags as game launch]
   whmm game stop [--stop-timeout <s>]
 
@@ -115,6 +115,7 @@ Flags:
   --continue           Load the most recent save
   --save <name>        Load this save
   --skip-intros, --script-logging, --auto-start-battle, --auto-start-campaign  Turn on a launch option for this launch
+  --lua-socket         Load the bundled LuaSocket DLL for this launch (wh3 only; ports 23456/23457/23458)
   --game <game>        Refuse to launch unless WHMM is set to this game (for example wh3)
   --launch-timeout <s> Seconds to wait for the game to start (default 900)
   --restart            Stop a running game first instead of refusing (game relaunch implies it)
@@ -199,6 +200,7 @@ const options = {
   save: { type: "string" as const },
   "skip-intros": { type: "boolean" as const },
   "script-logging": { type: "boolean" as const },
+  "lua-socket": { type: "boolean" as const },
   "auto-start-battle": { type: "boolean" as const },
   "auto-start-campaign": { type: "boolean" as const },
   game: { type: "string" as const },
@@ -295,6 +297,7 @@ const buildAppControlRequest = (
       "save",
       "skip-intros",
       "script-logging",
+      "lua-socket",
       "auto-start-battle",
       "auto-start-campaign",
       "game",
@@ -324,6 +327,7 @@ const buildAppControlRequest = (
   const launchOptions: Record<string, boolean> = { ...((common.options as Record<string, boolean>) ?? {}) };
   if (values["skip-intros"]) launchOptions.skipIntroMovies = true;
   if (values["script-logging"]) launchOptions.scriptLogging = true;
+  if (values["lua-socket"]) launchOptions.luaSocket = true;
   if (values["auto-start-battle"]) launchOptions.autoStartCustomBattle = true;
   if (values["auto-start-campaign"]) launchOptions.autoStartNewCampaign = true;
   if (Object.keys(launchOptions).length) request.options = launchOptions;
@@ -362,6 +366,7 @@ const buildRequest = async (
     "save",
     "skip-intros",
     "script-logging",
+    "lua-socket",
     "auto-start-battle",
     "auto-start-campaign",
     "game",

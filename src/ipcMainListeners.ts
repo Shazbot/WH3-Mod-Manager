@@ -233,6 +233,7 @@ import debounce from "just-debounce-it";
 import fetch from "node-fetch";
 import * as nodePath from "path";
 import { getTrimmedMixerStartpos } from "./mixerStartpos";
+import { ensureLuaSocketDll, luaSocketDllResourcePath, luaSocketLoaderScript } from "./luaSocket";
 import { version } from "react";
 import { readAppConfig, setStartingConfig, writeAppConfig } from "./appConfigFunctions";
 import { applyConfigSavePayloadToAppData } from "./config/applyConfigSavePayload";
@@ -14136,8 +14137,20 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
           startGameOptions.isSkipIntroMoviesEnabled ||
           startGameOptions.isAutoStartCustomBattleEnabled ||
           startGameOptions.isAutoStartNewCampaignEnabled ||
-          startGameOptions.isRemoveUnusedMixerFactionsEnabled
+          startGameOptions.isRemoveUnusedMixerFactionsEnabled ||
+          startGameOptions.isLuaSocketEnabled
         ) {
+          let luaSocketLoader: string | undefined;
+          if (startGameOptions.isLuaSocketEnabled) {
+            try {
+              const dllPath = ensureLuaSocketDll(appDataPath, luaSocketDllResourcePath());
+              luaSocketLoader = luaSocketLoaderScript(dllPath);
+            } catch (e) {
+              const message = `LuaSocket could not be prepared: ${e instanceof Error ? e.message : String(e)}`;
+              reportGameLaunchError(message, e);
+              throw new Error(message);
+            }
+          }
           log("making temp dir");
           await fs.mkdirSync(nodePath.join(appDataPath, "tempPacks"), { recursive: true });
           log("getting start game dbs");
@@ -14175,6 +14188,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
                 sortedMods.concat(vanillaPacks),
                 startGameOptions,
                 mixerStartpos,
+                luaSocketLoader,
               );
               failedWriting = false;
               break;

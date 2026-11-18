@@ -154,4 +154,10 @@ describe("app control mod selection", () => {
       isAutoStartNewCampaignEnabled: false,
     });
   });
+
+  it("maps the luaSocket launch override and defaults it to off", () => {
+    const state = createState(mods);
+    expect(startGameOptions(state, { luaSocket: true }).isLuaSocketEnabled).toBe(true);
+    expect(startGameOptions(state).isLuaSocketEnabled).toBe(false);
+  });
 });

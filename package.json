@@ -65,7 +65,8 @@
         "icon": "./src/assets/modmanager.ico",
         "extraResource": [
           "./tools/WH3AssetHost",
-          "./tools/nativePatchHelper/WH3NativePatchHelper.exe"
+          "./tools/nativePatchHelper/WH3NativePatchHelper.exe",
+          "./tools/luaSocket"
         ]
       },
       "publishers": [

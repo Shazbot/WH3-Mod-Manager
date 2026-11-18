@@ -151,6 +151,17 @@ describeUnix("CLI app control", () => {
     expect(requests).toHaveLength(1);
   });
 
+  it("passes --lua-socket on launch and rejects it on stop", async () => {
+    const requests = await serveReplies([() => ({ ok: true, result: { game: "wh3" } })]);
+    await run(["game", "launch", "--lua-socket"]);
+    expect(requests[0]).toMatchObject({ method: "launch", params: { options: { luaSocket: true } } });
+
+    const { exitCode, envelope } = await run(["game", "stop", "--lua-socket"]);
+    expect(exitCode).not.toBe(0);
+    expect(envelope.error).toMatchObject({ code: "INVALID_ARGUMENT" });
+    expect(requests).toHaveLength(1);
+  });
+
   it("sends stop and relaunch requests", async () => {
     const requests = await serveReplies([
       () => ({ ok: true, result: { game: "wh3", wasRunning: true } }),

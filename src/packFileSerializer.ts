@@ -777,6 +777,17 @@ const createFrontendScriptData = (pack_files: PackedFile[], name: string, script
     ],
   } as PackedFile);
 };
+// _lib/mod runs in frontend, campaign and battle (unlike script/frontend/mod).
+const createLuaSocketLoaderData = (pack_files: PackedFile[], script: string) => {
+  const scriptBuffer = Buffer.from(script, "utf-8");
+  pack_files.push({
+    name: "script\\_lib\\mod\\whmm_luasocket_late_loader.lua",
+    file_size: scriptBuffer.byteLength,
+    start_pos: 0,
+    is_compressed: false,
+    schemaFields: [{ type: "Buffer", fields: [{ type: "Buffer", val: scriptBuffer }] }],
+  } as PackedFile);
+};
 const sortByPackName = (packFirst: Pack, packSecond: Pack) => {
   return compareModNames(packFirst.name, packSecond.name);
 };
@@ -1450,6 +1461,7 @@ export const writeStartGamePack = async (
   enabledMods: Mod[],
   startGameOptions: StartGameOptions,
   mixerStartpos?: Buffer,
+  luaSocketLoaderScript?: string,
 ) => {
   let outFile: BinaryFile | undefined;
   try {
@@ -1458,6 +1470,7 @@ export const writeStartGamePack = async (
     const refFileCount = 0;
     const pack_file_index_size = 0;
     const packFiles: PackedFile[] = [];
+    if (luaSocketLoaderScript) createLuaSocketLoaderData(packFiles, luaSocketLoaderScript);
     if (startGameOptions.isMakeUnitsGeneralsEnabled) createBattlePermissionsData(packsData, packFiles, enabledMods);
     if (startGameOptions.isSkipIntroMoviesEnabled) createIntroMoviesData(packFiles);
     if (startGameOptions.isScriptLoggingEnabled) createScriptLoggingData(packFiles);

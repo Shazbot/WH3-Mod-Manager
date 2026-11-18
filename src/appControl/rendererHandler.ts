@@ -66,6 +66,9 @@ const launch = (params: AppControlLaunchParams): AppControlLaunchResult & { warn
   // Main validates a restart before stopping the game, so the game is still running at that point.
   if (appState.isWH3Running && !params.validateOnly) throw new ControlError("CONFLICT", "The game is already running.");
 
+  if (params.options?.luaSocket && appState.currentGame !== "wh3")
+    throw new ControlError("VALIDATION", "LuaSocket is only available for Total War: WARHAMMER III.");
+
   let saveName: string | undefined;
   if (params.save !== undefined) {
     if (!appState.saves.some((save) => save.name === params.save))
