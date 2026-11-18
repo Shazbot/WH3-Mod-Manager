@@ -10,7 +10,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -48,7 +48,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -94,7 +94,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -132,7 +132,7 @@
       "type-import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -163,7 +163,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -195,7 +195,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -226,7 +226,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -272,7 +272,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -303,7 +303,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -341,7 +341,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -393,7 +393,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -431,7 +431,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -476,7 +476,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -522,7 +522,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -553,7 +553,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -591,7 +591,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -629,7 +629,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -681,7 +681,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -719,7 +719,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -765,7 +765,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -796,7 +796,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -834,7 +834,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -872,7 +872,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -918,7 +918,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -950,7 +950,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -981,7 +981,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1019,7 +1019,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1057,7 +1057,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1096,7 +1096,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1127,7 +1127,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1165,7 +1165,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1203,7 +1203,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1255,7 +1255,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1293,7 +1293,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1324,7 +1324,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1355,7 +1355,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1386,7 +1386,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1417,7 +1417,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1448,7 +1448,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1479,7 +1479,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1510,7 +1510,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1541,7 +1541,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1579,7 +1579,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1617,7 +1617,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1655,7 +1655,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1693,7 +1693,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1731,7 +1731,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1769,7 +1769,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1807,7 +1807,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1845,7 +1845,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1883,7 +1883,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1921,7 +1921,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1959,7 +1959,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -1997,7 +1997,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2028,7 +2028,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2074,7 +2074,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2112,7 +2112,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2158,7 +2158,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2196,7 +2196,7 @@
       "type-import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2227,7 +2227,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2257,7 +2257,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2294,7 +2294,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2338,7 +2338,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2382,7 +2382,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2419,7 +2419,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2463,7 +2463,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2509,7 +2509,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2561,7 +2561,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2593,7 +2593,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2624,7 +2624,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2671,7 +2671,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2716,7 +2716,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2768,7 +2768,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2814,7 +2814,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2846,7 +2846,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2892,7 +2892,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2924,7 +2924,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -2970,7 +2970,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3002,7 +3002,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3047,7 +3047,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3099,7 +3099,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3145,7 +3145,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3176,7 +3176,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3216,7 +3216,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3248,7 +3248,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3293,7 +3293,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3338,7 +3338,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3383,7 +3383,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3429,7 +3429,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3470,7 +3470,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3516,7 +3516,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3548,7 +3548,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3581,7 +3581,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3614,7 +3614,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3647,7 +3647,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3680,7 +3680,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3718,7 +3718,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3764,7 +3764,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3795,7 +3795,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3832,7 +3832,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3871,7 +3871,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3916,7 +3916,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -3968,7 +3968,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -4020,7 +4020,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -4072,7 +4072,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -4124,7 +4124,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -4176,7 +4176,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -4228,7 +4228,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -4280,7 +4280,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -4325,7 +4325,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -4378,7 +4378,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -4432,7 +4432,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -4471,7 +4471,7 @@
       "export"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -4523,7 +4523,7 @@
       "export"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -4575,7 +4575,7 @@
       "export"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -4614,7 +4614,7 @@
       "export"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -4666,7 +4666,7 @@
       "export"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -4705,7 +4705,7 @@
       "export"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -4744,7 +4744,7 @@
       "export"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -4783,7 +4783,7 @@
       "export"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -4835,7 +4835,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -4887,7 +4887,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -4939,7 +4939,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -4991,7 +4991,7 @@
       "export"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -5029,7 +5029,7 @@
       "export"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -5067,7 +5067,7 @@
       "export"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -5105,7 +5105,7 @@
       "export"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -5143,7 +5143,7 @@
       "export"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -5188,7 +5188,7 @@
       "export"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -5233,7 +5233,7 @@
       "export"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -5278,7 +5278,7 @@
       "export"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -5316,7 +5316,7 @@
       "export"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -5354,7 +5354,7 @@
       "export"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -5392,7 +5392,7 @@
       "export"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -5430,7 +5430,7 @@
       "export"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -5475,7 +5475,7 @@
       "export"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -5520,7 +5520,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -5572,7 +5572,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -5624,7 +5624,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -5676,7 +5676,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -5728,7 +5728,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -5780,7 +5780,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -5825,7 +5825,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -5870,7 +5870,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -5922,7 +5922,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -5953,7 +5953,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6005,7 +6005,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6043,7 +6043,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6088,7 +6088,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6133,7 +6133,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6185,7 +6185,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6222,7 +6222,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6266,7 +6266,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6303,7 +6303,7 @@
       "dynamic-import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6333,7 +6333,7 @@
       "dynamic-import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6370,7 +6370,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6400,7 +6400,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6437,7 +6437,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6481,7 +6481,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6533,7 +6533,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6570,7 +6570,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6607,7 +6607,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6652,7 +6652,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6689,7 +6689,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6733,7 +6733,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6770,7 +6770,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6807,7 +6807,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6858,7 +6858,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6902,7 +6902,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6946,7 +6946,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -6990,7 +6990,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -7027,7 +7027,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -7071,7 +7071,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -7116,7 +7116,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -7148,7 +7148,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -7192,7 +7192,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -7229,7 +7229,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -7280,7 +7280,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -7338,7 +7338,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -7389,7 +7389,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -7433,7 +7433,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -7477,7 +7477,7 @@
       "import"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "no-circular"
     },
     "cycle": [
@@ -7512,326 +7512,21 @@
     ]
   },
   {
-    "type": "dependency",
-    "from": "src/appConfigFunctions.ts",
-    "to": "node_modules/electron/index.js",
-    "unresolvedTo": "electron",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "npm-dev",
-      "import"
-    ],
+    "type": "module",
+    "from": "src/flowbite/helpers/getImageUrl.ts",
+    "to": "src/flowbite/helpers/getImageUrl.ts",
     "rule": {
-      "severity": "error",
-      "name": "not-to-dev-dep"
+      "severity": "ignore",
+      "name": "no-orphans"
     }
   },
   {
-    "type": "dependency",
-    "from": "src/appControl/server.ts",
-    "to": "node_modules/electron/index.js",
-    "unresolvedTo": "electron",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "npm-dev",
-      "import"
-    ],
+    "type": "module",
+    "from": "src/preload.js",
+    "to": "src/preload.js",
     "rule": {
-      "severity": "error",
-      "name": "not-to-dev-dep"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/assetProtocol.ts",
-    "to": "node_modules/electron/index.js",
-    "unresolvedTo": "electron",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "npm-dev",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "not-to-dev-dep"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/configs/i18next.config.ts",
-    "to": "node_modules/electron/index.js",
-    "unresolvedTo": "electron",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "npm-dev",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "not-to-dev-dep"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/gameLogErrorCounts.ts",
-    "to": "node_modules/electron/index.js",
-    "unresolvedTo": "electron",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "npm-dev",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "not-to-dev-dep"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/gameLogIpc.ts",
-    "to": "node_modules/electron/index.js",
-    "unresolvedTo": "electron",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "npm-dev",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "not-to-dev-dep"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/gameSaves.ts",
-    "to": "node_modules/electron/index.js",
-    "unresolvedTo": "electron",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "npm-dev",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "not-to-dev-dep"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/index.ts",
-    "to": "node_modules/electron-devtools-installer/dist/index.js",
-    "unresolvedTo": "electron-devtools-installer",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "npm-dev",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "not-to-dev-dep"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/index.ts",
-    "to": "node_modules/electron/index.js",
-    "unresolvedTo": "electron",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "npm-dev",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "not-to-dev-dep"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/ipcMainListeners.ts",
-    "to": "node_modules/electron/index.js",
-    "unresolvedTo": "electron",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "npm-dev",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "not-to-dev-dep"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/nodeExecutor.ts",
-    "to": "node_modules/electron/index.js",
-    "unresolvedTo": "electron",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "npm-dev",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "not-to-dev-dep"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/openDialog.ts",
-    "to": "node_modules/electron/index.js",
-    "unresolvedTo": "electron",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "npm-dev",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "not-to-dev-dep"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/preload.ts",
-    "to": "node_modules/electron/index.js",
-    "unresolvedTo": "electron",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "npm-dev",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "not-to-dev-dep"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/vanillaDbCache/store.ts",
-    "to": "node_modules/electron/index.js",
-    "unresolvedTo": "electron",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "npm-dev",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "not-to-dev-dep"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/vanillaPackFilesCache.ts",
-    "to": "node_modules/electron/index.js",
-    "unresolvedTo": "electron",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "npm-dev",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "not-to-dev-dep"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/vanillaPackIndex/store.ts",
-    "to": "node_modules/electron/index.js",
-    "unresolvedTo": "electron",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "npm-dev",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "not-to-dev-dep"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/wh3AssetHostIpc.ts",
-    "to": "node_modules/electron/index.js",
-    "unresolvedTo": "electron",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "npm-dev",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "not-to-dev-dep"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/workshopModOptimizer/runtime.ts",
-    "to": "node_modules/electron/index.js",
-    "unresolvedTo": "electron",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "npm-dev",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "not-to-dev-dep"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/workshopModOptimizer/visualCheckIpc.ts",
-    "to": "node_modules/electron/index.js",
-    "unresolvedTo": "electron",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "npm-dev",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "not-to-dev-dep"
+      "severity": "ignore",
+      "name": "no-orphans"
     }
   },
   {
@@ -7843,7 +7538,7 @@
       "unknown"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "not-to-unresolvable"
     }
   },
@@ -7856,26 +7551,8 @@
       "unknown"
     ],
     "rule": {
-      "severity": "error",
+      "severity": "ignore",
       "name": "not-to-unresolvable"
-    }
-  },
-  {
-    "type": "module",
-    "from": "src/flowbite/helpers/getImageUrl.ts",
-    "to": "src/flowbite/helpers/getImageUrl.ts",
-    "rule": {
-      "severity": "warn",
-      "name": "no-orphans"
-    }
-  },
-  {
-    "type": "module",
-    "from": "src/preload.js",
-    "to": "src/preload.js",
-    "rule": {
-      "severity": "warn",
-      "name": "no-orphans"
     }
   }
 ]

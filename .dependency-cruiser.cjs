@@ -34,7 +34,13 @@ module.exports = {
       name: "not-to-dev-dep",
       severity: "error",
       from: { path: "^src", pathNot: "\\.test\\.tsx?$" },
-      to: { dependencyTypes: ["npm-dev"], dependencyTypesNot: ["type-only"] },
+      to: {
+        dependencyTypes: ["npm-dev"],
+        dependencyTypesNot: ["type-only"],
+        // electron is supplied by the runtime (Forge keeps it a devDependency); the devtools
+        // installer is bundled into main by webpack.
+        pathNot: "^node_modules/(electron|electron-devtools-installer)/",
+      },
     },
     {
       name: "no-duplicate-dep-types",
