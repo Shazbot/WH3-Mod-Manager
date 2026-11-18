@@ -43,6 +43,19 @@ export const terminateGameProcess = async (processName: string, platform = proce
   else if (platform === "linux") await execFileAsync("pkill", ["-f", processName]);
 };
 
+/**
+ * Whether a process with this image name is running on Windows, or `undefined` when `tasklist`
+ * itself could not answer.
+ */
+export const isWindowsProcessRunning = async (imageName: string): Promise<boolean | undefined> => {
+  try {
+    const { stdout } = await execFileAsync("tasklist", ["/nh", "/fi", `IMAGENAME eq ${imageName}`]);
+    return String(stdout).toLowerCase().includes(imageName.toLowerCase());
+  } catch {
+    return undefined;
+  }
+};
+
 export const findGameProcessIds = async (processName: string, platform = process.platform): Promise<number[]> => {
   if (platform === "win32") {
     const { stdout } = await execFileAsync("tasklist", [

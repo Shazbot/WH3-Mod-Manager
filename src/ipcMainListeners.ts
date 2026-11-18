@@ -483,7 +483,7 @@ import { type OptimizerRunReport, buildOptimizerRunReport } from "./workshopModO
 import { loadOptimizerRunReport, saveOptimizerRunReport } from "./workshopModOptimizer/runReportStore";
 import { formatHousekeepingLine } from "./workshopModOptimizer/cache";
 import { scheduleStartupHousekeeping } from "./workshopModOptimizer/housekeepingSchedule";
-import { findGameProcessIds, terminateGameProcess } from "./utility/gameProcess";
+import { findGameProcessIds, isWindowsProcessRunning, terminateGameProcess } from "./utility/gameProcess";
 import { packFileContains } from "./utility/packSearch";
 import steamCollectionScript from "./utility/steamCollectionScript";
 import type { KeyedLookup } from "./utility/trie";
@@ -1218,7 +1218,11 @@ const sendAssetEditorOpenRequest = async (args: {
     });
     socket.on("error", (error) => {
       finish(() => {
-        reject(new Error(`Failed to connect to ${pipePath}: ${error.message}`));
+        reject(
+          Object.assign(new Error(`Failed to connect to ${pipePath}: ${error.message}`), {
+            code: (error as NodeJS.ErrnoException).code,
+          }),
+        );
       });
     });
     socket.on("close", () => {
@@ -8273,6 +8277,19 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         };
       } catch (error) {
         console.error("Error sending AssetEditor open request:", error);
+        if ((error as NodeJS.ErrnoException | null)?.code === "ENOENT") {
+          // Nothing is listening on the pipe; say whether that is because AssetEditor is closed.
+          const isRunning = await isWindowsProcessRunning("AssetEditor.exe");
+          return {
+            success: false,
+            error:
+              isRunning === false
+                ? "AssetEditor isn't running. Start AssetEditor, then try again."
+                : isRunning
+                  ? "AssetEditor is running but isn't accepting requests from WHMM. It may still be starting, or it may be a build without WHMM IPC support."
+                  : "Couldn't reach AssetEditor. Make sure it is running, then try again.",
+          };
+        }
         return {
           success: false,
           error: error instanceof Error ? error.message : "Failed to send AssetEditor open request",
