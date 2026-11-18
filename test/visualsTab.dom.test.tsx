@@ -536,7 +536,7 @@ describe("VisualsTab tab navigation", () => {
   const texts: Record<string, string> = {
     [pathA]: `<m path="${pathB}" />`,
     [pathB]: `<m path="${pathC}" />`,
-    [pathC]: "<end />",
+    [pathC]: `<t path="textures\\c_diffuse.dds" />`,
   };
 
   const renderTab = async () => {
@@ -609,7 +609,10 @@ describe("VisualsTab tab navigation", () => {
     await waitFor(() => expect(tabLabelsPresent()).toEqual(["a.xml.material"]));
 
     fireEvent.mouseDown(await screen.findByRole("button", { name: pathB }), { button: 1 });
-    fireEvent(await screen.findByRole("button", { name: pathB }), new MouseEvent("auxclick", { bubbles: true, button: 1 }));
+    fireEvent(
+      await screen.findByRole("button", { name: pathB }),
+      new MouseEvent("auxclick", { bubbles: true, button: 1 }),
+    );
     await waitFor(() => expect(tabLabelsPresent()).toEqual(["a.xml.material", "b.xml.material"]));
   });
 
@@ -651,5 +654,43 @@ describe("VisualsTab tab navigation", () => {
     fireEvent.mouseDown(tabLabel("a.xml.material"), { button: 1 });
     fireEvent(tabLabel("a.xml.material"), new MouseEvent("auxclick", { bubbles: true, button: 1 }));
     await waitFor(() => expect(tabLabelsPresent()).toEqual([]));
+  });
+
+  it("carries the opener's trail into a middle-clicked tab and switches back to the opener", async () => {
+    await renderTab();
+    await openFromList(pathA);
+
+    const pathBLink = await screen.findByRole("button", { name: pathB });
+    fireEvent.mouseDown(pathBLink, { button: 1 });
+    fireEvent(pathBLink, new MouseEvent("auxclick", { bubbles: true, button: 1 }));
+    await waitFor(() => expect(tabLabelsPresent()).toEqual(["a.xml.material", "b.xml.material"]));
+
+    const originCrumb = await screen.findByTitle(/switch to the tab this was opened from/);
+    expect(originCrumb).toHaveTextContent("a.xml.material");
+    fireEvent.click(originCrumb);
+    await waitFor(() => expect(screen.queryByLabelText("Tab history")).not.toBeInTheDocument());
+    expect(await screen.findByRole("button", { name: pathB })).toBeInTheDocument();
+
+    fireEvent.click(tabLabel("b.xml.material"));
+    expect(await screen.findByTitle(/switch to the tab this was opened from/)).toBeInTheDocument();
+    fireEvent.mouseDown(tabLabel("a.xml.material"), { button: 1 });
+    fireEvent(tabLabel("a.xml.material"), new MouseEvent("auxclick", { bubbles: true, button: 1 }));
+    const closedCrumb = await screen.findByTitle(/the tab this was opened from is closed/);
+    expect(closedCrumb).toBeDisabled();
+  });
+
+  it("previews a hovered DDS path from the source", async () => {
+    await renderTab();
+    await openFromList(pathC);
+
+    const ddsPath = await screen.findByText("textures\\c_diffuse.dds", { selector: "span" });
+    fireEvent.mouseEnter(ddsPath);
+    const preview = await screen.findByRole("tooltip", { name: "Preview of textures\\c_diffuse.dds" });
+    const image = preview.querySelector("img");
+    expect(image?.getAttribute("src")).toBe(
+      `whmm://visuals-dds/visuals-session/${encodeURIComponent("textures\\c_diffuse.dds")}?pack=${encodeURIComponent("/mods/example.pack")}`,
+    );
+    fireEvent.mouseLeave(ddsPath);
+    await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument());
   });
 });

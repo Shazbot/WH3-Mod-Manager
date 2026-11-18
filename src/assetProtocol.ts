@@ -20,6 +20,7 @@ import {
   MOD_THUMBNAIL_HOST,
   MAP_CACHE_HOST,
   UNIT_ASSET_HOST,
+  VISUALS_DDS_HOST,
   normalizeAssetPath,
   type AssetBytes,
 } from "./assetUrls";
@@ -112,6 +113,12 @@ export const registerAssetSchemeAsPrivileged = () => {
 export interface AssetProtocolResolvers {
   /** The unit viewer's session-scoped assets, which are resolved out of that session's packs. */
   resolveUnitViewerAsset: (sessionId: string, assetPath: string) => Promise<AssetBytes | undefined>;
+  /** A DDS referenced from Visuals source, decoded to a preview-sized PNG. */
+  resolveVisualsDdsPreview: (
+    sessionId: string,
+    assetPath: string,
+    preferredPackPath?: string,
+  ) => Promise<AssetBytes | undefined>;
   /** PNGs externalised from the campaign-map disk cache. */
   resolveMapCacheImage: (signature: string, imageName: string) => Promise<AssetBytes | undefined>;
 }
@@ -243,6 +250,17 @@ export const registerAssetProtocol = (resolvers: AssetProtocolResolvers) => {
         const [sessionId, assetPath] = segments;
         if (!sessionId || !assetPath) return notFound();
         const asset = await resolvers.resolveUnitViewerAsset(sessionId, assetPath);
+        return asset ? respondWith(asset) : notFound();
+      }
+      if (url.host === VISUALS_DDS_HOST) {
+        // segments: [sessionId, assetPath]; optional ?pack= names the pack the source came from
+        const [sessionId, assetPath] = segments;
+        if (!sessionId || !assetPath) return notFound();
+        const asset = await resolvers.resolveVisualsDdsPreview(
+          sessionId,
+          assetPath,
+          url.searchParams.get("pack") || undefined,
+        );
         return asset ? respondWith(asset) : notFound();
       }
       if (url.host === MODEL_PREVIEW_HOST) {

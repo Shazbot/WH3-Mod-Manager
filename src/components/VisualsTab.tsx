@@ -10,6 +10,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark, faChevronRight } from "@fortawesome/free-solid-svg-icons";
 import VisualsModelPreview from "./VisualsModelPreview";
 import { runGuarded } from "../utility/runGuarded";
+import { visualsDdsPreviewUrl } from "../assetUrls";
 
 type VisualsUnitEntry = {
   unitKey: string;
@@ -47,7 +48,13 @@ type VisualsViewerTab = {
   requestId?: number;
   history: string[];
   historyIndex: number;
+  /** The opener's trail when this tab was opened by middle-clicking a source link, oldest first. */
+  originCrumbs?: VisualsOriginCrumb[];
 };
+
+/** A breadcrumb entry that belongs to another tab: clicking it returns to that tab's history entry. */
+type VisualsOriginCrumb = { tabId: string; historyIndex: number; path: string };
+type VisualsDdsHover = { tabId: string; sourcePath: string; path: string; packPath?: string; x: number; y: number };
 
 type VisualsNavEntry = { tabId: string; historyIndex: number };
 type VisualsTabContextMenu = { x: number; y: number; tabId: string };
@@ -163,6 +170,57 @@ export type VisualsTabProps = {
   isActive?: boolean;
 };
 
+const DDS_HOVER_IMAGE_SIZE = 256;
+const DDS_HOVER_BOX_WIDTH = DDS_HOVER_IMAGE_SIZE + 18;
+const DDS_HOVER_BOX_HEIGHT = DDS_HOVER_IMAGE_SIZE + 40;
+const VIEWPORT_MARGIN = 8;
+
+/** Floating preview of a DDS path hovered in Visuals source; kept 8px inside the viewport. */
+const VisualsDdsHoverPreview = ({ hover, sessionId }: { hover: VisualsDdsHover; sessionId: string }) => {
+  const url = visualsDdsPreviewUrl(sessionId, hover.path, hover.packPath);
+  const [status, setStatus] = useState<{ url: string; state: "loaded" | "error" } | null>(null);
+  const state = status?.url === url ? status.state : "loading";
+  const left = Math.max(VIEWPORT_MARGIN, Math.min(hover.x, window.innerWidth - DDS_HOVER_BOX_WIDTH - VIEWPORT_MARGIN));
+  const below = hover.y + 4;
+  const top =
+    below + DDS_HOVER_BOX_HEIGHT + VIEWPORT_MARGIN <= window.innerHeight
+      ? below
+      : Math.max(VIEWPORT_MARGIN, hover.y - 24 - DDS_HOVER_BOX_HEIGHT);
+  return (
+    <div
+      className="pointer-events-none fixed z-50 rounded border border-gray-600 bg-gray-800 p-2 shadow-lg"
+      style={{ left, top, width: DDS_HOVER_BOX_WIDTH }}
+      role="tooltip"
+      aria-label={`Preview of ${hover.path}`}
+    >
+      <div
+        className="flex items-center justify-center"
+        style={{
+          width: DDS_HOVER_IMAGE_SIZE,
+          height: DDS_HOVER_IMAGE_SIZE,
+          // Checkerboard so alpha in the texture reads as transparency.
+          background: "repeating-conic-gradient(#374151 0% 25%, #1f2937 0% 50%) 0 0 / 16px 16px",
+        }}
+      >
+        {state !== "error" && (
+          <img
+            key={url}
+            src={url}
+            alt=""
+            className={`max-h-full max-w-full object-contain ${state === "loaded" ? "" : "hidden"}`}
+            onLoad={() => setStatus({ url, state: "loaded" })}
+            onError={() => setStatus({ url, state: "error" })}
+          />
+        )}
+        {state === "loading" && <span className="text-xs text-gray-400">Loading preview...</span>}
+        {state === "error" && <span className="px-2 text-center text-xs text-red-300">Preview unavailable</span>}
+      </div>
+      <div className="mt-1 truncate text-xs text-gray-400">{getBaseName(hover.path)}</div>
+      <div className="text-[11px] text-gray-500">Right-click to extract or copy</div>
+    </div>
+  );
+};
+
 const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
   const dispatch = useAppDispatch();
   const localized = useLocalizations();
@@ -204,6 +262,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
 
   const [tabContextMenu, setTabContextMenu] = useState<VisualsTabContextMenu | null>(null);
   const viewerRootRef = useRef<HTMLDivElement>(null);
+  const [ddsHover, setDdsHover] = useState<VisualsDdsHover | null>(null);
   const navLogRef = useRef<{ entries: VisualsNavEntry[]; index: number }>({ entries: [], index: -1 });
   const unitClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -667,7 +726,16 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
     logNavigation(tab.id, tab.historyIndex);
   };
 
-  const openVisualsFileTab = async (filePath: string, mode: "current" | "new" | "link") => {
+  /** Returns to an origin crumb's tab, and to that crumb's entry when the tab still holds it there. */
+  const openOriginCrumb = (crumb: VisualsOriginCrumb) => {
+    const originTab = tabs.find((tab) => tab.id === crumb.tabId);
+    if (!originTab) return;
+    activateTab(originTab);
+    if (originTab.history[crumb.historyIndex] === crumb.path) void jumpToHistoryIndex(originTab, crumb.historyIndex);
+  };
+
+  /** `linkNew` is a middle-clicked source link: a new tab that remembers the opener's trail. */
+  const openVisualsFileTab = async (filePath: string, mode: "current" | "new" | "link" | "linkNew") => {
     if (!filePath) {
       setViewerMessage("No visual file path is available for this entry.");
       return;
@@ -696,7 +764,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
     setViewerMessage(null);
 
     const currentTab = tabs.find((tab) => tab.id === activeTabId);
-    if (mode !== "new" && currentTab) {
+    if ((mode === "current" || mode === "link") && currentTab) {
       await navigateTab(currentTab, filePath);
       return;
     }
@@ -709,6 +777,15 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
       status: "loading",
       history: [filePath],
       historyIndex: 0,
+      originCrumbs:
+        mode === "linkNew" && currentTab
+          ? [
+              ...(currentTab.originCrumbs ?? []),
+              ...currentTab.history
+                .slice(0, currentTab.historyIndex + 1)
+                .map((path, historyIndex) => ({ tabId: currentTab.id, historyIndex, path })),
+            ]
+          : undefined,
     };
     setTabs((prev) => [...prev, newTab]);
     setActiveTabId(newTabId);
@@ -1157,7 +1234,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                     if (event.button === 1) event.preventDefault();
                   }}
                   onAuxClick={(event) => {
-                    if (event.button === 1) void openVisualsFileTab(pathValue, "new");
+                    if (event.button === 1) void openVisualsFileTab(pathValue, "linkNew");
                   }}
                   onContextMenu={(event) => openAssetEditorContextMenu(event, pathValue, preferredPackPath)}
                   title={`Open referenced ${isXmlMaterial ? "xml.material" : isVariantMeshDefinition ? "variantmeshdefinition" : "wsmodel"} in this tab, middle-click for a new tab (${isAssetEditorOpenablePath(pathValue) ? "right-click for AssetEditor" : "right-click for copy options"})`}
@@ -1175,8 +1252,27 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                       ? "text-amber-300 underline decoration-dashed cursor-context-menu bg-amber-900/20"
                       : "text-sky-200 underline decoration-dotted cursor-context-menu"
                   }
-                  onContextMenu={(event) => openAssetEditorContextMenu(event, pathValue, preferredPackPath)}
-                  title={isDds ? "Right-click to extract or copy this DDS file" : "Right-click to open in AssetEditor"}
+                  onContextMenu={(event) => {
+                    setDdsHover(null);
+                    openAssetEditorContextMenu(event, pathValue, preferredPackPath);
+                  }}
+                  onMouseEnter={
+                    isDds && activeTab
+                      ? (event) => {
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          setDdsHover({
+                            tabId: activeTab.id,
+                            sourcePath: activeTab.filePath,
+                            path: pathValue,
+                            packPath: preferredPackPath,
+                            x: rect.left,
+                            y: rect.bottom,
+                          });
+                        }
+                      : undefined
+                  }
+                  onMouseLeave={isDds ? () => setDdsHover(null) : undefined}
+                  title={isDds ? undefined : "Right-click to open in AssetEditor"}
                 >
                   {pathValue}
                 </span>,
@@ -1478,18 +1574,46 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
           <div className="flex min-h-0 flex-1 flex-col border border-t-0 border-gray-700 rounded-b bg-gray-900 overflow-hidden">
             {!activeTab && (
               <div className="p-4 text-gray-400">
-                Single-click opens in the current tab. Double-click opens in a new tab. Links open in the current tab; middle-click opens a new tab.
+                Single-click opens in the current tab. Double-click opens in a new tab. Links open in the current tab;
+                middle-click opens a new tab.
               </div>
             )}
             {activeTab && (
               <>
                 <div className="shrink-0 px-3 py-2 border-b border-gray-700 text-xs text-gray-400 break-all">
                   <div>{activeTab.filePath}</div>
-                  {viewerMode === "source" && activeTab.history.length > 1 && (
+                  {viewerMode === "source" && (activeTab.history.length > 1 || !!activeTab.originCrumbs?.length) && (
                     <div className="mt-1 flex flex-wrap items-center gap-x-1" aria-label="Tab history">
+                      {activeTab.originCrumbs?.map((crumb, crumbIdx) => {
+                        const isOriginOpen = tabs.some((tab) => tab.id === crumb.tabId);
+                        return (
+                          <React.Fragment key={`origin-${crumbIdx}-${crumb.tabId}-${crumb.historyIndex}`}>
+                            {crumbIdx > 0 && <span className="text-gray-500">›</span>}
+                            <button
+                              type="button"
+                              disabled={!isOriginOpen}
+                              title={
+                                isOriginOpen
+                                  ? `${crumb.path} (switch to the tab this was opened from)`
+                                  : `${crumb.path} (the tab this was opened from is closed)`
+                              }
+                              className={
+                                isOriginOpen
+                                  ? "italic text-blue-300 hover:text-blue-200"
+                                  : "italic text-gray-500 line-through cursor-default"
+                              }
+                              onClick={() => openOriginCrumb(crumb)}
+                            >
+                              {getTabLabel(crumb.path)}
+                            </button>
+                          </React.Fragment>
+                        );
+                      })}
                       {activeTab.history.map((historyPath, historyIdx) => (
                         <React.Fragment key={`${historyIdx}-${historyPath}`}>
-                          {historyIdx > 0 && <span className="text-gray-500">›</span>}
+                          {(historyIdx > 0 || !!activeTab.originCrumbs?.length) && (
+                            <span className="text-gray-500">›</span>
+                          )}
                           <button
                             type="button"
                             title={historyPath}
@@ -1633,7 +1757,8 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
       {tabContextMenu &&
         (() => {
           const menuIndex = tabs.findIndex((tab) => tab.id === tabContextMenu.tabId);
-          const itemClass = "w-full text-left px-4 py-2 hover:bg-gray-700 text-white text-sm disabled:opacity-50 disabled:hover:bg-transparent";
+          const itemClass =
+            "w-full text-left px-4 py-2 hover:bg-gray-700 text-white text-sm disabled:opacity-50 disabled:hover:bg-transparent";
           const closeFromMenu = (ids: string[]) => {
             setTabContextMenu(null);
             closeTabs(new Set(ids), tabContextMenu.tabId);
@@ -1672,6 +1797,9 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
           );
         })()}
 
+      {ddsHover && sessionId && activeTab?.id === ddsHover.tabId && activeTab.filePath === ddsHover.sourcePath && (
+        <VisualsDdsHoverPreview hover={ddsHover} sessionId={sessionId} />
+      )}
       {assetEditorContextMenu && (
         <div
           className="fixed bg-gray-800 border border-gray-600 rounded shadow-lg z-50 min-w-[240px]"

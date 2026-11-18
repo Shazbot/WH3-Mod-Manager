@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { iconAssetUrl, modelPreviewAssetUrl, normalizeAssetPath, unitAssetUrl } from "../src/assetUrls";
+import {
+  iconAssetUrl,
+  modelPreviewAssetUrl,
+  normalizeAssetPath,
+  unitAssetUrl,
+  visualsDdsPreviewUrl,
+} from "../src/assetUrls";
 
 describe("asset URLs", () => {
   it("survives the characters a pack path is full of", () => {
@@ -24,6 +30,17 @@ describe("asset URLs", () => {
     const [, sessionId, assetPath] = url.pathname.split("/").map((segment) => decodeURIComponent(segment));
     expect(sessionId).toBe("session-1");
     expect(assetPath).toBe("ui\\units\\icons\\unit_a.png");
+  });
+
+  it("scopes a Visuals DDS preview to its session and carries the preferred pack", () => {
+    const url = new URL(visualsDdsPreviewUrl("session-1", "Variants/Textures/A B.dds", "C:\\mods\\x y.pack"));
+
+    expect(url.host).toBe("visuals-dds");
+    const [, sessionId, assetPath] = url.pathname.split("/").map((segment) => decodeURIComponent(segment));
+    expect(sessionId).toBe("session-1");
+    expect(assetPath).toBe("variants\\textures\\a b.dds");
+    expect(url.searchParams.get("pack")).toBe("C:\\mods\\x y.pack");
+    expect(new URL(visualsDdsPreviewUrl("session-1", "a.dds")).search).toBe("");
   });
 
   it("points a model preview at the file the host actually wrote", () => {

@@ -21,7 +21,8 @@ import { applyTextPackedFileEdit } from "./utility/textPackStaging";
 import { compareFilesByteForByte } from "./utility/fileComparison";
 import { createSharedAsyncLoader, forEachWithConcurrency } from "./utility/packHeaderStartup";
 import { invalidateCustomizableModPath } from "./utility/customizableModsState";
-import { encodeDdsAsPng } from "./esfMap/dds";
+import { encodeDdsAsPng, encodeDdsMipAsPng } from "./esfMap/dds";
+import { inspectDdsLayout } from "./utility/ddsLayout";
 import { createInFlightTableRequests } from "./components/viewer/inFlightTableRequests";
 import { createSerializedBuilds } from "./utility/serializedBuilds";
 import type { PackRowsForSave } from "./utility/packRowsForSave";
@@ -1107,6 +1108,46 @@ const resolveVisualsFileInSession = async (
   return {
     requestedPath,
   };
+};
+/** Longest edge of a Visuals DDS hover preview; the smallest stored mip at least this large is served. */
+const VISUALS_DDS_PREVIEW_EDGE = 512;
+const VISUALS_DDS_PREVIEW_CACHE_LIMIT = 48;
+/** Hover previews keyed by session, preferred pack and path; insertion order doubles as LRU order. */
+const visualsDdsPreviews = new Map<string, Promise<AssetBytes | undefined>>();
+/**
+ * A DDS referenced from Visuals source, decoded from a stored mip near the preview size so hovering a
+ * 4K texture does not decode the full surface.
+ */
+const getVisualsDdsPreview = (sessionId: string, assetPath: string, preferredPackPath?: string) => {
+  const key = `${sessionId}|${preferredPackPath ?? ""}|${normalizePackFilePath(assetPath).toLowerCase()}`;
+  const cached = visualsDdsPreviews.get(key);
+  if (cached) {
+    visualsDdsPreviews.delete(key);
+    visualsDdsPreviews.set(key, cached);
+    return cached;
+  }
+  const load = (async (): Promise<AssetBytes | undefined> => {
+    const session = visualsSessions.get(sessionId);
+    if (!session) return undefined;
+    const resolved = await resolveVisualsFileInSession(session, assetPath, { preferredPackPath });
+    if (!resolved?.pack || !resolved.fileName) return undefined;
+    await readFromExistingPack(resolved.pack, { filesToRead: [resolved.fileName], skipParsingTables: true });
+    const buffer = findPackedFileCaseInsensitive(resolved.pack, resolved.fileName)?.buffer;
+    if (!buffer) return undefined;
+    const mips = inspectDdsLayout(buffer).mips.filter((mip) => mip.present);
+    const mip =
+      mips.findLast((candidate) => Math.max(candidate.width, candidate.height) >= VISUALS_DDS_PREVIEW_EDGE) ?? mips[0];
+    return { buffer: encodeDdsMipAsPng(buffer, mip?.level ?? 0).png, mimeType: "image/png" };
+  })().catch((error) => {
+    visualsDdsPreviews.delete(key);
+    console.error("Failed to build Visuals DDS preview:", assetPath, error);
+    return undefined;
+  });
+  visualsDdsPreviews.set(key, load);
+  while (visualsDdsPreviews.size > VISUALS_DDS_PREVIEW_CACHE_LIMIT) {
+    visualsDdsPreviews.delete(visualsDdsPreviews.keys().next().value!);
+  }
+  return load;
 };
 const sendAssetEditorOpenRequest = async (args: {
   packPathOnDisk: string;
@@ -3600,6 +3641,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       const image = getPackedFileImageData(resolved.buffer, resolved.resolvedPath);
       return { buffer: image.buffer, mimeType: image.mimeType || resolved.mimeType };
     },
+    resolveVisualsDdsPreview: getVisualsDdsPreview,
   });
 
   ipcMain.handle("prewarmUnitViewerAssets", async (_event, sessionId: string, assetPaths: string[]) => {

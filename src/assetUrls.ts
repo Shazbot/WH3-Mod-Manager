@@ -21,6 +21,7 @@ export const UNIT_ASSET_HOST = "unit-asset";
 export const MOD_THUMBNAIL_HOST = "mod-thumbnail";
 export const MODEL_PREVIEW_HOST = "model-preview";
 export const MAP_CACHE_HOST = "map-cache";
+export const VISUALS_DDS_HOST = "visuals-dds";
 
 /**
  * Pack paths are compared case insensitively everywhere else, and a URL round trip is not
@@ -48,6 +49,15 @@ export const unitAssetUrl = (sessionId: string, assetPath: string) =>
   `${ASSET_SCHEME}://${UNIT_ASSET_HOST}/${encodeURIComponent(sessionId)}/${encodeURIComponent(
     normalizeAssetPath(assetPath),
   )}`;
+
+/**
+ * A preview-sized PNG of a DDS referenced from Visuals source, resolved out of that session's packs.
+ * The session id is the cache buster; the optional pack is the one the referencing file came from.
+ */
+export const visualsDdsPreviewUrl = (sessionId: string, assetPath: string, preferredPackPath?: string) =>
+  `${ASSET_SCHEME}://${VISUALS_DDS_HOST}/${encodeURIComponent(sessionId)}/${encodeURIComponent(
+    normalizeAssetPath(assetPath),
+  )}${preferredPackPath ? `?pack=${encodeURIComponent(preferredPackPath)}` : ""}`;
 
 /**
  * A GLB exported by WH3AssetHost for the Visuals panel. The id is random per export, so the URL is
