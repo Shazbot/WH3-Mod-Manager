@@ -45,7 +45,12 @@ type VisualsViewerTab = {
   resolvedPackPath?: string;
   resolvedFileName?: string;
   requestId?: number;
+  history: string[];
+  historyIndex: number;
 };
+
+type VisualsNavEntry = { tabId: string; historyIndex: number };
+type VisualsTabContextMenu = { x: number; y: number; tabId: string };
 
 type VisualsViewerMode = "preview" | "source";
 
@@ -197,6 +202,9 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
   const [assetEditorContextMenu, setAssetEditorContextMenu] = useState<VisualsContextMenu | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
 
+  const [tabContextMenu, setTabContextMenu] = useState<VisualsTabContextMenu | null>(null);
+  const viewerRootRef = useRef<HTMLDivElement>(null);
+  const navLogRef = useRef<{ entries: VisualsNavEntry[]; index: number }>({ entries: [], index: -1 });
   const unitClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const optionsMenuRef = useRef<HTMLDivElement>(null);
@@ -583,73 +591,44 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
   const activeTab = tabs.find((tab) => tab.id === activeTabId) || null;
   const isActiveTabSourceOnly = !!activeTab && isXmlMaterialPath(activeTab.filePath);
 
-  const openVisualsFileTab = async (filePath: string, mode: "current" | "new") => {
-    if (!filePath) {
-      setViewerMessage("No visual file path is available for this entry.");
-      return;
-    }
-    if (isXmlMaterialPath(filePath)) setViewerMode("source");
+  const logNavigation = (tabId: string, historyIndex: number) => {
+    const log = navLogRef.current;
+    const current = log.entries[log.index];
+    if (current && current.tabId === tabId && current.historyIndex === historyIndex) return;
+    log.entries = [...log.entries.slice(0, log.index + 1), { tabId, historyIndex }];
+    log.index = log.entries.length - 1;
+  };
 
-    const fileKey = getVisualsFileKey(filePath);
-    const existingTab = tabs.find((tab) =>
-      [tab.filePath, tab.resolvedFileName]
-        .filter(Boolean)
-        .some((tabFilePath) => getVisualsFileKey(tabFilePath!) === fileKey),
-    );
-    if (existingTab) {
-      setActiveTabId(existingTab.id);
-      setViewerMessage(null);
-      return;
-    }
-
-    if (!sessionId) {
-      setViewerMessage("Visuals session is not ready yet.");
-      return;
-    }
-
-    setViewerMessage(null);
-
+  const loadFileIntoTab = async (
+    tabId: string,
+    filePath: string,
+    historyPatch?: { history: string[]; historyIndex: number },
+  ) => {
     const requestId = takeNextVisualsRequestId();
-    let targetTabId = activeTabId;
+    setTabs((prev) =>
+      prev.map((tab) =>
+        tab.id === tabId
+          ? {
+              ...tab,
+              ...historyPatch,
+              label: getTabLabel(filePath),
+              filePath,
+              status: "loading",
+              text: undefined,
+              error: undefined,
+              resolvedPackPath: undefined,
+              resolvedFileName: undefined,
+              requestId,
+            }
+          : tab,
+      ),
+    );
 
-    if (mode === "new" || !activeTabId || tabs.length === 0) {
-      targetTabId = `visuals_tab_${takeNextVisualsTabId()}`;
-      const newTab: VisualsViewerTab = {
-        id: targetTabId,
-        label: getTabLabel(filePath),
-        filePath,
-        status: "loading",
-        requestId,
-      };
-      setTabs((prev) => [...prev, newTab]);
-      setActiveTabId(targetTabId);
-    } else {
-      const currentId = activeTabId;
-      setTabs((prev) =>
-        prev.map((tab) =>
-          tab.id === currentId
-            ? {
-                ...tab,
-                label: getTabLabel(filePath),
-                filePath,
-                status: "loading",
-                text: undefined,
-                error: undefined,
-                resolvedPackPath: undefined,
-                resolvedFileName: undefined,
-                requestId,
-              }
-            : tab,
-        ),
-      );
-      targetTabId = currentId;
-    }
-
-    const result = await window.api?.readVariantMeshDefinition(sessionId, filePath);
+    const result = await window.api?.readVariantMeshDefinition(sessionId!, filePath);
 
     setTabs((prev) =>
       prev.map((tab) => {
-        if (tab.id !== targetTabId || tab.requestId !== requestId) return tab;
+        if (tab.id !== tabId || tab.requestId !== requestId) return tab;
         if (!result?.success || !result.text) {
           return {
             ...tab,
@@ -668,6 +647,125 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
       }),
     );
   };
+
+  const navigateTab = async (tab: VisualsViewerTab, filePath: string) => {
+    const history = [...tab.history.slice(0, tab.historyIndex + 1), filePath];
+    logNavigation(tab.id, history.length - 1);
+    await loadFileIntoTab(tab.id, filePath, { history, historyIndex: history.length - 1 });
+  };
+
+  const jumpToHistoryIndex = async (tab: VisualsViewerTab, historyIndex: number) => {
+    const filePath = tab.history[historyIndex];
+    if (!filePath || historyIndex === tab.historyIndex) return;
+    logNavigation(tab.id, historyIndex);
+    await loadFileIntoTab(tab.id, filePath, { history: tab.history, historyIndex });
+  };
+
+  const activateTab = (tab: VisualsViewerTab) => {
+    setActiveTabId(tab.id);
+    if (isXmlMaterialPath(tab.filePath)) setViewerMode("source");
+    logNavigation(tab.id, tab.historyIndex);
+  };
+
+  const openVisualsFileTab = async (filePath: string, mode: "current" | "new" | "link") => {
+    if (!filePath) {
+      setViewerMessage("No visual file path is available for this entry.");
+      return;
+    }
+    if (isXmlMaterialPath(filePath)) setViewerMode("source");
+
+    if (mode !== "link") {
+      const fileKey = getVisualsFileKey(filePath);
+      const existingTab = tabs.find((tab) =>
+        [tab.filePath, tab.resolvedFileName]
+          .filter(Boolean)
+          .some((tabFilePath) => getVisualsFileKey(tabFilePath!) === fileKey),
+      );
+      if (existingTab) {
+        activateTab(existingTab);
+        setViewerMessage(null);
+        return;
+      }
+    }
+
+    if (!sessionId) {
+      setViewerMessage("Visuals session is not ready yet.");
+      return;
+    }
+
+    setViewerMessage(null);
+
+    const currentTab = tabs.find((tab) => tab.id === activeTabId);
+    if (mode !== "new" && currentTab) {
+      await navigateTab(currentTab, filePath);
+      return;
+    }
+
+    const newTabId = `visuals_tab_${takeNextVisualsTabId()}`;
+    const newTab: VisualsViewerTab = {
+      id: newTabId,
+      label: getTabLabel(filePath),
+      filePath,
+      status: "loading",
+      history: [filePath],
+      historyIndex: 0,
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newTabId);
+    logNavigation(newTabId, 0);
+    await loadFileIntoTab(newTabId, filePath);
+  };
+
+  const navigateHistory = (direction: -1 | 1) => {
+    const log = navLogRef.current;
+    let nextIndex = log.index + direction;
+    while (nextIndex >= 0 && nextIndex < log.entries.length) {
+      const entry = log.entries[nextIndex];
+      const tab = tabs.find((candidate) => candidate.id === entry.tabId);
+      const filePath = tab?.history[entry.historyIndex];
+      if (tab && filePath) {
+        log.index = nextIndex;
+        setActiveTabId(tab.id);
+        if (isXmlMaterialPath(filePath)) setViewerMode("source");
+        if (tab.historyIndex !== entry.historyIndex) {
+          void loadFileIntoTab(tab.id, filePath, { history: tab.history, historyIndex: entry.historyIndex });
+        }
+        return;
+      }
+      nextIndex += direction;
+    }
+  };
+  const navigateHistoryRef = useRef(navigateHistory);
+  useEffect(() => {
+    navigateHistoryRef.current = navigateHistory;
+  });
+
+  useEffect(() => {
+    const root = viewerRootRef.current;
+    if (!isActive || !root) return;
+
+    const isHistoryMouseButton = (event: MouseEvent) => event.button === 3 || event.button === 4;
+    const consumeHistoryMouseButton = (event: MouseEvent) => {
+      if (!isHistoryMouseButton(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const handleMouseDown = (event: MouseEvent) => {
+      if (!isHistoryMouseButton(event)) return;
+      consumeHistoryMouseButton(event);
+      navigateHistoryRef.current(event.button === 3 ? -1 : 1);
+    };
+
+    // XButton1/XButton2 are buttons 3 and 4; capture before children or Electron's page navigation.
+    root.addEventListener("mousedown", handleMouseDown, true);
+    root.addEventListener("auxclick", consumeHistoryMouseButton, true);
+    root.addEventListener("mouseup", consumeHistoryMouseButton, true);
+    return () => {
+      root.removeEventListener("mousedown", handleMouseDown, true);
+      root.removeEventListener("auxclick", consumeHistoryMouseButton, true);
+      root.removeEventListener("mouseup", consumeHistoryMouseButton, true);
+    };
+  }, [isActive]);
 
   const loadFileResultsPage = async (nextOffset: number, append = false) => {
     if (!sessionId || !isFilePanelOpen) return;
@@ -710,6 +808,22 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [assetEditorContextMenu]);
+
+  useEffect(() => {
+    if (!tabContextMenu) return;
+
+    const onDocumentClick = () => setTabContextMenu(null);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setTabContextMenu(null);
+    };
+
+    document.addEventListener("click", onDocumentClick);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("click", onDocumentClick);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [tabContextMenu]);
 
   const onUnitSingleClick = (unit: VisualsUnitEntry) => {
     if (!unit.variantMeshPath) {
@@ -967,18 +1081,32 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
     );
   };
 
-  const closeTab = (tabId: string) => {
-    setTabs((prev) => {
-      const index = prev.findIndex((tab) => tab.id === tabId);
-      const nextTabs = prev.filter((tab) => tab.id !== tabId);
-      if (tabId === activeTabId) {
-        if (nextTabs.length === 0) {
-          setActiveTabId(null);
-        } else {
-          setActiveTabId(nextTabs[Math.max(0, Math.min(index, nextTabs.length - 1))].id);
-        }
-      }
-      return nextTabs;
+  const closeTabs = (removeIds: Set<string>, preferredTabId?: string) => {
+    const nextTabs = tabs.filter((tab) => !removeIds.has(tab.id));
+    setTabs(nextTabs);
+    if (activeTabId && removeIds.has(activeTabId)) {
+      const preferred = nextTabs.find((tab) => tab.id === preferredTabId);
+      const activeIndex = tabs.findIndex((tab) => tab.id === activeTabId);
+      const nearest = nextTabs[Math.max(0, Math.min(activeIndex, nextTabs.length - 1))];
+      setActiveTabId((preferred ?? nearest)?.id ?? null);
+    }
+
+    const log = navLogRef.current;
+    const keptBefore = log.entries.slice(0, log.index + 1).filter((entry) => !removeIds.has(entry.tabId)).length;
+    log.entries = log.entries.filter((entry) => !removeIds.has(entry.tabId));
+    log.index = keptBefore - 1;
+  };
+
+  const closeTab = (tabId: string) => closeTabs(new Set([tabId]));
+
+  const openTabContextMenu = (event: React.MouseEvent, tabId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setAssetEditorContextMenu(null);
+    setTabContextMenu({
+      x: Math.max(8, Math.min(event.clientX, window.innerWidth - 240 - 8)),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - 200 - 8)),
+      tabId,
     });
   };
 
@@ -1024,9 +1152,15 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                 <button
                   key={`ref-${lineIndex}-${matchStart}`}
                   className="text-blue-300 underline hover:text-blue-200"
-                  onClick={() => openVisualsFileTab(pathValue, "new")}
+                  onClick={() => openVisualsFileTab(pathValue, "link")}
+                  onMouseDown={(event) => {
+                    if (event.button === 1) event.preventDefault();
+                  }}
+                  onAuxClick={(event) => {
+                    if (event.button === 1) void openVisualsFileTab(pathValue, "new");
+                  }}
                   onContextMenu={(event) => openAssetEditorContextMenu(event, pathValue, preferredPackPath)}
-                  title={`Open referenced ${isXmlMaterial ? "xml.material" : isVariantMeshDefinition ? "variantmeshdefinition" : "wsmodel"} in a new tab (${isAssetEditorOpenablePath(pathValue) ? "right-click for AssetEditor" : "right-click for copy options"})`}
+                  title={`Open referenced ${isXmlMaterial ? "xml.material" : isVariantMeshDefinition ? "variantmeshdefinition" : "wsmodel"} in this tab, middle-click for a new tab (${isAssetEditorOpenablePath(pathValue) ? "right-click for AssetEditor" : "right-click for copy options"})`}
                   type="button"
                 >
                   {pathValue}
@@ -1161,7 +1295,10 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
   }
 
   return (
-    <div className="flex explicit-height-without-topbar-and-padding min-h-0 flex-col text-white max-w-[140rem] mx-auto pr-4">
+    <div
+      ref={viewerRootRef}
+      className="flex explicit-height-without-topbar-and-padding min-h-0 flex-col text-white max-w-[140rem] mx-auto pr-4"
+    >
       <div className="flex items-center gap-4 mb-2 text-sm bg-gray-800/60 border border-gray-700 rounded px-3 py-2">
         <div className="flex items-center gap-2">
           <label htmlFor="visuals-unit-filter" className="text-gray-300">
@@ -1310,10 +1447,14 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                       ? "bg-gray-700 text-white border-b-2 border-blue-400"
                       : "bg-gray-800 text-gray-400 hover:bg-gray-700"
                   }`}
-                  onClick={() => {
-                    setActiveTabId(tab.id);
-                    if (isXmlMaterialPath(tab.filePath)) setViewerMode("source");
+                  onClick={() => activateTab(tab)}
+                  onMouseDown={(event) => {
+                    if (event.button === 1) event.preventDefault();
                   }}
+                  onAuxClick={(event) => {
+                    if (event.button === 1) closeTab(tab.id);
+                  }}
+                  onContextMenu={(event) => openTabContextMenu(event, tab.id)}
                   title={tab.filePath}
                 >
                   <span className="mr-2 max-w-[260px] overflow-hidden text-ellipsis">{tab.label}</span>
@@ -1337,13 +1478,36 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
           <div className="flex min-h-0 flex-1 flex-col border border-t-0 border-gray-700 rounded-b bg-gray-900 overflow-hidden">
             {!activeTab && (
               <div className="p-4 text-gray-400">
-                Single-click opens in the current tab. Double-click opens in a new tab. Links open in a new tab.
+                Single-click opens in the current tab. Double-click opens in a new tab. Links open in the current tab; middle-click opens a new tab.
               </div>
             )}
             {activeTab && (
               <>
                 <div className="shrink-0 px-3 py-2 border-b border-gray-700 text-xs text-gray-400 break-all">
                   <div>{activeTab.filePath}</div>
+                  {viewerMode === "source" && activeTab.history.length > 1 && (
+                    <div className="mt-1 flex flex-wrap items-center gap-x-1" aria-label="Tab history">
+                      {activeTab.history.map((historyPath, historyIdx) => (
+                        <React.Fragment key={`${historyIdx}-${historyPath}`}>
+                          {historyIdx > 0 && <span className="text-gray-500">›</span>}
+                          <button
+                            type="button"
+                            title={historyPath}
+                            className={
+                              historyIdx === activeTab.historyIndex
+                                ? "font-bold text-white"
+                                : historyIdx < activeTab.historyIndex
+                                  ? "text-blue-300 hover:text-blue-200"
+                                  : "text-gray-500 hover:text-gray-300"
+                            }
+                            onClick={() => void jumpToHistoryIndex(activeTab, historyIdx)}
+                          >
+                            {getTabLabel(historyPath)}
+                          </button>
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  )}
                   {activeTab.resolvedPackPath && <div>pack: {activeTab.resolvedPackPath}</div>}
                 </div>
                 <div className="flex shrink-0 border-b border-gray-700 bg-gray-800">
@@ -1465,6 +1629,48 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
           </Resizable>
         )}
       </div>
+
+      {tabContextMenu &&
+        (() => {
+          const menuIndex = tabs.findIndex((tab) => tab.id === tabContextMenu.tabId);
+          const itemClass = "w-full text-left px-4 py-2 hover:bg-gray-700 text-white text-sm disabled:opacity-50 disabled:hover:bg-transparent";
+          const closeFromMenu = (ids: string[]) => {
+            setTabContextMenu(null);
+            closeTabs(new Set(ids), tabContextMenu.tabId);
+          };
+          return (
+            <div
+              className="fixed bg-gray-800 border border-gray-600 rounded shadow-lg z-50 min-w-[240px]"
+              style={{ top: tabContextMenu.y, left: tabContextMenu.x }}
+              onClick={(event) => event.stopPropagation()}
+              onContextMenu={(event) => event.preventDefault()}
+            >
+              <button type="button" className={itemClass} onClick={() => closeFromMenu([tabContextMenu.tabId])}>
+                Close
+              </button>
+              <div className="my-1 border-t border-gray-700" />
+              <button
+                type="button"
+                className={itemClass}
+                disabled={menuIndex <= 0}
+                onClick={() => closeFromMenu(tabs.slice(0, menuIndex).map((tab) => tab.id))}
+              >
+                Close all to the left
+              </button>
+              <button
+                type="button"
+                className={itemClass}
+                disabled={menuIndex < 0 || menuIndex >= tabs.length - 1}
+                onClick={() => closeFromMenu(tabs.slice(menuIndex + 1).map((tab) => tab.id))}
+              >
+                Close all to the right
+              </button>
+              <button type="button" className={itemClass} onClick={() => closeFromMenu(tabs.map((tab) => tab.id))}>
+                Close all
+              </button>
+            </div>
+          );
+        })()}
 
       {assetEditorContextMenu && (
         <div

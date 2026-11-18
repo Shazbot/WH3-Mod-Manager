@@ -528,3 +528,128 @@ describe("VisualsTab filtering", () => {
     await waitFor(() => expect(screen.getByText("Refreshed Lord")).toBeInTheDocument());
   });
 });
+
+describe("VisualsTab tab navigation", () => {
+  const pathA = "materials\\a.xml.material";
+  const pathB = "materials\\b.xml.material";
+  const pathC = "materials\\c.xml.material";
+  const texts: Record<string, string> = {
+    [pathA]: `<m path="${pathB}" />`,
+    [pathB]: `<m path="${pathC}" />`,
+    [pathC]: "<end />",
+  };
+
+  const renderTab = async () => {
+    getVisualsUnitsData.mockReset().mockResolvedValue({ success: true, sessionId: "visuals-session", units });
+    searchVisualsFiles.mockReset().mockResolvedValue({
+      success: true,
+      total: 2,
+      results: [
+        { path: pathA, ext: "xml.material" },
+        { path: pathC, ext: "xml.material" },
+      ],
+    });
+    readVariantMeshDefinition.mockReset().mockImplementation(async (_session: string, path: string) => ({
+      success: true,
+      text: texts[path],
+      resolved: { packPath: "/mods/example.pack", fileName: path },
+    }));
+    window.api = {
+      ...window.api,
+      getVisualsUnitsData,
+      searchVisualsFiles,
+      readVariantMeshDefinition,
+    } as NonNullable<Window["api"]>;
+
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: {
+        app: {
+          ...initialState,
+          isFeaturesForModdersEnabled: true,
+          currentPreset: { ...initialState.currentPreset, mods: [] },
+        },
+      },
+    });
+    render(
+      <Provider store={store}>
+        <localizationContext.Provider value={enTranslation}>
+          <VisualsTab />
+        </localizationContext.Provider>
+      </Provider>,
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Human (1)" })).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText("Show all visual files"));
+  };
+
+  const listRow = (path: string) =>
+    screen.queryAllByText(path).find((element) => element.closest('[title^="Click to open"]')) ?? null;
+
+  const openFromList = async (path: string) => {
+    await waitFor(() => expect(listRow(path)).toBeTruthy());
+    fireEvent.doubleClick(listRow(path)!);
+    await waitFor(() => expect(readVariantMeshDefinition).toHaveBeenCalledWith("visuals-session", path));
+  };
+
+  const tabLabel = (name: string) => screen.getByText(name, { selector: "span" });
+  const tabLabelsPresent = () =>
+    ["a.xml.material", "b.xml.material", "c.xml.material"].filter((name) =>
+      screen.queryByText(name, { selector: "span" }),
+    );
+
+  it("navigates links in place, shows breadcrumbs, and middle-click opens a new tab", async () => {
+    await renderTab();
+    await openFromList(pathA);
+
+    fireEvent.click(await screen.findByRole("button", { name: pathB }));
+    await waitFor(() => expect(tabLabelsPresent()).toEqual(["b.xml.material"]));
+    expect(screen.getByRole("button", { name: "a.xml.material" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "a.xml.material" }));
+    await waitFor(() => expect(tabLabelsPresent()).toEqual(["a.xml.material"]));
+
+    fireEvent.mouseDown(await screen.findByRole("button", { name: pathB }), { button: 1 });
+    fireEvent(await screen.findByRole("button", { name: pathB }), new MouseEvent("auxclick", { bubbles: true, button: 1 }));
+    await waitFor(() => expect(tabLabelsPresent()).toEqual(["a.xml.material", "b.xml.material"]));
+  });
+
+  it("goes back and forward with mouse buttons 3 and 4 within and across tabs", async () => {
+    await renderTab();
+    await openFromList(pathA);
+    fireEvent.click(await screen.findByRole("button", { name: pathB }));
+    await waitFor(() => expect(tabLabelsPresent()).toEqual(["b.xml.material"]));
+
+    const target = screen.getByRole("button", { name: pathC });
+    fireEvent.mouseDown(target, { button: 3 });
+    await waitFor(() => expect(tabLabelsPresent()).toEqual(["a.xml.material"]));
+    fireEvent.mouseDown(screen.getByRole("button", { name: pathB }), { button: 4 });
+    await waitFor(() => expect(tabLabelsPresent()).toEqual(["b.xml.material"]));
+
+    await openFromList(pathC);
+    await waitFor(() => expect(tabLabelsPresent()).toEqual(["b.xml.material", "c.xml.material"]));
+    fireEvent.mouseDown(document.querySelector("pre")!, { button: 3 });
+    await waitFor(() => expect(tabLabel("b.xml.material")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: pathC })).toBeInTheDocument();
+  });
+
+  it("closes tabs with middle-click and the tab context menu", async () => {
+    await renderTab();
+    await openFromList(pathA);
+    await openFromList(pathC);
+    await waitFor(() => expect(tabLabelsPresent()).toEqual(["a.xml.material", "c.xml.material"]));
+
+    fireEvent.contextMenu(tabLabel("a.xml.material"));
+    expect(screen.getByRole("button", { name: "Close all to the left" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Close all to the right" }));
+    await waitFor(() => expect(tabLabelsPresent()).toEqual(["a.xml.material"]));
+
+    fireEvent.contextMenu(tabLabel("a.xml.material"));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(tabLabelsPresent()).toEqual([]));
+
+    await openFromList(pathA);
+    fireEvent.mouseDown(tabLabel("a.xml.material"), { button: 1 });
+    fireEvent(tabLabel("a.xml.material"), new MouseEvent("auxclick", { bubbles: true, button: 1 }));
+    await waitFor(() => expect(tabLabelsPresent()).toEqual([]));
+  });
+});
