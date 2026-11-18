@@ -23,6 +23,7 @@ import {
   FaSync,
   FaClock,
   FaExchangeAlt,
+  FaUpload,
 } from "react-icons/fa";
 import { MdOutlineCheckBox, MdHideImage, MdOutlineModeEdit, MdPlaylistRemove } from "react-icons/md";
 
@@ -603,7 +604,10 @@ const ModDropdownOptions = memo((props: ModDropdownOptionsProps) => {
                       style="light"
                       content={<div className="min-w-40">{localized.uploadModTooltip}</div>}
                     >
-                      {localized.uploadMod}
+                      <span className="flex items-center gap-2">
+                        <FaUpload className="w-5 h-5"></FaUpload>
+                        {localized.uploadMod}
+                      </span>
                     </Tooltip>
                   </a>
                 </li>
