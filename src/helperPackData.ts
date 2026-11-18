@@ -74,6 +74,38 @@ core:add_ui_created_callback(
 )
 `;
 
+// Campaign half of auto-start new campaign: presses Continue on the loading screen of a new game.
+export const autoStartNewCampaignContinueScript = `local timer = "pj_auto_new_campaign_continue"
+local attempts = 0
+
+core:remove_listener(timer)
+core:add_listener(
+    timer,
+    "RealTimeTrigger",
+    function(context)
+        return context.string == timer
+    end,
+    function(context)
+        attempts = attempts + 1
+        local button_continue = find_uicomponent(core:get_ui_root(), "custom_loading_screen", "bottom_parent", "button_continue")
+        if button_continue and button_continue:Visible(true) and button_continue:CurrentState() == "active" then
+            real_timer.unregister(timer)
+            core:remove_listener(timer)
+            if cm.game_is_loaded and cm:is_new_game() then
+                out("WHMM: pressed loading screen continue button")
+                button_continue:SimulateLClick()
+            end
+        elseif attempts > 600 then
+            real_timer.unregister(timer)
+            core:remove_listener(timer)
+            out("WHMM: loading screen continue button not found")
+        end
+    end,
+    true
+)
+real_timer.register_repeating(timer, 500)
+`;
+
 export const autoStartNewCampaignScript = `local function press_start_campaign_button()
     core:remove_listener("pj_auto_new_campaign_4")
     core:add_listener(

@@ -18,7 +18,12 @@ import {
   LocFields,
 } from "./packFileTypes";
 import clone from "just-clone";
-import { emptyMovie, autoStartCustomBattleScript, autoStartNewCampaignScript } from "./helperPackData";
+import {
+  emptyMovie,
+  autoStartCustomBattleScript,
+  autoStartNewCampaignScript,
+  autoStartNewCampaignContinueScript,
+} from "./helperPackData";
 import { DBNameToDBVersions } from "./schema";
 import * as nodePath from "path";
 import appData from "./appData";
@@ -762,10 +767,15 @@ const createMixerStartposData = (pack_files: PackedFile[], startpos: Buffer) => 
     schemaFields: [{ type: "Buffer", fields: [{ type: "Buffer", val: startpos }] }],
   } as PackedFile);
 };
-const createFrontendScriptData = (pack_files: PackedFile[], name: string, script: string) => {
+const createModScriptData = (
+  pack_files: PackedFile[],
+  name: string,
+  script: string,
+  context: "frontend" | "campaign" = "frontend",
+) => {
   const scriptBuffer = Buffer.from(script, "utf-8");
   pack_files.push({
-    name: `script\\frontend\\mod\\${name}.lua`,
+    name: `script\\${context}\\mod\\${name}.lua`,
     file_size: scriptBuffer.byteLength,
     start_pos: 0,
     is_compressed: false,
@@ -1476,9 +1486,11 @@ export const writeStartGamePack = async (
     if (startGameOptions.isScriptLoggingEnabled) createScriptLoggingData(packFiles);
     // Both scripts drive the main menu; custom battle wins if an old config has both on.
     if (startGameOptions.isAutoStartCustomBattleEnabled)
-      createFrontendScriptData(packFiles, "pj_auto_custom_battles", autoStartCustomBattleScript);
-    else if (startGameOptions.isAutoStartNewCampaignEnabled)
-      createFrontendScriptData(packFiles, "pj_auto_new_campaign", autoStartNewCampaignScript);
+      createModScriptData(packFiles, "pj_auto_custom_battles", autoStartCustomBattleScript);
+    else if (startGameOptions.isAutoStartNewCampaignEnabled) {
+      createModScriptData(packFiles, "pj_auto_new_campaign", autoStartNewCampaignScript);
+      createModScriptData(packFiles, "pj_auto_new_campaign_continue", autoStartNewCampaignContinueScript, "campaign");
+    }
     if (mixerStartpos) createMixerStartposData(packFiles, mixerStartpos);
     if (packFiles.length < 1) return;
     outFile = new BinaryFile(path, "w", true);
