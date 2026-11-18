@@ -6035,6 +6035,16 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
       } catch (error) {
         if (error instanceof Error) log(error.message);
       }
+      // Keep main's list current until the renderer's next saveConfig; isKnownUnchangedPack reads it.
+      // Only the disk stats are refreshed: the renderer owns fields like isEnabled.
+      const modKey = packPathKey(mod.path);
+      const knownMod = appData.allMods.find((iterMod) => packPathKey(iterMod.path) === modKey);
+      if (knownMod) {
+        knownMod.lastChangedLocal = mod.lastChangedLocal;
+        knownMod.size = mod.size;
+      } else {
+        appData.allMods.push(mod);
+      }
       mainWindow?.webContents.send("addMod", mod);
       // we get onNewPackFound called by the data watcher if it's a symlink on app launch, ignore that case
       if (!fromWatcher || !mod.isSymbolicLink) {
@@ -6054,6 +6064,8 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
   };
   const onPackDeleted = async (path: string, isDeletedFromContent = false) => {
     await invalidateCachedPackData(path);
+    const deletedKey = packPathKey(path);
+    appData.allMods = appData.allMods.filter((mod) => packPathKey(mod.path) !== deletedKey);
     if (!mainWindow) return;
     mainWindow.webContents.send("handleLog", "MOD REMOVED: " + path);
     console.log("MOD REMOVED: " + path);
