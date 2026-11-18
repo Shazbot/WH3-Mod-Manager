@@ -2370,5 +2370,17 @@
   "appControl": "Sterowanie z wiersza poleceń",
   "appControlEnabled": "Zezwól CLI i MCP na kontrolowanie WHMM",
   "appControlEnabled1": "Pozwala whmm-cli i serwerowi WHMM MCP zmienić włączone mody i uruchomić grę.",
-  "appControlEnabled2": "Mogą się łączyć tylko programy działające na Twoim koncie Windows."
+  "appControlEnabled2": "Mogą się łączyć tylko programy działające na Twoim koncie Windows.",
+  "mapProvinces": "Prowincje",
+  "mapFilterProvinces": "Filtruj prowincje…",
+  "mapProvinceSummary": "{{count}} prowincje",
+  "mapProvinceRegionOne": "{{count}} region · {{key}}",
+  "mapProvinceRegionOther": "{{count}} regiony · {{key}}",
+  "mapProvinceCapital": "Kapitał",
+  "mapProvince": "Województwo",
+  "mapBuildingSlots": "Budowanie slotów",
+  "mapNoMatchingProvinces": "Brak pasujących prowincji.",
+  "gameLogTab": "Dziennik gry",
+  "viewerDropPacksToOpen": "Upuść pliki .pack, aby je otworzyć",
+  "viewerDroppedNonPackFiles": "Można otwierać tylko pliki .pack."
 }

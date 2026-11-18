@@ -2370,5 +2370,17 @@
   "appControl": "Управление из командной строки",
   "appControlEnabled": "Разрешить CLI и MCP управлять WHMM",
   "appControlEnabled1": "Позволяет whmm-cli и серверу WHMM MCP изменить включенные моды и запустить игру.",
-  "appControlEnabled2": "Подключаться могут только программы, работающие под вашей учетной записью Windows."
+  "appControlEnabled2": "Подключаться могут только программы, работающие под вашей учетной записью Windows.",
+  "mapProvinces": "Провинции",
+  "mapFilterProvinces": "Фильтровать провинции…",
+  "mapProvinceSummary": "{{count}} провинций",
+  "mapProvinceRegionOne": "{{count}} регион · {{key}}",
+  "mapProvinceRegionOther": "{{count}} регионов · {{key}}",
+  "mapProvinceCapital": "Капитал",
+  "mapProvince": "Провинция",
+  "mapBuildingSlots": "Строительные слоты",
+  "mapNoMatchingProvinces": "Нет подходящих провинций.",
+  "gameLogTab": "Журнал игры",
+  "viewerDropPacksToOpen": "Перетащите файлы .pack, чтобы открыть их.",
+  "viewerDroppedNonPackFiles": "Можно открыть только файлы .pack."
 }

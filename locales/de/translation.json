@@ -2370,5 +2370,17 @@
   "appControl": "Befehlszeilensteuerung",
   "appControlEnabled": "Erlauben Sie der CLI und dem MCP, WHMM zu steuern",
   "appControlEnabled1": "Ermöglicht whmm-cli und dem WHMM MCP-Server, Ihre aktivierten Mods zu ändern und das Spiel zu starten.",
-  "appControlEnabled2": "Nur Programme, die unter Ihrem Windows-Konto ausgeführt werden, können eine Verbindung herstellen."
+  "appControlEnabled2": "Nur Programme, die unter Ihrem Windows-Konto ausgeführt werden, können eine Verbindung herstellen.",
+  "mapProvinces": "Provinzen",
+  "mapFilterProvinces": "Provinzen filtern…",
+  "mapProvinceSummary": "{{count}} Provinzen",
+  "mapProvinceRegionOne": "{{count}} Region · {{key}}",
+  "mapProvinceRegionOther": "{{count}} Regionen · {{key}}",
+  "mapProvinceCapital": "Hauptstadt",
+  "mapProvince": "Provinz",
+  "mapBuildingSlots": "Slots bauen",
+  "mapNoMatchingProvinces": "Keine passenden Provinzen.",
+  "gameLogTab": "Spielprotokoll",
+  "viewerDropPacksToOpen": "Legen Sie die .pack-Dateien ab, um sie zu öffnen",
+  "viewerDroppedNonPackFiles": "Es können nur .pack-Dateien geöffnet werden."
 }

@@ -2370,5 +2370,17 @@
   "appControl": "コマンドライン制御",
   "appControlEnabled": "CLI と MCP による WHMM の制御を許可する",
   "appControlEnabled1": "whmm-cli と WHMM MCP サーバーが有効な MOD を変更し、ゲームを起動できるようにします。",
-  "appControlEnabled2": "Windows アカウントで実行されているプログラムのみが接続できます。"
+  "appControlEnabled2": "Windows アカウントで実行されているプログラムのみが接続できます。",
+  "mapProvinces": "州",
+  "mapFilterProvinces": "都道府県をフィルタリング…",
+  "mapProvinceSummary": "{{count}}州",
+  "mapProvinceRegionOne": "{{count}} 地域 · {{key}}",
+  "mapProvinceRegionOther": "{{count}} 地域 · {{key}}",
+  "mapProvinceCapital": "資本",
+  "mapProvince": "州",
+  "mapBuildingSlots": "スロットを構築する",
+  "mapNoMatchingProvinces": "一致する都道府県はありません。",
+  "gameLogTab": "ゲームログ",
+  "viewerDropPacksToOpen": ".pack ファイルをドロップして開きます",
+  "viewerDroppedNonPackFiles": ".pack ファイルのみを開くことができます。"
 }

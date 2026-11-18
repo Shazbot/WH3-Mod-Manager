@@ -2370,5 +2370,17 @@
   "appControl": "Komut satırı kontrolü",
   "appControlEnabled": "CLI ve MCP'nin WHMM'yi kontrol etmesine izin ver",
   "appControlEnabled1": "Whmm-cli ve WHMM MCP sunucusunun etkin modlarınızı değiştirmesine ve oyunu başlatmasına izin verir.",
-  "appControlEnabled2": "Yalnızca Windows hesabınız altında çalışan programlar bağlanabilir."
+  "appControlEnabled2": "Yalnızca Windows hesabınız altında çalışan programlar bağlanabilir.",
+  "mapProvinces": "İller",
+  "mapFilterProvinces": "İlleri filtrele…",
+  "mapProvinceSummary": "{{count}} il",
+  "mapProvinceRegionOne": "{{count}} bölgesi · {{key}}",
+  "mapProvinceRegionOther": "{{count}} bölge · {{key}}",
+  "mapProvinceCapital": "Sermaye",
+  "mapProvince": "Vilayet",
+  "mapBuildingSlots": "Bina yuvaları",
+  "mapNoMatchingProvinces": "Eşleşen il yok.",
+  "gameLogTab": "Oyun Günlüğü",
+  "viewerDropPacksToOpen": "Açmak için .pack dosyalarını bırakın",
+  "viewerDroppedNonPackFiles": "Yalnızca .pack dosyaları açılabilir."
 }

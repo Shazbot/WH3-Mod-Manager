@@ -2372,5 +2372,17 @@
   "appControl": "命令行控制",
   "appControlEnabled": "允许 CLI 和 MCP 控制 WHMM",
   "appControlEnabled1": "让 whmm-cli 和 WHMM MCP 服务器更改您启用的 mod 并启动游戏。",
-  "appControlEnabled2": "只有在您的 Windows 帐户下运行的程序才能连接。"
+  "appControlEnabled2": "只有在您的 Windows 帐户下运行的程序才能连接。",
+  "mapProvinces": "省份",
+  "mapFilterProvinces": "筛选省份...",
+  "mapProvinceSummary": "{{count}} 省份",
+  "mapProvinceRegionOne": "{{count}} 地区 · {{key}}",
+  "mapProvinceRegionOther": "{{count}} 地区 · {{key}}",
+  "mapProvinceCapital": "首都",
+  "mapProvince": "省",
+  "mapBuildingSlots": "建筑槽位",
+  "mapNoMatchingProvinces": "没有匹配的省份。",
+  "gameLogTab": "游戏日志",
+  "viewerDropPacksToOpen": "拖放 .pack 文件以打开",
+  "viewerDroppedNonPackFiles": "只能打开 .pack 文件。"
 }

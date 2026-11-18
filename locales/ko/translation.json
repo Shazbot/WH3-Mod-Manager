@@ -2370,5 +2370,17 @@
   "appControl": "명령줄 제어",
   "appControlEnabled": "CLI 및 MCP가 WHMM을 제어하도록 허용",
   "appControlEnabled1": "whmm-cli 및 WHMM MCP 서버가 활성화된 모드를 변경하고 게임을 시작할 수 있습니다.",
-  "appControlEnabled2": "Windows 계정으로 실행되는 프로그램만 연결할 수 있습니다."
+  "appControlEnabled2": "Windows 계정으로 실행되는 프로그램만 연결할 수 있습니다.",
+  "mapProvinces": "지방",
+  "mapFilterProvinces": "지역 필터링…",
+  "mapProvinceSummary": "{{count}} 지방",
+  "mapProvinceRegionOne": "{{count}} 지역 · {{key}}",
+  "mapProvinceRegionOther": "{{count}} 지역 · {{key}}",
+  "mapProvinceCapital": "수도",
+  "mapProvince": "주",
+  "mapBuildingSlots": "슬롯 구축",
+  "mapNoMatchingProvinces": "일치하는 지역이 없습니다.",
+  "gameLogTab": "게임 로그",
+  "viewerDropPacksToOpen": ".pack 파일을 끌어서 열어보세요.",
+  "viewerDroppedNonPackFiles": ".pack 파일만 열 수 있습니다."
 }
