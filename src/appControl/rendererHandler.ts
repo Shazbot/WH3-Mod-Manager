@@ -69,6 +69,9 @@ const launch = (params: AppControlLaunchParams): AppControlLaunchResult & { warn
   if (params.options?.luaSocket && appState.currentGame !== "wh3")
     throw new ControlError("VALIDATION", "LuaSocket is only available for Total War: WARHAMMER III.");
 
+  if (params.options?.timeCampaignLoad && appState.currentGame !== "wh3")
+    throw new ControlError("VALIDATION", "Campaign load timing is only available for Total War: WARHAMMER III.");
+
   let saveName: string | undefined;
   if (params.save !== undefined) {
     if (!appState.saves.some((save) => save.name === params.save))

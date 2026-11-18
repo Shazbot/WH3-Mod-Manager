@@ -162,6 +162,25 @@ describeUnix("CLI app control", () => {
     expect(requests).toHaveLength(1);
   });
 
+  it("builds the campaign load timing launch and rejects conflicts", async () => {
+    const requests = await serveReplies([() => ({ ok: true, result: { game: "wh3" } })]);
+    await run(["game", "launch", "--time-campaign-load", "--campaign-load-timeout", "120"]);
+    expect(requests[0]).toMatchObject({
+      method: "launch",
+      params: {
+        options: { timeCampaignLoad: true, autoStartNewCampaign: true, scriptLogging: true },
+        campaignLoadTimeoutSeconds: 120,
+      },
+    });
+
+    for (const flags of [["--auto-start-battle"], ["--continue"]]) {
+      const { exitCode, envelope } = await run(["game", "launch", "--time-campaign-load", ...flags]);
+      expect(exitCode).not.toBe(0);
+      expect(envelope.error).toMatchObject({ code: "INVALID_ARGUMENT" });
+    }
+    expect(requests).toHaveLength(1);
+  });
+
   it("sends stop and relaunch requests", async () => {
     const requests = await serveReplies([
       () => ({ ok: true, result: { game: "wh3", wasRunning: true } }),

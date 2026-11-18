@@ -8,9 +8,11 @@ import { gameToProcessName } from "../supportedGames";
 import { findGameProcessIds, terminateGameProcess } from "../utility/gameProcess";
 import { isGameLaunchInProgress, waitForGameLaunchOutcome } from "./launchOutcome";
 import { appControlEndpoint } from "./endpoint";
+import { waitForCampaignLoadTime } from "./campaignLoadTiming";
 import {
   APP_CONTROL_INFO_FILE_NAME,
   APP_CONTROL_PROTOCOL_VERSION,
+  type AppControlCampaignLoad,
   type AppControlErrorCode,
   type AppControlLaunchParams,
   type AppControlRequest,
@@ -30,6 +32,7 @@ const MAX_LINE_BYTES = 1024 * 1024;
 const RENDERER_REPLY_TIMEOUT_MS = 30_000;
 const DEFAULT_LAUNCH_TIMEOUT_SECONDS = 15 * 60;
 const DEFAULT_STOP_TIMEOUT_SECONDS = 30;
+const DEFAULT_CAMPAIGN_LOAD_TIMEOUT_SECONDS = 10 * 60;
 /** How long the running-game poll (every ~2 s in index.ts) may take to notice the exit. */
 const EXIT_NOTICE_TIMEOUT_MS = 15_000;
 /** Same pause the Play button leaves between the game exiting and relaunching it. */
@@ -164,12 +167,41 @@ export const startAppControlServer = (
     if (isGameLaunchInProgress() || isGameRequestBusy)
       return failure(id, "CONFLICT", "A game launch or stop is already in progress.");
     isGameRequestBusy = true;
+    let response: AppControlResponse;
     try {
-      return await handleGameRequest(window, request, id);
+      response = await handleGameRequest(window, request, id);
     } finally {
       isGameRequestBusy = false;
     }
+    const launchParams = (request.params ?? {}) as AppControlLaunchParams;
+    if (request.method === "launch" && response.ok && launchParams.options?.timeCampaignLoad)
+      return withCampaignLoad(response, launchParams, launchForwardedAt);
+    return response;
   };
+
+  // Runs outside the busy section so game stop still works while the load is awaited.
+  const withCampaignLoad = async (
+    response: AppControlResponse & { ok: true },
+    params: AppControlLaunchParams,
+    sinceMs: number,
+  ): Promise<AppControlResponse> => {
+    const gamePath = appData.gamesToGameFolderPaths[appData.currentGame]?.gamePath;
+    const campaignLoad: AppControlCampaignLoad = gamePath
+      ? await waitForCampaignLoadTime({
+          gamePath,
+          sinceMs,
+          timeoutMs: positiveSeconds(params.campaignLoadTimeoutSeconds, DEFAULT_CAMPAIGN_LOAD_TIMEOUT_SECONDS) * 1000,
+          isGameRunning: () => appData.isWH3Running,
+        })
+      : { measured: false, reason: "The game folder is not set." };
+    const result = { ...(response.result as { warnings?: string[] }), campaignLoad };
+    if (!campaignLoad.measured)
+      result.warnings = [...(result.warnings ?? []), `Campaign load not timed: ${campaignLoad.reason}`];
+    return { ...response, result };
+  };
+
+  /** When the last launch was handed to the renderer; campaign load timing reads logs written after it. */
+  let launchForwardedAt = 0;
 
   const handleGameRequest = async (
     window: BrowserWindow,
@@ -206,6 +238,8 @@ export const startAppControlServer = (
     }
     const timeoutSeconds = positiveSeconds(params.timeoutSeconds, DEFAULT_LAUNCH_TIMEOUT_SECONDS);
     const outcome = waitForGameLaunchOutcome(timeoutSeconds * 1000);
+    // After any restart stop, so a killed game's script log can't count as this launch's.
+    launchForwardedAt = Date.now();
     const response = await forward(window, request);
     if (!response.ok) {
       outcome.cancel();

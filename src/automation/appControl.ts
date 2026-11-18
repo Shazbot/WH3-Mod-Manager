@@ -64,6 +64,7 @@ export const gameLaunchSchema = z
         skipIntroMovies: z.boolean().optional(),
         scriptLogging: z.boolean().optional(),
         luaSocket: z.boolean().optional(),
+        timeCampaignLoad: z.boolean().optional(),
         autoStartCustomBattle: z.boolean().optional(),
         autoStartNewCampaign: z.boolean().optional(),
         makeUnitsGenerals: z.boolean().optional(),
@@ -72,6 +73,7 @@ export const gameLaunchSchema = z
       .strict()
       .optional(),
     launchTimeoutSeconds: z.number().int().min(10).max(3600).default(900),
+    campaignLoadTimeoutSeconds: z.number().int().min(10).max(3600).default(600),
     restart: z.boolean().default(false),
     stopTimeoutSeconds: z.number().int().min(1).max(600).default(30),
     ...appInputs,
@@ -368,15 +370,34 @@ export const runModsSet = async (request: z.output<typeof modsSetSchema>, contex
 };
 
 export const runGameLaunch = async (request: z.output<typeof gameLaunchSchema>, context: AutomationContext) => {
-  const { preset, only, enable, disable, order, temporary, continueLastSave, save, game, options } = request;
+  const { preset, only, enable, disable, order, temporary, continueLastSave, save, game } = request;
+  let options = request.options;
   if (save && continueLastSave) throw new AutomationError("INVALID_ARGUMENT", "Use save or continueLastSave, not both");
+  if (options?.timeCampaignLoad) {
+    if (
+      options.autoStartCustomBattle ||
+      continueLastSave ||
+      save ||
+      options.scriptLogging === false ||
+      options.autoStartNewCampaign === false
+    )
+      throw new AutomationError(
+        "INVALID_ARGUMENT",
+        "timeCampaignLoad needs a new auto-started campaign with script logging; it cannot combine with a custom battle, a save, or turning those options off",
+      );
+    options = { ...options, autoStartNewCampaign: true, scriptLogging: true };
+  }
   if (options?.autoStartCustomBattle && options.autoStartNewCampaign)
     throw new AutomationError("INVALID_ARGUMENT", "Use autoStartCustomBattle or autoStartNewCampaign, not both");
   if (temporary && !hasSelection(request))
     throw new AutomationError("INVALID_ARGUMENT", "A temporary launch needs a preset, only, enable, disable, or order");
   context.progress?.({
     stage: "launching",
-    message: request.restart ? "Relaunching the game" : "Launching the game",
+    message: options?.timeCampaignLoad
+      ? "Launching the game and timing the campaign load"
+      : request.restart
+        ? "Relaunching the game"
+        : "Launching the game",
   });
   const { result, startedApp } = await requestApp(
     "launch",
@@ -392,6 +413,7 @@ export const runGameLaunch = async (request: z.output<typeof gameLaunchSchema>, 
       game,
       options,
       timeoutSeconds: request.launchTimeoutSeconds,
+      campaignLoadTimeoutSeconds: options?.timeCampaignLoad ? request.campaignLoadTimeoutSeconds : undefined,
       restart: request.restart,
       stopTimeoutSeconds: request.stopTimeoutSeconds,
     },

@@ -93,6 +93,20 @@ core:add_listener(
             core:remove_listener(timer)
             if cm.game_is_loaded and cm:is_new_game() then
                 out("WHMM: pressed loading screen continue button")
+                local saved = core:svr_load_string("whmm_campaign_load_start")
+                local start_clock, start_time = nil, nil
+                if type(saved) == "string" and saved ~= "" then
+                    local c, t = string.match(saved, "^([%d%.]+);(%d+)$")
+                    start_clock, start_time = tonumber(c), tonumber(t)
+                end
+                core:svr_save_string("whmm_campaign_load_start", "")
+                if start_clock then
+                    local elapsed = os.clock() - start_clock
+                    if elapsed <= 0 and start_time then elapsed = os.time() - start_time end
+                    out(string.format("WHMM: campaign load took %.2f seconds", elapsed))
+                else
+                    out("WHMM: campaign load start time missing")
+                end
                 button_continue:SimulateLClick()
             end
         elseif attempts > 600 then
@@ -118,6 +132,7 @@ export const autoStartNewCampaignScript = `local function press_start_campaign_b
             local button_start_campaign = find_uicomponent(core:get_ui_root(), "campaign_select_new", "button_start_parent", "button_start_campaign")
             if button_start_campaign then
                 out("WHMM: pressed start campaign button")
+                core:svr_save_string("whmm_campaign_load_start", tostring(os.clock()) .. ";" .. tostring(os.time()))
                 button_start_campaign:SimulateLClick()
             else
                 out("WHMM: button_start_campaign missing")

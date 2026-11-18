@@ -30,6 +30,8 @@ export interface AppControlLaunchOptions {
   scriptLogging?: boolean;
   /** Load the bundled LuaSocket DLL for this launch (WH3 only). */
   luaSocket?: boolean;
+  /** Report how long the new campaign took to load (implies auto-start campaign and script logging). */
+  timeCampaignLoad?: boolean;
   autoStartCustomBattle?: boolean;
   autoStartNewCampaign?: boolean;
   makeUnitsGenerals?: boolean;
@@ -54,6 +56,8 @@ export interface AppControlLaunchParams extends AppControlModSelection {
   restart?: boolean;
   /** Seconds to wait for a stopped game to exit (restart only). */
   stopTimeoutSeconds?: number;
+  /** Seconds to wait for the campaign load time (timeCampaignLoad only). */
+  campaignLoadTimeoutSeconds?: number;
   /** Internal: check the request without launching. Main sends it before stopping a running game. */
   validateOnly?: boolean;
 }
@@ -122,6 +126,9 @@ export interface AppControlSelectionResult {
   enabledMods: string[];
 }
 
+export type AppControlCampaignLoad =
+  { measured: true; seconds: number; scriptLog: string } | { measured: false; reason: string };
+
 export interface AppControlLaunchResult {
   game: string;
   temporary: boolean;
@@ -130,6 +137,7 @@ export interface AppControlLaunchResult {
   started: boolean;
   /** A running game was stopped before this launch. */
   restarted?: boolean;
+  campaignLoad?: AppControlCampaignLoad;
 }
 
 export interface AppControlStatus {

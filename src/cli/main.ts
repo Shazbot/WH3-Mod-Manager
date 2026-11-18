@@ -42,7 +42,8 @@ const rootHelp = `Usage:
   whmm mods list [--enabled-only]
   whmm mods set [--preset <name>] [--only <mod> ...] [--enable <mod> ...] [--disable <mod> ...] [--order <mod> ...] [--dry-run]
   whmm game launch [--preset <name>] [--only <mod> ...] [--enable <mod> ...] [--disable <mod> ...] [--order <mod> ...] [--temporary]
-    [--continue | --save <name>] [--skip-intros] [--script-logging] [--lua-socket] [--auto-start-battle | --auto-start-campaign] [--game <game>] [--restart]
+    [--continue | --save <name>] [--skip-intros] [--script-logging] [--lua-socket] [--auto-start-battle | --auto-start-campaign]
+    [--time-campaign-load [--campaign-load-timeout <s>]] [--game <game>] [--restart]
   whmm game relaunch [same flags as game launch]
   whmm game stop [--stop-timeout <s>]
 
@@ -116,6 +117,8 @@ Flags:
   --save <name>        Load this save
   --skip-intros, --script-logging, --auto-start-battle, --auto-start-campaign  Turn on a launch option for this launch
   --lua-socket         Load the bundled LuaSocket DLL for this launch (wh3 only; ports 23456/23457/23458)
+  --time-campaign-load Report how long a new auto-started campaign takes to load (implies --auto-start-campaign and --script-logging)
+  --campaign-load-timeout <s> Seconds to wait for the load time (default 600)
   --game <game>        Refuse to launch unless WHMM is set to this game (for example wh3)
   --launch-timeout <s> Seconds to wait for the game to start (default 900)
   --restart            Stop a running game first instead of refusing (game relaunch implies it)
@@ -201,6 +204,8 @@ const options = {
   "skip-intros": { type: "boolean" as const },
   "script-logging": { type: "boolean" as const },
   "lua-socket": { type: "boolean" as const },
+  "time-campaign-load": { type: "boolean" as const },
+  "campaign-load-timeout": { type: "string" as const },
   "auto-start-battle": { type: "boolean" as const },
   "auto-start-campaign": { type: "boolean" as const },
   game: { type: "string" as const },
@@ -298,6 +303,8 @@ const buildAppControlRequest = (
       "skip-intros",
       "script-logging",
       "lua-socket",
+      "time-campaign-load",
+      "campaign-load-timeout",
       "auto-start-battle",
       "auto-start-campaign",
       "game",
@@ -328,11 +335,14 @@ const buildAppControlRequest = (
   if (values["skip-intros"]) launchOptions.skipIntroMovies = true;
   if (values["script-logging"]) launchOptions.scriptLogging = true;
   if (values["lua-socket"]) launchOptions.luaSocket = true;
+  if (values["time-campaign-load"]) launchOptions.timeCampaignLoad = true;
   if (values["auto-start-battle"]) launchOptions.autoStartCustomBattle = true;
   if (values["auto-start-campaign"]) launchOptions.autoStartNewCampaign = true;
   if (Object.keys(launchOptions).length) request.options = launchOptions;
   const launchTimeout = numericOption(values["launch-timeout"], "launch-timeout");
   if (launchTimeout !== undefined) request.launchTimeoutSeconds = launchTimeout;
+  const campaignLoadTimeout = numericOption(values["campaign-load-timeout"], "campaign-load-timeout");
+  if (campaignLoadTimeout !== undefined) request.campaignLoadTimeoutSeconds = campaignLoadTimeout;
   if (values.restart !== undefined) request.restart = values.restart;
   if (action === "relaunch") request.restart = true;
   const stopTimeout = numericOption(values["stop-timeout"], "stop-timeout");
