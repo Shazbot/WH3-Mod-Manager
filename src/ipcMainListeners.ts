@@ -6072,7 +6072,21 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     }
     removePackFromCollisions(path);
   };
+  // chokidar 6 reports events for packs that did not change (e.g. a read updating the
+  // last-access time on Windows); chokidar 3 filtered these. Mod stats come from lstat.
+  const isKnownUnchangedPack = async (path: string) => {
+    const key = packPathKey(path);
+    const known = appData.allMods.find((mod) => packPathKey(mod.path) === key);
+    if (!known || known.lastChangedLocal === undefined || known.size < 0) return false;
+    try {
+      const stats = await fs.promises.lstat(path);
+      return stats.size === known.size && stats.mtimeMs === known.lastChangedLocal;
+    } catch {
+      return false;
+    }
+  };
   const onPackChangedOnDisk = async (path: string, fromWatcher = false) => {
+    if (await isKnownUnchangedPack(path)) return;
     optimizerPackChanged(path);
     await onPackDeleted(path);
     const changedPathKey = await physicalPackPathKey(path);
@@ -6356,6 +6370,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
             await ensureLegacyWorkshopPack(nodePath.dirname(path), nodePath.basename(nodePath.dirname(path)), log);
             return;
           }
+          if (await isKnownUnchangedPack(path)) return;
           onNewPackFound(path);
         })
         .on("unlink", async (path) => {
@@ -6409,6 +6424,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         .on("error", logWatcherError("data"))
         .on("add", async (path) => {
           console.log("dataWatcher add:", path);
+          if (await isKnownUnchangedPack(path)) return;
           onNewPackFound(path, true);
         })
         .on("unlink", async (path) => {
@@ -6432,7 +6448,10 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         ignored: isIgnoredInModFolder,
       })
         .on("error", logWatcherError("custom mod folders"))
-        .on("add", async (path) => onNewPackFound(path, true))
+        .on("add", async (path) => {
+          if (await isKnownUnchangedPack(path)) return;
+          onNewPackFound(path, true);
+        })
         .on("unlink", async (path) => onPackDeleted(path))
         .on("change", async (path) => {
           await onPackChangedOnDisk(path, true);
