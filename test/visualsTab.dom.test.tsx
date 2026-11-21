@@ -268,8 +268,15 @@ describe("VisualsTab filtering", () => {
     await waitFor(() => expect(document.querySelector("pre")?.textContent).toContain(sourceText));
 
     expect(screen.getByTestId("visuals-model-preview")).toBeInTheDocument();
+    const preview = screen.getByTestId("visuals-model-preview");
     fireEvent.click(screen.getByRole("button", { name: "Source" }));
-    expect(screen.queryByTestId("visuals-model-preview")).not.toBeInTheDocument();
+    // Source mode only hides the preview, so switching back reuses the loaded model.
+    expect(screen.getByTestId("visuals-model-preview")).toBe(preview);
+    expect(preview.parentElement).toHaveClass("hidden");
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    expect(screen.getByTestId("visuals-model-preview")).toBe(preview);
+    expect(preview.parentElement).not.toHaveClass("hidden");
+    fireEvent.click(screen.getByRole("button", { name: "Source" }));
 
     rendered.rerender(
       <Provider store={store}>
@@ -293,10 +300,10 @@ describe("VisualsTab filtering", () => {
     );
     await waitFor(() => expect(getVisualsUnitsData).toHaveBeenCalledTimes(2));
     expect(document.querySelector("pre")?.textContent).toContain(sourceText);
-    expect(screen.queryByTestId("visuals-model-preview")).not.toBeInTheDocument();
+    expect(screen.getByTestId("visuals-model-preview").parentElement).toHaveClass("hidden");
 
     fireEvent.click(screen.getByRole("button", { name: "Preview" }));
-    expect(screen.getByTestId("visuals-model-preview")).toBeInTheDocument();
+    expect(screen.getByTestId("visuals-model-preview").parentElement).not.toHaveClass("hidden");
   });
 
   it("shows a slot tree beside the preview and hides components from the eye toggles", async () => {

@@ -1778,8 +1778,8 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                     }
                     style={isSplitLayout ? { flex: `0 0 ${splitRatio * 100}%` } : undefined}
                   >
+                    {/* Stays mounted (only hidden) in Source mode so switching back keeps the loaded model. */}
                     {isActive &&
-                      viewerMode !== "source" &&
                       (isActiveTabSourceOnly ? (
                         <div className="flex h-full items-center justify-center p-4 text-sm text-gray-400">
                           Preview is unavailable for material files. Select Source to inspect the file.
