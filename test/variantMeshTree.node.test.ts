@@ -61,6 +61,26 @@ describe("variant mesh tree", () => {
     expect(tree[0].choices[0].isReference).toBe(false);
   });
 
+  it("leaves out slots with no choices", () => {
+    const tree = buildVariantMeshTree({
+      ...catalog,
+      slots: [
+        ...catalog.slots,
+        { slotPath: "root/slot[2]", name: "empty", label: "Empty", choices: [], defaultChoiceIndex: 0 },
+        {
+          slotPath: "root/slot[0]/choice[0]/slot[0]",
+          name: "empty_child",
+          label: "Empty child",
+          choices: [],
+          defaultChoiceIndex: 0,
+          parent: { slotPath: "root/slot[0]", choiceIndex: 0 },
+        },
+      ],
+    });
+    expect(tree.map((slot) => slot.id)).toEqual(["root/slot[0]", "root/slot[1]"]);
+    expect(tree[0].choices[0].children).toEqual([]);
+  });
+
   it("builds from a real catalog with a referenced definition", async () => {
     const definitions: Record<string, string> = {
       "root.variantmeshdefinition": `<VARIANT_MESH><SLOT name="weapon"><VARIANT_MESH_REFERENCE definition="w.variantmeshdefinition" /></SLOT></VARIANT_MESH>`,

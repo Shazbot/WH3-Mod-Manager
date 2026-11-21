@@ -31,6 +31,8 @@ export const buildVariantMeshTree = (catalog: VariantMeshCatalog): VariantTreeSl
   const childrenByParent = new Map<string, VariantMeshSlot[]>();
   const roots: VariantMeshSlot[] = [];
   for (const slot of catalog.slots) {
+    // A slot with no choices has nothing to show or hide.
+    if (slot.choices.length === 0) continue;
     if (!slot.parent) {
       roots.push(slot);
       continue;
