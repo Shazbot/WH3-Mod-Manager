@@ -258,7 +258,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
 
   const [tabs, setTabs] = useState<VisualsViewerTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
-  const [viewerMode, setViewerMode] = useState<VisualsViewerMode>("split");
+  const [viewerMode, setViewerMode] = useState<VisualsViewerMode>("tree");
   const storedSplitOrientation = useAppSelector((state) => state.app.visualsSplitOrientation);
   const [isWindowWide, setIsWindowWide] = useState(() => window.innerWidth >= window.innerHeight);
   useEffect(() => {
