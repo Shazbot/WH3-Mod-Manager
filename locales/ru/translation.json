@@ -2382,5 +2382,12 @@
   "mapNoMatchingProvinces": "Нет подходящих провинций.",
   "gameLogTab": "Журнал игры",
   "viewerDropPacksToOpen": "Перетащите файлы .pack, чтобы открыть их.",
-  "viewerDroppedNonPackFiles": "Можно открыть только файлы .pack."
+  "viewerDroppedNonPackFiles": "Можно открыть только файлы .pack.",
+  "setFolderPathsManuallyThrones": "Менеджер модов пытался получить расположение папок Thrones of Britannia из реестра Windows, но не смог их найти! Вам придется установить их вручную!",
+  "setFolderPathsManuallyOptionallyThrones": "Менеджер модов автоматически нашел пути к папкам Thrones of Britannia из реестра Windows, но здесь вы можете установить их вручную.",
+  "thrones": "Престолы Британии",
+  "mainThronesFolder": "Основная папка Thrones of Britannia, содержащая Thrones.exe, например C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War Saga Thrones of Britannia.",
+  "thronesFolder": "Папка Престолы Британии:",
+  "selectThronesFolder": "Выберите папку «Престолы Британии»",
+  "thronesContentFolder": "Папка содержимого Мастерской Steam Thrones of Britannia с именем 712100 (это идентификатор Steam для Thrones of Britannia), содержащая моды, например C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\712100"
 }

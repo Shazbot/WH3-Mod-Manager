@@ -2382,5 +2382,12 @@
   "mapNoMatchingProvinces": "Eşleşen il yok.",
   "gameLogTab": "Oyun Günlüğü",
   "viewerDropPacksToOpen": "Açmak için .pack dosyalarını bırakın",
-  "viewerDroppedNonPackFiles": "Yalnızca .pack dosyaları açılabilir."
+  "viewerDroppedNonPackFiles": "Yalnızca .pack dosyaları açılabilir.",
+  "setFolderPathsManuallyThrones": "Mod yöneticisi, Windows Kayıt Defteri'nden Thrones of Britannia klasör konumlarını almaya çalıştı ama bulamadı! Bunları manuel olarak ayarlamanız gerekecek!",
+  "setFolderPathsManuallyOptionallyThrones": "Mod yöneticisi, Windows Kayıt Defteri'nden Thrones of Britannia klasör yollarını otomatik olarak buldu, ancak bunları buradan manuel olarak ayarlayabilirsiniz.",
+  "thrones": "Britanya Tahtları",
+  "mainThronesFolder": "Thrones.exe'yi içeren ana Thrones of Britannia klasörü; örneğin C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War Saga Thrones of Britannia",
+  "thronesFolder": "Britannia'nın Thrones klasörü:",
+  "selectThronesFolder": "Thrones of Britannia Klasörünü Seçin",
+  "thronesContentFolder": "Modları içeren 712100 (Thrones of Britannia'nın Steam kimliğidir) adlı Thrones of Britannia Steam Workshop içerik klasörü, örneğin C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\712100"
 }

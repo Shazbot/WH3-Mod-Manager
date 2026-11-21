@@ -2382,5 +2382,12 @@
   "mapNoMatchingProvinces": "一致する都道府県はありません。",
   "gameLogTab": "ゲームログ",
   "viewerDropPacksToOpen": ".pack ファイルをドロップして開きます",
-  "viewerDroppedNonPackFiles": ".pack ファイルのみを開くことができます。"
+  "viewerDroppedNonPackFiles": ".pack ファイルのみを開くことができます。",
+  "setFolderPathsManuallyThrones": "MOD マネージャーは Windows レジストリから Thrones of Britannia フォルダーの場所を取得しようとしましたが、見つかりませんでした。手動で設定する必要があります。",
+  "setFolderPathsManuallyOptionallyThrones": "Mod マネージャーは Windows レジストリから Thrones of Britannia フォルダー パスを自動的に検出しますが、ここで手動で設定することもできます。",
+  "thrones": "ブリタニアの玉座",
+  "mainThronesFolder": "Thrones.exe が含まれるメインの Thrones of Britannia フォルダー (例: C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War Saga Thrones of Britannia)",
+  "thronesFolder": "「ブリタニアの王権」フォルダ:",
+  "selectThronesFolder": "「ブリタニアの王座」フォルダを選択します",
+  "thronesContentFolder": "Mod を含む 712100 (ブリタニアの王権の Steam ID) という名前の Steam ワークショップ コンテンツ フォルダー (例: C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\712100)"
 }

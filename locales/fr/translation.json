@@ -2382,5 +2382,12 @@
   "mapNoMatchingProvinces": "Aucune province correspondante.",
   "gameLogTab": "Journal de jeu",
   "viewerDropPacksToOpen": "Déposez les fichiers .pack pour les ouvrir",
-  "viewerDroppedNonPackFiles": "Seuls les fichiers .pack peuvent être ouverts."
+  "viewerDroppedNonPackFiles": "Seuls les fichiers .pack peuvent être ouverts.",
+  "setFolderPathsManuallyThrones": "Le gestionnaire de mods a essayé d'obtenir les emplacements des dossiers Thrones of Britannia à partir du registre Windows, mais il n'a pas pu les trouver ! Vous devrez les définir manuellement !",
+  "setFolderPathsManuallyOptionallyThrones": "Le gestionnaire de mods a automatiquement trouvé les chemins des dossiers Thrones of Britannia à partir du registre Windows, mais vous pouvez les définir manuellement ici.",
+  "thrones": "Trônes de Britannia",
+  "mainThronesFolder": "Le dossier principal Thrones of Britannia qui contient Thrones.exe, par exemple C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War Saga Thrones of Britannia",
+  "thronesFolder": "Dossier Thrones of Britannia :",
+  "selectThronesFolder": "Sélectionnez le dossier Thrones of Britannia",
+  "thronesContentFolder": "Le dossier de contenu Thrones of Britannia Steam Workshop nommé 712100 (qui est l'ID Steam de Thrones of Britannia) qui contient des mods, par exemple C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\712100"
 }

@@ -2384,5 +2384,12 @@
   "mapNoMatchingProvinces": "没有匹配的省份。",
   "gameLogTab": "游戏日志",
   "viewerDropPacksToOpen": "拖放 .pack 文件以打开",
-  "viewerDroppedNonPackFiles": "只能打开 .pack 文件。"
+  "viewerDroppedNonPackFiles": "只能打开 .pack 文件。",
+  "setFolderPathsManuallyThrones": "Mod 管理器尝试从 Windows 注册表获取《大不列颠王座》文件夹位置，但找不到它们！您必须手动设置它们！",
+  "setFolderPathsManuallyOptionallyThrones": "Mod 管理器自动从 Windows 注册表中找到《大不列颠王座》文件夹路径，但您可以在此处手动设置它们。",
+  "thrones": "不列颠的王座",
+  "mainThronesFolder": "包含 Thrones.exe 的《大不列颠王座》主文件夹，例如 C:\\Program Files (x86)\\Steam\\steamapps\\common\\Total War Saga Thrones of Britannia",
+  "thronesFolder": "大不列颠的王座文件夹：",
+  "selectThronesFolder": "选择《大不列颠王座》文件夹",
+  "thronesContentFolder": "《大不列颠王座》Steam 创意工坊内容文件夹名为 712100（这是《大不列颠王座》的 Steam ID），其中包含 mod，例如 C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\712100"
 }
