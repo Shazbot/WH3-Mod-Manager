@@ -173,7 +173,7 @@ See `docs/FLOWS.md`.
 
 ### Unit viewer, visuals, WH3AssetHost
 
-- **I** `getVisualsUnitsData`, `getUnitViewerCatalog`, `getUnitViewerDetails`, `getUnitViewerAnimationBinClips`, `getUnitViewerSkeletonAnim`, `getUnitViewerVariantMeshCatalog`, `getVisualsVariantMeshCatalog`, `prewarmUnitViewerAssets`, `readVariantMeshDefinition`, `searchVisualsFiles`, `openInAssetEditor`, `extractVisualsFilesToDirectory`, `startWh3AssetHost`‡, `stopWh3AssetHost`‡, `respondWh3AssetHostDecision`‡
+- **I** `getVisualsUnitsData`, `getVisualsUnitParts`, `getUnitViewerCatalog`, `getUnitViewerDetails`, `getUnitViewerAnimationBinClips`, `getUnitViewerSkeletonAnim`, `getUnitViewerVariantMeshCatalog`, `getVisualsVariantMeshCatalog`, `prewarmUnitViewerAssets`, `readVariantMeshDefinition`, `searchVisualsFiles`, `openInAssetEditor`, `extractVisualsFilesToDirectory`, `startWh3AssetHost`‡, `stopWh3AssetHost`‡, `respondWh3AssetHostDecision`‡
 - The eight direct calls listed under "Calls that skip the preload" (all ‡)
 - **E** `wh3AssetHostDecisionRequest`, `wh3AssetHostReset`
 

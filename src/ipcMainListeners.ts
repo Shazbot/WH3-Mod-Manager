@@ -1,4 +1,6 @@
 import assert from "assert";
+import { getPartAnimationProfile } from "./unitViewer/animationProfile";
+import type { VisualsUnitPart, VisualsUnitPartsInfo } from "./visuals/unitParts";
 import {
   DEFAULT_DB_TABLE_ROOT,
   UNUSED_DB_TABLE_ROOT,
@@ -3386,6 +3388,37 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
     cachedUnitViewerData = { signature, data, assetPackPaths };
     return cachedUnitViewerData;
   };
+
+  ipcMain.handle("getVisualsUnitParts", async (_event, enabledMods: Mod[]) => {
+    try {
+      const built = await unitViewerBuilds.run(getUnitViewerSignature(enabledMods), () =>
+        buildUnitViewerSessionData(enabledMods),
+      );
+      const baseUnitKeys = new Set<string>();
+      for (const unit of built.data.units.values()) {
+        if (unit.mountBaseUnit) baseUnitKeys.add(unit.mountBaseUnit);
+      }
+      const units: Record<string, VisualsUnitPartsInfo> = {};
+      for (const unit of built.data.units.values()) {
+        const parts: VisualsUnitPart[] = (unit.visualParts ?? []).map((part) => ({
+          role: part.role,
+          label: part.label,
+          variantMeshPath: part.variantMeshPath,
+          animationProfile: getPartAnimationProfile(part, unit),
+        }));
+        const mountGroup = unit.mountBaseUnit
+          ? built.data.units.get(unit.mountBaseUnit)?.landUnitKey
+          : baseUnitKeys.has(unit.key)
+            ? unit.landUnitKey
+            : undefined;
+        if (parts.length < 2 && !mountGroup) continue;
+        units[unit.landUnitKey] = { mountName: unit.mountName, mountGroup, parts };
+      }
+      return { success: true, units };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
 
   ipcMain.handle("getUnitViewerCatalog", async (_event, enabledMods: Mod[]) => {
     try {

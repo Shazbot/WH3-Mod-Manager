@@ -48,6 +48,7 @@ const units = [
 
 const searchVisualsFiles = vi.fn();
 const getVisualsUnitsData = vi.fn();
+const getVisualsUnitParts = vi.fn();
 const readVariantMeshDefinition = vi.fn();
 const putPathInClipboard = vi.fn();
 const selectDirectory = vi.fn();
@@ -65,6 +66,7 @@ describe("VisualsTab filtering", () => {
       total: 1,
       results: [{ path: "models\\example.wsmodel", ext: "wsmodel" }],
     });
+    getVisualsUnitParts.mockReset().mockResolvedValue({ success: true, units: {} });
     readVariantMeshDefinition.mockReset();
     putPathInClipboard.mockReset();
     selectDirectory.mockReset().mockResolvedValue("/tmp/visuals-extract");
@@ -72,6 +74,7 @@ describe("VisualsTab filtering", () => {
     window.api = {
       ...window.api,
       getVisualsUnitsData,
+      getVisualsUnitParts,
       searchVisualsFiles,
       readVariantMeshDefinition,
       putPathInClipboard,
@@ -106,6 +109,99 @@ describe("VisualsTab filtering", () => {
     fireEvent.change(screen.getByLabelText("Unit filter (regex)"), { target: { value: "Empire" } });
 
     await waitFor(() => expect(screen.getByText("Empire Lord")).toBeInTheDocument());
+  });
+
+  it("lists mount variants under a selected hero and switches visual parts", async () => {
+    const hero = (unitKey: string, vmd: string) => ({
+      ...units[0],
+      unitKey,
+      localizedName: `Hero ${unitKey}`,
+      variantMeshPath: vmd,
+      caste: "hero",
+    });
+    getVisualsUnitsData.mockResolvedValue({
+      success: true,
+      sessionId: "visuals-session",
+      units: [
+        hero("karl_0", "variantmeshes\\foot.variantmeshdefinition"),
+        hero("karl_1", "variantmeshes\\mounted.variantmeshdefinition"),
+        hero("karl_2", "variantmeshes\\mounted.variantmeshdefinition"),
+      ],
+    });
+    const rider = {
+      role: "rider",
+      label: "Rider",
+      variantMeshPath: "variantmeshes\\mounted.variantmeshdefinition",
+      animationProfile: "rider",
+    };
+    const mount = {
+      role: "mount",
+      label: "Mount",
+      variantMeshPath: "variantmeshes\\horse.variantmeshdefinition",
+      animationProfile: "ground",
+    };
+    getVisualsUnitParts.mockResolvedValue({
+      success: true,
+      units: {
+        karl_0: { mountGroup: "karl_0", parts: [] },
+        karl_1: { mountName: "Horse", mountGroup: "karl_0", parts: [rider, mount] },
+        karl_2: {
+          mountName: "Pegasus",
+          mountGroup: "karl_0",
+          parts: [rider, { ...mount, variantMeshPath: "variantmeshes\\pegasus.variantmeshdefinition" }],
+        },
+      },
+    });
+    readVariantMeshDefinition.mockResolvedValue({ success: true, text: "<xml/>", resolved: {} });
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: {
+        app: {
+          ...initialState,
+          isFeaturesForModdersEnabled: true,
+          isVisualsHideDuplicatesEnabled: true,
+          currentPreset: { ...initialState.currentPreset, mods: [] },
+        },
+      },
+    });
+
+    render(
+      <Provider store={store}>
+        <localizationContext.Provider value={enTranslation}>
+          <VisualsTab />
+        </localizationContext.Provider>
+      </Provider>,
+    );
+
+    await screen.findByRole("button", { name: "Human (3)" }).catch(() => undefined);
+    fireEvent.change(await screen.findByLabelText("Unit filter (regex)"), { target: { value: "Hero" } });
+    fireEvent.click(await screen.findByText("Hero karl_1"));
+
+    expect(await screen.findByText("Horse")).toBeInTheDocument();
+    expect(screen.getByText("Pegasus")).toBeInTheDocument();
+    const select = await screen.findByLabelText("Visual part");
+    fireEvent.change(select, { target: { value: "variantmeshes\\horse.variantmeshdefinition" } });
+    await waitFor(() =>
+      expect(readVariantMeshDefinition).toHaveBeenLastCalledWith(
+        "visuals-session",
+        "variantmeshes\\horse.variantmeshdefinition",
+      ),
+    );
+    await waitFor(() => expect(previewProps.current.animationProfile).toBe("ground"));
+
+    // A mount sub-row opens the mount itself, and the part select follows it.
+    fireEvent.click(screen.getByText("Pegasus"));
+    await waitFor(() =>
+      expect(readVariantMeshDefinition).toHaveBeenLastCalledWith(
+        "visuals-session",
+        "variantmeshes\\pegasus.variantmeshdefinition",
+      ),
+    );
+    await waitFor(() =>
+      expect((screen.getByLabelText("Visual part") as HTMLSelectElement).value).toBe(
+        "variantmeshes\\pegasus.variantmeshdefinition",
+      ),
+    );
   });
 
   it("loads model files in 1000-item pages", async () => {
@@ -342,7 +438,12 @@ describe("VisualsTab filtering", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Preview + Tree" }));
     expect(screen.getByText("Loading slots…")).toBeInTheDocument();
-    const slot = (path: string, name: string, labels: string[], parent?: { slotPath: string; choiceIndex: number }) => ({
+    const slot = (
+      path: string,
+      name: string,
+      labels: string[],
+      parent?: { slotPath: string; choiceIndex: number },
+    ) => ({
       slotPath: path,
       name,
       label: name,

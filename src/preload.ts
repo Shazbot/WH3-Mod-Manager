@@ -1,4 +1,5 @@
 import { ipcRenderer, webUtils } from "electron";
+import type { VisualsUnitPartsInfo } from "./visuals/unitParts";
 import { DBFieldName, DBFileName, DBVersion, Pack, PackCollisions, PackedFile } from "./packFileTypes";
 import { GameFolderPaths } from "./appData";
 import { SupportedGames } from "./supportedGames";
@@ -780,6 +781,11 @@ const api = {
     }[];
     error?: string;
   }> => ipcRenderer.invoke("getVisualsUnitsData", enabledMods),
+
+  getVisualsUnitParts: (
+    enabledMods: Mod[],
+  ): Promise<{ success: boolean; units?: Record<string, VisualsUnitPartsInfo>; error?: string }> =>
+    ipcRenderer.invoke("getVisualsUnitParts", enabledMods),
 
   getUnitViewerCatalog: (enabledMods: Mod[]): Promise<UnitViewerCatalogResponse> =>
     ipcRenderer.invoke("getUnitViewerCatalog", enabledMods),

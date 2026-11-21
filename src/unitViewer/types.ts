@@ -153,6 +153,8 @@ export interface UnitViewerUnitModel {
   name: string;
   /** Localized name of this unit's custom-battle mount variant, when it has one. */
   mountName?: string;
+  /** Main-unit key of the custom-battle base unit this mounted unit derives from. */
+  mountBaseUnit?: string;
   caste: string;
   category: string;
   numMen: number;

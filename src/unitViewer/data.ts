@@ -748,10 +748,12 @@ export const buildUnitViewerData = (
     .sort((first, second) => collator.compare(first.faction, second.faction));
 
   const mountNameByUnit = new Map<string, string>();
+  const mountBaseUnitByUnit = new Map<string, string>();
   for (const [mountedUnit, mountRows] of customBattleMountsByMountedUnit) {
     for (const row of mountRows) {
       const baseUnit = asString(row.base_unit);
       if (!baseUnit) continue;
+      if (!mountBaseUnitByUnit.has(mountedUnit)) mountBaseUnitByUnit.set(mountedUnit, baseUnit);
       const localizedMountName = getLoc(`units_custom_battle_mounts_mount_name_${baseUnit}${mountedUnit}`);
       if (!localizedMountName) continue;
       const mountName = resolveGameText(localizedMountName, getLoc);
@@ -1002,6 +1004,7 @@ export const buildUnitViewerData = (
       landUnitKey,
       name: resolveGameText(getLoc(`land_units_onscreen_name_${landUnitKey}`) || key, getLoc),
       mountName: mountNameByUnit.get(key),
+      mountBaseUnit: mountBaseUnitByUnit.get(key),
       caste: asString(main.caste),
       category: asString(land.category),
       numMen: asNumber(main.num_men),

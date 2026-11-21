@@ -1076,6 +1076,8 @@ describe("Unit Viewer catalog", () => {
 
     expect(built.units.get("base_unit")?.mountName).toBeUndefined();
     expect(built.units.get("mounted_unit")?.mountName).toBe("On Horseback");
+    expect(built.units.get("mounted_unit")?.mountBaseUnit).toBe("base_unit");
+    expect(built.units.get("base_unit")?.mountBaseUnit).toBeUndefined();
     expect(built.groups.flatMap((group) => group.units).find((unit) => unit.key === "mounted_unit")?.mountName).toBe(
       "On Horseback",
     );

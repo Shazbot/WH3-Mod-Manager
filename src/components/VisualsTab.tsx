@@ -18,6 +18,12 @@ import VisualsModelPreview, { type VisualsVariantState } from "./VisualsModelPre
 import VisualsVariantTree from "./VisualsVariantTree";
 import { getSelectionChainForChoice } from "../visuals/variantMeshTree";
 import type { VariantMeshSelection } from "../visuals/variantMesh";
+import {
+  getMountVariantMembers,
+  getMountVariantOpenPath,
+  getVisualsPartOptions,
+  type VisualsUnitPartsInfo,
+} from "../visuals/unitParts";
 import { runGuarded } from "../utility/runGuarded";
 import { visualsDdsPreviewUrl } from "../assetUrls";
 
@@ -59,7 +65,11 @@ type VisualsViewerTab = {
   historyIndex: number;
   /** The opener's trail when this tab was opened by middle-clicking a source link, oldest first. */
   originCrumbs?: VisualsOriginCrumb[];
+  /** The unit list entry this tab was opened from, so part and mount choices can follow it. */
+  unit?: VisualsTabUnit;
 };
+
+type VisualsTabUnit = { unitKey: string; faction: string };
 
 /** A breadcrumb entry that belongs to another tab: clicking it returns to that tab's history entry. */
 type VisualsOriginCrumb = { tabId: string; historyIndex: number; path: string };
@@ -78,7 +88,8 @@ type VisualsFileResult = {
 };
 
 type VisualsListRow =
-  | { kind: "unit"; key: string; unit: VisualsUnitEntry }
+  | { kind: "unit"; key: string; unit: VisualsUnitEntry; isSelected?: boolean }
+  | { kind: "mountVariant"; key: string; unit: VisualsUnitEntry; label: string; isActive: boolean }
   | { kind: "culture"; key: string; cultureKey: string; label: string; count: number; isCollapsed: boolean }
   | {
       kind: "caste";
@@ -293,6 +304,8 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
     setDraggedSplitRatio(clampSplitRatio(ratio));
   };
   const loadedEnabledModsKeyRef = useRef<string>(undefined);
+  const [unitPartsByKey, setUnitPartsByKey] = useState<Record<string, VisualsUnitPartsInfo> | null>(null);
+  const unitPartsRequestKeyRef = useRef<string | null>(null);
 
   const [isFilePanelOpen, setIsFilePanelOpen] = useState(false);
   const [fileQueryInput, setFileQueryInput] = useState("");
@@ -394,6 +407,8 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
           setUnits(result.units);
           setSessionId(result.sessionId);
           if (shouldResetViewer) {
+            setUnitPartsByKey(null);
+            unitPartsRequestKeyRef.current = null;
             setTabs([]);
             setActiveTabId(null);
           }
@@ -569,6 +584,28 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
       });
   }, [filteredUnits, isHideDuplicatesEnabled, unitComparator]);
 
+  const requestUnitParts = () => {
+    if (unitPartsRequestKeyRef.current === enabledModsKeyToRequest) return;
+    const requestKey = enabledModsKeyToRequest;
+    unitPartsRequestKeyRef.current = requestKey;
+    void runGuarded(
+      async () => {
+        const result = await window.api?.getVisualsUnitParts(enabledModsRef.current);
+        if (unitPartsRequestKeyRef.current !== requestKey) return;
+        if (result?.success && result.units) setUnitPartsByKey(result.units);
+        else unitPartsRequestKeyRef.current = null;
+      },
+      {
+        onError: () => {
+          if (unitPartsRequestKeyRef.current === requestKey) unitPartsRequestKeyRef.current = null;
+        },
+      },
+    );
+  };
+
+  const activeTabUnit = tabs.find((tab) => tab.id === activeTabId)?.unit;
+  const activeMountGroup = activeTabUnit ? unitPartsByKey?.[activeTabUnit.unitKey]?.mountGroup : undefined;
+
   const visualsListRows = useMemo<VisualsListRow[]>(() => {
     if (isSortByCultureEnabled) {
       const rows: VisualsListRow[] = [];
@@ -599,13 +636,34 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
           });
           if (isCasteCollapsed) continue;
 
-          rows.push(
-            ...caste.units.map((unit) => ({
+          const canShowMounts =
+            isHideDuplicatesEnabled && ["lord", "hero"].includes(caste.key.toLowerCase()) && !!activeTabUnit;
+          for (const unit of caste.units) {
+            const rowKey = `culture:${culture.key}|caste:${caste.key}|${unit.unitKey}|${unit.faction}`;
+            // Each lookup scans every unit, so only rows in the open unit's mount group pay for it.
+            const members =
+              canShowMounts && activeMountGroup && unitPartsByKey?.[unit.unitKey]?.mountGroup === activeMountGroup
+                ? getMountVariantMembers(unit, units, unitPartsByKey)
+                : [];
+            const isMemberActive = members.some((member) => member.entry.unitKey === activeTabUnit?.unitKey);
+            rows.push({
               kind: "unit" as const,
-              key: `culture:${culture.key}|caste:${caste.key}|${unit.unitKey}|${unit.faction}`,
+              key: rowKey,
               unit,
-            })),
-          );
+              isSelected:
+                isMemberActive || (activeTabUnit?.unitKey === unit.unitKey && activeTabUnit.faction === unit.faction),
+            });
+            if (!isMemberActive) continue;
+            for (const member of members) {
+              rows.push({
+                kind: "mountVariant" as const,
+                key: `${rowKey}|mount:${member.entry.unitKey}`,
+                unit: member.entry,
+                label: member.label,
+                isActive: member.entry.unitKey === activeTabUnit?.unitKey,
+              });
+            }
+          }
         }
       }
       return rows;
@@ -616,6 +674,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
         kind: "unit",
         key: `unit:${unit.unitKey}|${unit.faction}|${unit.variantName || ""}`,
         unit,
+        isSelected: activeTabUnit?.unitKey === unit.unitKey && activeTabUnit.faction === unit.faction,
       }));
     }
 
@@ -635,6 +694,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
               kind: "unit" as const,
               key: `origin:${group.label}|${unit.unitKey}|${unit.faction}|${unit.variantName || ""}`,
               unit,
+              isSelected: activeTabUnit?.unitKey === unit.unitKey && activeTabUnit.faction === unit.faction,
             }))),
       ];
     });
@@ -647,7 +707,12 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
     groupedUnits,
     hasActiveVisualsFilter,
     isGroupedByOrigin,
+    isHideDuplicatesEnabled,
     isSortByCultureEnabled,
+    activeTabUnit,
+    activeMountGroup,
+    unitPartsByKey,
+    units,
   ]);
 
   useEffect(() => {
@@ -692,6 +757,17 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
   };
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) || null;
+  const activeUnitEntry = activeTab?.unit
+    ? units.find((entry) => entry.unitKey === activeTab.unit?.unitKey && entry.faction === activeTab.unit?.faction)
+    : undefined;
+  const partOptions = activeUnitEntry
+    ? getVisualsPartOptions(activeUnitEntry.variantMeshPath, unitPartsByKey?.[activeUnitEntry.unitKey])
+    : [];
+  const activeTabFileKey = activeTab ? getVisualsFileKey(activeTab.filePath) : "";
+  const activePartOption =
+    partOptions.length >= 2
+      ? partOptions.find((option) => getVisualsFileKey(option.variantMeshPath) === activeTabFileKey)
+      : undefined;
   const isActiveTabSourceOnly = !!activeTab && isXmlMaterialPath(activeTab.filePath);
 
   const [variantState, setVariantState] = useState<VisualsVariantState>();
@@ -798,7 +874,15 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
   };
 
   /** `linkNew` is a middle-clicked source link: a new tab that remembers the opener's trail. */
-  const openVisualsFileTab = async (filePath: string, mode: "current" | "new" | "link" | "linkNew") => {
+  const setTabUnit = (tabId: string, unit: VisualsTabUnit | undefined) => {
+    setTabs((prev) => prev.map((tab) => (tab.id === tabId ? { ...tab, unit } : tab)));
+  };
+
+  const openVisualsFileTab = async (
+    filePath: string,
+    mode: "current" | "new" | "link" | "linkNew",
+    unit?: VisualsTabUnit,
+  ) => {
     if (!filePath) {
       setViewerMessage("No visual file path is available for this entry.");
       return;
@@ -813,6 +897,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
           .some((tabFilePath) => getVisualsFileKey(tabFilePath!) === fileKey),
       );
       if (existingTab) {
+        if (unit) setTabUnit(existingTab.id, unit);
         activateTab(existingTab);
         setViewerMessage(null);
         return;
@@ -832,6 +917,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
       return;
     }
     if (mode === "current" && currentTab) {
+      setTabUnit(currentTab.id, unit);
       await replaceTabFile(currentTab, filePath);
       return;
     }
@@ -844,6 +930,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
       status: "loading",
       history: [filePath],
       historyIndex: 0,
+      unit,
       originCrumbs:
         mode === "linkNew" && currentTab
           ? [
@@ -969,24 +1056,28 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
     };
   }, [tabContextMenu]);
 
-  const onUnitSingleClick = (unit: VisualsUnitEntry) => {
-    if (!unit.variantMeshPath) {
+  const onUnitSingleClick = (unit: VisualsUnitEntry, openPath?: string) => {
+    const filePath = openPath ?? unit.variantMeshPath;
+    if (!filePath) {
       setViewerMessage(
         `No variantmeshdefinition resolved for ${unit.localizedName}${unit.faction ? ` (${unit.faction})` : ""}.`,
       );
       return;
     }
-    openVisualsFileTab(unit.variantMeshPath, "current");
+    requestUnitParts();
+    openVisualsFileTab(filePath, "current", { unitKey: unit.unitKey, faction: unit.faction });
   };
 
-  const onUnitDoubleClick = (unit: VisualsUnitEntry) => {
-    if (!unit.variantMeshPath) {
+  const onUnitDoubleClick = (unit: VisualsUnitEntry, openPath?: string) => {
+    const filePath = openPath ?? unit.variantMeshPath;
+    if (!filePath) {
       setViewerMessage(
         `No variantmeshdefinition resolved for ${unit.localizedName}${unit.faction ? ` (${unit.faction})` : ""}.`,
       );
       return;
     }
-    openVisualsFileTab(unit.variantMeshPath, "new");
+    requestUnitParts();
+    openVisualsFileTab(filePath, "new", { unitKey: unit.unitKey, faction: unit.faction });
   };
 
   const onFileSingleClick = (file: VisualsFileResult) => {
@@ -1358,13 +1449,55 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
     );
   };
 
-  const renderUnitRow = (unit: VisualsUnitEntry) => {
-    const hasPath = !!unit.variantMeshPath;
+  const getUnitClickHandlers = (unit: VisualsUnitEntry, filePath?: string) => ({
+    onClick: (event: React.MouseEvent) => {
+      event.preventDefault();
+      if (unitClickTimer.current) clearTimeout(unitClickTimer.current);
+      unitClickTimer.current = setTimeout(() => {
+        unitClickTimer.current = null;
+        onUnitSingleClick(unit, filePath ?? unit.variantMeshPath);
+      }, 220);
+    },
+    onDoubleClick: (event: React.MouseEvent) => {
+      event.preventDefault();
+      if (unitClickTimer.current) {
+        clearTimeout(unitClickTimer.current);
+        unitClickTimer.current = null;
+      }
+      onUnitDoubleClick(unit, filePath ?? unit.variantMeshPath);
+    },
+  });
+
+  const renderMountVariantRow = (row: Extract<VisualsListRow, { kind: "mountVariant" }>) => {
+    // A mount sub-row is about the mount, so it opens that part; the part select switches back to the rider.
+    const openPath = getMountVariantOpenPath(row.unit.variantMeshPath, unitPartsByKey?.[row.unit.unitKey]);
     return (
       <div
-        className={`px-3 py-2 border-b border-gray-700 cursor-pointer hover:bg-gray-700 ${
-          !hasPath ? "opacity-70" : ""
+        role="option"
+        aria-selected={row.isActive}
+        aria-current={row.isActive ? "true" : undefined}
+        className={`cursor-pointer border-b border-l-2 border-gray-700 py-1.5 pl-6 pr-3 text-xs hover:bg-gray-700 ${
+          row.isActive ? "border-l-blue-400 bg-gray-700 text-white" : "border-l-transparent text-gray-300"
         }`}
+        {...getUnitClickHandlers(row.unit, openPath)}
+        onContextMenu={(event) => openAssetEditorContextMenu(event, openPath, undefined, true)}
+        title={row.unit.unitKey}
+      >
+        {row.label}
+      </div>
+    );
+  };
+
+  const renderUnitRow = (unit: VisualsUnitEntry, isSelected = false) => {
+    const hasPath = !!unit.variantMeshPath;
+    const mountName = isHideDuplicatesEnabled ? undefined : unitPartsByKey?.[unit.unitKey]?.mountName;
+    return (
+      <div
+        aria-selected={isSelected}
+        aria-current={isSelected ? "true" : undefined}
+        className={`px-3 py-2 border-b border-l-2 border-gray-700 cursor-pointer hover:bg-gray-700 ${
+          isSelected ? "border-l-blue-400 bg-gray-700" : "border-l-transparent"
+        } ${!hasPath ? "opacity-70" : ""}`}
         onClick={(event) => {
           event.preventDefault();
           if (unitClickTimer.current) clearTimeout(unitClickTimer.current);
@@ -1390,6 +1523,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
           {unit.faction ? ` | faction: ${unit.faction}` : ""}
         </div>
         {unit.variantName && <div className="text-xs text-gray-500 break-all">variant: {unit.variantName}</div>}
+        {mountName && <div className="text-xs text-gray-500 break-all">mount: {mountName}</div>}
         {!unit.variantMeshPath && <div className="text-xs text-red-300">No resolved variantmeshdefinition</div>}
       </div>
     );
@@ -1404,7 +1538,8 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
       <CellMeasurer cache={unitListCache} columnIndex={0} index={index} key={key} parent={parent}>
         {({ registerChild }) => (
           <div ref={registerChild} style={measuredStyle}>
-            {row.kind === "unit" && renderUnitRow(row.unit)}
+            {row.kind === "unit" && renderUnitRow(row.unit, row.isSelected)}
+            {row.kind === "mountVariant" && renderMountVariantRow(row)}
             {row.kind === "culture" && (
               <button
                 type="button"
@@ -1750,19 +1885,35 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                   >
                     Source
                   </button>
-                  {viewerMode === "split" && (
-                    <button
-                      type="button"
-                      title={splitOrientation === "columns" ? "Show stacked" : "Show side by side"}
-                      aria-label={splitOrientation === "columns" ? "Show stacked" : "Show side by side"}
-                      className="ml-auto border-l border-gray-700 px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-700 hover:text-white"
-                      onClick={() =>
-                        dispatch(setVisualsSplitOrientation(splitOrientation === "columns" ? "rows" : "columns"))
-                      }
-                    >
-                      <FontAwesomeIcon icon={splitOrientation === "columns" ? faBars : faTableColumns} />
-                    </button>
-                  )}
+                  <div className="ml-auto flex items-center">
+                    {activePartOption && (
+                      <select
+                        aria-label="Visual part"
+                        className="mx-2 h-7 rounded border border-gray-600 bg-gray-900/90 py-0 pl-2 pr-8 text-xs text-gray-200 shadow-sm hover:border-blue-400 hover:text-white focus:border-blue-400 focus:outline-hidden"
+                        value={activePartOption.variantMeshPath}
+                        onChange={(event) => void replaceTabFile(activeTab, event.target.value)}
+                      >
+                        {partOptions.map((option) => (
+                          <option key={option.variantMeshPath} value={option.variantMeshPath}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    {viewerMode === "split" && (
+                      <button
+                        type="button"
+                        title={splitOrientation === "columns" ? "Show stacked" : "Show side by side"}
+                        aria-label={splitOrientation === "columns" ? "Show stacked" : "Show side by side"}
+                        className="border-l border-gray-700 px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-700 hover:text-white"
+                        onClick={() =>
+                          dispatch(setVisualsSplitOrientation(splitOrientation === "columns" ? "rows" : "columns"))
+                        }
+                      >
+                        <FontAwesomeIcon icon={splitOrientation === "columns" ? faBars : faTableColumns} />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div
                   ref={splitContainerRef}
@@ -1793,6 +1944,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                           hiddenComponentBindings={isTreeMode ? hiddenIdsForTab : NO_HIDDEN_TREE_IDS}
                           onVariantStateChange={setVariantState}
                           variantSelectionRequest={variantSelectionRequest}
+                          animationProfile={activePartOption?.animationProfile}
                         />
                       ))}
                   </div>
