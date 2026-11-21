@@ -5,6 +5,7 @@ import {
   buildVariantMeshTree,
   getSelectionChainForChoice,
   isBindingHidden,
+  showTreeItem,
   soloTreeItem,
 } from "../src/visuals/variantMeshTree";
 
@@ -89,6 +90,23 @@ describe("variant mesh tree", () => {
       ["root/slot[0]/choice[0]", "root/slot[1]", "root/slot[1]/choice[0]"].sort(),
     );
     expect(soloTreeItem(tree, id, solo)).toEqual([]);
+  });
+
+  it("unhides hidden ancestors when showing a child, keeping its siblings hidden", () => {
+    const tree = buildVariantMeshTree(catalog);
+    const hidden = ["root/slot[0]", "root/slot[0]/choice[0]", "root/slot[0]/choice[1]", "root/slot[1]"];
+    expect(showTreeItem(tree, "root/slot[0]/choice[1]", hidden).sort()).toEqual(
+      ["root/slot[0]/choice[0]", "root/slot[1]"].sort(),
+    );
+    // Hidden only through its parent: the parent's other children become hidden instead.
+    expect(showTreeItem(tree, "root/slot[0]/choice[1]/slot[0]", ["root/slot[0]"]).sort()).toEqual(
+      ["root/slot[0]/choice[0]"].sort(),
+    );
+    expect(showTreeItem(tree, "root/slot[1]", hidden)).toEqual([
+      "root/slot[0]",
+      "root/slot[0]/choice[0]",
+      "root/slot[0]/choice[1]",
+    ]);
   });
 
   it("returns the choice plus ancestor selections", () => {

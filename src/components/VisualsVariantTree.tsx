@@ -4,6 +4,7 @@ import { faChevronRight, faEye, faEyeSlash } from "@fortawesome/free-solid-svg-i
 import type { VariantMeshCatalog } from "../visuals/variantMesh";
 import {
   buildVariantMeshTree,
+  showTreeItem,
   soloTreeItem,
   type VariantTreeChoiceNode,
   type VariantTreeNode,
@@ -30,13 +31,13 @@ const VisualsVariantTree = memo(
     const hidden = useMemo(() => new Set(hiddenIds), [hiddenIds]);
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
-    const toggleEye = (event: React.MouseEvent, id: string) => {
+    const toggleEye = (event: React.MouseEvent, id: string, isEffectivelyHidden: boolean) => {
       event.stopPropagation();
       if (event.ctrlKey || event.metaKey) {
         onHiddenIdsChange(soloTreeItem(tree, id, hiddenIds));
         return;
       }
-      onHiddenIdsChange(hidden.has(id) ? hiddenIds.filter((hiddenId) => hiddenId !== id) : [...hiddenIds, id]);
+      onHiddenIdsChange(isEffectivelyHidden ? showTreeItem(tree, id, hiddenIds) : [...hiddenIds, id]);
     };
 
     const renderNode = (node: VariantTreeNode, depth: number, ancestorHidden: boolean): React.ReactNode => {
@@ -77,13 +78,13 @@ const VisualsVariantTree = memo(
             )}
             <button
               type="button"
-              aria-pressed={!isHidden}
-              aria-label={`${isHidden ? "Show" : "Hide"} ${label}`}
-              title={`${isHidden ? "Show" : "Hide"} ${label} (Ctrl+click to show only this)`}
+              aria-pressed={!isMuted}
+              aria-label={`${isMuted ? "Show" : "Hide"} ${label}`}
+              title={`${isMuted ? "Show" : "Hide"} ${label} (Ctrl+click to show only this)`}
               className="flex h-4 w-4 shrink-0 items-center justify-center text-gray-300 hover:text-white focus:outline-none focus-visible:ring-1 focus-visible:ring-blue-400"
-              onClick={(event) => toggleEye(event, node.id)}
+              onClick={(event) => toggleEye(event, node.id, isMuted)}
             >
-              <FontAwesomeIcon icon={isHidden ? faEyeSlash : faEye} className="text-[11px]" />
+              <FontAwesomeIcon icon={isMuted ? faEyeSlash : faEye} className="text-[11px]" />
             </button>
             <button
               type="button"

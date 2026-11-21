@@ -97,6 +97,38 @@ export const soloTreeItem = (
   return same ? [] : solo;
 };
 
+const childrenOf = (node: VariantTreeNode): VariantTreeNode[] =>
+  node.kind === "slot" ? node.choices : node.children;
+
+/**
+ * Ids to hide after showing `id`. Hidden ancestors are unhidden too, and their other children are hidden instead,
+ * so only the clicked branch reappears.
+ */
+export const showTreeItem = (
+  tree: readonly VariantTreeSlotNode[],
+  id: string,
+  currentHidden: readonly string[],
+): string[] => {
+  let path: VariantTreeNode[] | undefined;
+  const find = (nodes: readonly VariantTreeNode[], trail: VariantTreeNode[]): boolean =>
+    nodes.some((node) => {
+      const next = [...trail, node];
+      if (node.id === id) path = next;
+      return node.id === id || find(childrenOf(node), next);
+    });
+  find(tree, []);
+  const hidden = new Set(currentHidden);
+  if (path) {
+    const pathIds = new Set(path.map((node) => node.id));
+    for (const ancestor of path.slice(0, -1)) {
+      if (!hidden.delete(ancestor.id)) continue;
+      for (const child of childrenOf(ancestor)) if (!pathIds.has(child.id)) hidden.add(child.id);
+    }
+  }
+  hidden.delete(id);
+  return [...hidden];
+};
+
 /** The selections that make a choice render: the choice itself plus every ancestor choice. */
 export const getSelectionChainForChoice = (catalog: VariantMeshCatalog, choiceKey: string): VariantMeshSelection[] => {
   const slotsByPath = new Map(catalog.slots.map((slot) => [slot.slotPath, slot]));
