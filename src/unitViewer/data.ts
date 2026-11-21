@@ -937,7 +937,8 @@ export const buildUnitViewerData = (
         animatedLodModels.get(engineModelKey.toLowerCase())?.filename ||
         resolvePartPath(engineModelKey)
       : undefined;
-    const hasMountPart = !!mountPath && mountPath !== variantMeshPath;
+    // Hidden mounts (e.g. the Iron Daemon's chd_hidden_mount_locomotive) point at dummy_variant; that is no mount.
+    const hasMountPart = !!mountPath && mountPath !== variantMeshPath && !isPlaceholderVmd(mountPath);
     // Seat crews come from battle personalities, one per attachment point on the engine, or on the
     // mount for ridden monsters without an engine (e.g. Thundertusk).
     const engineRiders: UnitViewerEngineRider[] =

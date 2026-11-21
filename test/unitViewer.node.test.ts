@@ -986,6 +986,36 @@ describe("Unit Viewer catalog", () => {
     expect(unit?.painterVariantContext).toBeUndefined();
   });
 
+  it("ignores a hidden mount whose variant is the dummy placeholder", () => {
+    const unit = buildUnitViewerData(
+      {
+        main_units_tables: [{ unit: "iron_daemon", land_unit: "iron_daemon", num_men: "4" }],
+        land_units_tables: [
+          {
+            key: "iron_daemon",
+            man_entity: "entity",
+            primary_melee_weapon: "weapon",
+            mount: "chd_hidden_mount_locomotive",
+            engine: "engine",
+            num_mounts: "1",
+          },
+        ],
+        battle_entities_tables: [{ key: "entity", type: "man", hit_points: "100", mass: "100" }],
+        melee_weapons_tables: [{ key: "weapon", damage: "10", ap_damage: "5" }],
+        unit_variants_tables: [{ unit: "iron_daemon", variant: "v_driver" }],
+        mounts_tables: [{ key: "chd_hidden_mount_locomotive", variant: "dummy_variant" }],
+        battlefield_engines_tables: [{ key: "engine", variant: "v_engine" }],
+        variants_tables: [
+          { variant_name: "dummy_variant", variant_filename: "dummy_variant" },
+          { variant_name: "v_driver", variant_filename: "chd_iron_daemon_driver" },
+          { variant_name: "v_engine", variant_filename: "chd_iron_daemon" },
+        ],
+      },
+      () => undefined,
+    ).units.get("iron_daemon");
+    expect(unit?.visualParts?.map((part) => part.role)).toEqual(["crew", "engine"]);
+  });
+
   it("includes saddle tech animations for ordinary manticore riders", () => {
     const parts = buildUnitViewerData(
       {
