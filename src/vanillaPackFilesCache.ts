@@ -22,6 +22,7 @@ import { getVanillaPackPathsInLoadOrder } from "./utility/vanillaPackPaths";
 import {
   flushModPackFileNamesCache,
   getModPackFileNamesCacheEntry,
+  releaseModPackFileNamesCache,
   rememberModPackFileNamesCacheEntry,
 } from "./modPackFileNamesCache";
 
@@ -50,6 +51,8 @@ let vanillaPackFilesCacheIndex: LazyVanillaPackFilesCache | null | undefined;
 let cacheIndexLoadPromise: Promise<LazyVanillaPackFilesCache | null> | undefined;
 let cacheWriteTimer: ReturnType<typeof setTimeout> | undefined;
 let cacheWritePromise: Promise<void> = Promise.resolve();
+let dirtyRevision = 0;
+let pendingHydratedUpdates = 0;
 
 const emptyCache = (): VanillaPackFilesCache => ({ version: CACHE_VERSION, entries: {} });
 
@@ -227,17 +230,20 @@ export const loadVanillaPackFilesCache = async (): Promise<VanillaPackFilesCache
 const writeCacheNow = async (): Promise<void> => {
   // A pure lazy read does not make the cache dirty. Mutations hydrate the full
   // cache before applying their update, so a pending write always has a complete view.
-  if (!vanillaPackFilesCache) return;
+  const cache = vanillaPackFilesCache;
+  if (!cache) return;
+  const revision = dirtyRevision;
   const cacheFilePath = getCacheFilePath();
   if (!cacheFilePath) return;
 
   const temporaryPath = `${cacheFilePath}.building`;
   try {
     await fs.promises.mkdir(nodePath.dirname(cacheFilePath), { recursive: true });
-    const binary = encodeVanillaPackFilesCache(vanillaPackFilesCache);
+    const binary = encodeVanillaPackFilesCache(cache);
     const compressed = await zstdCompress(binary, CACHE_COMPRESSION_LEVEL);
     await fs.promises.writeFile(temporaryPath, compressed);
     await fs.promises.rename(temporaryPath, cacheFilePath);
+    if (cache === vanillaPackFilesCache && revision === dirtyRevision) dirtyRevision = 0;
   } catch (error) {
     console.error("Failed to save vanilla pack files cache:", error);
     try {
@@ -268,6 +274,15 @@ export const saveVanillaPackFilesCache = async (): Promise<void> => {
   }
   cacheWritePromise = cacheWritePromise.then(writeCacheNow);
   await cacheWritePromise;
+};
+
+/** Drop clean cache-owned references without invalidating readers or forcing a disk write. */
+export const releasePackFileCachesAfterLaunch = (): void => {
+  releaseModPackFileNamesCache();
+  if (dirtyRevision || pendingHydratedUpdates || cacheLoadPromise || cacheIndexLoadPromise) return;
+  vanillaPackFilesCache = null;
+  vanillaPackFilesCacheIndex = undefined;
+  vanillaPackFilesCacheMetadata = null;
 };
 
 /** The host/manager cache is restricted to packs named by the current game manifest. */
@@ -470,6 +485,7 @@ export const rememberVanillaPackIndex = (
   const cacheKey = nodePath.resolve(packPath);
 
   const apply = (cache: VanillaPackFilesCache): void => {
+    dirtyRevision++;
     cache.entries[cacheKey] = cacheEntry;
     vanillaPackFilesCacheMetadata?.set(normalizeCachePath(cacheKey), {
       size,
@@ -484,10 +500,14 @@ export const rememberVanillaPackIndex = (
     return;
   }
 
+  pendingHydratedUpdates++;
   void loadVanillaPackFilesCache()
     .then(apply)
     .catch((error) => {
       console.error("Failed to update vanilla pack files cache:", error);
+    })
+    .finally(() => {
+      pendingHydratedUpdates--;
     });
 };
 

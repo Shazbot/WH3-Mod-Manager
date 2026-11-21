@@ -1,26 +1,43 @@
-import React, { RefObject, useEffect, useLayoutEffect } from "react";
+import React, { RefObject, Suspense, useEffect, useLayoutEffect } from "react";
 import { useAppSelector } from "../hooks";
 import Sidebar from "./Sidebar";
 import ModRows from "./ModRows";
-import Categories from "./Categories";
 import ModTagPicker from "./ModTagPicker";
-import NodeEditor from "./NodeEditor";
 import { useKeepMountedOnceActive } from "./useKeepMountedOnceActive";
-import VisualsTab from "./VisualsTab";
-import PresetsTab from "./PresetsTab";
-import TechTreesTab from "./techTrees/TechTreesTab";
-import SkillsTab from "./skillsViewer/SkillsTab";
 import { gameToPackWithDBTablesName } from "../supportedGames";
-import UnitViewerTab from "./UnitViewerTab";
-import BuildingsTab from "./buildings/BuildingsTab";
-import AncillariesTab from "./ancillaries/AncillariesTab";
-import GameLogTab from "./gameLog/GameLogTab";
-import EsfMapTab from "./EsfMapTab";
-import LoadOrderRulesTab from "./loadOrderRules/LoadOrderRulesTab";
+import { Spinner } from "../flowbite/components/Spinner";
+
+// Feature tabs are intentionally loaded on first use. Their modules pull in large editors and
+// data-grid/3D dependencies that are not needed for the ordinary mod list.
+const LazyNodeEditor = React.lazy(() => import("./NodeEditor"));
+const LazyVisualsTab = React.lazy(() => import("./VisualsTab"));
+const LazyPresetsTab = React.lazy(() => import("./PresetsTab"));
+const LazyTechTreesTab = React.lazy(() => import("./techTrees/TechTreesTab"));
+const LazySkillsTab = React.lazy(() => import("./skillsViewer/SkillsTab"));
+const LazyUnitViewerTab = React.lazy(() => import("./UnitViewerTab"));
+const LazyBuildingsTab = React.lazy(() => import("./buildings/BuildingsTab"));
+const LazyAncillariesTab = React.lazy(() => import("./ancillaries/AncillariesTab"));
+const LazyGameLogTab = React.lazy(() => import("./gameLog/GameLogTab"));
+const LazyEsfMapTab = React.lazy(() => import("./EsfMapTab"));
+const LazyLoadOrderRulesTab = React.lazy(() => import("./loadOrderRules/LoadOrderRulesTab"));
+const LazyCategories = React.lazy(() => import("./Categories"));
 
 type MainProps = {
   scrollElement: RefObject<HTMLDivElement | null>;
 };
+
+const LazyTab = ({ children }: { children: React.ReactNode }) => (
+  <Suspense
+    fallback={
+      <div className="flex min-h-32 items-center justify-center">
+        <Spinner aria-label="Loading" />
+      </div>
+    }
+  >
+    {children}
+  </Suspense>
+);
+
 const Main = (props: MainProps) => {
   const currentTab = useAppSelector((state) => state.app.currentTab);
   const modListWidth = useAppSelector((state) => state.app.modListWidth);
@@ -102,66 +119,96 @@ const Main = (props: MainProps) => {
         // Hidden rather than unmounted: React Flow keeps its nodes, edges and viewport, so the tab
         // comes back exactly as it was left.
         <div className={isNodeEditorTab ? undefined : "hidden"}>
-          <NodeEditor
-            currentFile={currentFlowFileSelection}
-            currentPack={currentPack}
-            isActive={isNodeEditorTab}
-          ></NodeEditor>
+          <LazyTab>
+            <LazyNodeEditor
+              currentFile={currentFlowFileSelection}
+              currentPack={currentPack}
+              isActive={isNodeEditorTab}
+            />
+          </LazyTab>
         </div>
       )}
 
       {isUnitViewerMounted && (
         <div className={isUnitViewerTab ? undefined : "hidden"}>
-          <UnitViewerTab isActive={isUnitViewerTab} />
+          <LazyTab>
+            <LazyUnitViewerTab isActive={isUnitViewerTab} />
+          </LazyTab>
         </div>
       )}
 
       {isVisualsMounted && (
         <div className={isVisualsTab ? undefined : "hidden"}>
-          <VisualsTab isActive={isVisualsTab} />
+          <LazyTab>
+            <LazyVisualsTab isActive={isVisualsTab} />
+          </LazyTab>
         </div>
       )}
 
       {isSkillsMounted && (
         <div className={isSkillsTab ? undefined : "hidden"}>
-          <SkillsTab isActive={isSkillsTab} />
+          <LazyTab>
+            <LazySkillsTab isActive={isSkillsTab} />
+          </LazyTab>
         </div>
       )}
 
       {isTechTreesMounted && (
         <div className={isTechTreesTab ? undefined : "hidden"}>
-          <TechTreesTab />
+          <LazyTab>
+            <LazyTechTreesTab />
+          </LazyTab>
         </div>
       )}
 
       {isBuildingsMounted && (
         <div className={isBuildingsTab ? undefined : "hidden"}>
-          <BuildingsTab isActive={isBuildingsTab} />
+          <LazyTab>
+            <LazyBuildingsTab isActive={isBuildingsTab} />
+          </LazyTab>
         </div>
       )}
 
       {isAncillariesMounted && (
         <div className={isAncillariesTab ? undefined : "hidden"}>
-          <AncillariesTab isActive={isAncillariesTab} />
+          <LazyTab>
+            <LazyAncillariesTab isActive={isAncillariesTab} />
+          </LazyTab>
         </div>
       )}
 
       {isMapMounted && (
         <div className={isMapTab ? undefined : "hidden"}>
-          <EsfMapTab isActive={isMapTab} />
+          <LazyTab>
+            <LazyEsfMapTab isActive={isMapTab} />
+          </LazyTab>
         </div>
       )}
 
       {isGameLogMounted && (
         <div className={isGameLogTab ? undefined : "hidden"}>
-          <GameLogTab isActive={isGameLogTab} />
+          <LazyTab>
+            <LazyGameLogTab isActive={isGameLogTab} />
+          </LazyTab>
         </div>
       )}
 
       {!isKeptMountedTab &&
-        ((currentTab == "presets" && <PresetsTab />) ||
-          (isLoadOrderRulesTab && <LoadOrderRulesTab />) ||
-          (currentTab == "categories" && <Categories></Categories>) || (
+        ((currentTab == "presets" && (
+          <LazyTab>
+            <LazyPresetsTab />
+          </LazyTab>
+        )) ||
+          (isLoadOrderRulesTab && (
+            <LazyTab>
+              <LazyLoadOrderRulesTab />
+            </LazyTab>
+          )) ||
+          (currentTab == "categories" && (
+            <LazyTab>
+              <LazyCategories />
+            </LazyTab>
+          )) || (
             <div
               className={
                 modListWidth === "wide"

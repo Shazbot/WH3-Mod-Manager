@@ -82,7 +82,10 @@ module.exports = {
             vendor: {
               test: /[\/]node_modules[\/]/,
               name: "renderer-vendors",
-              chunks: "all",
+              // Keep dependencies that are only reachable from lazy feature tabs out of the
+              // startup vendor chunk. Shared async dependencies can still be split by the other
+              // groups/default async chunks when a feature is opened.
+              chunks: "initial",
               priority: 10,
               enforce: true,
             },

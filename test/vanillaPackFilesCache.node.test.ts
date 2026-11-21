@@ -161,6 +161,33 @@ describe("vanilla pack files cache", () => {
     expect(electronState.decompressCount).toBe(1);
   });
 
+  it("reloads clean indexes after launch and preserves a pending sidecar write", async () => {
+    const vanillaPath = path.join(root, "vanilla.pack");
+    const modPath = path.join(root, "mod.pack");
+    await writeFile(vanillaPath, "vanilla");
+    await writeFile(modPath, "mod");
+    const vanilla = await stat(vanillaPath);
+    const mod = await stat(modPath);
+    await writeCache({
+      version: 4,
+      entries: { [vanillaPath]: expandedEntry(vanilla.size, vanilla.mtimeMs, "idle.anim") },
+    });
+    const heldIndex = await cacheApi.getCurrentVanillaPackIndex(vanillaPath);
+    cacheApi.rememberPackFileNames(modPath, mod.size, mod.mtimeMs, ["mod.bin"]);
+
+    cacheApi.releasePackFileCachesAfterLaunch();
+    expect((await cacheApi.getCurrentPackFilesCacheEntry(modPath))?.packedFileNames).toEqual(["mod.bin"]);
+    expect(electronState.decompressCount).toBe(1);
+    expect(await cacheApi.getCurrentVanillaPackIndex(vanillaPath)).toEqual(heldIndex);
+    expect(heldIndex?.packedFiles[0].name).toBe("idle.anim");
+    expect(electronState.decompressCount).toBe(2);
+
+    await cacheApi.saveVanillaPackFilesCache();
+    cacheApi.releasePackFileCachesAfterLaunch();
+    expect((await cacheApi.getCurrentPackFilesCacheEntry(modPath))?.packedFileNames).toEqual(["mod.bin"]);
+    expect(electronState.decompressCount).toBe(3);
+  });
+
   it("does not decode corrupt legacy mod names during a sidecar lookup", async () => {
     const goodPath = path.join(root, "vanilla.pack");
     const badPath = path.join(root, "mod.pack");
@@ -328,6 +355,8 @@ describe("vanilla pack files cache", () => {
     await expect(cacheApi.saveVanillaPackFilesCache()).resolves.toBeUndefined();
 
     expect(logError).toHaveBeenCalled();
+    cacheApi.releasePackFileCachesAfterLaunch();
+    expect((await cacheApi.getCurrentPackFilesCacheEntry(modPath))?.packedFileNames).toEqual(["cached.bin"]);
     logError.mockRestore();
     electronState.userDataPath = root;
   });
@@ -401,6 +430,7 @@ describe("vanilla pack files cache", () => {
       packHeader,
       [],
     );
+    cacheApi.releasePackFileCachesAfterLaunch();
     await cacheApi.saveVanillaPackFilesCache();
 
     const full = await cacheApi.loadVanillaPackFilesCache();
@@ -410,10 +440,11 @@ describe("vanilla pack files cache", () => {
     expect(full.entries[existingPath]).toMatchObject({ packedFiles: [{ name: "existing.anim" }] });
     expect(full.entries[existingModPath]).toMatchObject({ packedFileNames: ["existing.bin"] });
     expect(full.entries[newVanillaPath]).toMatchObject({ packedFiles: [{ name: "new.anim" }] });
+    expect(electronState.decompressCount).toBe(1);
     expect(await cacheApi.getCurrentPackFilesCacheEntry(newModPath)).toMatchObject({ packedFileNames: ["new.bin"] });
 
     const written = decodeVanillaPackFilesCache(await readFile(vanillaCachePath));
     expect(Object.keys(written?.entries ?? {}).sort()).toEqual(Object.keys(full.entries).sort());
-    expect(electronState.decompressCount).toBe(1);
+    expect(electronState.decompressCount).toBe(2); // The released mod sidecar was read from disk.
   });
 });

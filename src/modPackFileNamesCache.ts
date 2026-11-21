@@ -22,6 +22,8 @@ interface PendingWrite {
 }
 
 const memoryEntries = new Map<string, ModPackFileNamesCacheEntry>();
+const diskBackedEntries = new WeakSet<ModPackFileNamesCacheEntry>();
+let releaseGeneration = 0;
 const pendingWrites = new Map<string, PendingWrite>();
 let nextRevision = 0;
 let writeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -72,7 +74,12 @@ export const getModPackFileNamesCacheEntry = async (
   }
 
   const memoryEntryAtReadStart = memoryEntry;
+  const generation = releaseGeneration;
   const entry = await readJsonDiskCache<unknown>(cacheFilePath);
+  // An entry may have been updated, persisted and evicted while this read was waiting.
+  if (generation !== releaseGeneration) {
+    return getModPackFileNamesCacheEntry(userDataPath, packPath, size, lastChangedLocal);
+  }
   const currentMemoryEntry = memoryEntries.get(cacheFilePath);
   if (currentMemoryEntry !== memoryEntryAtReadStart) {
     return currentMemoryEntry && isValidEntry(currentMemoryEntry, normalizedPackPath, size, lastChangedLocal)
@@ -81,6 +88,7 @@ export const getModPackFileNamesCacheEntry = async (
   }
   if (!isValidEntry(entry, normalizedPackPath, size, lastChangedLocal)) return undefined;
   memoryEntries.set(cacheFilePath, entry);
+  diskBackedEntries.add(entry);
   return [...entry.packedFileNames];
 };
 
@@ -89,7 +97,7 @@ const writeEntries = async (writes: PendingWrite[]): Promise<void> => {
     writes.map(async ({ cacheFilePath, entry }) => {
       try {
         await fs.promises.mkdir(nodePath.dirname(cacheFilePath), { recursive: true });
-        await writeJsonDiskCache(cacheFilePath, entry);
+        if (await writeJsonDiskCache(cacheFilePath, entry)) diskBackedEntries.add(entry);
       } catch (error) {
         console.error(`Failed to prepare mod pack names cache ${cacheFilePath}:`, error);
       }
@@ -155,4 +163,11 @@ export const flushModPackFileNamesCache = async (): Promise<void> => {
   if (writeTimer) clearTimeout(writeTimer);
   writeTimer = undefined;
   await flushPendingWrites();
+};
+
+export const releaseModPackFileNamesCache = (): void => {
+  releaseGeneration++;
+  for (const [packPath, entry] of memoryEntries) {
+    if (diskBackedEntries.has(entry)) memoryEntries.delete(packPath);
+  }
 };

@@ -1,10 +1,10 @@
 import React from "react";
 import { configureStore } from "@reduxjs/toolkit";
 import { Provider } from "react-redux";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import appReducer, { setCurrentTab } from "../src/appSlice";
+import appReducer, { setCurrentTab, setIsWH3Running } from "../src/appSlice";
 import initialState from "../src/initialAppState";
 import Main from "../src/components/Main";
 
@@ -60,7 +60,7 @@ describe("main tab persistence", () => {
   };
 
   /** Opened, edited, switched away from and returned to: the same element with the same value. */
-  const expectTabKeepsItsState = (
+  const expectTabKeepsItsState = async (
     store: ReturnType<typeof renderMain>,
     tab: "visuals" | "skills" | "techTrees" | "buildings" | "ancillaries",
     label: string,
@@ -68,36 +68,50 @@ describe("main tab persistence", () => {
     expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
 
     act(() => store.dispatch(setCurrentTab(tab)));
-    const tabState = screen.getByLabelText(label) as HTMLInputElement;
+    const tabState = (await screen.findByLabelText(label)) as HTMLInputElement;
     fireEvent.change(tabState, { target: { value: "preserved selection" } });
 
     act(() => store.dispatch(setCurrentTab("categories")));
     expect(tabState.parentElement).toHaveClass("hidden");
 
     act(() => store.dispatch(setCurrentTab(tab)));
-    expect(screen.getByLabelText(label)).toBe(tabState);
-    expect(tabState).toHaveValue("preserved selection");
-    expect(tabState.parentElement).not.toHaveClass("hidden");
+    await waitFor(() => {
+      expect(screen.getByLabelText(label)).toBe(tabState);
+      expect(tabState).toHaveValue("preserved selection");
+      expect(tabState.parentElement).not.toHaveClass("hidden");
+    });
   };
 
-  it("lazily mounts Visuals and keeps its state after switching away", () => {
-    expectTabKeepsItsState(renderMain(), "visuals", "Visuals state");
+  it("lazily mounts Visuals and keeps its state after switching away", async () => {
+    await expectTabKeepsItsState(renderMain(), "visuals", "Visuals state");
   });
 
-  it("lazily mounts Skills and keeps its state after switching away", () => {
-    expectTabKeepsItsState(renderMain(), "skills", "Skills state");
+  it("keeps an opened feature tab's state when the game starts", async () => {
+    const store = renderMain({ currentTab: "visuals" as const });
+    const tabState = (await screen.findByLabelText("Visuals state")) as HTMLInputElement;
+    fireEvent.change(tabState, { target: { value: "preserved while running" } });
+
+    act(() => store.dispatch(setIsWH3Running(true)));
+
+    expect(store.getState().app.isWH3Running).toBe(true);
+    expect(screen.getByLabelText("Visuals state")).toBe(tabState);
+    expect(tabState).toHaveValue("preserved while running");
   });
 
-  it("lazily mounts Tech Trees and keeps its state after switching away", () => {
-    expectTabKeepsItsState(renderMain(), "techTrees", "Tech trees state");
+  it("lazily mounts Skills and keeps its state after switching away", async () => {
+    await expectTabKeepsItsState(renderMain(), "skills", "Skills state");
   });
 
-  it("lazily mounts Buildings and keeps its state after switching away", () => {
-    expectTabKeepsItsState(renderMain(), "buildings", "Buildings state");
+  it("lazily mounts Tech Trees and keeps its state after switching away", async () => {
+    await expectTabKeepsItsState(renderMain(), "techTrees", "Tech trees state");
   });
 
-  it("lazily mounts Ancillaries and keeps its state after switching away", () => {
-    expectTabKeepsItsState(renderMain(), "ancillaries", "Ancillaries state");
+  it("lazily mounts Buildings and keeps its state after switching away", async () => {
+    await expectTabKeepsItsState(renderMain(), "buildings", "Buildings state");
+  });
+
+  it("lazily mounts Ancillaries and keeps its state after switching away", async () => {
+    await expectTabKeepsItsState(renderMain(), "ancillaries", "Ancillaries state");
   });
 
   it("starts the asset host only while Visuals or Unit Viewer is the visible tab", () => {

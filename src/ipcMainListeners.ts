@@ -394,6 +394,7 @@ import {
   getCurrentVanillaPackFilesCacheEntry,
   getCachedVanillaPackIndexFromEntry,
   rememberPackFileNames,
+  releasePackFileCachesAfterLaunch,
   saveVanillaPackFilesCache,
 } from "./vanillaPackFilesCache";
 import { addRecentPackPath, recentPackPathsEqual, sanitizeRecentPackPaths } from "./utility/recentPackPaths";
@@ -14804,6 +14805,7 @@ export const registerIpcMainListeners = (mainWindow: Electron.CrossProcessExport
         };
         appData.packsData = [];
         appData.queuedSkillsData = undefined;
+        releasePackFileCachesAfterLaunch();
         if (startGameOptions.isClosedOnPlay) {
           await new Promise((resolve) => {
             setTimeout(resolve, 5000);

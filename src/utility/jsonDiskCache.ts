@@ -24,13 +24,15 @@ export const readJsonDiskCache = async <T>(cacheFilePath: string): Promise<T | u
   }
 };
 
-/** Writes a zstd-compressed JSON cache. Failure is logged, never thrown - see above. */
-export const writeJsonDiskCache = async (cacheFilePath: string, value: unknown): Promise<void> => {
+/** Returns true after the cache reaches disk. A failed write is logged and returns false. */
+export const writeJsonDiskCache = async (cacheFilePath: string, value: unknown): Promise<boolean> => {
   try {
     const json = Buffer.from(JSON.stringify(value), "utf8");
     const compressed = await zstdCompress(json, CACHE_COMPRESSION_LEVEL);
     await fs.promises.writeFile(cacheFilePath, compressed);
+    return true;
   } catch (err) {
     console.error(`Failed to write cache ${cacheFilePath}:`, err);
+    return false;
   }
 };
