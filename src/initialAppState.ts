@@ -106,6 +106,8 @@ const initialState = {
   hiddenMainWindowTabs: [],
   isVisualsSortByCultureEnabled: true,
   isVisualsHideDuplicatesEnabled: true,
+  visualsSplitOrientation: undefined,
+  visualsSplitRatio: 0.5,
   // New and pre-feature configs start with the single-unit model visualization.
   unitViewerMode: "visualize",
   unitViewerShowWireframe: true,

@@ -365,6 +365,10 @@ declare global {
     isVisualsSortByCultureEnabled: boolean;
     /** Hide repeated variant files in the Visuals Lord and Hero culture groups. */
     isVisualsHideDuplicatesEnabled: boolean;
+    /** Visuals split viewer layout; undefined follows the window shape. */
+    visualsSplitOrientation?: "columns" | "rows";
+    /** Share of the Visuals split given to the preview pane, 0.15–0.85. */
+    visualsSplitRatio: number;
     /** Whether the Unit Viewer shows one unit for visualization or multiple units for comparison. */
     unitViewerMode: UnitViewerMode;
     /** Whether the Unit Viewer shows the render wireframe beneath the unit visualization. */
@@ -520,6 +524,8 @@ declare global {
     | "hiddenMainWindowTabs"
     | "isVisualsSortByCultureEnabled"
     | "isVisualsHideDuplicatesEnabled"
+    | "visualsSplitOrientation"
+    | "visualsSplitRatio"
     | "unitViewerMode"
     | "unitViewerShowWireframe"
     | "unitViewerUnsyncedAnimations"

@@ -151,6 +151,8 @@ describe("migrateAppConfig", () => {
     expect(config.currentGame).toBe("wh3");
     expect(config.isVisualsSortByCultureEnabled).toBe(true);
     expect(config.isVisualsHideDuplicatesEnabled).toBe(true);
+    expect(config.visualsSplitOrientation).toBeUndefined();
+    expect(config.visualsSplitRatio).toBe(0.5);
     expect(config.unitViewerMode).toBe("visualize");
     expect(config.unitViewerShowWireframe).toBe(true);
     expect(config.unitViewerUnsyncedAnimations).toBe(true);
@@ -197,6 +199,22 @@ describe("migrateAppConfig", () => {
 
     expect(config.isVisualsSortByCultureEnabled).toBe(true);
     expect(config.isVisualsHideDuplicatesEnabled).toBe(false);
+  });
+
+  it("keeps a valid Visuals split orientation and drops junk", () => {
+    const base = createLegacyConfig();
+    expect(migrateAppConfig({ ...base, visualsSplitOrientation: "rows" }).visualsSplitOrientation).toBe("rows");
+    expect(migrateAppConfig({ ...base, visualsSplitOrientation: "columns" }).visualsSplitOrientation).toBe("columns");
+    expect(
+      migrateAppConfig({ ...base, visualsSplitOrientation: "diagonal" as never }).visualsSplitOrientation,
+    ).toBeUndefined();
+  });
+
+  it("clamps the Visuals split ratio and defaults junk to half", () => {
+    const base = createLegacyConfig();
+    expect(migrateAppConfig({ ...base, visualsSplitRatio: 0.3 }).visualsSplitRatio).toBe(0.3);
+    expect(migrateAppConfig({ ...base, visualsSplitRatio: 2 }).visualsSplitRatio).toBe(0.85);
+    expect(migrateAppConfig({ ...base, visualsSplitRatio: "wide" as never }).visualsSplitRatio).toBe(0.5);
   });
 
   it("preserves the Unit Viewer mode", () => {

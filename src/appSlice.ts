@@ -1309,6 +1309,8 @@ const appSlice = createSlice({
         fromConfigAppState.isVisualsSortByCultureEnabled ?? state.isVisualsSortByCultureEnabled;
       state.isVisualsHideDuplicatesEnabled =
         fromConfigAppState.isVisualsHideDuplicatesEnabled ?? state.isVisualsHideDuplicatesEnabled;
+      state.visualsSplitOrientation = fromConfigAppState.visualsSplitOrientation ?? state.visualsSplitOrientation;
+      state.visualsSplitRatio = fromConfigAppState.visualsSplitRatio ?? state.visualsSplitRatio;
       state.unitViewerMode =
         fromConfigAppState.unitViewerMode === "visualize" || fromConfigAppState.unitViewerMode === "compare"
           ? fromConfigAppState.unitViewerMode
@@ -1746,6 +1748,12 @@ const appSlice = createSlice({
     },
     toggleIsVisualsHideDuplicatesEnabled: (state: AppState) => {
       state.isVisualsHideDuplicatesEnabled = !state.isVisualsHideDuplicatesEnabled;
+    },
+    setVisualsSplitOrientation: (state: AppState, action: PayloadAction<"columns" | "rows">) => {
+      state.visualsSplitOrientation = action.payload;
+    },
+    setVisualsSplitRatio: (state: AppState, action: PayloadAction<number>) => {
+      state.visualsSplitRatio = action.payload;
     },
     setUnitViewerMode: (state: AppState, action: PayloadAction<UnitViewerMode>) => {
       state.unitViewerMode = action.payload;
@@ -2227,6 +2235,8 @@ export const {
   toggleIsModListCategoryViewEnabled,
   toggleIsVisualsSortByCultureEnabled,
   toggleIsVisualsHideDuplicatesEnabled,
+  setVisualsSplitOrientation,
+  setVisualsSplitRatio,
   setUnitViewerMode,
   setUnitViewerShowWireframe,
   setUnitViewerUnsyncedAnimations,

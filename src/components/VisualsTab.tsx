@@ -1,5 +1,10 @@
 import React, { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { toggleIsVisualsHideDuplicatesEnabled, toggleIsVisualsSortByCultureEnabled } from "../appSlice";
+import {
+  setVisualsSplitOrientation,
+  setVisualsSplitRatio,
+  toggleIsVisualsHideDuplicatesEnabled,
+  toggleIsVisualsSortByCultureEnabled,
+} from "../appSlice";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { useLocalizations } from "../localizationContext";
 import { compileVisualsUnitFilter } from "../visuals/unitFilter";
@@ -7,7 +12,7 @@ import { useDeferredWhileInactive } from "./useDeferredWhileInactive";
 import { Resizable } from "re-resizable";
 import { AutoSizer, CellMeasurer, CellMeasurerCache, List, type ListRowProps } from "react-virtualized";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faXmark, faChevronRight } from "@fortawesome/free-solid-svg-icons";
+import { faXmark, faChevronRight, faTableColumns, faBars } from "@fortawesome/free-solid-svg-icons";
 import VisualsModelPreview from "./VisualsModelPreview";
 import { runGuarded } from "../utility/runGuarded";
 import { visualsDdsPreviewUrl } from "../assetUrls";
@@ -59,7 +64,7 @@ type VisualsDdsHover = { tabId: string; sourcePath: string; path: string; packPa
 type VisualsNavEntry = { tabId: string; historyIndex: number };
 type VisualsTabContextMenu = { x: number; y: number; tabId: string };
 
-type VisualsViewerMode = "preview" | "source";
+type VisualsViewerMode = "preview" | "split" | "source";
 
 type VisualsFileResult = {
   path: string;
@@ -247,7 +252,31 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
 
   const [tabs, setTabs] = useState<VisualsViewerTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
-  const [viewerMode, setViewerMode] = useState<VisualsViewerMode>("preview");
+  const [viewerMode, setViewerMode] = useState<VisualsViewerMode>("split");
+  const storedSplitOrientation = useAppSelector((state) => state.app.visualsSplitOrientation);
+  const [isWindowWide, setIsWindowWide] = useState(() => window.innerWidth >= window.innerHeight);
+  useEffect(() => {
+    const onResize = () => setIsWindowWide(window.innerWidth >= window.innerHeight);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const splitOrientation = storedSplitOrientation ?? (isWindowWide ? "columns" : "rows");
+  /** Share of the split given to the preview pane; a drag stays local and is saved on release. */
+  const storedSplitRatio = useAppSelector((state) => state.app.visualsSplitRatio);
+  const [draggedSplitRatio, setDraggedSplitRatio] = useState<number | null>(null);
+  const isDraggingSplit = draggedSplitRatio != null;
+  const splitRatio = draggedSplitRatio ?? storedSplitRatio;
+  const splitContainerRef = useRef<HTMLDivElement>(null);
+  const clampSplitRatio = (ratio: number) => Math.min(0.85, Math.max(0.15, ratio));
+  const updateSplitRatioFromPointer = (event: React.PointerEvent) => {
+    const rect = splitContainerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const ratio =
+      splitOrientation === "columns"
+        ? (event.clientX - rect.left) / Math.max(rect.width, 1)
+        : (event.clientY - rect.top) / Math.max(rect.height, 1);
+    setDraggedSplitRatio(clampSplitRatio(ratio));
+  };
   const loadedEnabledModsKeyRef = useRef<string>(undefined);
 
   const [isFilePanelOpen, setIsFilePanelOpen] = useState(false);
@@ -732,7 +761,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
 
   const activateTab = (tab: VisualsViewerTab) => {
     setActiveTabId(tab.id);
-    if (isXmlMaterialPath(tab.filePath)) setViewerMode("source");
+    if (isXmlMaterialPath(tab.filePath)) setViewerMode((mode) => (mode === "preview" ? "source" : mode));
     logNavigation(tab.id, tab.historyIndex);
   };
 
@@ -750,7 +779,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
       setViewerMessage("No visual file path is available for this entry.");
       return;
     }
-    if (isXmlMaterialPath(filePath)) setViewerMode("source");
+    if (isXmlMaterialPath(filePath)) setViewerMode((mode) => (mode === "preview" ? "source" : mode));
 
     if (mode !== "link") {
       const fileKey = getVisualsFileKey(filePath);
@@ -817,7 +846,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
       if (tab && filePath) {
         log.index = nextIndex;
         setActiveTabId(tab.id);
-        if (isXmlMaterialPath(filePath)) setViewerMode("source");
+        if (isXmlMaterialPath(filePath)) setViewerMode((mode) => (mode === "preview" ? "source" : mode));
         if (tab.historyIndex !== entry.historyIndex) {
           void loadFileIntoTab(tab.id, filePath, { history: tab.history, historyIndex: entry.historyIndex });
         }
@@ -1596,7 +1625,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
               <>
                 <div className="shrink-0 px-3 py-2 border-b border-gray-700 text-xs text-gray-400 break-all">
                   <div>{activeTab.filePath}</div>
-                  {viewerMode === "source" && (activeTab.history.length > 1 || !!activeTab.originCrumbs?.length) && (
+                  {viewerMode !== "preview" && (activeTab.history.length > 1 || !!activeTab.originCrumbs?.length) && (
                     <div className="mt-1 flex flex-wrap items-center gap-x-1" aria-label="Tab history">
                       {activeTab.originCrumbs?.map((crumb, crumbIdx) => {
                         const isOriginOpen = tabs.some((tab) => tab.id === crumb.tabId);
@@ -1663,6 +1692,18 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                   </button>
                   <button
                     type="button"
+                    aria-pressed={viewerMode === "split"}
+                    className={`border-r border-gray-700 px-3 py-1.5 text-xs font-medium ${
+                      viewerMode === "split"
+                        ? "bg-gray-700 text-white border-b-2 border-blue-400"
+                        : "text-gray-400 hover:bg-gray-700 hover:text-white"
+                    }`}
+                    onClick={() => setViewerMode("split")}
+                  >
+                    Preview + Source
+                  </button>
+                  <button
+                    type="button"
                     aria-pressed={viewerMode === "source"}
                     className={`border-r border-gray-700 px-3 py-1.5 text-xs font-medium ${
                       viewerMode === "source"
@@ -1673,11 +1714,36 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                   >
                     Source
                   </button>
+                  {viewerMode === "split" && (
+                    <button
+                      type="button"
+                      title={splitOrientation === "columns" ? "Show stacked" : "Show side by side"}
+                      aria-label={splitOrientation === "columns" ? "Show stacked" : "Show side by side"}
+                      className="ml-auto border-l border-gray-700 px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-700 hover:text-white"
+                      onClick={() =>
+                        dispatch(setVisualsSplitOrientation(splitOrientation === "columns" ? "rows" : "columns"))
+                      }
+                    >
+                      <FontAwesomeIcon icon={splitOrientation === "columns" ? faBars : faTableColumns} />
+                    </button>
+                  )}
                 </div>
-                <div className="relative min-h-0 flex-1">
-                  <div className={`absolute inset-0 ${viewerMode === "preview" ? "" : "hidden"}`}>
+                <div
+                  ref={splitContainerRef}
+                  className={`flex min-h-0 flex-1 ${splitOrientation === "columns" ? "flex-row" : "flex-col"} ${
+                    isDraggingSplit ? "select-none" : ""
+                  }`}
+                >
+                  <div
+                    className={
+                      viewerMode === "source" || (viewerMode === "split" && isActiveTabSourceOnly)
+                        ? "hidden"
+                        : "relative min-h-0 min-w-0 flex-1"
+                    }
+                    style={viewerMode === "split" ? { flex: `0 0 ${splitRatio * 100}%` } : undefined}
+                  >
                     {isActive &&
-                      viewerMode === "preview" &&
+                      viewerMode !== "source" &&
                       (isActiveTabSourceOnly ? (
                         <div className="flex h-full items-center justify-center p-4 text-sm text-gray-400">
                           Preview is unavailable for material files. Select Source to inspect the file.
@@ -1691,8 +1757,50 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                         />
                       ))}
                   </div>
+                  {viewerMode === "split" && !isActiveTabSourceOnly && (
+                    <div
+                      role="separator"
+                      tabIndex={0}
+                      aria-orientation={splitOrientation === "columns" ? "vertical" : "horizontal"}
+                      aria-valuemin={15}
+                      aria-valuemax={85}
+                      aria-valuenow={Math.round(splitRatio * 100)}
+                      aria-label="Resize preview and source"
+                      title="Drag to resize, double-click to reset"
+                      className={`shrink-0 hover:bg-blue-400 focus:outline-none focus-visible:bg-blue-400 ${
+                        isDraggingSplit ? "bg-blue-400" : "bg-gray-700"
+                      } ${splitOrientation === "columns" ? "w-1 cursor-col-resize" : "h-1 cursor-row-resize"}`}
+                      onPointerDown={(event) => {
+                        if (event.button !== 0) return;
+                        event.preventDefault();
+                        event.currentTarget.setPointerCapture(event.pointerId);
+                        setDraggedSplitRatio(splitRatio);
+                      }}
+                      onPointerMove={(event) => {
+                        if (isDraggingSplit) updateSplitRatioFromPointer(event);
+                      }}
+                      onPointerUp={(event) => {
+                        event.currentTarget.releasePointerCapture(event.pointerId);
+                        if (draggedSplitRatio != null) dispatch(setVisualsSplitRatio(draggedSplitRatio));
+                        setDraggedSplitRatio(null);
+                      }}
+                      onPointerCancel={() => setDraggedSplitRatio(null)}
+                      onDoubleClick={() => dispatch(setVisualsSplitRatio(0.5))}
+                      onKeyDown={(event) => {
+                        const decrease = splitOrientation === "columns" ? "ArrowLeft" : "ArrowUp";
+                        const increase = splitOrientation === "columns" ? "ArrowRight" : "ArrowDown";
+                        if (event.key !== decrease && event.key !== increase) return;
+                        event.preventDefault();
+                        dispatch(
+                          setVisualsSplitRatio(clampSplitRatio(splitRatio + (event.key === increase ? 0.05 : -0.05))),
+                        );
+                      }}
+                    />
+                  )}
                   <div
-                    className={`absolute inset-0 overflow-auto bg-gray-900 ${viewerMode === "source" ? "" : "hidden"}`}
+                    className={
+                      viewerMode === "preview" ? "hidden" : "min-h-0 min-w-0 flex-1 overflow-auto bg-gray-900"
+                    }
                     onContextMenu={openSourceContextMenu}
                   >
                     {activeTab.status === "loading" && <div className="p-4 text-gray-300">Loading file...</div>}
