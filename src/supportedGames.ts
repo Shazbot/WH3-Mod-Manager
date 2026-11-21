@@ -40,6 +40,7 @@ export const gameToGameFolder: Record<SupportedGames, string> = {
   dynasties: "Total War PHARAOH DYNASTIES",
   rome2: "Total War Rome II",
   shogun2: "Total War SHOGUN 2",
+  thrones: "Total War Saga Thrones of Britannia",
 };
 
 export const gameToGameName: Record<SupportedGames, string> = {
@@ -52,6 +53,7 @@ export const gameToGameName: Record<SupportedGames, string> = {
   dynasties: "Pharaoh Dynasties",
   rome2: "Rome 2",
   shogun2: "Shogun 2",
+  thrones: "Thrones of Britannia",
 };
 
 export const gameToPackHeader: Record<SupportedGames, string> = packGameToHeader;
@@ -68,6 +70,7 @@ export const gameToSteamId: Record<SupportedGames, string> = {
   dynasties: "2951630",
   rome2: "214950",
   shogun2: "34330",
+  thrones: "712100",
 };
 
 export const gameToProcessName: Record<SupportedGames, string> = {
@@ -80,6 +83,7 @@ export const gameToProcessName: Record<SupportedGames, string> = {
   dynasties: "Pharaoh.exe",
   rome2: "Rome2.exe",
   shogun2: "shogun2.exe",
+  thrones: "Thrones.exe",
 };
 
 export const gameToAppDataFolderName: Record<SupportedGames, string> = {
@@ -92,6 +96,7 @@ export const gameToAppDataFolderName: Record<SupportedGames, string> = {
   dynasties: "PharaohDynasties",
   rome2: "Rome2",
   shogun2: "Shogun2",
+  thrones: "ThronesofBritannia",
 };
 
 export const gameToPackWithDBTablesName: Record<SupportedGames, string> = {
@@ -104,6 +109,7 @@ export const gameToPackWithDBTablesName: Record<SupportedGames, string> = {
   dynasties: "data_db.pack",
   rome2: "data_rome2.pack",
   shogun2: "data.exe",
+  thrones: "data.pack",
 };
 
 export const gameToVanillaPacksData: Record<SupportedGames, { name: string }[]> = {
@@ -153,6 +159,7 @@ export const gameToVanillaPacksData: Record<SupportedGames, { name: string }[]> 
     },
   ],
   shogun2: [{ name: "data.pack" }, { name: "data_fots.pack" }],
+  thrones: [{ name: "data.pack" }],
 };
 
 export const vanillaPackNames: string[] = [];
@@ -183,6 +190,7 @@ export const gameToIntroMovies: Record<SupportedGames, string[]> = {
   dynasties: [],
   rome2: [],
   shogun2: [],
+  thrones: [],
 };
 
 export const gameToSupportedGameOptions: Record<SupportedGames, SupportedGameOptions[]> = {
@@ -202,6 +210,7 @@ export const gameToSupportedGameOptions: Record<SupportedGames, SupportedGameOpt
   dynasties: ["ScriptLogging"],
   rome2: [],
   shogun2: [],
+  thrones: ["ScriptLogging"],
 };
 
 export const gameToManifest: Record<SupportedGames, string[] | undefined> = {
@@ -717,6 +726,7 @@ export const gameToManifest: Record<SupportedGames, string[] | undefined> = {
     "bp_orig.pack",
     "boot.pack",
   ],
+  thrones: undefined,
 };
 
 export const SupportedLanguages = ["en", "fr", "de", "es", "ru", "pl", "pt", "tr", "zh", "ja", "ko"] as const;

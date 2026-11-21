@@ -115,6 +115,7 @@ export const PackFilesDropdownNode: React.FC<{ data: PackFilesDropdownNodeData; 
     dynasties: "data_db.pack",
     rome2: "data_rome2.pack",
     shogun2: "data.exe",
+    thrones: "data.pack",
   };
   const baseGamePack = baseGamePackNames[currentGame];
 
@@ -231,6 +232,7 @@ export const RemovePackSourceNode: React.FC<{ data: RemovePackSourceNodeData; id
     dynasties: "data_db.pack",
     rome2: "data_rome2.pack",
     shogun2: "data.exe",
+    thrones: "data.pack",
   };
   const baseGamePack = baseGamePackNames[currentGame];
   const modsFromState = useAppSelector((state) => state.app.currentPreset.mods);

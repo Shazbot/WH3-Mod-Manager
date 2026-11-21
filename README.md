@@ -1,6 +1,6 @@
 # Warhammer 3 Mod Manager
 
-Mod manager for the Steam versions of Total War titles: Warhammer 3, Pharaoh, Three Kingdoms, Warhammer 2, Attila, Rome II, Shogun 2.
+Mod manager for the Steam versions of Total War titles: Warhammer 3, Pharaoh, Three Kingdoms, Warhammer 2, Attila, Rome II, Shogun 2, Thrones of Britannia.
 
 Features not present in the CA launcher:
 

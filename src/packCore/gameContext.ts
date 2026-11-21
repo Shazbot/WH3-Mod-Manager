@@ -9,6 +9,7 @@ export const packGames = [
   "dynasties",
   "rome2",
   "shogun2",
+  "thrones",
 ] as const;
 
 export type PackGame = (typeof packGames)[number];
@@ -23,6 +24,7 @@ export const packGameToHeader: Record<PackGame, string> = {
   dynasties: "PFH5",
   rome2: "PFH4",
   shogun2: "PFH3",
+  thrones: "PFH4",
 };
 
 export const packGameSupportsCompression: Record<PackGame, boolean> = {
@@ -35,4 +37,5 @@ export const packGameSupportsCompression: Record<PackGame, boolean> = {
   dynasties: true,
   rome2: false,
   shogun2: false,
+  thrones: false,
 };

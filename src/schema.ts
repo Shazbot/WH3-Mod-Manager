@@ -26,6 +26,7 @@ export const DBNameToDBVersions: Record<SupportedGames, Record<string, DBVersion
   dynasties: {},
   rome2: {},
   shogun2: {},
+  thrones: {},
 };
 
 const orderByVersion = (firstVersion: DBVersion, secondVersion: DBVersion) =>
@@ -44,6 +45,7 @@ export const getSchemaFileName = (game: SupportedGames): string => {
     dynasties: "schema_ph_dyn.json.zst",
     rome2: "schema_rome2.json.zst",
     shogun2: "schema_sho2.json.zst",
+    thrones: "schema_tob.json.zst",
   };
   return schemaMap[game];
 };
@@ -164,6 +166,7 @@ export const gameToReferences: Record<SupportedGames, Record<string, string[]>> 
   dynasties: {},
   rome2: {},
   shogun2: {},
+  thrones: {},
 };
 
 const processReferencesForGame = async (game: SupportedGames): Promise<void> => {
@@ -237,6 +240,7 @@ export const gameToDBFieldsThatReference: Record<SupportedGames, Record<DBFileNa
   dynasties: {},
   rome2: {},
   shogun2: {},
+  thrones: {},
 };
 
 const processDBFieldsThatReferenceForGame = async (game: SupportedGames): Promise<void> => {
@@ -295,6 +299,7 @@ export const gameToDBFieldsReferencedBy: Record<SupportedGames, Record<DBFileNam
   dynasties: {},
   rome2: {},
   shogun2: {},
+  thrones: {},
 };
 
 const processDBFieldsReferencedByForGame = async (game: SupportedGames): Promise<void> => {
@@ -354,6 +359,7 @@ export const gameToTablesWithNumericIds: Record<SupportedGames, Record<DBFileNam
   dynasties: {},
   rome2: {},
   shogun2: {},
+  thrones: {},
 };
 gameToTablesWithNumericIds.wh3 = {
   //main_units_tables: "", // unused by the game
