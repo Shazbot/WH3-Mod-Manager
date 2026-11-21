@@ -89,7 +89,8 @@ type VisualsFileResult = {
 
 type VisualsListRow =
   | { kind: "unit"; key: string; unit: VisualsUnitEntry; isSelected?: boolean }
-  | { kind: "mountVariant"; key: string; unit: VisualsUnitEntry; label: string; isActive: boolean }
+  /** A mount variant (heroes/lords) or a single visual part (crew, mount, engine) under the selected unit. */
+  | { kind: "subRow"; key: string; unit: VisualsUnitEntry; label: string; openPath?: string; isActive: boolean }
   | { kind: "culture"; key: string; cultureKey: string; label: string; count: number; isCollapsed: boolean }
   | {
       kind: "caste";
@@ -605,8 +606,25 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
 
   const activeTabUnit = tabs.find((tab) => tab.id === activeTabId)?.unit;
   const activeMountGroup = activeTabUnit ? unitPartsByKey?.[activeTabUnit.unitKey]?.mountGroup : undefined;
+  const activeTabFileKey = getVisualsFileKey(tabs.find((tab) => tab.id === activeTabId)?.filePath ?? "");
 
   const visualsListRows = useMemo<VisualsListRow[]>(() => {
+    const isOpenUnit = (unit: VisualsUnitEntry) =>
+      activeTabUnit?.unitKey === unit.unitKey && activeTabUnit.faction === unit.faction;
+    // The open unit's separate parts, each opening on its own; a single-part unit gets none.
+    const getPartSubRows = (rowKey: string, unit: VisualsUnitEntry): VisualsListRow[] => {
+      if (!isOpenUnit(unit)) return [];
+      const options = getVisualsPartOptions(unit.variantMeshPath, unitPartsByKey?.[unit.unitKey]);
+      if (options.length < 2) return [];
+      return options.map((option) => ({
+        kind: "subRow" as const,
+        key: `${rowKey}|part:${option.variantMeshPath}`,
+        unit,
+        label: option.label,
+        openPath: option.variantMeshPath,
+        isActive: getVisualsFileKey(option.variantMeshPath) === activeTabFileKey,
+      }));
+    };
     if (isSortByCultureEnabled) {
       const rows: VisualsListRow[] = [];
       for (const culture of cultureGroupedUnits) {
@@ -650,16 +668,20 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
               kind: "unit" as const,
               key: rowKey,
               unit,
-              isSelected:
-                isMemberActive || (activeTabUnit?.unitKey === unit.unitKey && activeTabUnit.faction === unit.faction),
+              isSelected: isMemberActive || isOpenUnit(unit),
             });
-            if (!isMemberActive) continue;
+            if (!isMemberActive) {
+              rows.push(...getPartSubRows(rowKey, unit));
+              continue;
+            }
             for (const member of members) {
               rows.push({
-                kind: "mountVariant" as const,
+                kind: "subRow" as const,
                 key: `${rowKey}|mount:${member.entry.unitKey}`,
                 unit: member.entry,
                 label: member.label,
+                // A mount sub-row is about the mount, so it opens that part; the part select switches back to the rider.
+                openPath: getMountVariantOpenPath(member.entry.variantMeshPath, unitPartsByKey?.[member.entry.unitKey]),
                 isActive: member.entry.unitKey === activeTabUnit?.unitKey,
               });
             }
@@ -670,12 +692,13 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
     }
 
     if (!isGroupedByOrigin || !groupedUnits) {
-      return filteredUnits.map((unit) => ({
-        kind: "unit",
-        key: `unit:${unit.unitKey}|${unit.faction}|${unit.variantName || ""}`,
-        unit,
-        isSelected: activeTabUnit?.unitKey === unit.unitKey && activeTabUnit.faction === unit.faction,
-      }));
+      return filteredUnits.flatMap((unit) => {
+        const rowKey = `unit:${unit.unitKey}|${unit.faction}|${unit.variantName || ""}`;
+        return [
+          { kind: "unit" as const, key: rowKey, unit, isSelected: isOpenUnit(unit) },
+          ...getPartSubRows(rowKey, unit),
+        ];
+      });
     }
 
     return groupedUnits.flatMap((group) => {
@@ -690,12 +713,13 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
         },
         ...(isCollapsed
           ? []
-          : group.units.map((unit) => ({
-              kind: "unit" as const,
-              key: `origin:${group.label}|${unit.unitKey}|${unit.faction}|${unit.variantName || ""}`,
-              unit,
-              isSelected: activeTabUnit?.unitKey === unit.unitKey && activeTabUnit.faction === unit.faction,
-            }))),
+          : group.units.flatMap((unit) => {
+              const rowKey = `origin:${group.label}|${unit.unitKey}|${unit.faction}|${unit.variantName || ""}`;
+              return [
+                { kind: "unit" as const, key: rowKey, unit, isSelected: isOpenUnit(unit) },
+                ...getPartSubRows(rowKey, unit),
+              ];
+            })),
       ];
     });
   }, [
@@ -711,6 +735,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
     isSortByCultureEnabled,
     activeTabUnit,
     activeMountGroup,
+    activeTabFileKey,
     unitPartsByKey,
     units,
   ]);
@@ -763,7 +788,6 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
   const partOptions = activeUnitEntry
     ? getVisualsPartOptions(activeUnitEntry.variantMeshPath, unitPartsByKey?.[activeUnitEntry.unitKey])
     : [];
-  const activeTabFileKey = activeTab ? getVisualsFileKey(activeTab.filePath) : "";
   const activePartOption =
     partOptions.length >= 2
       ? partOptions.find((option) => getVisualsFileKey(option.variantMeshPath) === activeTabFileKey)
@@ -1468,9 +1492,8 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
     },
   });
 
-  const renderMountVariantRow = (row: Extract<VisualsListRow, { kind: "mountVariant" }>) => {
-    // A mount sub-row is about the mount, so it opens that part; the part select switches back to the rider.
-    const openPath = getMountVariantOpenPath(row.unit.variantMeshPath, unitPartsByKey?.[row.unit.unitKey]);
+  const renderSubRow = (row: Extract<VisualsListRow, { kind: "subRow" }>) => {
+    const openPath = row.openPath ?? row.unit.variantMeshPath;
     return (
       <div
         role="option"
@@ -1539,7 +1562,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
         {({ registerChild }) => (
           <div ref={registerChild} style={measuredStyle}>
             {row.kind === "unit" && renderUnitRow(row.unit, row.isSelected)}
-            {row.kind === "mountVariant" && renderMountVariantRow(row)}
+            {row.kind === "subRow" && renderSubRow(row)}
             {row.kind === "culture" && (
               <button
                 type="button"

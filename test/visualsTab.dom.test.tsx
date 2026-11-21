@@ -204,6 +204,79 @@ describe("VisualsTab filtering", () => {
     );
   });
 
+  it("lists the visual parts of a selected regular unit as sub-rows", async () => {
+    getVisualsUnitsData.mockResolvedValue({
+      success: true,
+      sessionId: "visuals-session",
+      units: [
+        {
+          ...units[0],
+          unitKey: "cannon",
+          localizedName: "Great Cannon",
+          variantMeshPath: "variantmeshes\\crew.variantmeshdefinition",
+          caste: "war_machine",
+        },
+      ],
+    });
+    getVisualsUnitParts.mockResolvedValue({
+      success: true,
+      units: {
+        cannon: {
+          parts: [
+            {
+              role: "crew",
+              label: "Crew",
+              variantMeshPath: "variantmeshes\\crew.variantmeshdefinition",
+              animationProfile: "ground",
+            },
+            {
+              role: "engine",
+              label: "Engine",
+              variantMeshPath: "variantmeshes\\cannon.variantmeshdefinition",
+              animationProfile: "ground",
+            },
+          ],
+        },
+      },
+    });
+    readVariantMeshDefinition.mockResolvedValue({ success: true, text: "<xml/>", resolved: {} });
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: {
+        app: {
+          ...initialState,
+          isFeaturesForModdersEnabled: true,
+          currentPreset: { ...initialState.currentPreset, mods: [] },
+        },
+      },
+    });
+
+    render(
+      <Provider store={store}>
+        <localizationContext.Provider value={enTranslation}>
+          <VisualsTab />
+        </localizationContext.Provider>
+      </Provider>,
+    );
+
+    fireEvent.change(await screen.findByLabelText("Unit filter (regex)"), { target: { value: "Cannon" } });
+    fireEvent.click(await screen.findByText("Great Cannon"));
+
+    // The part select carries the same labels, so only the list's sub-rows are matched.
+    const subRow = (name: string) =>
+      screen.getAllByRole("option", { name }).find((element) => element.tagName !== "OPTION")!;
+    await waitFor(() => expect(subRow("Engine")).toBeDefined());
+    expect(subRow("Crew")).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(subRow("Engine"));
+    await waitFor(() =>
+      expect(readVariantMeshDefinition).toHaveBeenLastCalledWith(
+        "visuals-session",
+        "variantmeshes\\cannon.variantmeshdefinition",
+      ),
+    );
+    await waitFor(() => expect(subRow("Engine")).toHaveAttribute("aria-selected", "true"));
+  });
+
   it("loads model files in 1000-item pages", async () => {
     const store = configureStore({
       reducer: { app: appReducer },
