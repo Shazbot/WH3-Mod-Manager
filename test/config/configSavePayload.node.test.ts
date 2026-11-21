@@ -38,12 +38,14 @@ describe("selectConfigSavePayload", () => {
       isVisualsHideDuplicatesEnabled: false,
       visualsSplitOrientation: "rows",
       visualsSplitRatio: 0.3,
+      visualsTreeSplitRatio: 0.6,
     } as AppState);
 
     expect(payload.config.isVisualsSortByCultureEnabled).toBe(true);
     expect(payload.config.isVisualsHideDuplicatesEnabled).toBe(false);
     expect(payload.config.visualsSplitOrientation).toBe("rows");
     expect(payload.config.visualsSplitRatio).toBe(0.3);
+    expect(payload.config.visualsTreeSplitRatio).toBe(0.6);
   });
 
   it("includes the Unit Viewer mode in the saved config payload", () => {

@@ -38,6 +38,7 @@ import {
   type VariantMeshCatalog,
   type VariantMeshSelection,
 } from "../visuals/variantMesh";
+import { isBindingHidden } from "../visuals/variantMeshTree";
 import {
   createUnitPainterSession,
   getUnitPainterBrushSpacing,
@@ -295,6 +296,30 @@ type VisualsModelPreviewProps = {
   unitVariantContext?: UnitPainterUnitVariantContext;
   /** Enables the experimental direct-on-model base-colour painter. */
   enablePainting?: boolean;
+  /** Structural component paths to hide; a mesh hides when its wh3ComponentBinding is one of them or sits below one. */
+  hiddenComponentBindings?: readonly string[];
+  /** Reports the VMD catalog, current selections and the choices the preview currently renders. */
+  onVariantStateChange?: (state: VisualsVariantState) => void;
+  /** Applies these selections when `id` changes, through the same path as the Appearance dropdowns. */
+  variantSelectionRequest?: { id: number; selections: readonly VariantMeshSelection[] };
+};
+
+export type VisualsVariantState = {
+  catalog?: VariantMeshCatalog;
+  /** False while the catalog is still loading; true with no catalog means the file has none or it failed. */
+  isCatalogReady: boolean;
+  selections: Record<string, number>;
+  renderedChoiceKeys: string[];
+};
+
+/** Shows or hides every object carrying a wh3ComponentBinding according to the hidden prefixes. */
+const applyComponentVisibility = (models: readonly THREE.Object3D[], hiddenBindings: readonly string[]) => {
+  for (const model of models) {
+    model.traverse((object) => {
+      const binding = object.userData?.wh3ComponentBinding;
+      if (typeof binding === "string") object.visible = !isBindingHidden(binding, hiddenBindings);
+    });
+  }
 };
 
 type ThreePreviewContext = {
@@ -1172,6 +1197,9 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     primaryAnimationTable,
     unitVariantContext,
     enablePainting = false,
+    hiddenComponentBindings,
+    onVariantStateChange,
+    variantSelectionRequest,
   } = props;
   const localized = useLocalizations();
   const currentPresetMods = useAppSelector((state) => state.app.currentPreset.mods);
@@ -1215,6 +1243,8 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
   const lastPaintBrushModeRef = useRef<Exclude<UnitPainterBrushMode, "restore">>("recolor");
   const showWireframeRef = useRef(showWireframe);
   showWireframeRef.current = showWireframe;
+  const hiddenComponentBindingsRef = useRef<readonly string[]>([]);
+  hiddenComponentBindingsRef.current = hiddenComponentBindings ?? [];
   const [status, setStatus] = useState<"exporting" | "loading" | "ready" | "error">("exporting");
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -2322,6 +2352,11 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     if (grid) grid.visible = showWireframe;
   }, [showWireframe]);
 
+  // The animation loop renders every frame, so changing visibility needs no extra render request.
+  useEffect(() => {
+    applyComponentVisibility(primaryAnimationRef.current?.models ?? [], hiddenComponentBindings ?? []);
+  }, [hiddenComponentBindings]);
+
   useEffect(() => {
     isPlayingRef.current = isPlaying;
     const context = contextRef.current;
@@ -2549,6 +2584,49 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
     return variants;
   }, [comparisonColumnSlot, comparisonLayerSlot, comparisonRowSlot, variantCatalog, variantSelections]);
   const comparisonModelCount = comparisonVariants.length;
+
+  const selectVariantChoice = (updates: readonly VariantMeshSelection[]) => {
+    const context = contextRef.current;
+    const involvesAll = updates.some((update) => {
+      const slot = variantCatalog?.slots.find((candidate) => candidate.slotPath === update.slotPath);
+      const previous = variantSelections[update.slotPath] ?? slot?.defaultChoiceIndex;
+      return previous === ALL_VARIANTS || update.choiceIndex === ALL_VARIANTS;
+    });
+    if (status === "ready" && context && !involvesAll) {
+      pendingCameraViewRef.current = { assetPath, view: captureCameraView(context) };
+    } else if (involvesAll) {
+      pendingCameraViewRef.current = null;
+    }
+    setVariantSelections((current) => ({
+      ...current,
+      ...Object.fromEntries(updates.map((update) => [update.slotPath, update.choiceIndex])),
+    }));
+  };
+  const selectVariantChoiceRef = useRef(selectVariantChoice);
+  selectVariantChoiceRef.current = selectVariantChoice;
+
+  const onVariantStateChangeRef = useRef(onVariantStateChange);
+  onVariantStateChangeRef.current = onVariantStateChange;
+  useEffect(() => {
+    const rendered = new Set<string>();
+    for (const variant of comparisonVariants) {
+      for (const selection of variant.selections) rendered.add(`${selection.slotPath}/choice[${selection.choiceIndex}]`);
+    }
+    onVariantStateChangeRef.current?.({
+      catalog: variantCatalog,
+      isCatalogReady: variantCatalogReady,
+      selections: variantSelections,
+      renderedChoiceKeys: [...rendered],
+    });
+  }, [comparisonVariants, variantCatalog, variantCatalogReady, variantSelections]);
+
+  const variantSelectionRequestId = variantSelectionRequest?.id;
+  const variantSelectionRequestRef = useRef(variantSelectionRequest);
+  variantSelectionRequestRef.current = variantSelectionRequest;
+  useEffect(() => {
+    const request = variantSelectionRequestRef.current;
+    if (request && request.selections.length > 0) selectVariantChoiceRef.current(request.selections);
+  }, [variantSelectionRequestId]);
   const comparisonTooLarge = comparisonModelCount > MAX_COMPARISON_MODELS;
 
   useEffect(() => {
@@ -2942,6 +3020,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
         }
         paintRootRef.current = comparisonVariants.length === 1 ? (ownedModels[0] ?? null) : null;
         context.scene.add(ownedGroup);
+        applyComponentVisibility(ownedModels, hiddenComponentBindingsRef.current);
         context.mixers = ownedMixers;
         context.actions = ownedActions;
         primaryAnimationRef.current = {
@@ -5361,18 +5440,7 @@ const VisualsModelPreview = memo((props: VisualsModelPreviewProps) => {
                   aria-label={`Appearance: ${slot.label}`}
                   value={variantSelections[slot.slotPath] ?? slot.defaultChoiceIndex}
                   onChange={(event) => {
-                    const nextValue = Number(event.target.value);
-                    const previousValue = variantSelections[slot.slotPath] ?? slot.defaultChoiceIndex;
-                    const context = contextRef.current;
-                    if (status === "ready" && context && previousValue !== ALL_VARIANTS && nextValue !== ALL_VARIANTS) {
-                      pendingCameraViewRef.current = { assetPath, view: captureCameraView(context) };
-                    } else if (previousValue === ALL_VARIANTS || nextValue === ALL_VARIANTS) {
-                      pendingCameraViewRef.current = null;
-                    }
-                    setVariantSelections((current) => ({
-                      ...current,
-                      [slot.slotPath]: nextValue,
-                    }));
+                    selectVariantChoice([{ slotPath: slot.slotPath, choiceIndex: Number(event.target.value) }]);
                   }}
                   className="min-w-0 flex-1 rounded border border-gray-600 bg-gray-800 px-1.5 py-1 text-xs text-gray-100"
                 >

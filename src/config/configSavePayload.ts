@@ -148,6 +148,7 @@ export function selectConfigSavePayload(appState: AppState): ConfigSavePayload {
       isVisualsHideDuplicatesEnabled: appState.isVisualsHideDuplicatesEnabled,
       visualsSplitOrientation: appState.visualsSplitOrientation,
       visualsSplitRatio: appState.visualsSplitRatio,
+      visualsTreeSplitRatio: appState.visualsTreeSplitRatio,
       unitViewerMode: appState.unitViewerMode,
       unitViewerShowWireframe: appState.unitViewerShowWireframe,
       unitViewerUnsyncedAnimations: appState.unitViewerUnsyncedAnimations,

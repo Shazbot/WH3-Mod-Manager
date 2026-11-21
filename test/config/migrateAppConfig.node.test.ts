@@ -153,6 +153,7 @@ describe("migrateAppConfig", () => {
     expect(config.isVisualsHideDuplicatesEnabled).toBe(true);
     expect(config.visualsSplitOrientation).toBeUndefined();
     expect(config.visualsSplitRatio).toBe(0.5);
+    expect(config.visualsTreeSplitRatio).toBe(0.7);
     expect(config.unitViewerMode).toBe("visualize");
     expect(config.unitViewerShowWireframe).toBe(true);
     expect(config.unitViewerUnsyncedAnimations).toBe(true);
@@ -215,6 +216,13 @@ describe("migrateAppConfig", () => {
     expect(migrateAppConfig({ ...base, visualsSplitRatio: 0.3 }).visualsSplitRatio).toBe(0.3);
     expect(migrateAppConfig({ ...base, visualsSplitRatio: 2 }).visualsSplitRatio).toBe(0.85);
     expect(migrateAppConfig({ ...base, visualsSplitRatio: "wide" as never }).visualsSplitRatio).toBe(0.5);
+  });
+
+  it("clamps the Visuals tree split ratio and defaults junk to 0.7", () => {
+    const base = createLegacyConfig();
+    expect(migrateAppConfig({ ...base, visualsTreeSplitRatio: 0.6 }).visualsTreeSplitRatio).toBe(0.6);
+    expect(migrateAppConfig({ ...base, visualsTreeSplitRatio: 0 }).visualsTreeSplitRatio).toBe(0.15);
+    expect(migrateAppConfig({ ...base, visualsTreeSplitRatio: "wide" as never }).visualsTreeSplitRatio).toBe(0.7);
   });
 
   it("preserves the Unit Viewer mode", () => {

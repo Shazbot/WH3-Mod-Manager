@@ -2,6 +2,7 @@ import React, { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import {
   setVisualsSplitOrientation,
   setVisualsSplitRatio,
+  setVisualsTreeSplitRatio,
   toggleIsVisualsHideDuplicatesEnabled,
   toggleIsVisualsSortByCultureEnabled,
 } from "../appSlice";
@@ -13,7 +14,10 @@ import { Resizable } from "re-resizable";
 import { AutoSizer, CellMeasurer, CellMeasurerCache, List, type ListRowProps } from "react-virtualized";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark, faChevronRight, faTableColumns, faBars } from "@fortawesome/free-solid-svg-icons";
-import VisualsModelPreview from "./VisualsModelPreview";
+import VisualsModelPreview, { type VisualsVariantState } from "./VisualsModelPreview";
+import VisualsVariantTree from "./VisualsVariantTree";
+import { getSelectionChainForChoice } from "../visuals/variantMeshTree";
+import type { VariantMeshSelection } from "../visuals/variantMesh";
 import { runGuarded } from "../utility/runGuarded";
 import { visualsDdsPreviewUrl } from "../assetUrls";
 
@@ -64,7 +68,9 @@ type VisualsDdsHover = { tabId: string; sourcePath: string; path: string; packPa
 type VisualsNavEntry = { tabId: string; historyIndex: number };
 type VisualsTabContextMenu = { x: number; y: number; tabId: string };
 
-type VisualsViewerMode = "preview" | "split" | "source";
+type VisualsViewerMode = "preview" | "split" | "tree" | "source";
+
+const NO_HIDDEN_TREE_IDS: readonly string[] = [];
 
 type VisualsFileResult = {
   path: string;
@@ -261,8 +267,17 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
     return () => window.removeEventListener("resize", onResize);
   }, []);
   const splitOrientation = storedSplitOrientation ?? (isWindowWide ? "columns" : "rows");
+  const isTreeMode = viewerMode === "tree";
+  const isSplitLayout = viewerMode === "split" || isTreeMode;
+  /** Preview + Tree is always side by side. */
+  const layoutOrientation = isTreeMode ? "columns" : splitOrientation;
   /** Share of the split given to the preview pane; a drag stays local and is saved on release. */
-  const storedSplitRatio = useAppSelector((state) => state.app.visualsSplitRatio);
+  const storedSourceSplitRatio = useAppSelector((state) => state.app.visualsSplitRatio);
+  const storedTreeSplitRatio = useAppSelector((state) => state.app.visualsTreeSplitRatio);
+  const storedSplitRatio = isTreeMode ? storedTreeSplitRatio : storedSourceSplitRatio;
+  const defaultSplitRatio = isTreeMode ? 0.7 : 0.5;
+  const commitSplitRatio = (ratio: number) =>
+    dispatch(isTreeMode ? setVisualsTreeSplitRatio(ratio) : setVisualsSplitRatio(ratio));
   const [draggedSplitRatio, setDraggedSplitRatio] = useState<number | null>(null);
   const isDraggingSplit = draggedSplitRatio != null;
   const splitRatio = draggedSplitRatio ?? storedSplitRatio;
@@ -272,7 +287,7 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
     const rect = splitContainerRef.current?.getBoundingClientRect();
     if (!rect) return;
     const ratio =
-      splitOrientation === "columns"
+      layoutOrientation === "columns"
         ? (event.clientX - rect.left) / Math.max(rect.width, 1)
         : (event.clientY - rect.top) / Math.max(rect.height, 1);
     setDraggedSplitRatio(clampSplitRatio(ratio));
@@ -678,6 +693,15 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) || null;
   const isActiveTabSourceOnly = !!activeTab && isXmlMaterialPath(activeTab.filePath);
+
+  const [variantState, setVariantState] = useState<VisualsVariantState>();
+  const [hiddenTreeIds, setHiddenTreeIds] = useState<Record<string, string[]>>({});
+  const [variantSelectionRequest, setVariantSelectionRequest] = useState<{
+    id: number;
+    selections: VariantMeshSelection[];
+  }>();
+  const treeKey = activeTab ? `${activeTab.id}|${activeTab.filePath}` : "";
+  const hiddenIdsForTab = hiddenTreeIds[treeKey] ?? NO_HIDDEN_TREE_IDS;
 
   const logNavigation = (tabId: string, historyIndex: number) => {
     const log = navLogRef.current;
@@ -1704,6 +1728,18 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                   </button>
                   <button
                     type="button"
+                    aria-pressed={viewerMode === "tree"}
+                    className={`border-r border-gray-700 px-3 py-1.5 text-xs font-medium ${
+                      viewerMode === "tree"
+                        ? "bg-gray-700 text-white border-b-2 border-blue-400"
+                        : "text-gray-400 hover:bg-gray-700 hover:text-white"
+                    }`}
+                    onClick={() => setViewerMode("tree")}
+                  >
+                    Preview + Tree
+                  </button>
+                  <button
+                    type="button"
                     aria-pressed={viewerMode === "source"}
                     className={`border-r border-gray-700 px-3 py-1.5 text-xs font-medium ${
                       viewerMode === "source"
@@ -1730,17 +1766,17 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                 </div>
                 <div
                   ref={splitContainerRef}
-                  className={`flex min-h-0 flex-1 ${splitOrientation === "columns" ? "flex-row" : "flex-col"} ${
+                  className={`flex min-h-0 flex-1 ${layoutOrientation === "columns" ? "flex-row" : "flex-col"} ${
                     isDraggingSplit ? "select-none" : ""
                   }`}
                 >
                   <div
                     className={
-                      viewerMode === "source" || (viewerMode === "split" && isActiveTabSourceOnly)
+                      viewerMode === "source" || (isSplitLayout && isActiveTabSourceOnly)
                         ? "hidden"
                         : "relative min-h-0 min-w-0 flex-1"
                     }
-                    style={viewerMode === "split" ? { flex: `0 0 ${splitRatio * 100}%` } : undefined}
+                    style={isSplitLayout ? { flex: `0 0 ${splitRatio * 100}%` } : undefined}
                   >
                     {isActive &&
                       viewerMode !== "source" &&
@@ -1754,22 +1790,25 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                           isActive={isActive}
                           variantMeshSessionId={sessionId ?? undefined}
                           variantMeshSessionType="visuals"
+                          hiddenComponentBindings={isTreeMode ? hiddenIdsForTab : NO_HIDDEN_TREE_IDS}
+                          onVariantStateChange={setVariantState}
+                          variantSelectionRequest={variantSelectionRequest}
                         />
                       ))}
                   </div>
-                  {viewerMode === "split" && !isActiveTabSourceOnly && (
+                  {isSplitLayout && !isActiveTabSourceOnly && (
                     <div
                       role="separator"
                       tabIndex={0}
-                      aria-orientation={splitOrientation === "columns" ? "vertical" : "horizontal"}
+                      aria-orientation={layoutOrientation === "columns" ? "vertical" : "horizontal"}
                       aria-valuemin={15}
                       aria-valuemax={85}
                       aria-valuenow={Math.round(splitRatio * 100)}
-                      aria-label="Resize preview and source"
+                      aria-label={isTreeMode ? "Resize preview and tree" : "Resize preview and source"}
                       title="Drag to resize, double-click to reset"
                       className={`shrink-0 hover:bg-blue-400 focus:outline-none focus-visible:bg-blue-400 ${
                         isDraggingSplit ? "bg-blue-400" : "bg-gray-700"
-                      } ${splitOrientation === "columns" ? "w-1 cursor-col-resize" : "h-1 cursor-row-resize"}`}
+                      } ${layoutOrientation === "columns" ? "w-1 cursor-col-resize" : "h-1 cursor-row-resize"}`}
                       onPointerDown={(event) => {
                         if (event.button !== 0) return;
                         event.preventDefault();
@@ -1781,25 +1820,42 @@ const VisualsTab = memo(({ isActive = true }: VisualsTabProps) => {
                       }}
                       onPointerUp={(event) => {
                         event.currentTarget.releasePointerCapture(event.pointerId);
-                        if (draggedSplitRatio != null) dispatch(setVisualsSplitRatio(draggedSplitRatio));
+                        if (draggedSplitRatio != null) commitSplitRatio(draggedSplitRatio);
                         setDraggedSplitRatio(null);
                       }}
                       onPointerCancel={() => setDraggedSplitRatio(null)}
-                      onDoubleClick={() => dispatch(setVisualsSplitRatio(0.5))}
+                      onDoubleClick={() => commitSplitRatio(defaultSplitRatio)}
                       onKeyDown={(event) => {
-                        const decrease = splitOrientation === "columns" ? "ArrowLeft" : "ArrowUp";
-                        const increase = splitOrientation === "columns" ? "ArrowRight" : "ArrowDown";
+                        const decrease = layoutOrientation === "columns" ? "ArrowLeft" : "ArrowUp";
+                        const increase = layoutOrientation === "columns" ? "ArrowRight" : "ArrowDown";
                         if (event.key !== decrease && event.key !== increase) return;
                         event.preventDefault();
-                        dispatch(
-                          setVisualsSplitRatio(clampSplitRatio(splitRatio + (event.key === increase ? 0.05 : -0.05))),
-                        );
+                        commitSplitRatio(clampSplitRatio(splitRatio + (event.key === increase ? 0.05 : -0.05)));
                       }}
                     />
                   )}
+                  {isTreeMode && !isActiveTabSourceOnly && (
+                    <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+                      <VisualsVariantTree
+                        catalog={variantState?.catalog}
+                        isCatalogReady={variantState?.isCatalogReady ?? false}
+                        renderedChoiceKeys={variantState?.renderedChoiceKeys ?? NO_HIDDEN_TREE_IDS}
+                        hiddenIds={hiddenIdsForTab}
+                        onHiddenIdsChange={(ids) => setHiddenTreeIds((current) => ({ ...current, [treeKey]: ids }))}
+                        onSelectChoice={(choiceKey) => {
+                          const catalog = variantState?.catalog;
+                          const selections = catalog ? getSelectionChainForChoice(catalog, choiceKey) : [];
+                          if (selections.length === 0) return;
+                          setVariantSelectionRequest((current) => ({ id: (current?.id ?? 0) + 1, selections }));
+                        }}
+                      />
+                    </div>
+                  )}
                   <div
                     className={
-                      viewerMode === "preview" ? "hidden" : "min-h-0 min-w-0 flex-1 overflow-auto bg-gray-900"
+                      viewerMode === "preview" || (isTreeMode && !isActiveTabSourceOnly)
+                        ? "hidden"
+                        : "min-h-0 min-w-0 flex-1 overflow-auto bg-gray-900"
                     }
                     onContextMenu={openSourceContextMenu}
                   >

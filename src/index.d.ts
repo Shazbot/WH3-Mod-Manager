@@ -369,6 +369,8 @@ declare global {
     visualsSplitOrientation?: "columns" | "rows";
     /** Share of the Visuals split given to the preview pane, 0.15–0.85. */
     visualsSplitRatio: number;
+    /** Share of the Visuals Preview + Tree split given to the preview pane, 0.15–0.85. */
+    visualsTreeSplitRatio: number;
     /** Whether the Unit Viewer shows one unit for visualization or multiple units for comparison. */
     unitViewerMode: UnitViewerMode;
     /** Whether the Unit Viewer shows the render wireframe beneath the unit visualization. */
@@ -526,6 +528,7 @@ declare global {
     | "isVisualsHideDuplicatesEnabled"
     | "visualsSplitOrientation"
     | "visualsSplitRatio"
+    | "visualsTreeSplitRatio"
     | "unitViewerMode"
     | "unitViewerShowWireframe"
     | "unitViewerUnsyncedAnimations"

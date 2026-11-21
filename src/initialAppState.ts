@@ -108,6 +108,7 @@ const initialState = {
   isVisualsHideDuplicatesEnabled: true,
   visualsSplitOrientation: undefined,
   visualsSplitRatio: 0.5,
+  visualsTreeSplitRatio: 0.7,
   // New and pre-feature configs start with the single-unit model visualization.
   unitViewerMode: "visualize",
   unitViewerShowWireframe: true,

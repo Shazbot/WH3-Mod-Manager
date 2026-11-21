@@ -23,8 +23,12 @@ vi.mock("re-resizable", () => ({
   Resizable: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
+const previewProps = vi.hoisted(() => ({ current: {} as Record<string, any> }));
 vi.mock("../src/components/VisualsModelPreview", () => ({
-  default: () => <div data-testid="visuals-model-preview" />,
+  default: (props: Record<string, unknown>) => {
+    previewProps.current = props;
+    return <div data-testid="visuals-model-preview" />;
+  },
 }));
 
 const units = [
@@ -293,6 +297,87 @@ describe("VisualsTab filtering", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Preview" }));
     expect(screen.getByTestId("visuals-model-preview")).toBeInTheDocument();
+  });
+
+  it("shows a slot tree beside the preview and hides components from the eye toggles", async () => {
+    const modelPath = "models\\example.wsmodel";
+    searchVisualsFiles.mockReset().mockResolvedValue({
+      success: true,
+      total: 1,
+      results: [{ path: modelPath, ext: "wsmodel" }],
+    });
+    readVariantMeshDefinition.mockResolvedValue({
+      success: true,
+      text: "<model />",
+      resolved: { packPath: "/mods/example.pack", fileName: modelPath },
+    });
+    const store = configureStore({
+      reducer: { app: appReducer },
+      preloadedState: {
+        app: {
+          ...initialState,
+          isFeaturesForModdersEnabled: true,
+          currentPreset: { ...initialState.currentPreset, mods: [] },
+        },
+      },
+    });
+    render(
+      <Provider store={store}>
+        <localizationContext.Provider value={enTranslation}>
+          <VisualsTab isActive />
+        </localizationContext.Provider>
+      </Provider>,
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Human (1)" })).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText("Show all visual files"));
+    fireEvent.doubleClick(await screen.findByText(modelPath));
+    await waitFor(() => expect(readVariantMeshDefinition).toHaveBeenCalledWith("visuals-session", modelPath));
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview + Tree" }));
+    expect(screen.getByText("Loading slots…")).toBeInTheDocument();
+    const slot = (path: string, name: string, labels: string[], parent?: { slotPath: string; choiceIndex: number }) => ({
+      slotPath: path,
+      name,
+      label: name,
+      defaultChoiceIndex: 0,
+      parent,
+      choices: labels.map((label, index) => ({ index, key: `${path}/choice[${index}]`, label, kind: "inline" })),
+    });
+    act(() => {
+      previewProps.current.onVariantStateChange({
+        catalog: {
+          assetPath: modelPath,
+          combinationCount: 2,
+          combinationCountCapped: false,
+          diagnostics: [],
+          slots: [slot("root/slot[0]", "helmet", ["Plain", "Crested"]), slot("root/slot[1]", "cape", ["Red", "Blue"])],
+        },
+        selections: {},
+        renderedChoiceKeys: ["root/slot[0]/choice[0]", "root/slot[1]/choice[0]"],
+      });
+    });
+    expect(screen.getByRole("separator", { name: "Resize preview and tree" })).toBeInTheDocument();
+    expect(previewProps.current.hiddenComponentBindings).toEqual([]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide 1 · Plain" }));
+    expect(previewProps.current.hiddenComponentBindings).toEqual(["root/slot[0]/choice[0]"]);
+    fireEvent.click(screen.getByRole("button", { name: "Show 1 · Plain" }));
+    expect(previewProps.current.hiddenComponentBindings).toEqual([]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide 2 · Crested" }), { ctrlKey: true });
+    expect(previewProps.current.hiddenComponentBindings).toEqual([
+      "root/slot[0]/choice[0]",
+      "root/slot[1]",
+      "root/slot[1]/choice[0]",
+      "root/slot[1]/choice[1]",
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Hide 2 · Crested" }), { ctrlKey: true });
+    expect(previewProps.current.hiddenComponentBindings).toEqual([]);
+
+    fireEvent.click(screen.getByTitle(/^Crested - not shown in preview/));
+    expect(previewProps.current.variantSelectionRequest.selections).toEqual([
+      { slotPath: "root/slot[0]", choiceIndex: 1 },
+    ]);
   });
 
   it("offers DDS copy and extraction actions without AssetEditor actions", async () => {

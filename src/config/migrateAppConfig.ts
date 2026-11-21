@@ -175,6 +175,9 @@ const withDefaults = (config: AppConfig): AppConfig => {
     visualsSplitRatio: Number.isFinite(config.visualsSplitRatio)
       ? Math.min(0.85, Math.max(0.15, config.visualsSplitRatio))
       : 0.5,
+    visualsTreeSplitRatio: Number.isFinite(config.visualsTreeSplitRatio)
+      ? Math.min(0.85, Math.max(0.15, config.visualsTreeSplitRatio))
+      : 0.7,
     unitViewerMode: config.unitViewerMode === "compare" ? "compare" : "visualize",
     unitViewerShowWireframe: config.unitViewerShowWireframe ?? true,
     unitViewerUnsyncedAnimations: config.unitViewerUnsyncedAnimations ?? true,

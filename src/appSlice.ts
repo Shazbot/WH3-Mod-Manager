@@ -1311,6 +1311,7 @@ const appSlice = createSlice({
         fromConfigAppState.isVisualsHideDuplicatesEnabled ?? state.isVisualsHideDuplicatesEnabled;
       state.visualsSplitOrientation = fromConfigAppState.visualsSplitOrientation ?? state.visualsSplitOrientation;
       state.visualsSplitRatio = fromConfigAppState.visualsSplitRatio ?? state.visualsSplitRatio;
+      state.visualsTreeSplitRatio = fromConfigAppState.visualsTreeSplitRatio ?? state.visualsTreeSplitRatio;
       state.unitViewerMode =
         fromConfigAppState.unitViewerMode === "visualize" || fromConfigAppState.unitViewerMode === "compare"
           ? fromConfigAppState.unitViewerMode
@@ -1754,6 +1755,9 @@ const appSlice = createSlice({
     },
     setVisualsSplitRatio: (state: AppState, action: PayloadAction<number>) => {
       state.visualsSplitRatio = action.payload;
+    },
+    setVisualsTreeSplitRatio: (state: AppState, action: PayloadAction<number>) => {
+      state.visualsTreeSplitRatio = action.payload;
     },
     setUnitViewerMode: (state: AppState, action: PayloadAction<UnitViewerMode>) => {
       state.unitViewerMode = action.payload;
@@ -2237,6 +2241,7 @@ export const {
   toggleIsVisualsHideDuplicatesEnabled,
   setVisualsSplitOrientation,
   setVisualsSplitRatio,
+  setVisualsTreeSplitRatio,
   setUnitViewerMode,
   setUnitViewerShowWireframe,
   setUnitViewerUnsyncedAnimations,
